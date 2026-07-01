@@ -1,0 +1,2 @@
+"""Nextcloud integration package."""
+
