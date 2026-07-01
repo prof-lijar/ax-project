@@ -1,0 +1,32 @@
+# AX Project Documentation
+
+AX Project is a Linux desktop application built with Tauri. Its first stage is a human-in-the-loop command center for always-on agents: people approve, assign, inspect, redirect, and learn from agent work without losing control of execution.
+
+This documentation set defines the product architecture before implementation begins.
+
+## Document Map
+
+- [Vision](00-overview/vision.md): product intent, operating principles, and stage-one scope.
+- [Architecture Decisions](00-overview/architecture-decisions.md): early technical decisions and tradeoffs.
+- [Product Requirements](01-product/product-requirements.md): personas, jobs, features, and non-goals.
+- [Human-Agent Workflow](01-product/human-agent-workflow.md): core operating loops and user journeys.
+- [UX System](02-design/ux-system.md): desktop information architecture, screens, layout, and interaction principles.
+- [Frontend Architecture](03-architecture/frontend-architecture.md): Tauri, frontend layers, app shell, state, commands, and packaging.
+- [Agent Orchestration](04-agents/agent-orchestration.md): agent registry, runtime model, task routing, approvals, and supervision.
+- [Data Model](05-data/data-model.md): local-first entities, event log, persistence, and sync-ready boundaries.
+- [Algorithms](06-algorithms/core-algorithms.md): scheduling, assignment, approval gating, notification, and context selection algorithms.
+- [Roadmap](07-roadmap/implementation-roadmap.md): phased plan from docs to first usable desktop app.
+
+## Stage-One Definition
+
+Stage one does not need full autonomous execution. It needs the durable product foundation:
+
+1. A clear desktop workspace where a human can see agent status, queue health, pending approvals, assigned work, and current risk.
+2. A task and approval model that can support future integrations without being redesigned.
+3. A local-first Tauri architecture that keeps the UI responsive while agents run continuously in background processes or remote services.
+4. A traceable event model so every agent recommendation, human decision, task transition, and failure can be audited.
+
+## Default Product Stance
+
+AX Project should feel like an operations console, not a chatbot. Chat can exist, but the primary interface is work: queues, decisions, task state, evidence, responsibility, and follow-up.
+
