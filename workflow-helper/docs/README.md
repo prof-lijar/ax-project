@@ -28,5 +28,4 @@ Stage one does not need full autonomous execution. It needs the durable product 
 
 ## Default Product Stance
 
-AX Project should feel like an operations console, not a chatbot. Chat can exist, but the primary interface is work: queues, decisions, task state, evidence, responsibility, and follow-up.
-
+AX Project should feel like an Agent Control Room, not a chatbot or generic task board. Chat can exist, but the primary interface is command: live agent lanes, mission state, risk, decisions, evidence, responsibility, and follow-up.

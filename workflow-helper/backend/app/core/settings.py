@@ -11,7 +11,7 @@ class Settings:
         self.nextcloud_url = self._required("NC_URL").rstrip("/")
         self.nextcloud_user = self._required("NC_USER")
         self.nextcloud_password = self._required("NC_PASS")
-        self.nextcloud_verify_ssl = self._bool("NC_VERIFY_SSL", default=True)
+        self.nextcloud_verify_ssl = self._ssl_verify()
         self.nextcloud_timeout_seconds = float(os.getenv("NC_TIMEOUT_SECONDS", "30"))
 
     @staticmethod
@@ -28,8 +28,14 @@ class Settings:
             return default
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
+    @classmethod
+    def _ssl_verify(cls) -> bool | str:
+        ca_bundle = os.getenv("NC_CA_BUNDLE")
+        if ca_bundle:
+            return ca_bundle
+        return cls._bool("NC_VERIFY_SSL", default=True)
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

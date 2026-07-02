@@ -1,3 +1,6 @@
+import asyncio
+
+import httpx
 import pytest
 
 from app.core.settings import Settings
@@ -31,6 +34,40 @@ def test_clean_path_rejects_traversal(settings):
         client._clean_path("../Readme.md")
 
 
+def test_ca_bundle_overrides_verify_ssl(monkeypatch):
+    monkeypatch.setenv("NC_URL", "https://nextor-ai-02.tail8e1643.ts.net")
+    monkeypatch.setenv("NC_USER", "lijar")
+    monkeypatch.setenv("NC_PASS", "secret")
+    monkeypatch.setenv("NC_VERIFY_SSL", "false")
+    monkeypatch.setenv("NC_CA_BUNDLE", "/etc/ssl/private-nextcloud-ca.pem")
+
+    assert Settings().nextcloud_verify_ssl == "/etc/ssl/private-nextcloud-ca.pem"
+
+
+def test_request_errors_are_nextcloud_errors(settings, monkeypatch):
+    class FailingAsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            raise httpx.ConnectError("certificate verify failed")
+
+    monkeypatch.setattr("app.nextcloud.client.httpx.AsyncClient", FailingAsyncClient)
+    client = NextcloudClient(settings)
+
+    with pytest.raises(NextcloudError) as exc_info:
+        asyncio.run(client._request("GET", "https://nextcloud.example.com/status.php"))
+
+    assert exc_info.value.status_code == 502
+    assert "Unable to connect to Nextcloud" in exc_info.value.message
+
+
 def test_parse_propfind_skips_requested_root(settings):
     client = NextcloudClient(settings)
     xml = b"""<?xml version="1.0"?>
@@ -61,4 +98,3 @@ def test_parse_propfind_skips_requested_root(settings):
     assert items[0].name == "agent-test.md"
     assert items[0].is_directory is False
     assert items[0].size == 19
-

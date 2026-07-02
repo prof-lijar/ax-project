@@ -4,13 +4,43 @@
 
 Use SQLite locally. Store current workflow state in normalized tables and append immutable events for audit. This keeps the first desktop app simple while preserving a future path to sync.
 
+Mission is a UX projection in the first version, not a separate table. A mission view is composed from task, owner agent, approvals, artifacts, and events.
+
 ## Core Entities
+
+### Workspace
+
+```text
+workspace
+  id
+  name
+  root_uri
+  settings_json
+  created_at
+  updated_at
+```
+
+### Actor
+
+Actors can be humans, agents, or system services. Keeping actors explicit makes audit, delegation, and future sync cleaner.
+
+```text
+actor
+  id
+  workspace_id
+  actor_type
+  display_name
+  external_ref
+  created_at
+  updated_at
+```
 
 ### Task
 
 ```text
 task
   id
+  workspace_id
   title
   goal
   status
@@ -31,10 +61,13 @@ task
 ```text
 agent
   id
+  workspace_id
+  actor_id
   name
   role
   description
-  status
+  availability_state
+  health_state
   adapter_kind
   permission_profile_id
   workload_limit
@@ -66,8 +99,10 @@ agent_capability
 ```text
 approval
   id
+  workspace_id
   task_id
   requesting_agent_id
+  parent_approval_id
   status
   risk_level
   action_type
@@ -75,6 +110,8 @@ approval
   action_payload_json
   scope_json
   evidence_json
+  bundle_summary_json
+  scoped_decision_kind
   policy_reason
   requested_at
   expires_at
@@ -89,6 +126,7 @@ approval
 ```text
 artifact
   id
+  workspace_id
   task_id
   agent_id
   kind
@@ -104,6 +142,7 @@ artifact
 ```text
 event
   id
+  workspace_id
   occurred_at
   actor_type
   actor_id
@@ -113,6 +152,23 @@ event
   correlation_id
   causation_id
   payload_json
+```
+
+### Permission Policy
+
+```text
+permission_policy
+  id
+  workspace_id
+  agent_id
+  action_type
+  scope_json
+  risk_threshold
+  decision_kind
+  expires_at
+  created_by
+  created_at
+  revoked_at
 ```
 
 ## Event Types
@@ -138,7 +194,8 @@ Agent events:
 
 - `agent.registered`
 - `agent.heartbeat`
-- `agent.status_changed`
+- `agent.availability_changed`
+- `agent.health_changed`
 - `agent.paused`
 - `agent.resumed`
 - `agent.failed`
@@ -147,6 +204,12 @@ Artifact events:
 
 - `artifact.created`
 - `artifact.updated`
+
+Policy events:
+
+- `permission_policy.suggested`
+- `permission_policy.created`
+- `permission_policy.revoked`
 
 ## Projections
 
@@ -185,4 +248,3 @@ Even before cloud sync exists:
 - Keep actor identity explicit.
 - Keep event payloads schema-versioned.
 - Avoid assuming single device forever in the data model.
-

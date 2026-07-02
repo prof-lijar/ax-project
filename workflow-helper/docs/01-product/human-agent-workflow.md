@@ -15,6 +15,8 @@
 
 - Approve once: allow only this specific action.
 - Approve with constraints: allow action after modifying scope, target, or parameters.
+- Approve for task: allow the same action type within this task and visible scope.
+- Approve timeboxed: allow the same action type and scope until expiration.
 - Reject: deny the action and require alternate plan.
 - Request evidence: keep approval pending and ask agent for missing information.
 - Delegate: assign decision to another human or future policy.
@@ -33,14 +35,19 @@
 - Canceled: intentionally stopped.
 - Failed: ended due to unrecoverable error.
 
-## Agent States
+## Agent Availability States
 
 - Offline: no heartbeat.
 - Idle: available for work.
 - Busy: actively working.
 - Waiting: blocked on human, dependency, rate limit, or scheduled delay.
-- Degraded: alive but failing health checks.
 - Paused: intentionally prevented from starting or continuing work.
+
+## Agent Health States
+
+- Healthy: heartbeats and recent behavior are within expected bounds.
+- Degraded: alive but failing health checks or producing repeated errors.
+- Offline: no heartbeat.
 
 ## Key User Journeys
 
@@ -59,4 +66,3 @@ An agent asks to run a future integration action. The approval view shows the re
 ### Investigate Agent Behavior
 
 The operator opens an agent profile, reviews recent tasks, failures, response latency, permission use, and blocked approvals. They pause the agent or adjust its permissions.
-

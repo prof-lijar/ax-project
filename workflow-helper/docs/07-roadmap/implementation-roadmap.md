@@ -7,7 +7,7 @@ Outcome: runnable Tauri desktop skeleton.
 Tasks:
 
 - Create Tauri app scaffold.
-- Choose frontend framework.
+- Configure React, TypeScript, TanStack Query, Zustand, and CSS modules.
 - Add routing and app shell.
 - Add baseline styling system.
 - Add SQLite setup and migration runner.
@@ -21,13 +21,13 @@ Exit criteria:
 - Backend command round trip works.
 - Local database initializes.
 
-## Phase 1: Static Operations Console
+## Phase 1: Static Mission Control
 
 Outcome: product-shaped UI with mock data.
 
 Tasks:
 
-- Build Command Center.
+- Build Mission Control.
 - Build Tasks list and task detail.
 - Build Approval queue and approval detail.
 - Build Agents list and agent detail.
@@ -36,7 +36,7 @@ Tasks:
 
 Exit criteria:
 
-- User can inspect mock tasks, agents, approvals, and events.
+- User can inspect mock missions, tasks, agents, approvals, and events.
 - Layout works at common desktop window sizes.
 - Empty, loading, and error states exist.
 
@@ -47,6 +47,7 @@ Outcome: persistent local workflows.
 Tasks:
 
 - Implement task tables and commands.
+- Implement workspace and actor tables.
 - Implement agent registry tables and commands.
 - Implement approval tables and commands.
 - Implement event append and activity queries.
@@ -126,7 +127,7 @@ Exit criteria:
 Build a vertical slice:
 
 1. Launch Tauri shell.
-2. Show Command Center.
+2. Show Mission Control.
 3. Create task.
 4. Assign mock agent.
 5. Mock agent requests approval.
@@ -164,7 +165,7 @@ QA:
 
 ## Risks
 
-- Chat interface gravity: the product could become a chat wrapper instead of an operations console.
+- Chat interface gravity: the product could become a chat wrapper or generic dashboard instead of an Agent Control Room.
 - Approval fatigue: too many low-value approval requests can train users to approve blindly.
 - Weak audit model: missing event detail will make agent behavior hard to trust.
 - Adapter leakage: UI will become brittle if it depends on provider-specific runtime details.
@@ -172,9 +173,7 @@ QA:
 
 ## Open Questions
 
-- Which frontend framework will the team use?
 - Which real agent runtime should be integrated first?
 - Will the first version manage one local workspace or multiple workspaces?
 - What actions are considered destructive in the initial policy?
 - Should agents run only while the app is open, or through a background daemon?
-

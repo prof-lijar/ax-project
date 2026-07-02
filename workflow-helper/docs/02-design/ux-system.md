@@ -2,13 +2,15 @@
 
 ## Design Position
 
-AX Project should feel like an operations console for real work. The interface should be dense, calm, legible, and fast. Avoid marketing-style hero sections, decorative cards, and empty explanatory panels.
+AX Project should feel like an Agent Control Room for real work. The interface should be dense, calm, legible, and fast. Avoid marketing-style hero sections, decorative cards, and empty explanatory panels.
+
+The signature surface is Mission Control: agent lanes, decision stack, risk radar, and mission timeline arranged so the human can command the system without opening chat.
 
 ## Information Architecture
 
 Primary navigation:
 
-- Command Center
+- Mission Control
 - Tasks
 - Approvals
 - Agents
@@ -25,12 +27,13 @@ Secondary surfaces:
 
 ## First Screen
 
-The first screen is the Command Center. It should immediately expose:
+The first screen is Mission Control. It should immediately expose:
 
 - Pending approvals grouped by risk and age.
-- Active tasks grouped by status.
-- Agent roster with compact health signals.
-- Recent events filtered to important changes.
+- Agent lanes grouped by availability and current mission.
+- Active missions grouped by blocked, waiting, and running.
+- Risk radar for degraded agents, risky approvals, and stale work.
+- Mission timeline filtered to important changes.
 - A create-task control.
 
 No landing page is needed.
@@ -47,14 +50,21 @@ The right inspector can collapse on smaller widths. On narrow windows, use a two
 
 ## Screen Details
 
-### Command Center
+### Mission Control
 
 Recommended layout:
 
-- Top strip: global search, create task, emergency pause, notification status.
-- Main left: approval queue and blocked tasks.
-- Main center: active task table.
-- Main right: agent health and recent events.
+- Top command strip: global search, create task, emergency pause, notification status.
+- Left decision stack: approvals and human input requests ordered by urgency.
+- Center agent lanes: live agent rows with current mission, next action, blockers, and health.
+- Right risk radar: high-risk proposed actions, degraded agents, stale work, and recent important events.
+- Bottom mission timeline: collapsible chronological trace for the selected mission or all active work.
+
+Hierarchy:
+
+1. Decisions that unblock work.
+2. Risk that could cause harm or failed execution.
+3. Running work and recent changes.
 
 ### Tasks
 
@@ -122,6 +132,8 @@ Agent detail:
 - Use drawers for quick inspection and full pages for deep investigation.
 - Keep approval actions visible without scrolling.
 - Show exact action scope before approval.
+- Offer scoped approval options without hiding risk.
+- Group repeated low-risk approvals into a single decision when policy permits.
 - Preserve keyboard navigation for queue processing.
 - Prefer inline status and compact badges over verbose text.
 - Use native notifications only for high-priority or time-sensitive events.
@@ -153,4 +165,3 @@ Empty states should be operational, not promotional:
 - No approvals: show recent completed decisions and policy status.
 - No active tasks: show create task and scheduled tasks.
 - No agents: show connect/mock agent setup.
-

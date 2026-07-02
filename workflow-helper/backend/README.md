@@ -22,6 +22,18 @@ Edit `dev.env` and set your Nextcloud app password:
 NC_PASS=your-nextcloud-app-password
 ```
 
+For a local Nextcloud server using a self-signed certificate, either trust its CA:
+
+```bash
+NC_CA_BUNDLE=/path/to/nextcloud-ca.pem
+```
+
+Or, for local development only, disable verification:
+
+```bash
+NC_VERIFY_SSL=false
+```
+
 Load environment variables:
 
 ```bash

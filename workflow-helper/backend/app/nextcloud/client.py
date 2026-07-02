@@ -152,13 +152,19 @@ class NextcloudClient:
         return data.get("ocs", {}).get("data", data)
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        async with httpx.AsyncClient(
-            auth=self._auth,
-            verify=self._verify,
-            timeout=self._timeout,
-            follow_redirects=True,
-        ) as client:
-            return await client.request(method, url, **kwargs)
+        try:
+            async with httpx.AsyncClient(
+                auth=self._auth,
+                verify=self._verify,
+                timeout=self._timeout,
+                follow_redirects=True,
+            ) as client:
+                return await client.request(method, url, **kwargs)
+        except httpx.RequestError as exc:
+            raise NextcloudError(
+                f"Unable to connect to Nextcloud: {exc}",
+                status_code=502,
+            ) from exc
 
     def _webdav_url(self, path: str, trailing_slash: bool = False) -> str:
         return self._absolute_webdav_url(path, trailing_slash=trailing_slash)

@@ -3,13 +3,14 @@
 ## Recommended Stack
 
 - Desktop shell: Tauri 2.
-- Frontend: TypeScript with React or Solid.
-- Styling: CSS modules, vanilla CSS, or Tailwind if the project already standardizes on it.
-- Local state: query/cache layer for server state plus a small UI store for layout and selection.
+- Frontend: TypeScript with React.
+- Data fetching/cache: TanStack Query.
+- Ephemeral UI state: Zustand.
+- Styling: CSS modules with design tokens in plain CSS.
 - Persistence: SQLite through the Tauri backend.
 - Background work: Rust-managed services exposed through Tauri commands and events.
 
-React is the safer default if the team wants broad ecosystem support. Solid is viable if the team values fine-grained reactivity and smaller runtime cost.
+React is the default because it keeps hiring, component libraries, testing, and Tauri examples straightforward. Avoid introducing a second styling system unless a concrete component requirement justifies it.
 
 ## Process Model
 
@@ -36,7 +37,7 @@ src/
     approvals/
     tasks/
     activity/
-    command-center/
+    mission-control/
   shared/
     api/
     components/
@@ -59,6 +60,8 @@ Commands should expose product operations, not database tables.
 
 Initial command groups:
 
+- `workspace.get`
+- `workspace.update_settings`
 - `tasks.create`
 - `tasks.update`
 - `tasks.assign`
@@ -78,13 +81,15 @@ Initial command groups:
 
 Backend events:
 
+- `workspace.updated`
 - `task.created`
 - `task.updated`
 - `task.assigned`
 - `approval.requested`
 - `approval.decided`
 - `agent.heartbeat`
-- `agent.state_changed`
+- `agent.availability_changed`
+- `agent.health_changed`
 - `activity.appended`
 - `system.warning`
 
@@ -152,4 +157,3 @@ End-to-end:
 - Generate approval request.
 - Approve with constraint.
 - Observe task timeline update.
-

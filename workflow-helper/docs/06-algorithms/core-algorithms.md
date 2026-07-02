@@ -113,6 +113,49 @@ Suggested weights:
 
 Sort descending by priority score, then oldest request first.
 
+## Approval Bundling
+
+Goal: reduce repeated low-value decisions without hiding risk.
+
+Two approval requests can be bundled when all of these match:
+
+- Same task.
+- Same requesting agent.
+- Same action type.
+- Same normalized target scope.
+- Same risk level or both low risk.
+- Neither request is destructive high risk.
+- Neither request has unique evidence that changes the decision.
+
+Bundle output:
+
+- One parent approval shown in the decision stack.
+- Child approval ids listed in the scope.
+- Combined evidence summary.
+- Exact count and targets visible before approval.
+
+If any bundled child changes scope, risk, or evidence, split it back into a separate approval.
+
+## Scoped Approval Recommendation
+
+When a human repeatedly approves similar low-risk actions, suggest a scoped decision.
+
+Recommendation criteria:
+
+- At least three approvals with matching agent, action type, and target scope.
+- No rejection in the matching group.
+- No related task failure after approval.
+- Agent health is not degraded.
+- Scope can be described precisely.
+
+Recommended options:
+
+- Approve similar for this task.
+- Approve similar for 30 minutes.
+- Create a draft permission rule.
+
+Never auto-enable a broader permission rule without an explicit human decision.
+
 ## Notification Routing
 
 Notify the user only when attention is valuable.
@@ -181,4 +224,3 @@ Because agent runtimes may retry updates, backend event append should deduplicat
 - Adapter-provided idempotency key when available.
 
 If a duplicate arrives, return success with the existing event id.
-

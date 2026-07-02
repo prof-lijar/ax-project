@@ -62,3 +62,19 @@ Implications:
 - Define commands around product concepts: create task, assign task, request approval, pause agent.
 - Avoid leaking provider-specific API shapes into UI state.
 
+## ADR-005: React Stack for First Desktop Build
+
+Decision: The first Tauri frontend uses React, TypeScript, TanStack Query, Zustand, and CSS modules.
+
+Reasoning:
+
+- React keeps hiring, testing, component libraries, and Tauri examples straightforward.
+- TanStack Query separates backend-owned domain state from frontend rendering concerns.
+- Zustand is sufficient for compact UI state such as selection, panels, filters, and layout.
+- CSS modules with plain design tokens keep styling explicit without committing the product to a heavy design framework.
+
+Implications:
+
+- Avoid introducing a second styling system in the first build.
+- Keep domain mutations behind typed Tauri commands.
+- Keep critical workflow state out of frontend-only stores.

@@ -30,18 +30,28 @@ Builder:
 - Pause or resume an agent safely.
 - Inspect what happened on a task after the fact.
 
+## Product Language
+
+Mission is the UX term for an active task or coordinated set of task activity that the human is supervising. In the first implementation, a mission maps to a task plus its assigned agent, open approvals, artifacts, and timeline. Do not add a separate mission entity until one user-visible mission can contain multiple independent tasks.
+
 ## Feature Set
 
-### Command Center
+### Mission Control
 
 The default screen should show:
 
 - Pending approvals.
-- Active tasks.
+- Active missions and tasks.
 - Blocked tasks.
 - Agent health.
 - Recent high-signal events.
 - System risk warnings.
+
+The screen should answer three questions in priority order:
+
+1. What needs my decision?
+2. What is stuck or risky?
+3. What changed since I last looked?
 
 ### Agent Directory
 
@@ -82,6 +92,16 @@ Each approval request has:
 - Decision options.
 - Consequences of approval or rejection.
 
+### Approval Load Management
+
+The product must actively reduce low-value approvals. Supported mechanisms:
+
+- Bundle related approvals when they share task, agent, target, and risk profile.
+- Allow scoped decisions such as approve once, approve for this task, or approve similar low-risk actions for a time window.
+- Surface policy suggestions after repeated identical approvals.
+- Require stronger evidence for high-risk actions instead of simply moving them higher in the queue.
+- Auto-expire stale approvals and return the task to planning.
+
 ### Activity Timeline
 
 The timeline shows:
@@ -106,4 +126,3 @@ The timeline shows:
 - Critical decisions are recoverable after app restart.
 - No destructive action can occur without an auditable approval in stage one.
 - The system clearly distinguishes agent suggestion, agent execution, and human decision.
-

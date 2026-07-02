@@ -95,6 +95,26 @@ Approval request fields:
 
 Approval requests are not chat messages. They are actionable workflow objects.
 
+## Approval Load Management
+
+The orchestration layer should prevent approval fatigue before requests reach the UI.
+
+Rules:
+
+- Bundle compatible approvals when they share task, requesting agent, action type, target scope, and risk level.
+- Prefer one scoped approval over many identical approvals.
+- Suggest policy promotion only after repeated successful approvals with no rejection, failure, or scope expansion.
+- Never bundle high-risk destructive actions unless every action target is visible in the decision view.
+- Expire stale approvals and ask the agent to re-plan when context has changed.
+- Suppress duplicate approval requests by idempotency key, action payload, and target scope.
+
+Scoped approval options:
+
+- Once: only the exact requested action.
+- For task: same action type and target scope within the current task.
+- Timeboxed: same action type and target scope until expiration.
+- Policy suggestion: convert a repeated pattern into a proposed permission rule that still requires human approval.
+
 ## Supervision Controls
 
 Human operators need:
@@ -108,7 +128,7 @@ Human operators need:
 - Add instruction to current task.
 - Cancel task.
 
-## Agent Health
+## Agent Availability and Health
 
 Health signals:
 
@@ -120,15 +140,19 @@ Health signals:
 - Adapter connectivity.
 - Resource consumption when available.
 
-Health states:
+Availability states:
 
-- Healthy
 - Idle
 - Busy
 - Waiting
-- Degraded
 - Offline
 - Paused
+
+Health states:
+
+- Healthy
+- Degraded
+- Offline
 
 ## Failure Handling
 
@@ -152,4 +176,3 @@ Recovery actions:
 - Escalate to human.
 - Cancel task.
 - Pause agent.
-
