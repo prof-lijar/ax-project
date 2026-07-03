@@ -12,6 +12,7 @@ import {
   downloadBrowserNextcloudFile,
   getBrowserNextcloudStatus,
   listBrowserNextcloudFiles,
+  previewBrowserNextcloudFile,
   readBrowserNextcloudTextFile
 } from "./nextcloudBackendClient";
 import type {
@@ -24,10 +25,12 @@ import type {
   WorkspaceOverview
 } from "../types/domain";
 import type {
+  NextcloudDownloadResponse,
   NextcloudListFilesResponse,
+  NextcloudPreviewResponse,
   NextcloudStatus,
   NextcloudTextFileResponse,
-  NextcloudDownloadResponse
+  NextcloudViewerKind
 } from "../types/nextcloud";
 
 type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown };
@@ -36,6 +39,14 @@ const isTauriRuntime = () =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as TauriWindow);
 
 const delay = async () => new Promise((resolve) => window.setTimeout(resolve, 90));
+
+interface DesktopNextcloudPreviewResponse {
+  path: string;
+  filename: string;
+  contentType: string;
+  viewerKind: string;
+  bytes: number[];
+}
 
 async function callCommand<T>(
   command: string,
@@ -155,6 +166,21 @@ export const desktopApi = {
       () => readBrowserNextcloudTextFile(path),
       { path }
     ),
+  previewNextcloudFile: async (path: string) => {
+    if (isTauriRuntime()) {
+      try {
+        return desktopPreviewToViewer(
+          await invoke<DesktopNextcloudPreviewResponse>("nextcloud_preview_file", {
+            path
+          })
+        );
+      } catch (error) {
+        throw normalizeCommandError(error);
+      }
+    }
+
+    return previewBrowserNextcloudFile(path);
+  },
   downloadNextcloudFile: (path: string) =>
     callDesktopOrBrowser<NextcloudDownloadResponse>(
       "nextcloud_download_file",
@@ -162,3 +188,48 @@ export const desktopApi = {
       { path }
     )
 };
+
+function desktopPreviewToViewer(
+  response: DesktopNextcloudPreviewResponse
+): NextcloudPreviewResponse {
+  const viewerKind = normalizeViewerKind(response.viewerKind, response.contentType);
+  const bytes = new Uint8Array(response.bytes);
+
+  if (viewerKind === "text") {
+    return {
+      path: response.path,
+      filename: response.filename,
+      contentType: response.contentType,
+      viewerKind,
+      text: new TextDecoder("utf-8").decode(bytes)
+    };
+  }
+
+  return {
+    path: response.path,
+    filename: response.filename,
+    contentType: response.contentType,
+    viewerKind,
+    objectUrl: URL.createObjectURL(
+      new Blob([bytes], { type: response.contentType })
+    )
+  };
+}
+
+function normalizeViewerKind(
+  value: string,
+  contentType: string
+): NextcloudViewerKind {
+  if (value === "pdf" || value === "image" || value === "text") {
+    return value;
+  }
+
+  const normalized = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (normalized === "application/pdf") {
+    return "pdf";
+  }
+  if (normalized?.startsWith("image/")) {
+    return "image";
+  }
+  return "text";
+}

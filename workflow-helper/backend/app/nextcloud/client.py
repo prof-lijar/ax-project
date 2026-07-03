@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import quote, unquote
+import shutil
 import posixpath
+import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 
 import httpx
@@ -15,6 +18,25 @@ from app.nextcloud.schemas import FileItem
 
 DAV_NS = "{DAV:}"
 NC_OCS_META_STATUS_OK = {"ok", "100", "200"}
+OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx"}
+PDF_PREVIEW_EXTENSIONS = {"pdf"}
+TEXT_PREVIEW_EXTENSIONS = {"md", "markdown", "txt"}
+IMAGE_PREVIEW_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+}
+IMAGE_PREVIEW_EXTENSIONS = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+}
+LIBREOFFICE_TIMEOUT_SECONDS = 60
 
 
 class NextcloudError(RuntimeError):
@@ -30,6 +52,15 @@ class DownloadedFile:
     content: bytes
     content_type: str | None
     filename: str
+
+
+@dataclass(frozen=True)
+class PreviewedFile:
+    path: str
+    content: bytes
+    content_type: str
+    filename: str
+    viewer_kind: str
 
 
 class NextcloudClient:
@@ -71,6 +102,56 @@ class NextcloudClient:
         if content_type and "charset=" in content_type:
             charset = content_type.rsplit("charset=", 1)[1].split(";", 1)[0].strip()
         return downloaded.content.decode(charset), content_type
+
+    async def preview_file(self, path: str) -> PreviewedFile:
+        downloaded = await self.download_file(path)
+        extension = self._extension(downloaded.filename)
+        normalized_content_type = self._normalized_content_type(downloaded.content_type)
+
+        if extension in PDF_PREVIEW_EXTENSIONS or normalized_content_type == "application/pdf":
+            return PreviewedFile(
+                path=downloaded.path,
+                content=downloaded.content,
+                content_type="application/pdf",
+                filename=downloaded.filename,
+                viewer_kind="pdf",
+            )
+
+        if (
+            extension in IMAGE_PREVIEW_EXTENSIONS
+            or normalized_content_type in IMAGE_PREVIEW_TYPES
+        ):
+            content_type = (
+                normalized_content_type
+                if normalized_content_type in IMAGE_PREVIEW_TYPES
+                else IMAGE_PREVIEW_EXTENSIONS[extension]
+            )
+            return PreviewedFile(
+                path=downloaded.path,
+                content=downloaded.content,
+                content_type=content_type,
+                filename=downloaded.filename,
+                viewer_kind="image",
+            )
+
+        if extension in TEXT_PREVIEW_EXTENSIONS or self._is_text_content_type(normalized_content_type):
+            content_type = (
+                "text/markdown; charset=utf-8"
+                if extension in {"md", "markdown"}
+                else "text/plain; charset=utf-8"
+            )
+            return PreviewedFile(
+                path=downloaded.path,
+                content=self._decode_text_preview(downloaded).encode("utf-8"),
+                content_type=content_type,
+                filename=downloaded.filename,
+                viewer_kind="text",
+            )
+
+        if extension in OFFICE_PREVIEW_EXTENSIONS:
+            return self._convert_office_preview(downloaded)
+
+        raise NextcloudError("Preview is not available for this file type.", status_code=415)
 
     async def write_text_file(
         self,
@@ -241,3 +322,87 @@ class NextcloudClient:
             return unquote(href.strip("/"))
         path = href.split(marker, 1)[1]
         return unquote(httpx.URL(f"http://local/{path}").path.lstrip("/"))
+
+    @staticmethod
+    def _extension(filename: str) -> str:
+        suffix = PurePosixPath(filename).suffix.lower()
+        return suffix[1:] if suffix.startswith(".") else suffix
+
+    @staticmethod
+    def _normalized_content_type(content_type: str | None) -> str:
+        if not content_type:
+            return ""
+        return content_type.split(";", 1)[0].strip().lower()
+
+    @classmethod
+    def _is_text_content_type(cls, content_type: str) -> bool:
+        return (
+            content_type.startswith("text/")
+            or content_type in {"application/json", "application/xml"}
+            or content_type.endswith("+json")
+            or content_type.endswith("+xml")
+        )
+
+    @staticmethod
+    def _decode_text_preview(downloaded: DownloadedFile) -> str:
+        charset = "utf-8"
+        if downloaded.content_type and "charset=" in downloaded.content_type:
+            charset = downloaded.content_type.rsplit("charset=", 1)[1].split(";", 1)[0].strip()
+        try:
+            return downloaded.content.decode(charset)
+        except UnicodeDecodeError as exc:
+            raise NextcloudError("File is not decodable as text.", status_code=415) from exc
+
+    def _convert_office_preview(self, downloaded: DownloadedFile) -> PreviewedFile:
+        converter = shutil.which("libreoffice") or shutil.which("soffice")
+        if not converter:
+            raise NextcloudError(
+                "LibreOffice is required to preview DOCX and PPTX files.",
+                status_code=501,
+            )
+
+        filename = downloaded.filename or "preview"
+        with tempfile.TemporaryDirectory(prefix="workflow-helper-preview-") as temp_dir:
+            input_path = f"{temp_dir}/{filename}"
+            with open(input_path, "wb") as file:
+                file.write(downloaded.content)
+
+            try:
+                subprocess.run(
+                    [
+                        converter,
+                        "--headless",
+                        "--convert-to",
+                        "pdf",
+                        "--outdir",
+                        temp_dir,
+                        input_path,
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=LIBREOFFICE_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise NextcloudError("Document preview conversion timed out.", status_code=504) from exc
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or exc.stdout or b"").decode("utf-8", errors="replace").strip()
+                message = "Document preview conversion failed."
+                if detail:
+                    message = f"{message} {detail[:300]}"
+                raise NextcloudError(message, status_code=502) from exc
+
+            pdf_path = PurePosixPath(filename).with_suffix(".pdf").name
+            output_path = f"{temp_dir}/{pdf_path}"
+            try:
+                with open(output_path, "rb") as file:
+                    converted = file.read()
+            except FileNotFoundError as exc:
+                raise NextcloudError("Document preview conversion did not produce a PDF.", status_code=502) from exc
+
+        return PreviewedFile(
+            path=downloaded.path,
+            content=converted,
+            content_type="application/pdf",
+            filename=PurePosixPath(filename).with_suffix(".pdf").name,
+            viewer_kind="pdf",
+        )

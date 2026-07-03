@@ -8,8 +8,10 @@ import type {
   NextcloudFileItem,
   NextcloudDownloadResponse,
   NextcloudListFilesResponse,
+  NextcloudPreviewResponse,
   NextcloudStatus,
-  NextcloudTextFileResponse
+  NextcloudTextFileResponse,
+  NextcloudViewerKind
 } from "../types/nextcloud";
 
 const BACKEND_URL =
@@ -106,6 +108,44 @@ export async function readBrowserNextcloudTextFile(
   }
 }
 
+export async function previewBrowserNextcloudFile(
+  path: string
+): Promise<NextcloudPreviewResponse> {
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/preview`);
+  url.searchParams.set("path", path);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(await errorDetail(response));
+  }
+
+  const contentType =
+    response.headers.get("content-type") ?? "application/octet-stream";
+  const viewerKind = normalizeViewerKind(
+    response.headers.get("x-preview-kind"),
+    contentType
+  );
+  const filename = filenameFromResponse(response, path);
+
+  if (viewerKind === "text") {
+    return {
+      path,
+      filename,
+      contentType,
+      viewerKind,
+      text: await response.text()
+    };
+  }
+
+  const blob = await response.blob();
+  return {
+    path,
+    filename,
+    contentType,
+    viewerKind,
+    objectUrl: URL.createObjectURL(blob)
+  };
+}
+
 export async function downloadBrowserNextcloudFile(
   path: string
 ): Promise<NextcloudDownloadResponse> {
@@ -176,6 +216,24 @@ function normalizeTextFileResponse(
     content: response.content,
     contentType: response.contentType ?? response.content_type ?? null
   };
+}
+
+function normalizeViewerKind(
+  value: string | null,
+  contentType: string
+): NextcloudViewerKind {
+  if (value === "pdf" || value === "image" || value === "text") {
+    return value;
+  }
+
+  const normalized = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (normalized === "application/pdf") {
+    return "pdf";
+  }
+  if (normalized?.startsWith("image/")) {
+    return "image";
+  }
+  return "text";
 }
 
 async function errorDetail(response: Response) {

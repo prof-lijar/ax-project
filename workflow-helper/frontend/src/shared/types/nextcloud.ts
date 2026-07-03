@@ -27,6 +27,17 @@ export interface NextcloudTextFileResponse {
   contentType: string | null;
 }
 
+export type NextcloudViewerKind = "pdf" | "image" | "text";
+
+export interface NextcloudPreviewResponse {
+  path: string;
+  filename: string;
+  contentType: string;
+  viewerKind: NextcloudViewerKind;
+  objectUrl?: string;
+  text?: string;
+}
+
 export interface NextcloudDownloadResponse {
   path: string;
   filename: string;

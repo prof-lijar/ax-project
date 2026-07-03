@@ -19,7 +19,7 @@ export const navItems: Array<{
   { id: "nextcloud", label: "NextCloud", icon: Cloud },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "approvals", label: "Approvals", icon: ShieldCheck },
-  { id: "agents", label: "Team", icon: Bot },
+  { id: "agents", label: "Agents Team", icon: Bot },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings }
 ];

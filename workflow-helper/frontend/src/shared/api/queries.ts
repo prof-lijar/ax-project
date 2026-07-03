@@ -11,7 +11,8 @@ export const queryKeys = {
   activity: ["activity"] as const,
   nextcloudStatus: ["nextcloud-status"] as const,
   nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
-  nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const
+  nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const,
+  nextcloudPreview: (path: string) => ["nextcloud-preview", path] as const
 };
 
 export function useWorkspace() {
@@ -78,6 +79,16 @@ export function useNextcloudTextFile(path: string, enabled: boolean) {
     queryKey: queryKeys.nextcloudTextFile(path),
     queryFn: () => desktopApi.readNextcloudTextFile(path),
     enabled
+  });
+}
+
+export function useNextcloudPreviewFile(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.nextcloudPreview(path),
+    queryFn: () => desktopApi.previewNextcloudFile(path),
+    enabled,
+    gcTime: 0,
+    staleTime: 0
   });
 }
 

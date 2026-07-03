@@ -18,7 +18,7 @@ export function AgentsPage() {
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1>Team</h1>
+          <h1>Agents Team</h1>
           <p>{visibleAgents.length} co-workers available for local work</p>
         </div>
       </header>

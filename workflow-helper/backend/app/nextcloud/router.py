@@ -1,5 +1,7 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from app.core.settings import SettingsError
 from app.nextcloud.client import NextcloudClient, NextcloudError
@@ -44,6 +46,26 @@ async def read_text_file(
         raise _to_http_exception(exc) from exc
 
 
+@router.get("/files/preview")
+async def preview_file(
+    path: str = Query(..., min_length=1),
+    client: NextcloudClient = Depends(get_nextcloud_client),
+) -> Response:
+    try:
+        preview = await client.preview_file(path)
+        headers = {
+            "Content-Disposition": _content_disposition("inline", preview.filename),
+            "X-Preview-Kind": preview.viewer_kind,
+        }
+        return Response(
+            content=preview.content,
+            media_type=preview.content_type,
+            headers=headers,
+        )
+    except (NextcloudError, SettingsError) as exc:
+        raise _to_http_exception(exc) from exc
+
+
 @router.get("/files/download")
 async def download_file(
     path: str = Query(..., min_length=1),
@@ -51,7 +73,9 @@ async def download_file(
 ) -> StreamingResponse:
     try:
         downloaded = await client.download_file(path)
-        headers = {"Content-Disposition": f'attachment; filename="{downloaded.filename}"'}
+        headers = {
+            "Content-Disposition": _content_disposition("attachment", downloaded.filename)
+        }
         return StreamingResponse(
             iter([downloaded.content]),
             media_type=downloaded.content_type or "application/octet-stream",
@@ -174,3 +198,15 @@ def _to_http_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, SettingsError):
         return HTTPException(status_code=500, detail=str(exc))
     return HTTPException(status_code=500, detail="Unexpected Nextcloud integration error.")
+
+
+def _content_disposition(disposition_type: str, filename: str) -> str:
+    fallback = _ascii_filename_fallback(filename)
+    encoded = quote(filename, safe="")
+    return f'{disposition_type}; filename="{fallback}"; filename*=UTF-8\'\'{encoded}'
+
+
+def _ascii_filename_fallback(filename: str) -> str:
+    safe = filename.replace("\\", "_").replace("/", "_").replace('"', "_")
+    ascii_safe = safe.encode("ascii", errors="ignore").decode("ascii").strip(" .")
+    return ascii_safe or "download"

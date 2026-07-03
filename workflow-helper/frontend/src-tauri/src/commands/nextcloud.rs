@@ -7,12 +7,13 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::domain::nextcloud::{
-    NextcloudDownloadResponse, NextcloudListFilesResponse, NextcloudStatus,
-    NextcloudTextFileResponse,
+    NextcloudDownloadResponse, NextcloudListFilesResponse, NextcloudPreviewResponse,
+    NextcloudStatus, NextcloudTextFileResponse,
 };
 use crate::error::CommandError;
 
 const DEFAULT_BACKEND_URL: &str = "http://127.0.0.1:8000";
+const BACKEND_TIMEOUT_SECONDS: u64 = 75;
 
 #[derive(Debug, Deserialize)]
 struct BackendError {
@@ -72,6 +73,54 @@ pub async fn nextcloud_read_text_file(
     url.query_pairs_mut().append_pair("path", &path);
 
     request_json(&client, url).await
+}
+
+#[tauri::command]
+pub async fn nextcloud_preview_file(
+    path: String,
+) -> Result<NextcloudPreviewResponse, CommandError> {
+    let client = http_client()?;
+    let mut url = backend_endpoint("files/preview")?;
+    url.query_pairs_mut().append_pair("path", &path);
+
+    let response = client.get(url).send().await.map_err(|error| CommandError {
+        code: "nextcloud_backend_unreachable",
+        message: format!("Unable to reach local backend: {error}"),
+        recovery_action: Some("Start the backend and try previewing again."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(CommandError {
+            code: "nextcloud_backend_error",
+            message: backend_error_message(response, status).await,
+            recovery_action: Some("Check backend, Nextcloud, and document converter setup."),
+            correlation_id: Uuid::new_v4().to_string(),
+        });
+    }
+
+    let content_type = header_value(response.headers(), "content-type")
+        .unwrap_or_else(|| "application/octet-stream".into());
+    let viewer_kind = header_value(response.headers(), "x-preview-kind")
+        .unwrap_or_else(|| preview_kind_from_content_type(&content_type));
+    let filename = header_value(response.headers(), "content-disposition")
+        .and_then(|value| filename_from_content_disposition(&value))
+        .unwrap_or_else(|| safe_filename(&path));
+    let bytes = response.bytes().await.map_err(|error| CommandError {
+        code: "nextcloud_preview_failed",
+        message: format!("Unable to read preview response: {error}"),
+        recovery_action: Some("Try the preview again."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })?;
+
+    Ok(NextcloudPreviewResponse {
+        path,
+        filename,
+        content_type,
+        viewer_kind,
+        bytes: bytes.to_vec(),
+    })
 }
 
 #[tauri::command]
@@ -170,7 +219,7 @@ async fn backend_error_message(response: reqwest::Response, status: StatusCode) 
 
 fn http_client() -> Result<Client, CommandError> {
     Client::builder()
-        .timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(BACKEND_TIMEOUT_SECONDS))
         .build()
         .map_err(|error| CommandError {
             code: "nextcloud_client_error",
@@ -178,6 +227,33 @@ fn http_client() -> Result<Client, CommandError> {
             recovery_action: Some("Restart the desktop app."),
             correlation_id: Uuid::new_v4().to_string(),
         })
+}
+
+fn header_value(headers: &reqwest::header::HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
+fn filename_from_content_disposition(value: &str) -> Option<String> {
+    value
+        .split(';')
+        .map(str::trim)
+        .find_map(|part| part.strip_prefix("filename="))
+        .map(|value| value.trim_matches('"').to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn preview_kind_from_content_type(content_type: &str) -> String {
+    let normalized = content_type.split(';').next().unwrap_or("").trim();
+    if normalized == "application/pdf" {
+        "pdf".into()
+    } else if normalized.starts_with("image/") {
+        "image".into()
+    } else {
+        "text".into()
+    }
 }
 
 fn backend_endpoint(path: &str) -> Result<Url, CommandError> {

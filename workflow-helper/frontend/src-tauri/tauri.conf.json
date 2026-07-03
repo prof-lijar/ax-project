@@ -27,7 +27,8 @@
       "csp": {
         "default-src": "'self'",
         "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:5173 http://127.0.0.1:8000 ws://127.0.0.1:1421",
-        "img-src": "'self' asset: http://asset.localhost data:",
+        "img-src": "'self' asset: http://asset.localhost data: blob:",
+        "frame-src": "'self' blob:",
         "script-src": "'self'",
         "style-src": "'self'",
         "font-src": "'self'",

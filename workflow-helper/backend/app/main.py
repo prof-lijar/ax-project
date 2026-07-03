@@ -25,7 +25,7 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["GET"],
         allow_headers=["*"],
-        expose_headers=["Content-Disposition"],
+        expose_headers=["Content-Disposition", "X-Preview-Kind"],
     )
     app.include_router(nextcloud_router, prefix="/api/nextcloud", tags=["nextcloud"])
     return app

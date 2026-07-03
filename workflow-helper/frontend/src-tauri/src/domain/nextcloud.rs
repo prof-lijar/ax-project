@@ -39,6 +39,16 @@ pub struct NextcloudTextFileResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NextcloudPreviewResponse {
+    pub path: String,
+    pub filename: String,
+    pub content_type: String,
+    pub viewer_kind: String,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NextcloudDownloadResponse {
     pub path: String,
     pub filename: String,
