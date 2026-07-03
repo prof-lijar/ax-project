@@ -1,0 +1,4 @@
+interface:
+  display_name: "Engineer Agent Systems"
+  short_description: "Build robust multi-agent systems"
+  default_prompt: "Use $engineer-agent-systems to implement a reliable multi-agent system."

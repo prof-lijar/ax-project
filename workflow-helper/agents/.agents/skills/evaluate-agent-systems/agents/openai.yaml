@@ -1,0 +1,4 @@
+interface:
+  display_name: "Evaluate Agent Systems"
+  short_description: "Test and score multi-agent behavior"
+  default_prompt: "Use $evaluate-agent-systems to evaluate a multi-agent workflow before release."

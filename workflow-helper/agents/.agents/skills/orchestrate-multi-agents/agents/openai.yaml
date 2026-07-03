@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrate Multi-Agents"
+  short_description: "Coordinate long-running agent teams"
+  default_prompt: "Use $orchestrate-multi-agents to plan and coordinate a long-running multi-agent workflow."
