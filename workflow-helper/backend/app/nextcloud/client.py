@@ -18,7 +18,7 @@ from app.nextcloud.schemas import FileItem
 
 DAV_NS = "{DAV:}"
 NC_OCS_META_STATUS_OK = {"ok", "100", "200"}
-OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx"}
+OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx", "xlsx"}
 PDF_PREVIEW_EXTENSIONS = {"pdf"}
 TEXT_PREVIEW_EXTENSIONS = {"md", "markdown", "txt"}
 IMAGE_PREVIEW_TYPES = {

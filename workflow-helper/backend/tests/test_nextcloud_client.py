@@ -221,3 +221,31 @@ def test_preview_pptx_conversion_returns_pdf(settings, monkeypatch):
     assert preview.content_type == "application/pdf"
     assert preview.filename == "deck.pdf"
     assert preview.content == b"%PDF-converted"
+
+
+def test_preview_xlsx_conversion_returns_pdf(settings, monkeypatch):
+    async def fake_download(path):
+        return DownloadedFile(
+            path=path,
+            content=b"xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename="budget.xlsx",
+        )
+
+    def fake_run(args, **kwargs):
+        outdir = args[args.index("--outdir") + 1]
+        with open(f"{outdir}/budget.pdf", "wb") as file:
+            file.write(b"%PDF-sheet")
+        return None
+
+    client = NextcloudClient(settings)
+    monkeypatch.setattr(client, "download_file", fake_download)
+    monkeypatch.setattr("app.nextcloud.client.shutil.which", lambda command: "/usr/bin/soffice")
+    monkeypatch.setattr("app.nextcloud.client.subprocess.run", fake_run)
+
+    preview = asyncio.run(client.preview_file("budget.xlsx"))
+
+    assert preview.viewer_kind == "pdf"
+    assert preview.content_type == "application/pdf"
+    assert preview.filename == "budget.pdf"
+    assert preview.content == b"%PDF-sheet"
