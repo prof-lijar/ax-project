@@ -17,6 +17,7 @@ This documentation set defines the product architecture before implementation be
 - [Algorithms](06-algorithms/core-algorithms.md): scheduling, assignment, approval gating, notification, and context selection algorithms.
 - [Roadmap](07-roadmap/implementation-roadmap.md): phased plan from docs to first usable desktop app.
 - [Desktop App Status](08-implementation/desktop-app-status.md): implementation state, run commands, validation, and known gaps.
+- [Document Viewer](08-implementation/document-viewer.md): NextCloud file preview behavior, supported formats, LibreOffice setup, and validation.
 
 ## Stage-One Definition
 

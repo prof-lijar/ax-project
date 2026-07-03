@@ -18,6 +18,9 @@ The app is usable as a web preview and builds successfully as a Debian package.
   - recent activity
 - Added secondary views for Tasks, Approvals, Team, Activity, and Settings.
 - Added a NextCloud Drive surface for read-first file browsing through the local backend.
+- Added a NextCloud document viewer for PDF, Markdown, text, images, DOCX, PPTX, and XLSX.
+  - Office files are converted to PDF by LibreOffice on the backend machine.
+  - See [Document Viewer](document-viewer.md).
 - Organized frontend code into maintainable modules:
   - `src/app`
   - `src/features`
@@ -36,6 +39,8 @@ The app is usable as a web preview and builds successfully as a Debian package.
 - Default Tauri capability has no broad permissions.
 - Frontend actions go through product-level Rust commands, not raw database or system APIs.
 - CSP is restricted to local bundled assets, IPC, local development endpoints, and the local backend.
+- Document preview uses backend-proxied bytes and scoped `blob:` rendering for PDF/image previews.
+- Markdown is rendered as React nodes with limited safe support for details blocks and safe links.
 - Credentials are not stored in frontend state.
 - Approval and task data are sample data only; destructive actions are not implemented.
 - UI icons use `lucide-react`, an open-source icon package with React and TypeScript support.
@@ -104,6 +109,7 @@ npm run tauri:build
 
 - Data is currently command-backed sample data, not SQLite.
 - NextCloud Drive integration is read-first; upload, write, delete, copy, and move are intentionally not exposed yet.
+- DOCX, PPTX, and XLSX previews require LibreOffice packages on the backend host.
 - The desktop app expects the FastAPI backend to run separately; it does not supervise the backend process yet.
 - Approval decisions are visible in the UI but do not mutate persistent state yet.
 - AppImage bundling is not enabled by default because it failed in this environment with a read-only filesystem error.
