@@ -9,10 +9,11 @@ import {
   workspace
 } from "./mockData";
 import {
-  nextcloudFiles,
-  nextcloudStatus,
-  nextcloudTextFile
-} from "./nextcloudMockData";
+  downloadBrowserNextcloudFile,
+  getBrowserNextcloudStatus,
+  listBrowserNextcloudFiles,
+  readBrowserNextcloudTextFile
+} from "./nextcloudBackendClient";
 import type {
   ActivityEvent,
   AgentSummary,
@@ -25,7 +26,8 @@ import type {
 import type {
   NextcloudListFilesResponse,
   NextcloudStatus,
-  NextcloudTextFileResponse
+  NextcloudTextFileResponse,
+  NextcloudDownloadResponse
 } from "../types/nextcloud";
 
 type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown };
@@ -50,6 +52,22 @@ async function callCommand<T>(
 
   await delay();
   return fallback();
+}
+
+async function callDesktopOrBrowser<T>(
+  command: string,
+  browserFallback: () => Promise<T>,
+  args?: Record<string, unknown>
+): Promise<T> {
+  if (isTauriRuntime()) {
+    try {
+      return await invoke<T>(command, args);
+    } catch (error) {
+      throw normalizeCommandError(error);
+    }
+  }
+
+  return browserFallback();
 }
 
 function normalizeCommandError(error: unknown): CommandError {
@@ -121,26 +139,26 @@ export const desktopApi = {
   listActivity: () =>
     callCommand<ActivityEvent[]>("activity_list", () => activity),
   getNextcloudStatus: () =>
-    callCommand<NextcloudStatus>("nextcloud_health", () => nextcloudStatus),
+    callDesktopOrBrowser<NextcloudStatus>(
+      "nextcloud_health",
+      getBrowserNextcloudStatus
+    ),
   listNextcloudFiles: (path: string) =>
-    callCommand<NextcloudListFilesResponse>(
+    callDesktopOrBrowser<NextcloudListFilesResponse>(
       "nextcloud_list_files",
-      () => nextcloudFiles(path),
+      () => listBrowserNextcloudFiles(path),
       { path }
     ),
   readNextcloudTextFile: (path: string) =>
-    callCommand<NextcloudTextFileResponse>(
+    callDesktopOrBrowser<NextcloudTextFileResponse>(
       "nextcloud_read_text_file",
-      () => nextcloudTextFile(path),
+      () => readBrowserNextcloudTextFile(path),
       { path }
     ),
-  getNextcloudDownloadUrl: (path: string) =>
-    callCommand<string>(
-      "nextcloud_download_url",
-      () =>
-        `http://127.0.0.1:8000/api/nextcloud/files/download?path=${encodeURIComponent(
-          path
-        )}`,
+  downloadNextcloudFile: (path: string) =>
+    callDesktopOrBrowser<NextcloudDownloadResponse>(
+      "nextcloud_download_file",
+      () => downloadBrowserNextcloudFile(path),
       { path }
     )
 };

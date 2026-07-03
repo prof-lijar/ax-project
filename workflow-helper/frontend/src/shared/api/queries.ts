@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { desktopApi } from "./client";
 
@@ -11,9 +11,7 @@ export const queryKeys = {
   activity: ["activity"] as const,
   nextcloudStatus: ["nextcloud-status"] as const,
   nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
-  nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const,
-  nextcloudDownloadUrl: (path: string) =>
-    ["nextcloud-download-url", path] as const
+  nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const
 };
 
 export function useWorkspace() {
@@ -83,10 +81,8 @@ export function useNextcloudTextFile(path: string, enabled: boolean) {
   });
 }
 
-export function useNextcloudDownloadUrl(path: string, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.nextcloudDownloadUrl(path),
-    queryFn: () => desktopApi.getNextcloudDownloadUrl(path),
-    enabled
+export function useNextcloudDownloadFile() {
+  return useMutation({
+    mutationFn: (path: string) => desktopApi.downloadNextcloudFile(path)
   });
 }

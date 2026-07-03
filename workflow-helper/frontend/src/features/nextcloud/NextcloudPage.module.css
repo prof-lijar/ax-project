@@ -213,6 +213,25 @@
   background: var(--color-primary);
 }
 
+.downloadButton:disabled {
+  opacity: 0.72;
+}
+
+.downloadStatus,
+.downloadError {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.downloadStatus {
+  color: var(--color-green);
+}
+
+.downloadError {
+  color: var(--color-red);
+}
+
 .preview {
   display: grid;
   gap: 8px;

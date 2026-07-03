@@ -8,10 +8,10 @@ import {
   Folder,
   RefreshCw
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
-  useNextcloudDownloadUrl,
+  useNextcloudDownloadFile,
   useNextcloudFiles,
   useNextcloudStatus,
   useNextcloudTextFile
@@ -35,10 +35,12 @@ export function NextcloudPage() {
     selected?.path ?? "",
     Boolean(selected && !selected.isDirectory && selectedIsText)
   );
-  const downloadUrlQuery = useNextcloudDownloadUrl(
-    selected?.path ?? "",
-    Boolean(selected && !selected.isDirectory)
-  );
+  const downloadMutation = useNextcloudDownloadFile();
+  const selectedPath = selected?.path ?? "";
+
+  useEffect(() => {
+    downloadMutation.reset();
+  }, [selectedPath]);
 
   function openFolder(path: string) {
     setCurrentPath(path);
@@ -131,8 +133,11 @@ export function NextcloudPage() {
         <aside className={styles.details}>
           {selected ? (
             <FileDetails
-              downloadUrl={downloadUrlQuery.data}
               item={selected}
+              downloadError={downloadMutation.isError}
+              downloadPending={downloadMutation.isPending}
+              downloadResult={downloadMutation.data}
+              onDownload={() => downloadMutation.mutate(selected.path)}
               previewError={textQuery.isError}
               previewText={textQuery.data?.content}
               previewLoading={textQuery.isLoading}
@@ -193,15 +198,21 @@ function NoSelection() {
 }
 
 function FileDetails({
-  downloadUrl,
+  downloadError,
+  downloadPending,
+  downloadResult,
   item,
+  onDownload,
   previewError,
   previewLoading,
   previewText,
   textPreviewable
 }: {
-  downloadUrl?: string;
+  downloadError: boolean;
+  downloadPending: boolean;
+  downloadResult?: { savedPath: string; bytesWritten: number };
   item: NextcloudFileItem;
+  onDownload: () => void;
   previewError: boolean;
   previewLoading: boolean;
   previewText?: string;
@@ -232,11 +243,25 @@ function FileDetails({
         </div>
       </dl>
 
-      {downloadUrl ? (
-        <a className={styles.downloadButton} download href={downloadUrl}>
-          <Download size={16} />
-          Download
-        </a>
+      <button
+        className={styles.downloadButton}
+        disabled={downloadPending}
+        onClick={onDownload}
+        type="button"
+      >
+        <Download size={16} />
+        {downloadPending ? "Downloading..." : "Download"}
+      </button>
+
+      {downloadResult ? (
+        <p className={styles.downloadStatus}>
+          Saved to {downloadResult.savedPath} ({formatSize(downloadResult.bytesWritten)})
+        </p>
+      ) : null}
+      {downloadError ? (
+        <p className={styles.downloadError}>
+          Download failed. Check the backend and try again.
+        </p>
       ) : null}
 
       <section className={styles.preview}>

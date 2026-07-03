@@ -18,7 +18,7 @@ pub fn run() {
             commands::nextcloud::nextcloud_health,
             commands::nextcloud::nextcloud_list_files,
             commands::nextcloud::nextcloud_read_text_file,
-            commands::nextcloud::nextcloud_download_url
+            commands::nextcloud::nextcloud_download_file
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Workflow Helper desktop app");

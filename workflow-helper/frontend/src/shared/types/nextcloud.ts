@@ -26,3 +26,10 @@ export interface NextcloudTextFileResponse {
   content: string;
   contentType: string | null;
 }
+
+export interface NextcloudDownloadResponse {
+  path: string;
+  filename: string;
+  savedPath: string;
+  bytesWritten: number;
+}

@@ -1,4 +1,5 @@
 import type {
+  NextcloudDownloadResponse,
   NextcloudFileItem,
   NextcloudListFilesResponse,
   NextcloudStatus,
@@ -97,4 +98,24 @@ export function nextcloudTextFile(path: string): NextcloudTextFileResponse {
   }
 
   return textFile;
+}
+
+export function nextcloudDownloadFile(path: string): NextcloudDownloadResponse {
+  const filename = path.split("/").pop() || "download";
+  const blob = new Blob([`Preview download for ${path}\n`], {
+    type: "text/plain;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+
+  return {
+    path,
+    filename,
+    savedPath: `Browser downloads/${filename}`,
+    bytesWritten: blob.size
+  };
 }

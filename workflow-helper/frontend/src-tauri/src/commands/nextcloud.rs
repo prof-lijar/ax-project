@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use reqwest::{Client, StatusCode, Url};
@@ -6,7 +7,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::domain::nextcloud::{
-    NextcloudListFilesResponse, NextcloudStatus, NextcloudTextFileResponse,
+    NextcloudDownloadResponse, NextcloudListFilesResponse, NextcloudStatus,
+    NextcloudTextFileResponse,
 };
 use crate::error::CommandError;
 
@@ -73,10 +75,61 @@ pub async fn nextcloud_read_text_file(
 }
 
 #[tauri::command]
-pub fn nextcloud_download_url(path: String) -> Result<String, CommandError> {
+pub async fn nextcloud_download_file(
+    path: String,
+) -> Result<NextcloudDownloadResponse, CommandError> {
+    let client = http_client()?;
     let mut url = backend_endpoint("files/download")?;
     url.query_pairs_mut().append_pair("path", &path);
-    Ok(url.to_string())
+
+    let response = client.get(url).send().await.map_err(|error| CommandError {
+        code: "nextcloud_backend_unreachable",
+        message: format!("Unable to reach local backend: {error}"),
+        recovery_action: Some("Start the backend and try downloading again."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(CommandError {
+            code: "nextcloud_backend_error",
+            message: backend_error_message(response, status).await,
+            recovery_action: Some("Check backend and Nextcloud configuration."),
+            correlation_id: Uuid::new_v4().to_string(),
+        });
+    }
+
+    let filename = safe_filename(&path);
+    let downloads_dir = downloads_dir()?;
+    let saved_path = available_download_path(&downloads_dir, &filename);
+    let bytes = response.bytes().await.map_err(|error| CommandError {
+        code: "nextcloud_download_failed",
+        message: format!("Unable to read downloaded file: {error}"),
+        recovery_action: Some("Try the download again."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })?;
+    let bytes_written = bytes.len() as u64;
+
+    std::fs::create_dir_all(&downloads_dir).map_err(|error| CommandError {
+        code: "nextcloud_download_save_failed",
+        message: format!("Unable to create Downloads folder: {error}"),
+        recovery_action: Some("Check that the Downloads folder is writable."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })?;
+
+    std::fs::write(&saved_path, &bytes).map_err(|error| CommandError {
+        code: "nextcloud_download_save_failed",
+        message: format!("Unable to save file to Downloads: {error}"),
+        recovery_action: Some("Check that the Downloads folder is writable."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })?;
+
+    Ok(NextcloudDownloadResponse {
+        path,
+        filename,
+        saved_path: saved_path.to_string_lossy().to_string(),
+        bytes_written,
+    })
 }
 
 async fn request_json<T>(client: &Client, url: Url) -> Result<T, CommandError>
@@ -142,4 +195,71 @@ fn backend_endpoint(path: &str) -> Result<Url, CommandError> {
 
 fn backend_base_url() -> String {
     std::env::var("WH_BACKEND_URL").unwrap_or_else(|_| DEFAULT_BACKEND_URL.to_string())
+}
+
+fn downloads_dir() -> Result<PathBuf, CommandError> {
+    if let Some(path) = std::env::var_os("XDG_DOWNLOAD_DIR").map(PathBuf::from) {
+        return Ok(path);
+    }
+
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        return Ok(home.join("Downloads"));
+    }
+
+    Err(CommandError {
+        code: "downloads_dir_unavailable",
+        message: "Unable to find the Downloads folder.".into(),
+        recovery_action: Some("Set HOME or XDG_DOWNLOAD_DIR and try again."),
+        correlation_id: Uuid::new_v4().to_string(),
+    })
+}
+
+fn safe_filename(path: &str) -> String {
+    let filename = path
+        .rsplit('/')
+        .next()
+        .unwrap_or("download")
+        .trim()
+        .trim_matches('.');
+
+    let safe = filename
+        .chars()
+        .map(|character| match character {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => character,
+        })
+        .collect::<String>();
+
+    if safe.is_empty() {
+        "download".into()
+    } else {
+        safe
+    }
+}
+
+fn available_download_path(downloads_dir: &Path, filename: &str) -> PathBuf {
+    let candidate = downloads_dir.join(filename);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("download");
+    let extension = path.extension().and_then(|value| value.to_str());
+
+    for index in 1..1000 {
+        let numbered_name = match extension {
+            Some(extension) => format!("{stem} ({index}).{extension}"),
+            None => format!("{stem} ({index})"),
+        };
+        let candidate = downloads_dir.join(numbered_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    downloads_dir.join(format!("{}-{}", Uuid::new_v4(), filename))
 }

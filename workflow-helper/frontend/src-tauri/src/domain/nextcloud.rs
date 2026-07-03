@@ -10,7 +10,7 @@ pub struct NextcloudStatus {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct NextcloudFileItem {
     pub path: String,
     pub name: String,
@@ -22,7 +22,7 @@ pub struct NextcloudFileItem {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct NextcloudListFilesResponse {
     pub path: String,
     pub depth: u8,
@@ -30,9 +30,18 @@ pub struct NextcloudListFilesResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct NextcloudTextFileResponse {
     pub path: String,
     pub content: String,
     pub content_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NextcloudDownloadResponse {
+    pub path: String,
+    pub filename: String,
+    pub saved_path: String,
+    pub bytes_written: u64,
 }

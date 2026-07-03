@@ -11,6 +11,9 @@ pub fn agents_get(id: String) -> Result<AgentSummary, CommandError> {
     seed::agents()
         .into_iter()
         .find(|agent| agent.id == id)
-        .ok_or(AppError::NotFound { entity: "Agent", id })
+        .ok_or(AppError::NotFound {
+            entity: "Agent",
+            id,
+        })
         .map_err(Into::into)
 }

@@ -241,7 +241,8 @@ pub fn activity() -> Vec<ActivityEvent> {
             id: "evt-warning-004".into(),
             kind: ActivityKind::SystemWarning,
             title: "Persistence not configured".into(),
-            description: "SQLite is planned but this build is using command-backed sample data.".into(),
+            description: "SQLite is planned but this build is using command-backed sample data."
+                .into(),
             severity: ActivitySeverity::Warning,
             task_id: None,
             agent_id: None,
