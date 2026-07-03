@@ -2,9 +2,9 @@
 
 ## Design Position
 
-AX Project should feel like an Agent Control Room for real work. The interface should be dense, calm, legible, and fast. Avoid marketing-style hero sections, decorative cards, and empty explanatory panels.
+AX Project should feel like a calm co-worker workspace for real work. The interface should be simple, legible, and fast. Avoid marketing-style hero sections, decorative dashboards, dense tables as the default surface, and empty explanatory panels.
 
-The signature surface is Mission Control: agent lanes, decision stack, risk radar, and mission timeline arranged so the human can command the system without opening chat.
+The signature surface is Mission Control: one clear next decision, current work, co-worker presence, and recent activity arranged so the human can keep work moving without opening chat.
 
 ## Information Architecture
 
@@ -13,7 +13,7 @@ Primary navigation:
 - Mission Control
 - Tasks
 - Approvals
-- Agents
+- Team
 - Activity
 - Settings
 
@@ -21,7 +21,7 @@ Secondary surfaces:
 
 - Task detail drawer or full page.
 - Approval decision panel.
-- Agent profile.
+- Co-worker profile.
 - Event detail inspector.
 - Global command palette.
 
@@ -30,10 +30,9 @@ Secondary surfaces:
 The first screen is Mission Control. It should immediately expose:
 
 - Pending approvals grouped by risk and age.
-- Agent lanes grouped by availability and current mission.
+- Co-workers grouped by presence, current focus, and blockers.
 - Active missions grouped by blocked, waiting, and running.
-- Risk radar for degraded agents, risky approvals, and stale work.
-- Mission timeline filtered to important changes.
+- A short recent activity feed filtered to important changes.
 - A create-task control.
 
 No landing page is needed.
@@ -55,10 +54,10 @@ The right inspector can collapse on smaller widths. On narrow windows, use a two
 Recommended layout:
 
 - Top command strip: global search, create task, emergency pause, notification status.
-- Left decision stack: approvals and human input requests ordered by urgency.
-- Center agent lanes: live agent rows with current mission, next action, blockers, and health.
-- Right risk radar: high-risk proposed actions, degraded agents, stale work, and recent important events.
-- Bottom mission timeline: collapsible chronological trace for the selected mission or all active work.
+- Primary decision panel: the next approval or human input request.
+- Current work: a short list of active or blocked work.
+- Co-worker area: people-like presence cards with role, focus, availability, and blockers.
+- Recent activity: a short trace of important changes.
 
 Hierarchy:
 
@@ -106,19 +105,18 @@ Approval detail:
 - Alternatives.
 - Timeline.
 
-### Agents
+### Team
 
-Agent list columns:
+Team surface:
 
-- Status
 - Name
 - Role
-- Current task
-- Queue depth
-- Last heartbeat
-- Reliability
+- Presence
+- Current focus
+- Blockers
+- Last signal
 
-Agent detail:
+Co-worker detail:
 
 - Role and capability map.
 - Permission profile.

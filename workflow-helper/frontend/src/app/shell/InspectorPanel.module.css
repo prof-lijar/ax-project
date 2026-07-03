@@ -1,0 +1,137 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 100%;
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.header span {
+  display: inline-flex;
+  color: var(--color-primary);
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.stack h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.stack p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mode {
+  display: inline-flex;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid #bad4ff;
+  border-radius: var(--radius-sm);
+  color: var(--color-primary-strong);
+  background: var(--color-blue-soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.meta span {
+  color: var(--color-text-soft);
+  font-size: 12px;
+}
+
+.meta strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.listBlock {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.listBlock h3 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.listBlock ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listBlock li {
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.decisionRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.approveButton,
+.rejectButton {
+  min-height: 38px;
+  border-radius: var(--radius-md);
+  font-weight: 800;
+}
+
+.approveButton {
+  border: 1px solid var(--color-green);
+  color: #ffffff;
+  background: var(--color-green);
+}
+
+.rejectButton {
+  border: 1px solid #f1c2c2;
+  color: var(--color-red);
+  background: var(--color-red-soft);
+}

@@ -16,6 +16,7 @@ This documentation set defines the product architecture before implementation be
 - [Data Model](05-data/data-model.md): local-first entities, event log, persistence, and sync-ready boundaries.
 - [Algorithms](06-algorithms/core-algorithms.md): scheduling, assignment, approval gating, notification, and context selection algorithms.
 - [Roadmap](07-roadmap/implementation-roadmap.md): phased plan from docs to first usable desktop app.
+- [Desktop App Status](08-implementation/desktop-app-status.md): implementation state, run commands, validation, and known gaps.
 
 ## Stage-One Definition
 
@@ -28,4 +29,4 @@ Stage one does not need full autonomous execution. It needs the durable product 
 
 ## Default Product Stance
 
-AX Project should feel like an Agent Control Room, not a chatbot or generic task board. Chat can exist, but the primary interface is command: live agent lanes, mission state, risk, decisions, evidence, responsibility, and follow-up.
+AX Project should feel like a calm co-worker workspace, not a chatbot, system monitor, or generic task board. Chat can exist, but the primary interface is command: current work, co-worker focus, decisions, evidence, responsibility, and follow-up.

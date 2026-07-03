@@ -1,0 +1,25 @@
+[package]
+name = "workflow-helper-desktop"
+version = "0.1.0"
+description = "Workflow Helper desktop operator console"
+authors = ["Nextor AI"]
+edition = "2021"
+license = "UNLICENSED"
+rust-version = "1.77.2"
+
+[lib]
+name = "workflow_helper_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "workflow-helper-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }

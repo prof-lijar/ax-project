@@ -1,0 +1,384 @@
+.page {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: end;
+  min-width: 0;
+}
+
+.eyebrow {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  max-width: 620px;
+  margin: 5px 0 0;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.hero p {
+  max-width: 640px;
+  margin: 10px 0 0;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.quickStatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.statusPill {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font-size: 13px;
+}
+
+.statusPill svg {
+  color: var(--color-primary);
+}
+
+.statusPill strong {
+  color: var(--color-text);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(330px, 0.88fr);
+  gap: 18px;
+  min-width: 0;
+}
+
+.leftColumn,
+.rightColumn {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+}
+
+.section,
+.decisionPanel,
+.decisionEmpty {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.sectionHeader {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.sectionHeader button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  border: 0;
+  color: var(--color-primary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.decisionPanel {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  padding: 18px;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.decisionPanel:hover,
+.workItem:hover,
+.coworkerCard:hover,
+.activityNote:hover {
+  border-color: var(--color-primary);
+}
+
+.decisionTopline,
+.decisionMeta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.decisionTopline > span:first-child {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--color-red);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.decisionPanel strong {
+  max-width: 720px;
+  font-size: 22px;
+  line-height: 1.22;
+}
+
+.decisionPanel p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.decisionMeta {
+  color: var(--color-text-soft);
+  font-size: 13px;
+}
+
+.decisionEmpty {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+  color: var(--color-green);
+}
+
+.decisionEmpty h2,
+.decisionEmpty p {
+  margin: 0;
+}
+
+.decisionEmpty h2 {
+  color: var(--color-text);
+  font-size: 18px;
+}
+
+.decisionEmpty p {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.workList,
+.coworkerRoom,
+.activityFeed {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  width: 100%;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  text-align: left;
+}
+
+.workMain,
+.coworkerCopy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.workMain strong,
+.coworkerCopy strong,
+.activityNote strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workMain small,
+.coworkerCopy small,
+.activityNote small,
+.workMeta span:last-child,
+.focus {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workMeta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.workItem > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.coworkerRoom {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coworkerCard {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  min-height: 126px;
+  padding: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  text-align: left;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #2e6f5e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.presence {
+  grid-column: 1 / -1;
+  width: fit-content;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.available {
+  color: var(--color-green);
+  background: var(--color-green-soft);
+}
+
+.busy {
+  color: var(--color-primary-strong);
+  background: var(--color-blue-soft);
+}
+
+.blocked,
+.paused {
+  color: var(--color-amber);
+  background: var(--color-amber-soft);
+}
+
+.focus {
+  grid-column: 1 / -1;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.activityFeed {
+  gap: 6px;
+}
+
+.activityNote {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 2px 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: transparent;
+  text-align: left;
+}
+
+.activityNote span {
+  grid-row: span 2;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 1060px) {
+  .hero,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .quickStatus {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero h1 {
+    font-size: 28px;
+  }
+
+  .coworkerRoom,
+  .workItem {
+    grid-template-columns: 1fr;
+  }
+
+  .workMeta {
+    justify-content: flex-start;
+  }
+
+  .activityNote {
+    grid-template-columns: 1fr;
+  }
+
+  .activityNote span {
+    grid-row: auto;
+  }
+}

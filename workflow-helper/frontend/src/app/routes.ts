@@ -1,0 +1,23 @@
+import {
+  Activity,
+  Bot,
+  CheckSquare,
+  Gauge,
+  Settings,
+  ShieldCheck
+} from "lucide-react";
+
+import type { AppSection } from "../shared/state/useUiStore";
+
+export const navItems: Array<{
+  id: AppSection;
+  label: string;
+  icon: typeof Gauge;
+}> = [
+  { id: "mission-control", label: "Mission Control", icon: Gauge },
+  { id: "tasks", label: "Tasks", icon: CheckSquare },
+  { id: "approvals", label: "Approvals", icon: ShieldCheck },
+  { id: "agents", label: "Team", icon: Bot },
+  { id: "activity", label: "Activity", icon: Activity },
+  { id: "settings", label: "Settings", icon: Settings }
+];
