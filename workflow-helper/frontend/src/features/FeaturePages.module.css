@@ -64,10 +64,6 @@
   text-align: left;
 }
 
-.teamCard:hover {
-  border-color: var(--color-primary);
-}
-
 .teamAvatar {
   display: inline-flex;
   align-items: center;
@@ -121,12 +117,6 @@
   color: var(--color-text);
   background: var(--color-surface-raised);
   text-align: left;
-}
-
-button.taskRow:hover,
-button.approvalRow:hover,
-button.activityRow:hover {
-  border-color: var(--color-primary);
 }
 
 .taskRow,

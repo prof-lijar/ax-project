@@ -7,7 +7,6 @@ import styles from "../FeaturePages.module.css";
 export function AgentsPage() {
   const { data: agents = [] } = useAgents();
   const search = useUiStore((state) => state.search).toLowerCase();
-  const setInspectorTarget = useUiStore((state) => state.setInspectorTarget);
   const visibleAgents = agents.filter((agent) =>
     [agent.name, agent.role, agent.currentMission, agent.nextAction]
       .join(" ")
@@ -26,11 +25,9 @@ export function AgentsPage() {
 
       <div className={styles.teamGrid}>
         {visibleAgents.map((agent) => (
-          <button
+          <article
             className={styles.teamCard}
             key={agent.id}
-            onClick={() => setInspectorTarget({ type: "agent", id: agent.id })}
-            type="button"
           >
             <span className={styles.teamAvatar}>{initials(agent.name)}</span>
             <span className={styles.primaryCell}>
@@ -47,7 +44,7 @@ export function AgentsPage() {
             <span className={styles.muted}>
               Last signal {formatRelative(agent.lastHeartbeatAt)}
             </span>
-          </button>
+          </article>
         ))}
       </div>
     </section>

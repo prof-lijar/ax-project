@@ -7,7 +7,6 @@ import styles from "../FeaturePages.module.css";
 export function ActivityPage() {
   const { data: activity = [] } = useActivity();
   const search = useUiStore((state) => state.search).toLowerCase();
-  const setInspectorTarget = useUiStore((state) => state.setInspectorTarget);
   const visibleActivity = activity.filter((event) =>
     [event.title, event.description, event.kind, event.severity]
       .join(" ")
@@ -32,11 +31,9 @@ export function ActivityPage() {
           <span>Kind</span>
         </div>
         {visibleActivity.map((event) => (
-          <button
+          <div
             className={styles.activityRow}
             key={event.id}
-            onClick={() => setInspectorTarget({ type: "event", id: event.id })}
-            type="button"
           >
             <span className={styles.muted}>{formatClock(event.createdAt)}</span>
             <span className={styles.primaryCell}>
@@ -45,7 +42,7 @@ export function ActivityPage() {
             </span>
             <StatusBadge status={event.severity} />
             <span className={styles.muted}>{event.kind}</span>
-          </button>
+          </div>
         ))}
       </div>
     </section>

@@ -9,7 +9,6 @@ export function ApprovalsPage() {
   const { data: agents = [] } = useAgents();
   const { data: tasks = [] } = useTasks();
   const search = useUiStore((state) => state.search).toLowerCase();
-  const setInspectorTarget = useUiStore((state) => state.setInspectorTarget);
   const visibleApprovals = approvals.filter((approval) =>
     [approval.requestedAction, approval.scope, approval.riskLevel]
       .join(" ")
@@ -39,13 +38,9 @@ export function ApprovalsPage() {
           const task = tasks.find((item) => item.id === approval.taskId);
 
           return (
-            <button
+            <div
               className={styles.approvalRow}
               key={approval.id}
-              onClick={() =>
-                setInspectorTarget({ type: "approval", id: approval.id })
-              }
-              type="button"
             >
               <RiskBadge risk={approval.riskLevel} />
               <span className={styles.primaryCell}>
@@ -55,7 +50,7 @@ export function ApprovalsPage() {
               <span className={styles.muted}>{agent?.name ?? approval.agentId}</span>
               <span className={styles.muted}>{formatRelative(approval.createdAt)}</span>
               <span className={styles.muted}>{formatClock(approval.expiresAt)}</span>
-            </button>
+            </div>
           );
         })}
       </div>

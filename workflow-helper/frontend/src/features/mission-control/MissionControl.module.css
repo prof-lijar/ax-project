@@ -129,13 +129,6 @@
   text-align: left;
 }
 
-.decisionPanel:hover,
-.workItem:hover,
-.coworkerCard:hover,
-.activityNote:hover {
-  border-color: var(--color-primary);
-}
-
 .decisionTopline,
 .decisionMeta {
   display: flex;

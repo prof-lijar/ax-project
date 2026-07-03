@@ -1,27 +1,24 @@
 import {
   AlertTriangle,
   ChevronRight,
-  Cloud,
   Download,
   File,
   FileText,
   Folder,
   RefreshCw
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   useNextcloudDownloadFile,
   useNextcloudFiles,
-  useNextcloudStatus,
-  useNextcloudTextFile
+  useNextcloudStatus
 } from "../../shared/api/queries";
 import type { NextcloudFileItem } from "../../shared/types/nextcloud";
 import styles from "./NextcloudPage.module.css";
 
 export function NextcloudPage() {
   const [currentPath, setCurrentPath] = useState("");
-  const [selected, setSelected] = useState<NextcloudFileItem | null>(null);
   const statusQuery = useNextcloudStatus();
   const status = statusQuery.data;
   const canLoadFiles = status?.ok ?? false;
@@ -30,21 +27,13 @@ export function NextcloudPage() {
     () => sortItems(filesQuery.data?.items ?? []),
     [filesQuery.data?.items]
   );
-  const selectedIsText = selected ? isTextPreviewable(selected) : false;
-  const textQuery = useNextcloudTextFile(
-    selected?.path ?? "",
-    Boolean(selected && !selected.isDirectory && selectedIsText)
-  );
   const downloadMutation = useNextcloudDownloadFile();
-  const selectedPath = selected?.path ?? "";
-
-  useEffect(() => {
-    downloadMutation.reset();
-  }, [selectedPath]);
+  const downloadingPath = downloadMutation.isPending
+    ? downloadMutation.variables
+    : null;
 
   function openFolder(path: string) {
     setCurrentPath(path);
-    setSelected(null);
   }
 
   if (statusQuery.isError) {
@@ -105,50 +94,86 @@ export function NextcloudPage() {
             <EmptyState />
           ) : (
             items.map((item) => (
-              <button
-                className={
-                  selected?.path === item.path ? styles.fileItemActive : styles.fileItem
+              <FileRow
+                downloadError={
+                  downloadMutation.isError && downloadMutation.variables === item.path
                 }
+                downloading={downloadingPath === item.path}
+                downloadResult={
+                  downloadMutation.data?.path === item.path
+                    ? downloadMutation.data
+                    : undefined
+                }
+                item={item}
                 key={item.path}
-                onClick={() =>
-                  item.isDirectory ? openFolder(item.path) : setSelected(item)
-                }
-                type="button"
-              >
-                <span className={styles.fileIcon}>
-                  {item.isDirectory ? <Folder size={19} /> : iconForFile(item)}
-                </span>
-                <span className={styles.fileCopy}>
-                  <strong>{item.name}</strong>
-                  <small>{itemSubtitle(item)}</small>
-                </span>
-                <span className={styles.fileMeta}>
-                  {item.isDirectory ? "Folder" : formatSize(item.size)}
-                </span>
-              </button>
+                onDownload={() => downloadMutation.mutate(item.path)}
+                onOpenFolder={() => openFolder(item.path)}
+              />
             ))
           )}
         </section>
-
-        <aside className={styles.details}>
-          {selected ? (
-            <FileDetails
-              item={selected}
-              downloadError={downloadMutation.isError}
-              downloadPending={downloadMutation.isPending}
-              downloadResult={downloadMutation.data}
-              onDownload={() => downloadMutation.mutate(selected.path)}
-              previewError={textQuery.isError}
-              previewText={textQuery.data?.content}
-              previewLoading={textQuery.isLoading}
-              textPreviewable={selectedIsText}
-            />
-          ) : (
-            <NoSelection />
-          )}
-        </aside>
       </div>
     </section>
+  );
+}
+
+function FileRow({
+  downloadError,
+  downloading,
+  downloadResult,
+  item,
+  onDownload,
+  onOpenFolder
+}: {
+  downloadError: boolean;
+  downloading: boolean;
+  downloadResult?: { bytesWritten: number };
+  item: NextcloudFileItem;
+  onDownload: () => void;
+  onOpenFolder: () => void;
+}) {
+  if (item.isDirectory) {
+    return (
+      <button className={styles.fileItem} onClick={onOpenFolder} type="button">
+        <span className={styles.fileIcon}>
+          <Folder size={19} />
+        </span>
+        <span className={styles.fileCopy}>
+          <strong>{item.name}</strong>
+          <small>{itemSubtitle(item)}</small>
+        </span>
+        <span className={styles.fileMeta}>Folder</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className={styles.fileItem}>
+      <span className={styles.fileIcon}>
+        {iconForFile(item)}
+      </span>
+      <span className={styles.fileCopy}>
+        <strong>{item.name}</strong>
+        <small>
+          {downloadError
+            ? "Download failed"
+            : downloadResult
+              ? `Downloaded ${formatSize(downloadResult.bytesWritten)}`
+              : itemSubtitle(item)}
+        </small>
+      </span>
+      <span className={styles.fileMeta}>{formatSize(item.size)}</span>
+      <button
+        className={styles.rowDownloadButton}
+        disabled={downloading}
+        onClick={onDownload}
+        type="button"
+        title={`Download ${item.name}`}
+      >
+        <Download size={16} />
+        <span>{downloading ? "Downloading" : "Download"}</span>
+      </button>
+    </div>
   );
 }
 
@@ -185,94 +210,6 @@ function ErrorState({ message }: { message: string }) {
 
 function EmptyState() {
   return <div className={styles.state}>This folder is empty.</div>;
-}
-
-function NoSelection() {
-  return (
-    <div className={styles.noSelection}>
-      <Cloud size={24} />
-      <strong>Select a file</strong>
-      <span>Metadata and text preview will appear here.</span>
-    </div>
-  );
-}
-
-function FileDetails({
-  downloadError,
-  downloadPending,
-  downloadResult,
-  item,
-  onDownload,
-  previewError,
-  previewLoading,
-  previewText,
-  textPreviewable
-}: {
-  downloadError: boolean;
-  downloadPending: boolean;
-  downloadResult?: { savedPath: string; bytesWritten: number };
-  item: NextcloudFileItem;
-  onDownload: () => void;
-  previewError: boolean;
-  previewLoading: boolean;
-  previewText?: string;
-  textPreviewable: boolean;
-}) {
-  return (
-    <div className={styles.fileDetails}>
-      <header>
-        <span className={styles.largeIcon}>{iconForFile(item)}</span>
-        <div>
-          <h2>{item.name}</h2>
-          <p>{item.contentType ?? "Unknown file type"}</p>
-        </div>
-      </header>
-
-      <dl>
-        <div>
-          <dt>Path</dt>
-          <dd>{item.path}</dd>
-        </div>
-        <div>
-          <dt>Size</dt>
-          <dd>{formatSize(item.size)}</dd>
-        </div>
-        <div>
-          <dt>Modified</dt>
-          <dd>{formatModified(item.lastModified)}</dd>
-        </div>
-      </dl>
-
-      <button
-        className={styles.downloadButton}
-        disabled={downloadPending}
-        onClick={onDownload}
-        type="button"
-      >
-        <Download size={16} />
-        {downloadPending ? "Downloading..." : "Download"}
-      </button>
-
-      {downloadResult ? (
-        <p className={styles.downloadStatus}>
-          Saved to {downloadResult.savedPath} ({formatSize(downloadResult.bytesWritten)})
-        </p>
-      ) : null}
-      {downloadError ? (
-        <p className={styles.downloadError}>
-          Download failed. Check the backend and try again.
-        </p>
-      ) : null}
-
-      <section className={styles.preview}>
-        <h3>Preview</h3>
-        {previewLoading ? <p>Loading preview...</p> : null}
-        {!textPreviewable ? <p>Preview unavailable for this file type.</p> : null}
-        {previewError ? <p>Preview unavailable. Use download instead.</p> : null}
-        {previewText ? <pre>{previewText}</pre> : null}
-      </section>
-    </div>
-  );
 }
 
 function iconForFile(item: NextcloudFileItem) {

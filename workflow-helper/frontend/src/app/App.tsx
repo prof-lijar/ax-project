@@ -7,13 +7,12 @@ import { SettingsPage } from "../features/settings/SettingsPage";
 import { TasksPage } from "../features/tasks/TasksPage";
 import { useUiStore } from "../shared/state/useUiStore";
 import { AppShell } from "./shell/AppShell";
-import { InspectorPanel } from "./shell/InspectorPanel";
 
 export function App() {
   const activeSection = useUiStore((state) => state.activeSection);
 
   return (
-    <AppShell inspector={<InspectorPanel />}>
+    <AppShell>
       {activeSection === "mission-control" && <MissionControl />}
       {activeSection === "nextcloud" && <NextcloudPage />}
       {activeSection === "tasks" && <TasksPage />}

@@ -28,7 +28,6 @@ import styles from "./MissionControl.module.css";
 
 export function MissionControl() {
   const search = useUiStore((state) => state.search);
-  const setInspectorTarget = useUiStore((state) => state.setInspectorTarget);
   const setActiveSection = useUiStore((state) => state.setActiveSection);
   const { data: tasks = [] } = useTasks();
   const { data: approvals = [] } = useApprovals();
@@ -69,14 +68,6 @@ export function MissionControl() {
           <DecisionPanel
             approval={primaryDecision}
             agent={agents.find((agent) => agent.id === primaryDecision?.agentId)}
-            onSelect={() => {
-              if (primaryDecision) {
-                setInspectorTarget({
-                  type: "approval",
-                  id: primaryDecision.id
-                });
-              }
-            }}
           />
 
           <section className={styles.section}>
@@ -90,9 +81,6 @@ export function MissionControl() {
                 <WorkItem
                   key={task.id}
                   task={task}
-                  onSelect={() =>
-                    setInspectorTarget({ type: "task", id: task.id })
-                  }
                 />
               ))}
             </div>
@@ -111,9 +99,6 @@ export function MissionControl() {
                 <CoworkerCard
                   key={agent.id}
                   agent={agent}
-                  onSelect={() =>
-                    setInspectorTarget({ type: "agent", id: agent.id })
-                  }
                 />
               ))}
             </div>
@@ -130,9 +115,6 @@ export function MissionControl() {
                 <ActivityNote
                   event={event}
                   key={event.id}
-                  onSelect={() =>
-                    setInspectorTarget({ type: "event", id: event.id })
-                  }
                 />
               ))}
             </div>
@@ -183,12 +165,10 @@ function SectionHeader({
 
 function DecisionPanel({
   approval,
-  agent,
-  onSelect
+  agent
 }: {
   approval: ApprovalRequest | null;
   agent?: AgentSummary;
-  onSelect: () => void;
 }) {
   if (!approval) {
     return (
@@ -203,7 +183,7 @@ function DecisionPanel({
   }
 
   return (
-    <button className={styles.decisionPanel} onClick={onSelect} type="button">
+    <section className={styles.decisionPanel}>
       <span className={styles.decisionTopline}>
         <span>
           <AlertCircle size={18} />
@@ -217,13 +197,13 @@ function DecisionPanel({
         <span>{agent?.name ?? approval.agentId}</span>
         <span>{formatRelative(approval.createdAt)}</span>
       </span>
-    </button>
+    </section>
   );
 }
 
-function WorkItem({ task, onSelect }: { task: TaskSummary; onSelect: () => void }) {
+function WorkItem({ task }: { task: TaskSummary }) {
   return (
-    <button className={styles.workItem} onClick={onSelect} type="button">
+    <article className={styles.workItem}>
       <span className={styles.workMain}>
         <strong>{task.title}</strong>
         <small>{task.nextAction}</small>
@@ -233,19 +213,13 @@ function WorkItem({ task, onSelect }: { task: TaskSummary; onSelect: () => void 
         <span>{task.ownerName}</span>
       </span>
       <ProgressBar value={task.progress} />
-    </button>
+    </article>
   );
 }
 
-function CoworkerCard({
-  agent,
-  onSelect
-}: {
-  agent: AgentSummary;
-  onSelect: () => void;
-}) {
+function CoworkerCard({ agent }: { agent: AgentSummary }) {
   return (
-    <button className={styles.coworkerCard} onClick={onSelect} type="button">
+    <article className={styles.coworkerCard}>
       <span className={styles.avatar} aria-hidden>
         {initials(agent.name)}
       </span>
@@ -259,23 +233,17 @@ function CoworkerCard({
       <span className={styles.focus}>
         {agent.currentMission ?? agent.nextAction}
       </span>
-    </button>
+    </article>
   );
 }
 
-function ActivityNote({
-  event,
-  onSelect
-}: {
-  event: ActivityEvent;
-  onSelect: () => void;
-}) {
+function ActivityNote({ event }: { event: ActivityEvent }) {
   return (
-    <button className={styles.activityNote} onClick={onSelect} type="button">
+    <article className={styles.activityNote}>
       <span>{formatClock(event.createdAt)}</span>
       <strong>{event.title}</strong>
       <small>{event.description}</small>
-    </button>
+    </article>
   );
 }
 

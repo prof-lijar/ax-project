@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   Wifi
 } from "lucide-react";
-import type { PropsWithChildren, ReactNode } from "react";
+import type { PropsWithChildren } from "react";
 
 import { navItems } from "../routes";
 import { useSystemHealth, useWorkspace } from "../../shared/api/queries";
@@ -14,11 +14,7 @@ import { StatusBadge } from "../../shared/components/Badge";
 import { useUiStore } from "../../shared/state/useUiStore";
 import styles from "./AppShell.module.css";
 
-interface AppShellProps extends PropsWithChildren {
-  inspector: ReactNode;
-}
-
-export function AppShell({ children, inspector }: AppShellProps) {
+export function AppShell({ children }: PropsWithChildren) {
   const activeSection = useUiStore((state) => state.activeSection);
   const setActiveSection = useUiStore((state) => state.setActiveSection);
   const search = useUiStore((state) => state.search);
@@ -103,8 +99,6 @@ export function AppShell({ children, inspector }: AppShellProps) {
 
         <section className={styles.content}>{children}</section>
       </main>
-
-      <aside className={styles.inspector}>{inspector}</aside>
     </div>
   );
 }

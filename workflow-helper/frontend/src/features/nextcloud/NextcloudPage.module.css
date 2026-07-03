@@ -34,7 +34,7 @@
 }
 
 .refreshButton,
-.downloadButton {
+.rowDownloadButton {
   display: inline-flex;
   gap: 8px;
   align-items: center;
@@ -77,13 +77,10 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
-  gap: 16px;
   min-width: 0;
 }
 
 .fileList,
-.details,
 .offline {
   min-width: 0;
   border: 1px solid var(--color-border);
@@ -98,10 +95,9 @@
   padding: 12px;
 }
 
-.fileItem,
-.fileItemActive {
+.fileItem {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(74px, auto) auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -114,13 +110,11 @@
   text-align: left;
 }
 
-.fileItem:hover,
-.fileItemActive {
+.fileItem:hover {
   border-color: var(--color-primary);
 }
 
-.fileIcon,
-.largeIcon {
+.fileIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -147,144 +141,24 @@
   font-size: 13px;
 }
 
-.details {
-  min-height: 420px;
-  padding: 16px;
-}
-
-.fileDetails {
-  display: grid;
-  gap: 16px;
-}
-
-.fileDetails header {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-}
-
-.fileDetails h2,
-.fileDetails p {
-  margin: 0;
-}
-
-.fileDetails h2 {
-  overflow-wrap: anywhere;
-  font-size: 20px;
-  line-height: 1.2;
-}
-
-.fileDetails p {
-  margin-top: 4px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.fileDetails dl {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-}
-
-.fileDetails dl div {
-  display: grid;
-  gap: 3px;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border);
-}
-
-.fileDetails dt {
-  color: var(--color-text-soft);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.fileDetails dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: var(--color-text);
-  font-size: 13px;
-}
-
-.downloadButton {
+.rowDownloadButton {
+  min-width: 118px;
+  padding: 0 12px;
   border: 1px solid var(--color-primary);
   color: #ffffff;
   background: var(--color-primary);
 }
 
-.downloadButton:disabled {
+.rowDownloadButton:disabled {
   opacity: 0.72;
 }
 
-.downloadStatus,
-.downloadError {
-  margin: -6px 0 0;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.downloadStatus {
-  color: var(--color-green);
-}
-
-.downloadError {
-  color: var(--color-red);
-}
-
-.preview {
-  display: grid;
-  gap: 8px;
-}
-
-.preview h3,
-.preview p {
-  margin: 0;
-}
-
-.preview h3 {
-  font-size: 14px;
-}
-
-.preview p {
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.preview pre {
-  max-height: 280px;
-  margin: 0;
-  overflow: auto;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
-  background: var(--color-neutral-soft);
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
-.noSelection,
 .state {
   display: grid;
   place-items: center;
   min-height: 260px;
   color: var(--color-text-muted);
   text-align: center;
-}
-
-.noSelection {
-  align-content: center;
-  gap: 8px;
-}
-
-.noSelection svg {
-  color: var(--color-primary);
-}
-
-.noSelection strong {
-  color: var(--color-text);
 }
 
 .offline {
@@ -321,28 +195,23 @@
 }
 
 @media (max-width: 980px) {
-  .header,
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace {
-    display: grid;
-  }
-
-  .details {
-    min-height: auto;
+  .header {
+    align-items: start;
+    flex-direction: column;
   }
 }
 
 @media (max-width: 680px) {
   .fileItem,
-  .fileItemActive,
   .offline {
     grid-template-columns: 1fr;
   }
 
   .fileMeta {
     white-space: normal;
+  }
+
+  .rowDownloadButton {
+    width: 100%;
   }
 }

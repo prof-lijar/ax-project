@@ -8,7 +8,6 @@ import styles from "../FeaturePages.module.css";
 export function TasksPage() {
   const { data: tasks = [] } = useTasks();
   const search = useUiStore((state) => state.search).toLowerCase();
-  const setInspectorTarget = useUiStore((state) => state.setInspectorTarget);
   const visibleTasks = tasks.filter((task) =>
     [task.title, task.goal, task.ownerName, task.status]
       .join(" ")
@@ -35,11 +34,9 @@ export function TasksPage() {
           <span>Last activity</span>
         </div>
         {visibleTasks.map((task) => (
-          <button
+          <div
             className={styles.taskRow}
             key={task.id}
-            onClick={() => setInspectorTarget({ type: "task", id: task.id })}
-            type="button"
           >
             <span className={styles.priority}>{task.priority.toUpperCase()}</span>
             <span className={styles.primaryCell}>
@@ -51,7 +48,7 @@ export function TasksPage() {
             <RiskBadge risk={task.riskLevel} />
             <span className={styles.muted}>{task.ownerName}</span>
             <span className={styles.muted}>{formatRelative(task.lastActivityAt)}</span>
-          </button>
+          </div>
         ))}
       </div>
     </section>
