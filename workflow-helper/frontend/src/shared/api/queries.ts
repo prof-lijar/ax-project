@@ -8,7 +8,12 @@ export const queryKeys = {
   tasks: ["tasks"] as const,
   approvals: ["approvals"] as const,
   agents: ["agents"] as const,
-  activity: ["activity"] as const
+  activity: ["activity"] as const,
+  nextcloudStatus: ["nextcloud-status"] as const,
+  nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
+  nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const,
+  nextcloudDownloadUrl: (path: string) =>
+    ["nextcloud-download-url", path] as const
 };
 
 export function useWorkspace() {
@@ -51,5 +56,37 @@ export function useActivity() {
   return useQuery({
     queryKey: queryKeys.activity,
     queryFn: desktopApi.listActivity
+  });
+}
+
+export function useNextcloudStatus() {
+  return useQuery({
+    queryKey: queryKeys.nextcloudStatus,
+    queryFn: desktopApi.getNextcloudStatus,
+    refetchInterval: 30_000
+  });
+}
+
+export function useNextcloudFiles(path: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.nextcloudFiles(path),
+    queryFn: () => desktopApi.listNextcloudFiles(path),
+    enabled
+  });
+}
+
+export function useNextcloudTextFile(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.nextcloudTextFile(path),
+    queryFn: () => desktopApi.readNextcloudTextFile(path),
+    enabled
+  });
+}
+
+export function useNextcloudDownloadUrl(path: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.nextcloudDownloadUrl(path),
+    queryFn: () => desktopApi.getNextcloudDownloadUrl(path),
+    enabled
   });
 }

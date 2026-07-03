@@ -8,6 +8,11 @@ import {
   tasks,
   workspace
 } from "./mockData";
+import {
+  nextcloudFiles,
+  nextcloudStatus,
+  nextcloudTextFile
+} from "./nextcloudMockData";
 import type {
   ActivityEvent,
   AgentSummary,
@@ -17,6 +22,11 @@ import type {
   TaskSummary,
   WorkspaceOverview
 } from "../types/domain";
+import type {
+  NextcloudListFilesResponse,
+  NextcloudStatus,
+  NextcloudTextFileResponse
+} from "../types/nextcloud";
 
 type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown };
 
@@ -109,5 +119,28 @@ export const desktopApi = {
       { id }
     ),
   listActivity: () =>
-    callCommand<ActivityEvent[]>("activity_list", () => activity)
+    callCommand<ActivityEvent[]>("activity_list", () => activity),
+  getNextcloudStatus: () =>
+    callCommand<NextcloudStatus>("nextcloud_health", () => nextcloudStatus),
+  listNextcloudFiles: (path: string) =>
+    callCommand<NextcloudListFilesResponse>(
+      "nextcloud_list_files",
+      () => nextcloudFiles(path),
+      { path }
+    ),
+  readNextcloudTextFile: (path: string) =>
+    callCommand<NextcloudTextFileResponse>(
+      "nextcloud_read_text_file",
+      () => nextcloudTextFile(path),
+      { path }
+    ),
+  getNextcloudDownloadUrl: (path: string) =>
+    callCommand<string>(
+      "nextcloud_download_url",
+      () =>
+        `http://127.0.0.1:8000/api/nextcloud/files/download?path=${encodeURIComponent(
+          path
+        )}`,
+      { path }
+    )
 };

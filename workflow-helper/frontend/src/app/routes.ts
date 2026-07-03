@@ -2,6 +2,7 @@ import {
   Activity,
   Bot,
   CheckSquare,
+  Cloud,
   Gauge,
   Settings,
   ShieldCheck
@@ -15,6 +16,7 @@ export const navItems: Array<{
   icon: typeof Gauge;
 }> = [
   { id: "mission-control", label: "Mission Control", icon: Gauge },
+  { id: "nextcloud", label: "NextCloud", icon: Cloud },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "approvals", label: "Approvals", icon: ShieldCheck },
   { id: "agents", label: "Team", icon: Bot },

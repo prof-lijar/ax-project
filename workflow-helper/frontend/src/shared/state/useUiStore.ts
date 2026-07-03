@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 export type AppSection =
   | "mission-control"
+  | "nextcloud"
   | "tasks"
   | "approvals"
   | "agents"

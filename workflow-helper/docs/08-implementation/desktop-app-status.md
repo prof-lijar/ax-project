@@ -17,6 +17,7 @@ The app is usable as a web preview and builds successfully as a Debian package.
   - co-worker presence
   - recent activity
 - Added secondary views for Tasks, Approvals, Team, Activity, and Settings.
+- Added a NextCloud Drive surface for read-first file browsing through the local backend.
 - Organized frontend code into maintainable modules:
   - `src/app`
   - `src/features`
@@ -34,7 +35,7 @@ The app is usable as a web preview and builds successfully as a Debian package.
 - No Tauri shell, process, or filesystem plugins are enabled.
 - Default Tauri capability has no broad permissions.
 - Frontend actions go through product-level Rust commands, not raw database or system APIs.
-- CSP is restricted to local bundled assets and IPC/local development endpoints.
+- CSP is restricted to local bundled assets, IPC, local development endpoints, and the local backend.
 - Credentials are not stored in frontend state.
 - Approval and task data are sample data only; destructive actions are not implemented.
 - UI icons use `lucide-react`, an open-source icon package with React and TypeScript support.
@@ -102,7 +103,8 @@ npm run tauri:build
 ## Known Gaps
 
 - Data is currently command-backed sample data, not SQLite.
-- Nextcloud backend integration is not wired into the desktop UI yet.
+- NextCloud Drive integration is read-first; upload, write, delete, copy, and move are intentionally not exposed yet.
+- The desktop app expects the FastAPI backend to run separately; it does not supervise the backend process yet.
 - Approval decisions are visible in the UI but do not mutate persistent state yet.
 - AppImage bundling is not enabled by default because it failed in this environment with a read-only filesystem error.
 - The Tauri icon is a generated placeholder and should be replaced with a proper product icon.
@@ -112,6 +114,6 @@ npm run tauri:build
 
 1. Add SQLite persistence behind Rust commands.
 2. Implement approval decision commands and audit events.
-3. Connect the existing FastAPI backend health/integration state.
+3. Connect the existing FastAPI backend health/integration state beyond the read-first Drive view.
 4. Replace seed data with persisted task, approval, agent, and activity records.
 5. Add focused frontend tests for approval controls, task status rendering, and event reconciliation.
