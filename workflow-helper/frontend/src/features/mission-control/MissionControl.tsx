@@ -1,12 +1,9 @@
 import {
   AlertCircle,
   ArrowRight,
-  Bot,
   CheckCircle2,
-  Clock3,
-  ShieldCheck
+  Sparkles
 } from "lucide-react";
-import type { ReactNode } from "react";
 
 import {
   useActivity,
@@ -49,18 +46,16 @@ export function MissionControl() {
     <div className={styles.page}>
       <header className={styles.hero}>
         <div>
-          <span className={styles.eyebrow}>Today</span>
-          <h1>Keep the work moving.</h1>
+          <span className={styles.eyebrow}>Your workspace</span>
+          <h1>Good morning. Here’s what needs your attention.</h1>
           <p>
-            Review the next decision, see what the team is focused on, and step
-            in only where it matters.
+            One decision is ready. The rest of the team is moving forward.
           </p>
         </div>
-        <div className={styles.quickStatus}>
-          <StatusPill icon={<ShieldCheck size={16} />} value={visibleApprovals.length} label="decisions" />
-          <StatusPill icon={<Bot size={16} />} value={visibleAgents.length} label="co-workers" />
-          <StatusPill icon={<Clock3 size={16} />} value={currentWork.length} label="active" />
-        </div>
+        <p className={styles.teamSummary}>
+          <Sparkles size={16} />
+          {visibleAgents.length} co-workers · {currentWork.length} current items
+        </p>
       </header>
 
       <section className={styles.workspace}>
@@ -68,6 +63,7 @@ export function MissionControl() {
           <DecisionPanel
             approval={primaryDecision}
             agent={agents.find((agent) => agent.id === primaryDecision?.agentId)}
+            onReview={() => setActiveSection("approvals")}
           />
 
           <section className={styles.section}>
@@ -125,24 +121,6 @@ export function MissionControl() {
   );
 }
 
-function StatusPill({
-  icon,
-  value,
-  label
-}: {
-  icon: ReactNode;
-  value: number;
-  label: string;
-}) {
-  return (
-    <span className={styles.statusPill}>
-      {icon}
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </span>
-  );
-}
-
 function SectionHeader({
   title,
   actionLabel,
@@ -165,10 +143,12 @@ function SectionHeader({
 
 function DecisionPanel({
   approval,
-  agent
+  agent,
+  onReview
 }: {
   approval: ApprovalRequest | null;
   agent?: AgentSummary;
+  onReview: () => void;
 }) {
   if (!approval) {
     return (
@@ -197,6 +177,10 @@ function DecisionPanel({
         <span>{agent?.name ?? approval.agentId}</span>
         <span>{formatRelative(approval.createdAt)}</span>
       </span>
+      <button className={styles.reviewButton} type="button" onClick={onReview}>
+        Review decision
+        <ArrowRight size={16} />
+      </button>
     </section>
   );
 }

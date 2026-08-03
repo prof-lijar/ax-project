@@ -15,11 +15,11 @@ export const navItems: Array<{
   label: string;
   icon: typeof Gauge;
 }> = [
-  { id: "mission-control", label: "Mission Control", icon: Gauge },
+  { id: "mission-control", label: "Workspace", icon: Gauge },
   { id: "nextcloud", label: "NextCloud", icon: Cloud },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "approvals", label: "Approvals", icon: ShieldCheck },
-  { id: "agents", label: "Agents Team", icon: Bot },
+  { id: "agents", label: "Co-workers", icon: Bot },
   { id: "activity", label: "Activity", icon: Activity },
   { id: "settings", label: "Settings", icon: Settings }
 ];

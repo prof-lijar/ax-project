@@ -1,16 +1,16 @@
 .track {
   width: 100%;
-  height: 7px;
+  height: 4px;
   overflow: hidden;
-  border-radius: 999px;
-  background: #e7edf2;
+  border-radius: 2px;
+  background: #e0e2e6;
 }
 
 .fill {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #1f6feb, #198754);
+  background: var(--color-primary);
 }
 
 .w0 {

@@ -26,9 +26,9 @@ export function AppShell({ children }: PropsWithChildren) {
     <div className={styles.shell}>
       <aside className={styles.rail}>
         <div className={styles.brand}>
-          <span className={styles.brandMark}>WH</span>
+          <span className={styles.brandMark} aria-hidden>W</span>
           <span>
-            <strong>Workflow Helper</strong>
+            <strong>Workflow</strong>
             <small>{workspace?.name ?? "AX Project"}</small>
           </span>
         </div>
@@ -70,7 +70,7 @@ export function AppShell({ children }: PropsWithChildren) {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search work, co-workers, decisions"
+              placeholder="Search your workspace"
               aria-label="Search"
             />
           </label>

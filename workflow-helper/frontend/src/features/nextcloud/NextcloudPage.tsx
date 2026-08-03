@@ -1,7 +1,7 @@
 import {
-  AlertTriangle,
   ArrowLeft,
   ChevronRight,
+  CloudOff,
   Download,
   Eye,
   File,
@@ -82,12 +82,21 @@ export function NextcloudPage() {
       <OfflineState
         backendUrl="http://127.0.0.1:8000"
         detail="Unable to check local backend status."
+        loading={statusQuery.isFetching}
+        onRetry={() => void statusQuery.refetch()}
       />
     );
   }
 
   if (status && !status.ok) {
-    return <OfflineState backendUrl={status.backendUrl} detail={status.detail} />;
+    return (
+      <OfflineState
+        backendUrl={status.backendUrl}
+        detail={status.detail}
+        loading={statusQuery.isFetching}
+        onRetry={() => void statusQuery.refetch()}
+      />
+    );
   }
 
   return (
@@ -151,7 +160,10 @@ export function NextcloudPage() {
             {statusQuery.isLoading || filesQuery.isLoading ? (
               <LoadingState />
             ) : filesQuery.isError ? (
-              <ErrorState message="Could not load this folder. Check backend and Nextcloud configuration." />
+              <FilesUnavailableState
+                loading={filesQuery.isFetching}
+                onRetry={() => void filesQuery.refetch()}
+              />
             ) : items.length === 0 ? (
               <EmptyState />
             ) : (
@@ -364,24 +376,60 @@ function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
 
 function OfflineState({
   backendUrl,
-  detail
+  detail,
+  loading,
+  onRetry
 }: {
   backendUrl: string;
   detail: string | null;
+  loading: boolean;
+  onRetry: () => void;
 }) {
   return (
     <section className={styles.offline}>
-      <AlertTriangle size={24} />
+      <span className={styles.offlineIcon}>
+        <CloudOff size={28} />
+      </span>
       <div>
         <h1>NextCloud is not connected</h1>
-        <p>{detail ?? "The local backend is not reachable."}</p>
-        <code>{backendUrl}</code>
-        <div className={styles.setup}>
-          <strong>Expected backend setup</strong>
-          <span>Run FastAPI from `backend/` and configure `NC_URL`, `NC_USER`, and `NC_PASS`.</span>
-        </div>
+        <p>{detail ?? "Connect the service to browse shared files."}</p>
+        <small>{backendUrl}</small>
+        <button
+          className={styles.retryButton}
+          disabled={loading}
+          onClick={onRetry}
+          type="button"
+        >
+          <RefreshCw size={16} />
+          {loading ? "Checking" : "Try again"}
+        </button>
       </div>
     </section>
+  );
+}
+
+function FilesUnavailableState({
+  loading,
+  onRetry
+}: {
+  loading: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div className={styles.filesUnavailable}>
+      <CloudOff size={28} />
+      <strong>Files are unavailable</strong>
+      <p>We couldn’t fetch this NextCloud folder.</p>
+      <button
+        className={styles.retryButton}
+        disabled={loading}
+        onClick={onRetry}
+        type="button"
+      >
+        <RefreshCw size={16} />
+        {loading ? "Loading" : "Try again"}
+      </button>
+    </div>
   );
 }
 

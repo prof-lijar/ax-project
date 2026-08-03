@@ -1,9 +1,3 @@
-import {
-  nextcloudDownloadFile,
-  nextcloudFiles,
-  nextcloudStatus,
-  nextcloudTextFile
-} from "./nextcloudMockData";
 import type {
   NextcloudFileItem,
   NextcloudDownloadResponse,
@@ -75,37 +69,34 @@ export async function getBrowserNextcloudStatus(): Promise<NextcloudStatus> {
       capabilitiesAvailable: true
     };
   } catch {
-    return nextcloudStatus;
+    return {
+      ok: false,
+      backendUrl: BACKEND_URL,
+      detail: "The Nextcloud service could not be reached.",
+      capabilitiesAvailable: false
+    };
   }
 }
 
 export async function listBrowserNextcloudFiles(
   path: string
 ): Promise<NextcloudListFilesResponse> {
-  try {
-    const url = new URL(`${BACKEND_URL}/api/nextcloud/files`);
-    url.searchParams.set("path", path);
-    url.searchParams.set("depth", "1");
-    return normalizeListFilesResponse(
-      await requestJson<BackendNextcloudListFilesResponse>(url)
-    );
-  } catch {
-    return nextcloudFiles(path);
-  }
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files`);
+  url.searchParams.set("path", path);
+  url.searchParams.set("depth", "1");
+  return normalizeListFilesResponse(
+    await requestJson<BackendNextcloudListFilesResponse>(url)
+  );
 }
 
 export async function readBrowserNextcloudTextFile(
   path: string
 ): Promise<NextcloudTextFileResponse> {
-  try {
-    const url = new URL(`${BACKEND_URL}/api/nextcloud/files/content`);
-    url.searchParams.set("path", path);
-    return normalizeTextFileResponse(
-      await requestJson<BackendNextcloudTextFileResponse>(url)
-    );
-  } catch {
-    return nextcloudTextFile(path);
-  }
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/content`);
+  url.searchParams.set("path", path);
+  return normalizeTextFileResponse(
+    await requestJson<BackendNextcloudTextFileResponse>(url)
+  );
 }
 
 export async function previewBrowserNextcloudFile(
@@ -149,32 +140,28 @@ export async function previewBrowserNextcloudFile(
 export async function downloadBrowserNextcloudFile(
   path: string
 ): Promise<NextcloudDownloadResponse> {
-  try {
-    const url = new URL(`${BACKEND_URL}/api/nextcloud/files/download`);
-    url.searchParams.set("path", path);
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(await errorDetail(response));
-    }
-
-    const blob = await response.blob();
-    const filename = filenameFromResponse(response, path);
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(objectUrl);
-
-    return {
-      path,
-      filename,
-      savedPath: `Browser downloads/${filename}`,
-      bytesWritten: blob.size
-    };
-  } catch {
-    return nextcloudDownloadFile(path);
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/download`);
+  url.searchParams.set("path", path);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(await errorDetail(response));
   }
+
+  const blob = await response.blob();
+  const filename = filenameFromResponse(response, path);
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+
+  return {
+    path,
+    filename,
+    savedPath: `Browser downloads/${filename}`,
+    bytesWritten: blob.size
+  };
 }
 
 async function requestJson<T>(url: URL): Promise<T> {
