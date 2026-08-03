@@ -13,6 +13,7 @@ import {
 } from "../../shared/api/queries";
 import { RiskBadge, StatusBadge } from "../../shared/components/Badge";
 import { ProgressBar } from "../../shared/components/ProgressBar";
+import { navigateToSection } from "../../shared/navigation/sections";
 import { useUiStore } from "../../shared/state/useUiStore";
 import { formatClock, formatRelative } from "../../shared/time/format";
 import type {
@@ -25,7 +26,6 @@ import styles from "./MissionControl.module.css";
 
 export function MissionControl() {
   const search = useUiStore((state) => state.search);
-  const setActiveSection = useUiStore((state) => state.setActiveSection);
   const { data: tasks = [] } = useTasks();
   const { data: approvals = [] } = useApprovals();
   const { data: agents = [] } = useAgents();
@@ -63,14 +63,14 @@ export function MissionControl() {
           <DecisionPanel
             approval={primaryDecision}
             agent={agents.find((agent) => agent.id === primaryDecision?.agentId)}
-            onReview={() => setActiveSection("approvals")}
+            onReview={() => navigateToSection("approvals")}
           />
 
           <section className={styles.section}>
             <SectionHeader
               title="Current work"
               actionLabel="View tasks"
-              onAction={() => setActiveSection("tasks")}
+              onAction={() => navigateToSection("tasks")}
             />
             <div className={styles.workList}>
               {currentWork.map((task) => (
@@ -88,7 +88,7 @@ export function MissionControl() {
             <SectionHeader
               title="Co-workers"
               actionLabel="View team"
-              onAction={() => setActiveSection("agents")}
+              onAction={() => navigateToSection("agents")}
             />
             <div className={styles.coworkerRoom}>
               {visibleAgents.map((agent) => (
@@ -104,7 +104,7 @@ export function MissionControl() {
             <SectionHeader
               title="Recent"
               actionLabel="View activity"
-              onAction={() => setActiveSection("activity")}
+              onAction={() => navigateToSection("activity")}
             />
             <div className={styles.activityFeed}>
               {recentActivity.map((event) => (

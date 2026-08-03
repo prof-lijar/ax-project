@@ -80,6 +80,7 @@
   color: var(--color-text-muted);
   background: transparent;
   text-align: left;
+  text-decoration: none;
   font-size: 14px;
   font-weight: 400;
 }

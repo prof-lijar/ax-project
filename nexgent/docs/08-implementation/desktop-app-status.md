@@ -29,6 +29,20 @@ Both commands passed. The current health source remains command-backed sample
 data, so live degraded/error transitions still require verification after a
 runtime health integration is available.
 
+## Update: Nexgent Sidebar Brand
+
+Date: 2026-08-03
+
+The sidebar brand mark and product label now use `N` and `Nexgent` instead of
+`W` and `Workflow`. The workspace label remains `AX Project` (or the
+command-provided workspace name when available).
+
+Validation performed from `frontend/`:
+
+```bash
+npm run build
+```
+
 ## What Is Done
 
 - Created `frontend/` as a Tauri 2 + React + TypeScript + Vite project.
