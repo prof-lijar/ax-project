@@ -8,6 +8,27 @@ The first Linux desktop implementation has been added under `frontend/`. It prov
 
 The app is usable as a web preview and builds successfully as a Debian package.
 
+## Update: Simplified Sidebar Status
+
+Date: 2026-08-03
+
+The sidebar footer now presents one product-level status line instead of the
+technical `Local shell` label and `healthy` badge. It displays `Status: Good`
+when the system health query reports healthy, and `Status: Bad` when it reports
+degraded or fails. While the initial health request is loading, the existing
+healthy default is preserved to avoid a false bad-state flash.
+
+Validation performed from `frontend/`:
+
+```bash
+npm run build
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-check cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+Both commands passed. The current health source remains command-backed sample
+data, so live degraded/error transitions still require verification after a
+runtime health integration is available.
+
 ## What Is Done
 
 - Created `frontend/` as a Tauri 2 + React + TypeScript + Vite project.

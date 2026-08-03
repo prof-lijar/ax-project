@@ -4,21 +4,13 @@
   min-width: 0;
 }
 
-.header {
+.toolbar {
   display: flex;
   gap: 12px;
-  align-items: end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.eyebrow {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.header h1,
 .offline h1 {
   margin: 4px 0 0;
   font-size: 36px;
@@ -27,14 +19,12 @@
   letter-spacing: 0;
 }
 
-.header p,
 .offline p {
   margin: 6px 0 0;
   color: var(--color-text-muted);
   font-size: 14px;
 }
 
-.refreshButton,
 .viewerDownloadButton,
 .backButton {
   display: inline-flex;
@@ -47,19 +37,13 @@
   text-decoration: none;
 }
 
-.refreshButton {
-  padding: 0 12px;
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  background: var(--color-surface);
-}
-
 .breadcrumbs {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   min-height: 36px;
+  margin-right: auto;
 }
 
 .breadcrumbs button {
@@ -77,6 +61,34 @@
   color: var(--color-text-soft);
 }
 
+.viewSwitch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.viewSwitchButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.viewSwitchButton[aria-pressed="true"] {
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
 .workspace {
   display: grid;
   min-width: 0;
@@ -85,6 +97,9 @@
 .fileList,
 .offline {
   min-width: 0;
+}
+
+.offline {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -94,7 +109,16 @@
   display: grid;
   align-content: start;
   gap: 7px;
-  padding: 12px;
+}
+
+.fileListCards {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.fileListCards > .state,
+.fileListCards > .filesUnavailable {
+  grid-column: 1 / -1;
 }
 
 .fileItem {
@@ -116,6 +140,45 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0;
   padding: 0;
+}
+
+.fileItem.folderCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 164px;
+  padding: 18px;
+}
+
+.folderCard .fileCopy {
+  width: 100%;
+}
+
+.folderCard .fileMeta {
+  margin-top: auto;
+}
+
+.fileItem.fileCard {
+  min-height: 164px;
+  align-items: stretch;
+}
+
+.fileCard .fileOpenButton,
+.fileCard .fileDetails {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 10px;
+  min-height: 162px;
+  padding: 18px;
+}
+
+.fileCard .fileIcon {
+  justify-content: flex-start;
+}
+
+.fileCard .rowActions {
+  align-items: flex-start;
 }
 
 .fileOpenButton,
@@ -586,11 +649,6 @@
 }
 
 @media (max-width: 980px) {
-  .header {
-    align-items: start;
-    flex-direction: column;
-  }
-
   .viewerHeader {
     grid-template-columns: 1fr;
   }
@@ -614,5 +672,19 @@
   .fileOpenButton .fileMeta,
   .fileDetails .fileMeta {
     grid-column: 2;
+  }
+
+  .fileListCards {
+    grid-template-columns: 1fr;
+  }
+
+  .fileCard .fileOpenButton,
+  .fileCard .fileDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .fileCard .fileOpenButton .fileMeta,
+  .fileCard .fileDetails .fileMeta {
+    grid-column: 1;
   }
 }

@@ -3,14 +3,12 @@ import {
   CirclePlus,
   PauseCircle,
   Search,
-  ShieldCheck,
-  Wifi
+  ShieldCheck
 } from "lucide-react";
 import type { PropsWithChildren } from "react";
 
 import { navItems } from "../routes";
 import { useSystemHealth, useWorkspace } from "../../shared/api/queries";
-import { StatusBadge } from "../../shared/components/Badge";
 import { useUiStore } from "../../shared/state/useUiStore";
 import styles from "./AppShell.module.css";
 
@@ -20,7 +18,10 @@ export function AppShell({ children }: PropsWithChildren) {
   const search = useUiStore((state) => state.search);
   const setSearch = useUiStore((state) => state.setSearch);
   const { data: workspace } = useWorkspace();
-  const { data: health } = useSystemHealth();
+  const healthQuery = useSystemHealth();
+  const systemIsGood =
+    !healthQuery.isError &&
+    (healthQuery.data?.status ?? "healthy") === "healthy";
 
   return (
     <div className={styles.shell}>
@@ -53,13 +54,10 @@ export function AppShell({ children }: PropsWithChildren) {
         </nav>
 
         <div className={styles.railStatus}>
-          <div>
-            <span className={styles.statusIcon}>
-              <Wifi size={15} />
-            </span>
-            <span>Local shell</span>
-          </div>
-          <StatusBadge status={health?.status ?? "healthy"} />
+          <span>Status:</span>
+          <strong className={systemIsGood ? styles.statusGood : styles.statusBad}>
+            {systemIsGood ? "Good" : "Bad"}
+          </strong>
         </div>
       </aside>
 

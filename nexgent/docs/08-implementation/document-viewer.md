@@ -50,6 +50,51 @@ then open the vertical-ellipsis menu and confirm Download runs without opening
 the file. `npm audit --audit-level=moderate` also remains to be run in an
 environment with approved npm registry access.
 
+## Update: Compact Drive Toolbar
+
+Date: 2026-08-03
+
+The redundant `Drive`, `NextCloud`, and descriptive heading text was removed
+from the selected NextCloud page. The visible `Files` root breadcrumb label and
+root folder icon were also removed. No breadcrumb control is shown at the root;
+inside a folder, a back arrow and actual folder names remain visible so users
+can navigate the current path. The Refresh control remains available in the
+compact toolbar.
+
+`npm run build` passed after this change. Live folder navigation still requires
+a connected NextCloud instance; run `npm run dev -- --host 127.0.0.1`, select
+NextCloud, navigate into a folder, and verify that the back control and named
+path segments navigate correctly.
+
+## Update: List and Card Layouts
+
+Date: 2026-08-03
+
+The NextCloud file toolbar now provides icon-only List and Card controls in
+place of the manual Refresh button. List is the default and retains the compact
+file rows. Card mode displays both folders and files in a responsive grid with
+larger file-type icons. The active layout remains selected while the user
+navigates between folders.
+
+Folder cards still open their folder with one click. Previewable file cards
+still open the viewer with one click, and file downloads remain in the
+vertical-ellipsis action menu. The switch uses labeled buttons and
+`aria-pressed` so its current state is available to assistive technology.
+
+`npm run build` and
+`CARGO_TARGET_DIR=/tmp/nexgent-cargo-check cargo check --manifest-path src-tauri/Cargo.toml`
+passed. Live visual verification still requires a connected NextCloud instance:
+run `npm run dev -- --host 127.0.0.1`, select NextCloud, switch between both
+layout icons, and verify folder navigation, file preview, and Download in each
+layout.
+
+The selected layout is currently page-local UI state and returns to List after
+the NextCloud page is unmounted.
+
+The file-list wrapper has no outer border or padding. Borders remain on the
+individual folder and file items, avoiding a doubled container edge in both
+List and Card layouts.
+
 ## How It Works
 
 - Clicking a supported file opens a full-workspace viewer with `Back` and `Download`.
