@@ -8,8 +8,11 @@ import type {
   NextcloudViewerKind
 } from "../types/nextcloud";
 
-const BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ?? defaultBackendUrl();
+const configuredBackendUrl = import.meta.env.VITE_BACKEND_URL?.trim();
+const backendPort = import.meta.env.VITE_BACKEND_PORT?.trim() || "8000";
+const BACKEND_URL = configuredBackendUrl
+  ? configuredBackendUrl.replace(/\/$/, "")
+  : defaultBackendUrl();
 
 interface BackendNextcloudFileItem {
   path: string;
@@ -44,10 +47,10 @@ function defaultBackendUrl() {
 
   const hostname = window.location.hostname;
   if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
-    return `${window.location.protocol}//${hostname}:8000`;
+    return `${window.location.protocol}//${hostname}:${backendPort}`;
   }
 
-  return "http://127.0.0.1:8000";
+  return `http://127.0.0.1:${backendPort}`;
 }
 
 export async function getBrowserNextcloudStatus(): Promise<NextcloudStatus> {

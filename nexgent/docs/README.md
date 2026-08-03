@@ -18,6 +18,7 @@ This documentation set defines the product architecture before implementation be
 - [Roadmap](07-roadmap/implementation-roadmap.md): phased plan from docs to first usable desktop app.
 - [Desktop App Status](08-implementation/desktop-app-status.md): implementation state, run commands, validation, and known gaps.
 - [Document Viewer](08-implementation/document-viewer.md): NextCloud file preview behavior, supported formats, LibreOffice setup, and validation.
+- [Docker Development Stack](08-implementation/docker-development-stack.md): dated implementation record for the FastAPI and Vite Compose stack, configuration, operation, validation, and remaining runtime check.
 
 ## Stage-One Definition
 
