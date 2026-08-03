@@ -35,8 +35,6 @@
 }
 
 .refreshButton,
-.rowDownloadButton,
-.rowViewButton,
 .viewerDownloadButton,
 .backButton {
   display: inline-flex;
@@ -114,6 +112,32 @@
   text-align: left;
 }
 
+.fileItem.fileRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0;
+  padding: 0;
+}
+
+.fileOpenButton,
+.fileDetails {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(74px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  min-height: 54px;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: transparent;
+  text-align: left;
+}
+
+.fileOpenButton:hover {
+  background: var(--color-neutral-soft);
+}
+
 .fileIcon {
   display: inline-flex;
   align-items: center;
@@ -142,14 +166,14 @@
 }
 
 .rowActions {
+  position: relative;
   display: flex;
-  gap: 8px;
   align-items: center;
   justify-content: flex-end;
   min-width: max-content;
+  padding: 7px 8px;
 }
 
-.rowDownloadButton,
 .viewerDownloadButton {
   min-width: 118px;
   padding: 0 12px;
@@ -158,7 +182,6 @@
   background: var(--color-primary);
 }
 
-.rowViewButton,
 .backButton {
   padding: 0 12px;
   border: 1px solid var(--color-border);
@@ -166,18 +189,63 @@
   background: var(--color-surface);
 }
 
-.rowDownloadButton:disabled,
-.rowViewButton:disabled,
 .viewerDownloadButton:disabled {
   opacity: 0.72;
 }
 
-.previewUnavailable {
+.actionMenuButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: transparent;
+}
+
+.actionMenuButton:hover,
+.actionMenuButton[aria-expanded="true"] {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.actionMenu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% - 4px);
+  right: 8px;
+  display: grid;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px rgba(24, 29, 38, 0.14);
+}
+
+.actionMenuItem {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   min-height: 36px;
-  color: var(--color-text-soft);
-  font-size: 13px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: transparent;
+  text-align: left;
+}
+
+.actionMenuItem:hover {
+  background: var(--color-neutral-soft);
+}
+
+.actionMenuItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .viewer {
@@ -538,13 +606,13 @@
     white-space: normal;
   }
 
-  .rowActions {
-    width: 100%;
-    min-width: 0;
+  .fileOpenButton,
+  .fileDetails {
+    grid-template-columns: 34px minmax(0, 1fr);
   }
 
-  .rowDownloadButton,
-  .rowViewButton {
-    width: 100%;
+  .fileOpenButton .fileMeta,
+  .fileDetails .fileMeta {
+    grid-column: 2;
   }
 }

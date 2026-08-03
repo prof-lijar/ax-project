@@ -14,10 +14,46 @@ The NextCloud Drive view now supports view-only previews for common work files:
 
 The viewer is part of the main NextCloud workspace. It does not restore the old right-side details panel.
 
+## Update: One-click File Opening
+
+Date: 2026-08-03
+
+Previewable files now open when the user clicks the file content in the Drive
+list. The separate `View` button was removed. Each non-folder file row now has
+a vertical-ellipsis action button that opens a menu containing `Download`.
+
+The file content and action menu are separate interactive controls. This keeps
+the whole file-content area available as the primary open action while ensuring
+that opening the menu or downloading does not also launch the viewer. The menu
+supports keyboard focus, closes with Escape, and closes when the user clicks
+outside it. Files without a supported preview remain non-clickable but retain
+the Download menu.
+
+Validation performed:
+
+```bash
+cd frontend
+npm run build
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-check cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+Both commands passed. An interactive check against a connected NextCloud was
+not available in this environment. Remaining verification:
+
+```bash
+cd frontend
+npm run dev -- --host 127.0.0.1
+```
+
+Open NextCloud, click a supported file once to confirm it enters the viewer,
+then open the vertical-ellipsis menu and confirm Download runs without opening
+the file. `npm audit --audit-level=moderate` also remains to be run in an
+environment with approved npm registry access.
+
 ## How It Works
 
-- Frontend file rows show `View` for supported formats and `Download` for all files.
-- `View` opens a full-workspace viewer with `Back` and `Download`.
+- Clicking a supported file opens a full-workspace viewer with `Back` and `Download`.
+- The file-row vertical-ellipsis menu provides `Download` for all non-folder files.
 - Browser preview calls the backend directly.
 - Tauri preview calls a Rust command, which calls the same backend endpoint.
 - The backend endpoint is:

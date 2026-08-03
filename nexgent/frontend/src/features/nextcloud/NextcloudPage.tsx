@@ -3,7 +3,7 @@ import {
   ChevronRight,
   CloudOff,
   Download,
-  Eye,
+  EllipsisVertical,
   File,
   FileText,
   Folder,
@@ -183,7 +183,7 @@ export function NextcloudPage() {
                   key={item.path}
                   onDownload={() => downloadMutation.mutate(item.path)}
                   onOpenFolder={() => openFolder(item.path)}
-                  onView={() => openViewer(item)}
+                  onOpen={() => openViewer(item)}
                   viewable={isViewable(item)}
                 />
               ))
@@ -202,7 +202,7 @@ function FileRow({
   item,
   onDownload,
   onOpenFolder,
-  onView,
+  onOpen,
   viewable
 }: {
   downloadError: boolean;
@@ -211,9 +211,48 @@ function FileRow({
   item: NextcloudFileItem;
   onDownload: () => void;
   onOpenFolder: () => void;
-  onView: () => void;
+  onOpen: () => void;
   viewable: boolean;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLSpanElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const downloadButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    if (!downloading) {
+      downloadButtonRef.current?.focus();
+    }
+
+    function closeMenuOnOutsideClick(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !menuRef.current?.contains(event.target)
+      ) {
+        setMenuOpen(false);
+      }
+    }
+
+    function closeMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", closeMenuOnOutsideClick);
+    document.addEventListener("keydown", closeMenuOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeMenuOnOutsideClick);
+      document.removeEventListener("keydown", closeMenuOnEscape);
+    };
+  }, [downloading, menuOpen]);
+
   if (item.isDirectory) {
     return (
       <button className={styles.fileItem} onClick={onOpenFolder} type="button">
@@ -229,8 +268,8 @@ function FileRow({
     );
   }
 
-  return (
-    <div className={styles.fileItem}>
+  const fileDetails = (
+    <>
       <span className={styles.fileIcon}>{iconForFile(item)}</span>
       <span className={styles.fileCopy}>
         <strong>{item.name}</strong>
@@ -243,30 +282,53 @@ function FileRow({
         </small>
       </span>
       <span className={styles.fileMeta}>{formatSize(item.size)}</span>
-      <span className={styles.rowActions}>
-        {viewable ? (
-          <button
-            className={styles.rowViewButton}
-            onClick={onView}
-            type="button"
-            title={`View ${item.name}`}
-          >
-            <Eye size={16} />
-            <span>View</span>
-          </button>
-        ) : (
-          <span className={styles.previewUnavailable}>No preview</span>
-        )}
+    </>
+  );
+
+  return (
+    <div className={`${styles.fileItem} ${styles.fileRow}`}>
+      {viewable ? (
         <button
-          className={styles.rowDownloadButton}
-          disabled={downloading}
-          onClick={onDownload}
+          className={styles.fileOpenButton}
+          onClick={onOpen}
           type="button"
-          title={`Download ${item.name}`}
+          title={`Open ${item.name}`}
         >
-          <Download size={16} />
-          <span>{downloading ? "Downloading" : "Download"}</span>
+          {fileDetails}
         </button>
+      ) : (
+        <div className={styles.fileDetails}>{fileDetails}</div>
+      )}
+      <span className={styles.rowActions} ref={menuRef}>
+        <button
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          aria-label={`Actions for ${item.name}`}
+          className={styles.actionMenuButton}
+          onClick={() => setMenuOpen((open) => !open)}
+          ref={menuButtonRef}
+          type="button"
+        >
+          <EllipsisVertical size={19} />
+        </button>
+        {menuOpen ? (
+          <span className={styles.actionMenu} role="menu">
+            <button
+              className={styles.actionMenuItem}
+              disabled={downloading}
+              onClick={() => {
+                setMenuOpen(false);
+                onDownload();
+              }}
+              ref={downloadButtonRef}
+              role="menuitem"
+              type="button"
+            >
+              <Download size={16} />
+              <span>{downloading ? "Downloading" : "Download"}</span>
+            </button>
+          </span>
+        ) : null}
       </span>
     </div>
   );

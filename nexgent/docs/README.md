@@ -19,6 +19,7 @@ This documentation set defines the product architecture before implementation be
 - [Desktop App Status](08-implementation/desktop-app-status.md): implementation state, run commands, validation, and known gaps.
 - [Document Viewer](08-implementation/document-viewer.md): NextCloud file preview behavior, supported formats, LibreOffice setup, and validation.
 - [Docker Development Stack](08-implementation/docker-development-stack.md): dated implementation record for the FastAPI and Vite Compose stack, configuration, operation, validation, and remaining runtime check.
+- [Dashboard Content Scrolling](08-implementation/dashboard-content-scrolling.md): app-shell sizing fix that keeps left-navigation section content scrollable within the desktop window.
 
 ## Stage-One Definition
 
