@@ -658,7 +658,7 @@ wheels = [
 ]
 
 [[package]]
-name = "workflow-helper-backend"
+name = "nexgent-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

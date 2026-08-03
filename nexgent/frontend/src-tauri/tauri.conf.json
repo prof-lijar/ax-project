@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Workflow Helper",
+  "productName": "Nexgent",
   "version": "0.1.0",
-  "identifier": "ai.nextor.workflow-helper",
+  "identifier": "ai.nextor.nexgent",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Workflow Helper",
+        "title": "Nexgent",
         "width": 1280,
         "height": 820,
         "minWidth": 1024,
@@ -44,6 +44,6 @@
     "icon": [],
     "category": "Productivity",
     "shortDescription": "Agent workflow operator console",
-    "longDescription": "Workflow Helper is a local desktop console for supervising tasks, agents, approvals, and activity."
+    "longDescription": "Nexgent is a local desktop console for supervising tasks, agents, approvals, and activity."
   }
 }

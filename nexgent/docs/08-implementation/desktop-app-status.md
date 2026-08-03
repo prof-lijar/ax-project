@@ -59,7 +59,7 @@ npm run tauri:build
 Current package output:
 
 ```text
-frontend/src-tauri/target/release/bundle/deb/Workflow Helper_0.1.0_amd64.deb
+frontend/src-tauri/target/release/bundle/deb/Nexgent_0.1.0_amd64.deb
 ```
 
 ## Run Commands

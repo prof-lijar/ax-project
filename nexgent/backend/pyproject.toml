@@ -1,7 +1,7 @@
 [project]
-name = "workflow-helper-backend"
+name = "nexgent-backend"
 version = "0.1.0"
-description = "FastAPI backend for workflow helper agent integrations."
+description = "FastAPI backend for Nexgent agent integrations."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111.0,<0.116.0",

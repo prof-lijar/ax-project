@@ -1,6 +1,6 @@
-# Workflow Helper Desktop
+# Nexgent Desktop
 
-Tauri 2 desktop shell for the Workflow Helper operator console.
+Tauri 2 desktop shell for the Nexgent operator console.
 
 ## Prerequisites
 

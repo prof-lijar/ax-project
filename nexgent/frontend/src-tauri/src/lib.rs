@@ -22,5 +22,5 @@ pub fn run() {
             commands::nextcloud::nextcloud_download_file
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Workflow Helper desktop app");
+        .expect("failed to run Nexgent desktop app");
 }

@@ -1805,6 +1805,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
+name = "nexgent-desktop"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde",
+ "tauri",
+ "tauri-build",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4504,18 +4516,6 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
-
-[[package]]
-name = "workflow-helper-desktop"
-version = "0.1.0"
-dependencies = [
- "reqwest 0.12.28",
- "serde",
- "tauri",
- "tauri-build",
- "thiserror 1.0.69",
- "uuid",
-]
 
 [[package]]
 name = "writeable"

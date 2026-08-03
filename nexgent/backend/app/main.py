@@ -15,7 +15,7 @@ DEV_ORIGINS = [
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Workflow Helper Backend",
+        title="Nexgent Backend",
         version="0.1.0",
         description="Agent-facing APIs for workflow integrations.",
     )

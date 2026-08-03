@@ -362,7 +362,7 @@ class NextcloudClient:
             )
 
         filename = downloaded.filename or "preview"
-        with tempfile.TemporaryDirectory(prefix="workflow-helper-preview-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="nexgent-preview-") as temp_dir:
             input_path = f"{temp_dir}/{filename}"
             with open(input_path, "wb") as file:
                 file.write(downloaded.content)
