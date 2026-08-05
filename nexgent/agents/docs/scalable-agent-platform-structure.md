@@ -12,30 +12,101 @@ to risk handling. The authoritative rules remain in
 ## Implemented structure
 
 ```text
-apps/
-  gateway/          # public product API
-  agent_server/     # LangGraph Agent Server deployment metadata
-  workers/          # future independently scalable background execution
-workflows/
-  orchestrator/     # optional cross-workflow coordination
-  smoke/            # executable reference workflow
-  risk_monitoring/
-  weekly_report/
-  call_recommendation/
-  device_management/
-packages/
-  contracts/        # versioned cross-boundary schemas
-  runtime/          # execution context, limits, recovery primitives
-  tools/            # capability and authorization policy
-  integrations/     # external provider and service adapters
-  persistence/      # durable storage ports and adapters
-  observability/    # logs, metrics, traces, audit boundaries
-  evals/            # quality evaluation and release gates
-tests/
-  unit/
-  contract/
-  integration/
-  evals/
+agents/
+├── apps/                              # deployable process boundaries
+│   ├── agent_server/
+│   │   └── README.md                  # Agent Server deployment contract
+│   ├── gateway/                       # public product API
+│   │   ├── __init__.py                # gateway public exports
+│   │   ├── app.py                     # FastAPI routes and app factory
+│   │   └── main.py                    # ASGI application entrypoint
+│   └── workers/
+│       └── README.md                  # future independently scaled workers
+│
+├── workflows/                         # business capability modules
+│   ├── orchestrator/
+│   │   └── README.md                  # optional cross-workflow coordination
+│   ├── smoke/                         # complete executable reference path
+│   │   ├── __init__.py                # exports the compiled graph
+│   │   ├── graph.py                   # topology and compiled graph entrypoint
+│   │   ├── nodes.py                   # workflow-owned node functions
+│   │   └── state.py                   # minimal typed graph state
+│   ├── risk_monitoring/
+│   │   └── README.md                  # workflow contract placeholder
+│   ├── weekly_report/
+│   │   └── README.md                  # workflow contract placeholder
+│   ├── call_recommendation/
+│   │   └── README.md                  # workflow contract placeholder
+│   ├── device_management/
+│   │   └── README.md                  # workflow contract placeholder
+│   ├── __init__.py
+│   └── README.md                      # required workflow module convention
+│
+├── packages/                          # reusable business-neutral libraries
+│   ├── contracts/
+│   │   ├── pyproject.toml             # ax-contracts package metadata
+│   │   └── src/ax_contracts/
+│   │       ├── __init__.py            # versioned contract exports
+│   │       └── models.py              # task, run, tool and handoff schemas
+│   ├── runtime/
+│   │   ├── pyproject.toml             # ax-runtime package metadata
+│   │   └── src/ax_runtime/
+│   │       ├── __init__.py
+│   │       ├── errors.py              # normalized runtime errors
+│   │       └── execution.py           # limits, context and graph config
+│   ├── tools/
+│   │   ├── pyproject.toml             # ax-tools package metadata
+│   │   └── src/ax_tools/
+│   │       ├── __init__.py
+│   │       └── policy.py              # capability/risk authorization
+│   ├── integrations/
+│   │   ├── pyproject.toml             # ax-integrations package metadata
+│   │   └── src/ax_integrations/
+│   │       ├── __init__.py
+│   │       └── agent_server.py        # Agent Server adapter protocol
+│   ├── persistence/
+│   │   ├── pyproject.toml             # ax-persistence package metadata
+│   │   └── src/ax_persistence/
+│   │       └── __init__.py            # durable storage extension boundary
+│   ├── observability/
+│   │   ├── pyproject.toml             # ax-observability package metadata
+│   │   └── src/ax_observability/
+│   │       └── __init__.py            # telemetry/audit extension boundary
+│   └── evals/
+│       ├── pyproject.toml              # ax-evals package metadata
+│       └── src/ax_evals/
+│           └── __init__.py            # evaluation contract exports
+│
+├── tests/                              # shared verification by intent
+│   ├── unit/
+│   │   ├── test_boundaries.py         # gateway behavior tests
+│   │   └── test_graph.py              # deterministic workflow tests
+│   ├── contract/
+│   │   ├── test_contracts.py          # schema validation tests
+│   │   └── test_dependency_boundaries.py # import-direction enforcement
+│   ├── integration/
+│   │   └── README.md                  # container/infrastructure test scope
+│   └── evals/
+│       └── README.md                  # behavioral evaluation test scope
+│
+├── infra/
+│   └── compose/
+│       ├── .env.example               # non-secret configuration template
+│       ├── docker-compose.yml          # PostgreSQL/Redis/Agent Server stack
+│       └── README.md                   # stack operating instructions
+│
+├── docs/
+│   ├── README.md                      # documentation map
+│   ├── ax-agents-architecture.md      # authoritative architecture
+│   ├── ax-agents-module-guide.md      # module responsibilities
+│   ├── langgraph-environment-setup.md # environment implementation record
+│   └── scalable-agent-platform-structure.md # this structure record
+│
+├── AGENTS.md                          # mandatory contributor/agent rules
+├── README.md                          # workspace quick start
+├── langgraph.json                     # deployable graph registrations
+├── pyproject.toml                     # root project and uv workspace config
+└── uv.lock                            # reproducible dependency lock
 ```
 
 The former top-level `graphs/` directory is now `workflows/`. The name makes
