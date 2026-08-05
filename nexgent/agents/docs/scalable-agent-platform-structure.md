@@ -118,6 +118,41 @@ The executable smoke workflow was split into `graph.py`, `state.py`, and
 `nodes.py`. `langgraph.json`, imports, commands, and tests now use
 `workflows.smoke`.
 
+### Canonical LLM-driven workflow shape
+
+`smoke` is intentionally deterministic and does not call an LLM. The first
+real agentic workflow should follow this complete vertical-module shape. The
+`customer_support` name is illustrative; do not treat it as implemented until
+its contracts, acceptance criteria, graph, agents, and tests exist.
+
+```text
+workflows/
+└── customer_support/
+    ├── __init__.py                    # exports the compiled graph
+    ├── graph.py                       # topology, routing, loops and termination
+    ├── state.py                       # minimal typed workflow state
+    ├── nodes/
+    │   ├── __init__.py
+    │   ├── classify_request.py        # deterministic or structured LLM routing
+    │   ├── plan_response.py           # invokes the support agent
+    │   ├── execute_tools.py           # authorized side-effect boundary
+    │   └── verify_result.py           # validates evidence and completion
+    ├── agents/
+    │   ├── __init__.py
+    │   ├── support_agent.py           # LLM, tools and output contract
+    │   └── escalation_agent.py        # bounded specialist/escalation agent
+    ├── prompts/
+    │   ├── support_system.md          # versioned support instructions
+    │   └── escalation_system.md       # versioned escalation instructions
+    └── policies.py                    # routing, approval and escalation rules
+```
+
+Agentic LLM execution occurs in `agents/` and in the nodes that invoke those
+agents. `graph.py` controls when they run and how execution proceeds;
+`state.py` defines the data exchanged; tool nodes execute only capabilities
+authorized by shared tool policy. Shared model-provider clients stay in
+`packages/integrations` rather than being constructed inside workflow code.
+
 ## Architecture decisions
 
 ### Modular monolith first
