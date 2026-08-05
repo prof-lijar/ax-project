@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
 ARG UV_VERSION=0.11.32
-FROM ghcr.io/astral-sh/uv:${UV_VERSION}-python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+FROM python:3.12-slim-bookworm
+
+COPY --from=uv /uv /uvx /bin/
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

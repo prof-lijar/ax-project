@@ -27,7 +27,18 @@ docker compose up --build
 If your account is not allowed to access the Docker socket, run the same
 command with `sudo` or configure Docker access for that account first.
 
-Open:
+After Docker reports that both services are running, check the frontend from
+the LAN at:
+
+```text
+http://192.168.0.18:5173/
+```
+
+Vite may print a `Network` URL such as `http://172.19.0.3:5173/` in the Docker
+logs. That is the frontend container's internal network address. Use the
+published host address `http://192.168.0.18:5173/` from other LAN devices.
+
+Local endpoints on the Docker host are:
 
 - Frontend: <http://localhost:5173>
 - Backend API docs: <http://localhost:8000/docs>

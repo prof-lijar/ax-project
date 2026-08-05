@@ -2,7 +2,7 @@
 
 Date: 2026-08-03
 
-Status: Implemented; runtime startup awaits Docker socket access on the current host.
+Status: Implemented and runtime verified on the Docker host.
 
 ## Summary
 
@@ -43,7 +43,10 @@ reachable outside Docker.
   - Keeps container dependencies isolated from host `node_modules` through a
     named volume.
 - `backend/Dockerfile`
-  - Uses Python 3.12 and a pinned `uv` image.
+  - Uses the official Python 3.12 slim Bookworm base image.
+  - Copies the executables from Astral's pinned, version-only `uv` image in a
+    separate build stage. This avoids coupling the `uv` version to a derived
+    Python/base-distribution tag that may not be published.
   - Installs dependencies from `uv.lock` with locked resolution.
   - Runs as the non-root `nexgent` user.
   - Includes LibreOffice Writer, Impress, and Calc so DOCX, PPTX, and XLSX
@@ -128,7 +131,18 @@ On a host where the current account cannot access the Docker socket:
 sudo docker compose up --build
 ```
 
-Open:
+After Docker reports that both services are running, check the frontend from
+the LAN at:
+
+```text
+http://192.168.0.18:5173/
+```
+
+Vite reports its container network address in the logs, for example
+`http://172.19.0.3:5173/`. That address is internal to Docker. LAN clients must
+use the published Docker-host address `http://192.168.0.18:5173/`.
+
+Local endpoints on the Docker host are:
 
 ```text
 Frontend:         http://localhost:5173
@@ -166,18 +180,65 @@ Frontend TypeScript/Vite build: passed
 Default Compose validation:    passed
 Custom-port Compose validation: passed
 Custom CORS override parsing:  passed
+Corrected uv manifest lookup:  passed (AMD64 and ARM64)
+Python base manifest lookup:    passed (AMD64 and ARM64)
+Node base manifest lookup:      passed (AMD64 and ARM64)
+Backend image build:            passed
+Frontend image build:           passed
+Backend health check:           passed (HTTP 200)
+Frontend Vite startup:          passed
 Git whitespace validation:     passed
 ```
 
-Image building and live container startup could not be completed in the current
-session because the account cannot access `/var/run/docker.sock` and `sudo`
-requires interactive authentication. The remaining host-side verification is:
+### Host Docker run
 
-```bash
-sudo docker compose up --build
-docker compose ps
-curl --fail http://localhost:8000/health
-curl --fail http://localhost:5173/
+The first interactive host build on 2026-08-03 reached Docker BuildKit but
+failed before executing image layers because this backend base tag did not
+exist:
+
+```text
+ghcr.io/astral-sh/uv:0.11.32-python3.12-bookworm-slim
+```
+
+The Dockerfile was then changed to use two explicit stages:
+
+```dockerfile
+FROM ghcr.io/astral-sh/uv:0.11.32 AS uv
+FROM python:3.12-slim-bookworm
+COPY --from=uv /uv /uvx /bin/
+```
+
+The same concurrent attempt also reported that frontend metadata could not be
+loaded for `node:22-alpine`, but it did not provide a separate registry error
+before the backend failure stopped the build. A subsequent registry-only lookup
+confirmed that the Node tag exists for both AMD64 and ARM64, so no frontend
+Dockerfile change was needed.
+
+After the Dockerfile correction, the host build and startup completed
+successfully on 2026-08-03. The relevant runtime evidence was:
+
+```text
+[+] up 4/4
+Image nexgent-backend        Built
+Image nexgent-frontend       Built
+Container nexgent-backend-1  Recreated
+Container nexgent-frontend-1 Recreated
+
+backend-1  | Uvicorn running on http://0.0.0.0:8000
+backend-1  | Application startup complete.
+backend-1  | "GET /health HTTP/1.1" 200 OK
+Container nexgent-backend-1 Healthy
+
+frontend-1 | VITE v8.1.3 ready
+frontend-1 | Local:   http://localhost:5173/
+frontend-1 | Network: http://172.19.0.3:5173/
+```
+
+The Vite `Network` address above belongs to the Compose network. The published
+frontend is checked from the LAN at:
+
+```text
+http://192.168.0.18:5173/
 ```
 
 ## Current Boundaries and Next Work
