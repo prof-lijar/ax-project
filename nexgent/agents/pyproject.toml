@@ -5,14 +5,15 @@ description = "Modular AX agent workspace built on LangGraph"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "langgraph>=1.0,<2.0",
-    "ax-agents",
     "ax-contracts",
     "ax-evals",
-    "ax-gateway",
     "ax-integrations",
+    "ax-observability",
+    "ax-persistence",
     "ax-runtime",
     "ax-tools",
+    "fastapi>=0.115,<1.0",
+    "langgraph>=1.0,<2.0",
 ]
 
 [dependency-groups]
@@ -33,16 +34,17 @@ packages = ["src/ax_agents_workspace"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-q"
 
 [tool.uv.workspace]
 members = ["packages/*"]
 
 [tool.uv.sources]
-ax-agents = { workspace = true }
 ax-contracts = { workspace = true }
 ax-evals = { workspace = true }
-ax-gateway = { workspace = true }
 ax-integrations = { workspace = true }
+ax-observability = { workspace = true }
+ax-persistence = { workspace = true }
 ax-runtime = { workspace = true }
 ax-tools = { workspace = true }

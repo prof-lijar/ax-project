@@ -1,6 +1,7 @@
 import httpx
 import pytest
-from ax_gateway import create_app
+
+from apps.gateway import create_app
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import pytest
-from ax_agents import graph
+
+from workflows.smoke import graph
 
 
 def test_graph_returns_deterministic_response() -> None:

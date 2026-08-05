@@ -13,12 +13,13 @@ it before implementation and update it when architecture changes.
 
 The baseline described here is implemented as of 2026-08-05:
 
-- `uv` workspace with contracts, runtime, agents, tools, integrations,
-  gateway, and evaluations packages;
+- `uv` workspace with deployable `apps/`, self-contained `workflows/`, and
+  shared `packages/` for contracts, runtime, tools, integrations, persistence,
+  observability, and evaluations;
 - versioned Pydantic contracts with strict unknown-field rejection;
 - runtime context, execution limits, normalized errors, and LangGraph config
   helpers;
-- deterministic compiled graph exported from `ax-agents` and configured in
+- deterministic compiled graph exported from `workflows/smoke` and configured in
   `langgraph.json`;
 - capability/risk-based tool authorization policy;
 - Agent Server adapter port and FastAPI gateway with health, submit, status,
@@ -29,8 +30,8 @@ The baseline described here is implemented as of 2026-08-05:
 Validation completed:
 
 ```text
-ruff check packages src tests       -> passed
-python -m pytest -q                  -> 11 passed
+ruff check apps workflows packages tests -> passed
+python -m pytest -q                  -> 13 passed
 langgraph validate                  -> valid, 1 graph found
 docker compose config               -> valid with .env.example
 langgraph dev + POST /runs/stream   -> streamed ack: hello
@@ -40,6 +41,12 @@ The real Agent Server adapter, authentication provider, durable production
 database, model provider, and business-specific tools remain intentionally
 unimplemented. Compose image build and PostgreSQL/Redis integration tests are
 the next verification gate.
+
+Architecture update on 2026-08-05: workflow modules moved from `graphs/` to
+`workflows/`; `apps/workers`, `packages/persistence`, and
+`packages/observability` were added as explicit scaling boundaries; shared
+tests were grouped by intent. Ruff, 13 tests, direct smoke execution, and
+`langgraph validate` passed after the move.
 
 ## 1. Design goals and constraints
 
@@ -96,21 +103,25 @@ clients from coupling to LangGraph-specific API details.
 ## 3. Repository and package structure
 
 ```text
+apps/
+  gateway/                   # public API service
+  agent_server/              # Agent Server deployment metadata
+  workers/                   # independently scalable async execution boundary
+workflows/
+  orchestrator/              # optional cross-workflow dynamic delegation
+  smoke/                     # deterministic example graph
+  risk_monitoring/           # business workflow graph
+  weekly_report/
+  call_recommendation/
+  device_management/
 packages/
-  ax-contracts/
-    src/ax_contracts/       # versioned Pydantic boundary models
-  ax-runtime/
-    src/ax_runtime/         # execution context, limits, normalized errors
-  ax-agents/
-    src/ax_agents/graphs/   # compiled graphs and supervisor/subgraphs
-  ax-tools/
-    src/ax_tools/            # tool policies, registries, adapters' contracts
-  ax-integrations/
-    src/ax_integrations/    # model, Agent Server, storage, HTTP ports
-  ax-gateway/
-    src/ax_gateway/          # public FastAPI boundary and adapter wiring
-  ax-evals/
-    src/ax_evals/            # datasets, evaluators, release gates
+  contracts/                 # versioned Pydantic boundary models
+  runtime/                   # execution context, limits, normalized errors
+  tools/                     # tool policies and capability contracts
+  integrations/              # model, Agent Server, storage, HTTP ports
+  persistence/               # durable storage ports and adapters
+  observability/             # logs, metrics, traces, and audit boundaries
+  evals/                     # datasets, evaluators, release gates
 infra/
   compose/                   # local and VM Agent Server topology
 tests/
@@ -123,19 +134,29 @@ docs/
 
 The root is a `uv` workspace. Each package has its own `pyproject.toml`,
 editable workspace dependency, focused tests, and minimal runtime dependencies.
-Packages may import only in the following direction:
+Dependencies may flow only in the following direction:
 
 ```text
-contracts <- runtime <- agents
-contracts <- tools
-contracts <- integrations
-agents/tools/integrations <- gateway
-contracts + agents + runtime <- evals
+apps -> workflows -> packages
+apps ----------------> packages
+
+packages/runtime --------> packages/contracts
+packages/tools ----------> packages/contracts
+packages/integrations ---> packages/contracts
+packages/persistence ----> packages/contracts
+packages/observability --> packages/contracts
+packages/evals ----------> packages/contracts
 ```
 
-No package may import gateway code from graph or tool code. Prompts and graph
-topology stay in `ax-agents`; provider clients stay in `ax-integrations`;
-policy stays in `ax-tools`; external request handling stays in `ax-gateway`.
+Shared packages never import from `apps/` or `workflows/`. Apps may compose
+workflows and packages. Workflow-local prompts, state, nodes, specialists, and
+topology stay in `workflows/<name>/`; provider clients stay in
+`packages/integrations`; reusable capability policy stays in
+`packages/tools`; external request handling stays in `apps/gateway`.
+
+This is a modular monolith, not a service per workflow. Split an application
+or worker deployment only when ownership, isolation, load, or availability
+measurements justify the operational cost.
 
 ## 4. Contracts and state
 
@@ -163,7 +184,7 @@ history and task writes are relied on for resumption and failure recovery.
 
 ## 5. Graph and agent design
 
-- Export compiled graphs from `ax-agents`; use factories only when a run needs
+- Export compiled graphs from `workflows/`; use factories only when a run needs
   graph customization.
 - Keep nodes small and testable. Nodes decide and transform state; tools perform
   controlled side effects.
@@ -231,6 +252,10 @@ until validated.
   duplicate-submission handling.
 - Prefer compiled graphs, async I/O, small state payloads, bounded concurrency,
   and parallel fan-out only for independent work.
+- Store large documents and generated artifacts outside graph state and pass
+  typed references across nodes and handoffs.
+- Reuse bounded HTTP and database connection pools in adapters; never create a
+  client per node invocation.
 - Track queue delay separately from graph execution time and model/tool latency.
 
 Agent Server supports single-host and split API/queue modes. Begin with the
@@ -289,6 +314,9 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 
 - The current scaffold has no business-specific agent, model provider, or real
   external tool.
+- `apps/workers`, `packages/persistence`, and `packages/observability` are
+  explicit extension boundaries; their production implementations remain
+  intentionally deferred until requirements and load measurements exist.
 - Compose/VM is the selected first production posture; Kubernetes remains the
   scale-out migration target.
 - LangSmith tracing/evaluation is optional and must be configured only after

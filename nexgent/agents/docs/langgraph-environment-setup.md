@@ -38,9 +38,10 @@ Sources:
 
 ## Project contract
 
-- `AgentState` is a typed state dictionary with `message` input and `response`
+- `SmokeState` is a typed state dictionary with `message` input and `response`
   output fields.
-- `respond` rejects missing, non-string, and blank messages with `ValueError`.
+- `acknowledge` rejects missing, non-string, and blank messages with
+  `ValueError`.
 - The compiled `graph` is the deployable graph entrypoint declared by
   `langgraph.json`.
 - The graph has one explicit node and explicit `START`/`END` edges. This keeps
@@ -52,7 +53,7 @@ Sources:
 ```bash
 uv sync --dev
 uv run pytest
-uv run python -c 'from ax_langgraph.graph import graph; print(graph.invoke({"message": "hello"}))'
+uv run python -c 'from workflows.smoke import graph; print(graph.invoke({"message": "hello"}))'
 uv run langgraph --help
 uv run langgraph dev --no-browser
 ```

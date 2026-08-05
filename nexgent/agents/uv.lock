@@ -4,12 +4,12 @@ requires-python = ">=3.11"
 
 [manifest]
 members = [
-    "ax-agents",
     "ax-agents-workspace",
     "ax-contracts",
     "ax-evals",
-    "ax-gateway",
     "ax-integrations",
+    "ax-observability",
+    "ax-persistence",
     "ax-runtime",
     "ax-tools",
 ]
@@ -46,34 +46,18 @@ wheels = [
 ]
 
 [[package]]
-name = "ax-agents"
-version = "0.1.0"
-source = { editable = "packages/ax-agents" }
-dependencies = [
-    { name = "ax-contracts" },
-    { name = "ax-runtime" },
-    { name = "langgraph" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "ax-contracts", editable = "packages/ax-contracts" },
-    { name = "ax-runtime", editable = "packages/ax-runtime" },
-    { name = "langgraph", specifier = ">=1.0,<2.0" },
-]
-
-[[package]]
 name = "ax-agents-workspace"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "ax-agents" },
     { name = "ax-contracts" },
     { name = "ax-evals" },
-    { name = "ax-gateway" },
     { name = "ax-integrations" },
+    { name = "ax-observability" },
+    { name = "ax-persistence" },
     { name = "ax-runtime" },
     { name = "ax-tools" },
+    { name = "fastapi" },
     { name = "langgraph" },
 ]
 
@@ -88,13 +72,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ax-agents", editable = "packages/ax-agents" },
-    { name = "ax-contracts", editable = "packages/ax-contracts" },
-    { name = "ax-evals", editable = "packages/ax-evals" },
-    { name = "ax-gateway", editable = "packages/ax-gateway" },
-    { name = "ax-integrations", editable = "packages/ax-integrations" },
-    { name = "ax-runtime", editable = "packages/ax-runtime" },
-    { name = "ax-tools", editable = "packages/ax-tools" },
+    { name = "ax-contracts", editable = "packages/contracts" },
+    { name = "ax-evals", editable = "packages/evals" },
+    { name = "ax-integrations", editable = "packages/integrations" },
+    { name = "ax-observability", editable = "packages/observability" },
+    { name = "ax-persistence", editable = "packages/persistence" },
+    { name = "ax-runtime", editable = "packages/runtime" },
+    { name = "ax-tools", editable = "packages/tools" },
+    { name = "fastapi", specifier = ">=0.115,<1.0" },
     { name = "langgraph", specifier = ">=1.0,<2.0" },
 ]
 
@@ -110,7 +95,7 @@ dev = [
 [[package]]
 name = "ax-contracts"
 version = "0.1.0"
-source = { editable = "packages/ax-contracts" }
+source = { editable = "packages/contracts" }
 dependencies = [
     { name = "pydantic" },
 ]
@@ -121,35 +106,18 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.8,<3.0" }]
 [[package]]
 name = "ax-evals"
 version = "0.1.0"
-source = { editable = "packages/ax-evals" }
+source = { editable = "packages/evals" }
 dependencies = [
     { name = "ax-contracts" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ax-contracts", editable = "packages/ax-contracts" }]
-
-[[package]]
-name = "ax-gateway"
-version = "0.1.0"
-source = { editable = "packages/ax-gateway" }
-dependencies = [
-    { name = "ax-contracts" },
-    { name = "ax-integrations" },
-    { name = "fastapi" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "ax-contracts", editable = "packages/ax-contracts" },
-    { name = "ax-integrations", editable = "packages/ax-integrations" },
-    { name = "fastapi", specifier = ">=0.115,<1.0" },
-]
+requires-dist = [{ name = "ax-contracts", editable = "packages/contracts" }]
 
 [[package]]
 name = "ax-integrations"
 version = "0.1.0"
-source = { editable = "packages/ax-integrations" }
+source = { editable = "packages/integrations" }
 dependencies = [
     { name = "ax-contracts" },
     { name = "httpx" },
@@ -157,14 +125,36 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ax-contracts", editable = "packages/ax-contracts" },
+    { name = "ax-contracts", editable = "packages/contracts" },
     { name = "httpx", specifier = ">=0.27,<1.0" },
 ]
 
 [[package]]
+name = "ax-observability"
+version = "0.1.0"
+source = { editable = "packages/observability" }
+dependencies = [
+    { name = "ax-contracts" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "ax-contracts", editable = "packages/contracts" }]
+
+[[package]]
+name = "ax-persistence"
+version = "0.1.0"
+source = { editable = "packages/persistence" }
+dependencies = [
+    { name = "ax-contracts" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "ax-contracts", editable = "packages/contracts" }]
+
+[[package]]
 name = "ax-runtime"
 version = "0.1.0"
-source = { editable = "packages/ax-runtime" }
+source = { editable = "packages/runtime" }
 dependencies = [
     { name = "ax-contracts" },
     { name = "langgraph" },
@@ -172,20 +162,20 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ax-contracts", editable = "packages/ax-contracts" },
+    { name = "ax-contracts", editable = "packages/contracts" },
     { name = "langgraph", specifier = ">=1.0,<2.0" },
 ]
 
 [[package]]
 name = "ax-tools"
 version = "0.1.0"
-source = { editable = "packages/ax-tools" }
+source = { editable = "packages/tools" }
 dependencies = [
     { name = "ax-contracts" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ax-contracts", editable = "packages/ax-contracts" }]
+requires-dist = [{ name = "ax-contracts", editable = "packages/contracts" }]
 
 [[package]]
 name = "blockbuster"

@@ -37,6 +37,26 @@ This folder is a local workspace for designing, building, orchestrating, and eva
 - Keep edits narrowly scoped and validate with the fastest meaningful checks.
 - Add tests, fixtures, or evaluation cases when behavior is shared, stateful, or likely to regress.
 
+## Required Project Structure
+
+- Keep deployable process boundaries in `apps/`: the public gateway, Agent
+  Server deployment metadata, and independently scalable workers.
+- Keep each business capability in a self-contained `workflows/<name>/`
+  module. A workflow owns its graph, minimal state, nodes, local specialists,
+  prompts, and workflow-specific policy.
+- Keep reusable, business-neutral capabilities in `packages/`: contracts,
+  runtime, tools, integrations, persistence, observability, and evaluations.
+- Shared packages must never import from `apps/` or `workflows/`. Workflows may
+  import shared packages; apps may compose workflows and shared packages.
+- Do not create a service, package, supervisor, or abstraction merely for
+  symmetry. Add one only when it has a real ownership, deployment, reuse, or
+  scaling boundary.
+- Keep LangGraph state small. Store large artifacts externally, use async I/O
+  for external calls, bound concurrency and retries, and parallelize only
+  independent work.
+- Organize shared tests by intent under `tests/unit`, `tests/contract`,
+  `tests/integration`, and `tests/evals`.
+
 ## Local Skills
 
 Use the project-local skills in `.agents/skills/` when the task matches them:
