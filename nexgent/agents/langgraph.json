@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./packages/ax-agents/src/ax_agents/graphs/smoke.py:graph"
+  },
+  "env": ".env"
+}

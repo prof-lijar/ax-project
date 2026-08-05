@@ -12,6 +12,11 @@ This folder is a local workspace for designing, building, orchestrating, and eva
 
 ## Working Style
 
+- Before designing or implementing agent runtime, orchestration, tools, APIs,
+  persistence, deployment, or evaluation changes, read
+  `docs/ax-agents-architecture.md`. Keep that document authoritative and
+  update it, along with `docs/README.md`, for every material architecture
+  change.
 - Prefer small, composable agent workflows with explicit owner roles, handoff contracts, and verification gates.
 - For long-running work, maintain durable state: goals, assumptions, decisions, open questions, artifacts, checkpoints, and recovery steps.
 - Use concrete acceptance criteria before building or evaluating an agent workflow.
