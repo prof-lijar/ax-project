@@ -1,6 +1,6 @@
 # LangGraph Environment Setup
 
-Date: 2026-08-05
+Date: 2026-08-05 (runtime import check updated 2026-08-10)
 
 ## Purpose
 
@@ -29,8 +29,9 @@ Sources:
 - Package manager: `uv`, with `uv.lock` committed for reproducibility.
 - Initial graph: deterministic provider-neutral node; no model API key is
   required.
-- Local server: `langgraph dev --no-browser`, using the in-memory Agent Server
-  mode for development and testing.
+- Local server:
+  `langgraph dev --host 192.168.0.18 --port 2024 --no-browser`, using the
+  in-memory Agent Server mode for development on the trusted LAN.
 - Production hosting and persistence: intentionally deferred. The later
   architecture phase must choose LangSmith Cloud, self-hosted Agent Server, or
   another platform and define authentication, database, queue, and operational
@@ -44,6 +45,10 @@ Sources:
   `ValueError`.
 - The compiled `graph` is the deployable graph entrypoint declared by
   `langgraph.json`.
+- Because graph entries are file paths, their entrypoint modules use absolute
+  `workflows.*` imports. LangGraph API 0.12.0 executes file entries without
+  package context, so relative imports in those entrypoint files fail at
+  startup even when `langgraph validate` succeeds.
 - The graph has one explicit node and explicit `START`/`END` edges. This keeps
   the first runtime check small while establishing a contract future agents
   can extend.
@@ -55,23 +60,27 @@ uv sync --dev
 uv run pytest
 uv run python -c 'from workflows.smoke import graph; print(graph.invoke({"message": "hello"}))'
 uv run langgraph --help
-uv run langgraph dev --no-browser
+uv run langgraph dev --host 192.168.0.18 --port 2024 --no-browser
 ```
 
-The development server reports API and documentation endpoints on
-`http://127.0.0.1:2024` by default. With the server running, use either the
+The development server binds to `192.168.0.18:2024`, making it reachable from
+other servers on the same network. With the server running, use either the
 interactive Studio URL printed by the CLI or the API:
 
 ```bash
-curl -s http://127.0.0.1:2024/docs
+curl -s http://192.168.0.18:2024/docs
 curl -s --request POST \
-  --url http://127.0.0.1:2024/runs/stream \
+  --url http://192.168.0.18:2024/runs/stream \
   --header 'Content-Type: application/json' \
   --data '{"assistant_id":"agent","input":{"message":"hello"},"stream_mode":"values"}'
 ```
 
 The local server guide explicitly describes this mode as development/testing
 and recommends persistent infrastructure for production.
+
+This development runtime uses noop authentication. Bind it to the LAN only on
+a trusted network, restrict port 2024 at the firewall, and do not use this
+listener as the public production boundary.
 
 ## Validation performed
 
@@ -88,6 +97,11 @@ Validated on 2026-08-05 with Python 3.14.4:
   graph `agent` successfully.
 - `GET /docs`: succeeded.
 - `POST /runs/stream`: streamed `{"message":"hello","response":"ack: hello"}`.
+
+Revalidated on 2026-08-10 after adding the chat graph: both configured graph
+files loaded under LangGraph API 0.12.0, `GET /ok` returned `{"ok":true}`, and
+the smoke run streamed `{"message":"hello","response":"ack: hello"}`. A
+contract test now reproduces the runtime's graph-entry import mode.
 
 The first dependency attempt failed because the default uv cache directory was
 read-only and the sandbox initially blocked DNS/socket access. The successful
@@ -122,8 +136,9 @@ Sources:
 
 ## Known limitations
 
-- No model provider, tools, business logic, memory policy, or multi-agent
-  coordination is included yet.
+- An OpenAI-compatible model adapter and minimal chat graph are available; no
+  real tools, business logic, memory policy, or multi-agent coordination is
+  included yet.
 - The local server uses in-memory state and is not durable across restarts.
 - No LangSmith credentials or hosted deployment are required or configured.
 - Dependency versions are constrained by major/minor ranges and resolved in

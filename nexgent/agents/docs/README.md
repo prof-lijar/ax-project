@@ -8,5 +8,8 @@
   implemented apps/workflows/packages layout, dependency rules, performance
   decisions, validation, and extension guidance.
 - [LangGraph environment setup](langgraph-environment-setup.md): greenfield
-  Python/uv setup, local Agent Server validation, and production follow-up
-  guidance. Read the architecture document before extending this setup.
+  Python/uv setup, graph-entry import requirements, local Agent Server
+  validation, trusted-LAN binding, and production follow-up guidance. Read the
+  architecture document before extending this setup.
+- [OpenAI-compatible LLM integration](llm-integration.md): vLLM environment
+  configuration, chat graph usage, retry behavior, and secret handling.

@@ -1,7 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
-from .nodes import acknowledge
-from .state import SmokeState
+from workflows.smoke.nodes import acknowledge
+from workflows.smoke.state import SmokeState
 
 _builder = StateGraph(SmokeState)
 _builder.add_node("acknowledge", acknowledge)

@@ -25,6 +25,7 @@ The baseline described here is implemented as of 2026-08-05:
 - Agent Server adapter port and FastAPI gateway with health, submit, status,
   SSE events, and interrupt-resume route contracts;
 - self-hosted PostgreSQL/Redis/Agent Server Compose baseline;
+- pooled asynchronous OpenAI-compatible model adapter and one-turn chat graph;
 - architecture governance in `AGENTS.md` and this document.
 
 Validation completed:
@@ -38,15 +39,36 @@ langgraph dev + POST /runs/stream   -> streamed ack: hello
 ```
 
 The real Agent Server adapter, authentication provider, durable production
-database, model provider, and business-specific tools remain intentionally
-unimplemented. Compose image build and PostgreSQL/Redis integration tests are
-the next verification gate.
+database, and business-specific tools remain intentionally unimplemented.
+Compose image build, PostgreSQL/Redis integration tests, and a live model
+readiness check are the next deployment verification gates.
 
 Architecture update on 2026-08-05: workflow modules moved from `graphs/` to
 `workflows/`; `apps/workers`, `packages/persistence`, and
 `packages/observability` were added as explicit scaling boundaries; shared
 tests were grouped by intent. Ruff, 13 tests, direct smoke execution, and
 `langgraph validate` passed after the move.
+
+Architecture update on 2026-08-10: `ax-integrations` gained a provider-neutral
+chat-model port and a concrete OpenAI-compatible streaming adapter. The new
+`workflows/chat` graph provides a minimal async LLM path while `workflows/smoke`
+remains deterministic. Model settings are loaded only in the integration layer,
+connections are pooled, retries are bounded, and credentials stay outside
+graph state. Ruff, 24 tests, and `langgraph validate` with two registered graphs
+passed for this change; the live private endpoint check remains deployment-owned.
+
+Runtime compatibility update on 2026-08-10: LangGraph API 0.12.0 loads graph
+entries configured as Python file paths without package context. Graph
+entrypoints therefore use absolute workflow imports, while package-internal
+modules may continue using relative imports. A contract test now loads every
+`langgraph.json` entry using the runtime's file-versus-module behavior so
+validation cannot pass while development startup fails.
+
+Development network update on 2026-08-10: the documented local Agent Server
+command binds specifically to `192.168.0.18:2024` so trusted LAN peers can use
+it. This is an in-memory, noop-auth development listener only. Port 2024 must
+remain restricted to the trusted network; production traffic still terminates
+at the authenticated gateway, with Agent Server kept private.
 
 ## 1. Design goals and constraints
 
@@ -238,6 +260,13 @@ Secrets remain in the executor/integration layer and are never inserted into
 prompts or agent-visible state. External input and model output are untrusted
 until validated.
 
+The OpenAI-compatible model adapter accepts `URL`, `MODEL`, and
+`OPENAI_API_KEY`, with `OPENAI_BASE_URL` and `OPENAI_MODEL` as preferred aliases
+for shared environments. It normalizes server, `/v1`, and full completion URLs;
+uses streamed SSE responses; reuses a bounded async connection pool; and
+retries transient failures only before any response content has been emitted.
+Provider errors must not expose credentials or unrestricted response bodies.
+
 ## 8. Persistence, reliability, and performance
 
 - PostgreSQL is the durable system of record for Agent Server resources,
@@ -307,13 +336,14 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 6. Add PostgreSQL/Redis Compose integration and Agent Server image build.
 7. Add persistence recovery, interrupt/resume, observability, and security
    checks.
-8. Add real model/tool integrations and business-specific agents only after the
-   preceding gates pass.
+8. Add and mock-test real model/tool integrations as workflows require them;
+   require the preceding deployment gates plus live readiness checks before
+   production release.
 
 ## 12. Known limitations and decisions deferred
 
-- The current scaffold has no business-specific agent, model provider, or real
-  external tool.
+- The current scaffold has no business-specific agent or real external tool;
+  its model-backed chat workflow is intentionally a minimal one-turn path.
 - `apps/workers`, `packages/persistence`, and `packages/observability` are
   explicit extension boundaries; their production implementations remain
   intentionally deferred until requirements and load measurements exist.

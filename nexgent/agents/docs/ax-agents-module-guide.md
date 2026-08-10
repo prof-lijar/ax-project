@@ -53,7 +53,7 @@ The LangGraph graph layer.
 It owns compiled graphs, supervisor/coordinator graphs, specialist subgraphs,
 graph state, routing, stopping logic, prompts, and agent-specific behavior.
 
-The current workflow collection contains a deterministic smoke graph:
+The workflow collection contains a deterministic smoke graph:
 
 ```python
 from workflows.smoke import graph
@@ -63,6 +63,11 @@ graph.invoke({"message": "hello"})
 
 Future business agents belong here. Graphs should call tools and integrations
 through interfaces rather than embedding infrastructure code.
+
+The `workflows/chat` graph is the first LLM-backed vertical path. It accepts
+one message, invokes the shared OpenAI-compatible adapter asynchronously, and
+returns the generated response. It is intentionally separate from `smoke` so
+model availability does not affect deterministic runtime checks.
 
 Each workflow is a vertical module that owns its `graph.py`, minimal
 `state.py`, nodes, optional local agents and prompts, and workflow policy. The
@@ -89,7 +94,9 @@ contracts.
 
 The current implementation defines the `AgentServerClient` protocol for
 submitting runs, reading status, streaming events, and resuming interrupted
-threads. Production adapters are still to be implemented here.
+threads. It also provides a pooled asynchronous OpenAI-compatible chat adapter
+with SSE parsing, bounded retries, safe provider errors, and environment-based
+configuration. The real Agent Server client remains to be implemented.
 
 ## `apps/gateway`
 
@@ -160,7 +167,7 @@ owns the behavior.
 
 ## Current limitations
 
-- The graph is provider-neutral and not a business agent yet.
+- The LLM chat graph is a minimal one-turn integration, not a business agent.
 - The Agent Server adapter and authentication provider are not implemented.
 - Durable production persistence and real external tools are not configured.
 - Evaluation datasets and automated quality gates are not yet present.

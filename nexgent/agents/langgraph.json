@@ -1,7 +1,8 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "agent": "./workflows/smoke/graph.py:graph"
+    "agent": "./workflows/smoke/graph.py:graph",
+    "chat": "./workflows/chat/graph.py:graph"
   },
   "env": ".env"
 }
