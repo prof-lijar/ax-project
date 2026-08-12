@@ -13,3 +13,12 @@
   architecture document before extending this setup.
 - [OpenAI-compatible LLM integration](llm-integration.md): vLLM environment
   configuration, chat graph usage, retry behavior, and secret handling.
+- [Chat response streaming](chat-response-streaming.md): provider-token to
+  LangGraph custom-event contract, cancel-on-disconnect behavior, validation,
+  and deployment.
+- [Reusable web research tools](web-research-tools.md): provider-neutral
+  `web_search`/`web_fetch` contracts, private SearXNG deployment, reuse, source
+  evidence, SSRF controls, and retrieval limits.
+- [Workspace README](../README.md#docker-development-server): license-free
+  Docker development startup, parent Nexgent Compose integration, and
+  trusted-LAN publishing.

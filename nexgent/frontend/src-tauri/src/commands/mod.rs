@@ -4,4 +4,3 @@ pub mod approvals;
 pub mod nextcloud;
 pub mod system;
 pub mod tasks;
-pub mod workspace;

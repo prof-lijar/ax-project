@@ -48,16 +48,17 @@ curl -N http://192.168.0.18:2024/runs/stream \
     "input": {
       "message": "Explain how vLLM serves multiple users concurrently. Give a detailed explanation."
     },
-    "stream_mode": "values"
+    "stream_mode": ["custom", "values"]
   }'
 ```
 
 The development server uses noop authentication. Do not expose port 2024 to an
 untrusted network; production clients must use the authenticated gateway.
 
-The workflow currently represents one chat turn: input is `message`, and the
-terminal state adds `response`. The model adapter requests streamed SSE output
-from vLLM and accumulates it for the graph state.
+The workflow represents one chat turn: input is `message`, custom events expose
+only `response_delta` text for incremental display, and the terminal state adds
+the assembled `response`. Provider event envelopes and credentials remain in
+the integration layer.
 
 ## Runtime behavior
 
@@ -68,6 +69,8 @@ from vLLM and accumulates it for the graph state.
 - Authentication failures and malformed provider events are permanent.
 - Provider errors expose status and retryability without including the key or
   response body.
+- Each provider text chunk becomes a LangGraph custom event, while the final
+  values event remains the authoritative complete response.
 
 Tests use an in-memory HTTP transport and a fake chat model, so the normal test
 suite does not require network access or credentials. A live readiness check

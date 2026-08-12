@@ -1,10 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { desktopApi } from "./client";
+import { agentServerClient } from "./agentServerClient";
 
 export const queryKeys = {
-  workspace: ["workspace"] as const,
   health: ["system-health"] as const,
+  agentServerHealth: ["agent-server-health"] as const,
   tasks: ["tasks"] as const,
   approvals: ["approvals"] as const,
   agents: ["agents"] as const,
@@ -15,10 +16,12 @@ export const queryKeys = {
   nextcloudPreview: (path: string) => ["nextcloud-preview", path] as const
 };
 
-export function useWorkspace() {
+export function useAgentServerHealth() {
   return useQuery({
-    queryKey: queryKeys.workspace,
-    queryFn: desktopApi.getWorkspace
+    queryKey: queryKeys.agentServerHealth,
+    queryFn: ({ signal }) => agentServerClient.checkHealth({ signal }),
+    refetchInterval: 30_000,
+    retry: false
   });
 }
 

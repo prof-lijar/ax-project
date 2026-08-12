@@ -81,8 +81,11 @@ It owns tool registration, typed tool boundaries, allowlists, read/write/
 destructive risk classification, authorization, and future tool timeout,
 retry, and audit metadata.
 
-The current implementation provides `ToolPolicy` and `authorize()`. An agent
-must not freely invoke an unapproved tool or destructive operation.
+The current implementation provides `ToolPolicy`, `authorize()`, and reusable
+`web_search`/`web_fetch` `StructuredTool` factories. The factories accept
+provider-neutral executors, authorize each read-risk call, attach deterministic
+idempotency, and return normalized artifacts. An agent must not freely invoke
+an unapproved tool or destructive operation.
 
 ## `ax-integrations`
 
@@ -97,6 +100,9 @@ submitting runs, reading status, streaming events, and resuming interrupted
 threads. It also provides a pooled asynchronous OpenAI-compatible chat adapter
 with SSE parsing, bounded retries, safe provider errors, and environment-based
 configuration. The real Agent Server client remains to be implemented.
+It also provides a pooled SearXNG search adapter and an SSRF-safe public-page
+fetch adapter with bounded extraction. These adapters satisfy the web tool
+ports without making tools or workflows depend on SearXNG.
 
 ## `apps/gateway`
 
@@ -169,5 +175,7 @@ owns the behavior.
 
 - The LLM chat graph is a minimal one-turn integration, not a business agent.
 - The Agent Server adapter and authentication provider are not implemented.
-- Durable production persistence and real external tools are not configured.
+- Durable production persistence and business-specific tools are not
+  configured; reusable public-web research is the first real read-only tool
+  capability.
 - Evaluation datasets and automated quality gates are not yet present.

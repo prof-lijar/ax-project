@@ -1,8 +1,29 @@
 # Docker Development Stack
 
-Date: 2026-08-03
+Date: 2026-08-03 (Agent Server added 2026-08-10)
 
 Status: Implemented and runtime verified on the Docker host.
+
+## Update: Frontend Dependency Synchronization
+
+Date: 2026-08-10
+
+The frontend image now includes a lockfile-aware entrypoint. Compose preserves
+`/app/node_modules` in a named volume while bind-mounting frontend source, so an
+existing volume could remain stale after `package-lock.json` added a dependency.
+At container startup, the entrypoint compares the current lockfile hash with a
+marker in the dependency volume and runs `npm ci` only when they differ. This
+keeps Vite imports synchronized without deleting the volume or reinstalling
+unchanged dependencies on every restart.
+
+After pulling the entrypoint change, rebuild and recreate the frontend once:
+
+```bash
+docker compose up --build -d frontend
+```
+
+The first recreated start updates the existing dependency volume; subsequent
+starts skip installation until the lockfile changes again.
 
 ## Summary
 
@@ -15,9 +36,10 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 npm run dev -- --host 0.0.0.0
 ```
 
-The FastAPI service is the backend and the Vite service is the frontend. Agent
-runtime services are intentionally outside the current scope and can be added
-to the Compose project later.
+The FastAPI service is the backend, the Vite service is the frontend, and the
+license-free Agent Server runs the agents workspace's in-memory `langgraph dev`
+runtime. The frontend's same-origin `/agent-server` proxy targets the Agent
+Server by its Compose service name.
 
 This is a development stack. It uses source bind mounts, polling file watchers,
 and reload servers. It is not intended to be deployed directly as a production
@@ -29,19 +51,26 @@ stack.
 | --- | --- | ---: | ---: | --- |
 | `backend` | Uvicorn with reload | `8000` | `8000` | `GET /health` |
 | `frontend` | Vite development server | `5173` | `5173` | `GET /` |
+| `agent-server` | LangGraph dev server | `192.168.0.18:2024` | `2024` | `GET /ok` |
 
-The frontend waits for the backend health check before starting. Both services
-bind to `0.0.0.0` inside their containers so their published host ports are
-reachable outside Docker.
+The frontend waits for both backend and Agent Server health checks before
+starting. All services bind to `0.0.0.0` inside their containers so their
+published host ports are reachable outside Docker. The Agent Server host port
+is restricted to the host's `192.168.0.18` LAN interface.
 
 ## Implemented Files
 
 - `compose.yaml`
-  - Defines the two services, port publishing, health checks, live-reload
+  - Defines the three services, port publishing, health checks, live-reload
     mounts, startup dependency, and graceful shutdown timing.
   - Supports `FRONTEND_PORT` and `BACKEND_PORT` host-port overrides.
   - Keeps container dependencies isolated from host `node_modules` through a
     named volume.
+- `agents/apps/agent_server/Dockerfile.dev`
+  - Installs the locked agents workspace and starts `langgraph dev` without a
+    LangSmith license, PostgreSQL, Redis, or the production gateway.
+  - Binds `0.0.0.0:2024` inside Docker; Compose publishes it as
+    `192.168.0.18:2024`.
 - `backend/Dockerfile`
   - Uses the official Python 3.12 slim Bookworm base image.
   - Copies the executables from Astral's pinned, version-only `uv` image in a
@@ -54,6 +83,12 @@ reachable outside Docker.
 - `frontend/Dockerfile`
   - Uses Node.js 22 and installs dependencies with `npm ci`.
   - Runs the Vite server as the non-root `node` user.
+  - Installs a lockfile-aware entrypoint that synchronizes the persistent
+    dependency volume when frontend packages change.
+- `frontend/docker-entrypoint.sh`
+  - Compares the current package-lock hash with the installed-volume marker,
+    runs `npm ci` only after dependency changes, and then starts the requested
+    container command.
 - `backend/.dockerignore` and `frontend/.dockerignore`
   - Exclude local environments, credentials, dependency directories, build
     output, Rust build artifacts, and caches from image build contexts.
@@ -119,7 +154,7 @@ container and set `NC_CA_BUNDLE` to the path inside that container.
 
 ## Run Commands
 
-Start and build both services from the `nexgent/` directory:
+Start and build all three services from the `nexgent/` directory:
 
 ```bash
 docker compose up --build
@@ -148,6 +183,20 @@ Local endpoints on the Docker host are:
 Frontend:         http://localhost:5173
 Backend API docs: http://localhost:8000/docs
 Backend health:   http://localhost:8000/health
+Agent Server:     http://192.168.0.18:2024/ok
+```
+
+## Agent Server Compose Update Validation
+
+The parent Compose configuration was rendered successfully with the agents
+workspace as its build context, the Agent Server health check, the exact
+`192.168.0.18:2024:2024` port mapping, and the frontend proxy target
+`http://agent-server:2024`. A live image build and health request still require
+Docker socket access on the host:
+
+```bash
+sudo docker compose up --build -d
+curl http://192.168.0.18:2024/ok
 ```
 
 Use different published ports:
@@ -162,13 +211,27 @@ Stop the stack:
 docker compose down
 ```
 
-After frontend dependency changes, rebuild the image and refresh its dependency
-volume:
+After frontend dependency changes, rebuild and recreate the frontend. The
+entrypoint refreshes its dependency volume automatically:
 
 ```bash
-docker compose build frontend
-docker compose run --rm --no-deps frontend npm ci
+docker compose up --build -d frontend
 ```
+
+## Validation on 2026-08-10
+
+The dependency entrypoint passed `sh -n`, the frontend's 15 tests and production
+build passed, the Compose configuration rendered, and `git diff --check` passed.
+Building the updated image could not be completed in this session because the
+current account cannot access `/var/run/docker.sock`. Remaining verification:
+
+```bash
+sudo docker compose up --build -d frontend
+sudo docker compose logs frontend
+```
+
+The frontend log should report that dependencies are being synchronized once,
+then show the Vite ready message without a `react-markdown` resolution error.
 
 ## Validation on 2026-08-03
 
@@ -249,5 +312,6 @@ http://192.168.0.18:5173/
 - A future production design should use built frontend assets, a production
   HTTP server, immutable application containers, a reverse proxy or ingress,
   explicit secret management, and deployment-specific TLS.
-- Agent services can later join the same Compose project with independent
-  images, health checks, networks, and dependency rules.
+- The Agent Server uses in-memory development persistence and noop
+  authentication; it is restricted to the trusted LAN and is not a production
+  deployment.

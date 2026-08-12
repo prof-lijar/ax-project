@@ -4,25 +4,6 @@ use serde::Serialize;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceOverview {
-    pub name: String,
-    pub operator: String,
-    pub policy_mode: PolicyMode,
-    pub emergency_pause: bool,
-    pub active_missions: u8,
-    pub pending_approvals: u8,
-    pub degraded_agents: u8,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PolicyMode {
-    Guarded,
-    Strict,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SystemHealth {
     pub status: HealthStatus,
     pub backend_version: String,

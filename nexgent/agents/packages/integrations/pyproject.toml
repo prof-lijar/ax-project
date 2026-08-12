@@ -3,7 +3,11 @@ name = "ax-integrations"
 version = "0.1.0"
 description = "Ports for models, stores, and external services"
 requires-python = ">=3.11"
-dependencies = ["ax-contracts", "httpx>=0.27,<1.0"]
+dependencies = [
+    "ax-contracts",
+    "httpx>=0.27,<1.0",
+    "trafilatura>=2.1,<3.0",
+]
 
 [build-system]
 requires = ["hatchling"]

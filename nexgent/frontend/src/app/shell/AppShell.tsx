@@ -8,7 +8,7 @@ import {
 import type { PropsWithChildren } from "react";
 
 import { navItems } from "../routes";
-import { useSystemHealth, useWorkspace } from "../../shared/api/queries";
+import { useSystemHealth } from "../../shared/api/queries";
 import { navigateToSection } from "../../shared/navigation/sections";
 import { useUiStore } from "../../shared/state/useUiStore";
 import styles from "./AppShell.module.css";
@@ -17,8 +17,8 @@ export function AppShell({ children }: PropsWithChildren) {
   const activeSection = useUiStore((state) => state.activeSection);
   const search = useUiStore((state) => state.search);
   const setSearch = useUiStore((state) => state.setSearch);
-  const { data: workspace } = useWorkspace();
   const healthQuery = useSystemHealth();
+  const chatIsActive = activeSection === "chat";
   const systemIsGood =
     !healthQuery.isError &&
     (healthQuery.data?.status ?? "healthy") === "healthy";
@@ -30,7 +30,7 @@ export function AppShell({ children }: PropsWithChildren) {
           <span className={styles.brandMark} aria-hidden>N</span>
           <span>
             <strong>Nexgent</strong>
-            <small>{workspace?.name ?? "AX Project"}</small>
+            <small>AX Project</small>
           </span>
         </div>
 
@@ -74,8 +74,8 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
       </aside>
 
-      <main className={styles.main}>
-        <header className={styles.commandStrip}>
+      <main className={chatIsActive ? styles.mainChat : styles.main}>
+        {!chatIsActive && <header className={styles.commandStrip}>
           <label className={styles.searchBox}>
             <Search size={18} aria-hidden />
             <input
@@ -106,9 +106,11 @@ export function AppShell({ children }: PropsWithChildren) {
               <span>Create task</span>
             </button>
           </div>
-        </header>
+        </header>}
 
-        <section className={styles.content}>{children}</section>
+        <section className={chatIsActive ? styles.chatContent : styles.content}>
+          {children}
+        </section>
       </main>
     </div>
   );

@@ -27,3 +27,32 @@ Read [the architecture specification](docs/ax-agents-architecture.md) before
 changing any package or runtime boundary. See [the environment setup record](docs/langgraph-environment-setup.md)
 for the local validation details and [the LLM integration guide](docs/llm-integration.md)
 for configuring and invoking the `chat` graph.
+See [the web research tool guide](docs/web-research-tools.md) for creating the
+reusable provider-neutral `web_search` and `web_fetch` tools. They are not wired
+into the current chat graph.
+
+## Docker development server
+
+The root development container runs that same license-free `langgraph dev`
+command automatically. Copy `.env.example` to the ignored `.env`, set
+`OPENAI_API_KEY`, then start the complete Nexgent stack from the parent
+`nexgent/` directory:
+
+```bash
+cd ..
+docker compose up --build -d
+docker compose logs -f agent-server
+```
+
+The local `agents/compose.yaml` remains available when only the Agent Server is
+needed.
+
+Docker publishes the service only on `192.168.0.18:2024`. Inside the container,
+LangGraph binds `0.0.0.0:2024` because the host's LAN address does not exist in
+the container network namespace.
+
+Stop it with:
+
+```bash
+docker compose down
+```

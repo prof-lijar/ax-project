@@ -22,6 +22,8 @@ The baseline described here is implemented as of 2026-08-05:
 - deterministic compiled graph exported from `workflows/smoke` and configured in
   `langgraph.json`;
 - capability/risk-based tool authorization policy;
+- reusable authorized `web_search` and SSRF-safe `web_fetch` tools backed by a
+  private no-provider-key SearXNG deployment;
 - Agent Server adapter port and FastAPI gateway with health, submit, status,
   SSE events, and interrupt-resume route contracts;
 - self-hosted PostgreSQL/Redis/Agent Server Compose baseline;
@@ -39,7 +41,7 @@ langgraph dev + POST /runs/stream   -> streamed ack: hello
 ```
 
 The real Agent Server adapter, authentication provider, durable production
-database, and business-specific tools remain intentionally unimplemented.
+database, and business-specific write tools remain intentionally unimplemented.
 Compose image build, PostgreSQL/Redis integration tests, and a live model
 readiness check are the next deployment verification gates.
 
@@ -69,6 +71,53 @@ command binds specifically to `192.168.0.18:2024` so trusted LAN peers can use
 it. This is an in-memory, noop-auth development listener only. Port 2024 must
 remain restricted to the trusted network; production traffic still terminates
 at the authenticated gateway, with Agent Server kept private.
+
+Containerized development update on 2026-08-10: the root `compose.yaml` builds
+a license-free development image that runs `langgraph dev` automatically. The
+process binds `0.0.0.0:2024` inside its container and Docker publishes it only
+as `192.168.0.18:2024`; model settings are injected from the ignored root
+`.env`. This in-memory, noop-auth path is separate from the licensed standalone
+deployment baseline under `infra/compose` and is restricted to trusted-LAN
+development.
+
+Parent stack update on 2026-08-10: `/nexgent/compose.yaml` now composes this
+development Agent Server with the existing backend and frontend. Its build
+context remains `/nexgent/agents`, the frontend proxy resolves the container as
+`http://agent-server:2024`, and the published listener remains
+`192.168.0.18:2024`. Running `docker compose up --build` from `/nexgent` starts
+all three development services.
+
+Chat streaming update on 2026-08-10: the chat workflow now consumes the
+provider adapter's asynchronous token iterator directly and emits only text
+deltas through LangGraph's `custom` stream mode. It still returns the assembled
+response in graph state, so clients request both `custom` and `values`: custom
+events provide immediate display updates and the final values event verifies
+the completed response. Provider URLs, credentials, and raw provider events
+remain inside the integration boundary and are never included in graph stream
+payloads. Full Ruff validation and all 26 agent tests passed after this change.
+The chat workflow's bounded output budget is 2,048 tokens, increased from the
+initial 500-token prototype limit to support detailed operational answers.
+
+Chat cancellation update on 2026-08-10: the stateless frontend run request now
+sets Agent Server's `on_disconnect` policy to `cancel`. Aborting the response
+stream therefore cancels graph execution and propagates async cancellation to
+the OpenAI-compatible provider stream, rather than leaving model generation
+running after the UI stops. This uses Agent Server's run lifecycle contract and
+does not add provider-specific cancellation logic or durable chat threads.
+
+Web research tools update on 2026-08-12: `ax-contracts` now defines strict,
+versioned search, source, and fetched-page schemas. `ax-tools` exposes
+workflow-neutral `web_search` and `web_fetch` factories with injected executors,
+read-risk authorization, deterministic idempotency keys, structured artifacts,
+and safe retry-classified failures. `ax-integrations` provides pooled SearXNG
+search and public-page fetch adapters; page retrieval pins validated DNS
+addresses, rejects non-public destinations and unsafe redirects, bounds
+content, and extracts readable text with Trafilatura. SearXNG is digest-pinned
+and private in every Compose topology. The current chat graph is unchanged.
+Ruff, 52 deterministic tests, two LangGraph entrypoints, the smoke graph, and
+all three Compose configurations passed. The opt-in live quality evaluation was
+skipped as designed; live container startup still requires operator Docker
+access on the host.
 
 ## 1. Design goals and constraints
 
@@ -102,6 +151,7 @@ Agent Server (private)
   |  assistants, threads, runs, streaming, task queue
   +--> PostgreSQL (durable resources, checkpoints, long-term store)
   +--> Redis (ephemeral queue signaling, cancellation, pub/sub)
+  +--> SearXNG (private, no-provider-key web discovery)
   |
   v
 Compiled LangGraph graphs
@@ -267,6 +317,22 @@ uses streamed SSE responses; reuses a bounded async connection pool; and
 retries transient failures only before any response content has been emitted.
 Provider errors must not expose credentials or unrestricted response bodies.
 
+Reusable web research is split into discovery and evidence retrieval.
+`web_search` calls an injected provider-neutral executor; the initial adapter
+uses a private SearXNG JSON API and returns normalized, deduplicated source
+metadata. `web_fetch` opens one selected public HTTP(S) source and returns
+bounded readable text marked as untrusted. Both tools are read-risk operations,
+require explicit allowlisting, produce deterministic idempotency keys, preserve
+stable source IDs and URLs for citations, and propagate cancellation.
+
+Page retrieval must resolve and pin public destinations, reject any DNS answer
+set containing a non-global address, revalidate redirects, disable ambient
+proxy configuration, omit user credentials and cookies, restrict content
+types, and cap redirects, downloaded bytes, and extracted text. Search snippets
+are discovery data only; workflows fetch selected pages before using
+substantive claims as evidence. Retrieved content never changes permissions or
+tool policy.
+
 ## 8. Persistence, reliability, and performance
 
 - PostgreSQL is the durable system of record for Agent Server resources,
@@ -342,8 +408,12 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 
 ## 12. Known limitations and decisions deferred
 
-- The current scaffold has no business-specific agent or real external tool;
-  its model-backed chat workflow is intentionally a minimal one-turn path.
+- The current scaffold has no business-specific agent; its model-backed chat
+  workflow is intentionally a minimal one-turn path and does not yet compose
+  the reusable web research tools.
+- No-key SearXNG engines may be throttled, challenged by CAPTCHAs, or change
+  without notice. Their live quality is monitored separately from deterministic
+  CI and is not equivalent to a paid search-provider availability contract.
 - `apps/workers`, `packages/persistence`, and `packages/observability` are
   explicit extension boundaries; their production implementations remain
   intentionally deferred until requirements and load measurements exist.

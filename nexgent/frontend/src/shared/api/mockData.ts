@@ -3,19 +3,8 @@ import type {
   AgentSummary,
   ApprovalRequest,
   SystemHealth,
-  TaskSummary,
-  WorkspaceOverview
+  TaskSummary
 } from "../types/domain";
-
-export const workspace: WorkspaceOverview = {
-  name: "AX Project",
-  operator: "Local operator",
-  policyMode: "guarded",
-  emergencyPause: false,
-  activeMissions: 4,
-  pendingApprovals: 3,
-  degradedAgents: 1
-};
 
 export const systemHealth: SystemHealth = {
   status: "healthy",

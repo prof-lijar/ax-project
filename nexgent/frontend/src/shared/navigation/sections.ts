@@ -1,7 +1,7 @@
 import { useUiStore, type AppSection } from "../state/useUiStore";
 
 export const sectionPaths: Record<AppSection, string> = {
-  "mission-control": "/workspace",
+  chat: "/chat",
   nextcloud: "/nextcloud",
   tasks: "/tasks",
   approvals: "/approvals",
@@ -32,7 +32,7 @@ export function syncSectionFromLocation() {
     return;
   }
 
-  const fallback: AppSection = "mission-control";
+  const fallback: AppSection = "chat";
   window.history.replaceState(
     { section: fallback },
     "",
@@ -43,7 +43,7 @@ export function syncSectionFromLocation() {
 
 function sectionFromPath(pathname: string): AppSection | null {
   if (pathname === "/") {
-    return "mission-control";
+    return "chat";
   }
 
   const entry = Object.entries(sectionPaths).find(

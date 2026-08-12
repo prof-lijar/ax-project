@@ -1,23 +1,36 @@
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 
 import pytest
-from ax_integrations import ChatMessage
+from ax_integrations import ChatMessage, ModelRequestError
 
 from workflows.chat import graph
 
 
 class FakeChatModel:
-    async def complete(
+    async def stream(
         self,
         messages: Sequence[ChatMessage],
         *,
         max_tokens: int = 500,
         temperature: float = 0.7,
-    ) -> str:
+    ) -> AsyncIterator[str]:
         assert messages == [{"role": "user", "content": "hello"}]
-        assert max_tokens == 500
+        assert max_tokens == 2_048
         assert temperature == 0.7
-        return "model response"
+        yield "model"
+        yield " response"
+
+
+class EmptyChatModel:
+    async def stream(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        max_tokens: int = 500,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[str]:
+        if False:
+            yield ""
 
 
 @pytest.mark.asyncio
@@ -31,6 +44,46 @@ async def test_chat_graph_calls_configured_model(monkeypatch: pytest.MonkeyPatch
         "message": " hello ",
         "response": "model response",
     }
+
+
+@pytest.mark.asyncio
+async def test_chat_graph_emits_safe_response_deltas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "workflows.chat.nodes.get_default_chat_model",
+        lambda: FakeChatModel(),
+    )
+
+    events = [
+        event
+        async for event in graph.astream(
+            {"message": " hello "},
+            stream_mode=["custom", "values"],
+        )
+    ]
+
+    assert [data for mode, data in events if mode == "custom"] == [
+        {"response_delta": "model"},
+        {"response_delta": " response"},
+    ]
+    assert [data for mode, data in events if mode == "values"][-1] == {
+        "message": " hello ",
+        "response": "model response",
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_graph_rejects_empty_model_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "workflows.chat.nodes.get_default_chat_model",
+        lambda: EmptyChatModel(),
+    )
+
+    with pytest.raises(ModelRequestError, match="empty response"):
+        await graph.ainvoke({"message": "hello"})
 
 
 @pytest.mark.asyncio

@@ -3,10 +3,11 @@ import {
   Bot,
   CheckSquare,
   Cloud,
-  Gauge,
+  MessageSquare,
   Settings,
   ShieldCheck
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { sectionPaths } from "../shared/navigation/sections";
 import type { AppSection } from "../shared/state/useUiStore";
@@ -14,14 +15,14 @@ import type { AppSection } from "../shared/state/useUiStore";
 export const navItems: Array<{
   id: AppSection;
   label: string;
-  icon: typeof Gauge;
+  icon: LucideIcon;
   path: string;
 }> = [
   {
-    id: "mission-control",
-    label: "Workspace",
-    icon: Gauge,
-    path: sectionPaths["mission-control"]
+    id: "chat",
+    label: "Chat",
+    icon: MessageSquare,
+    path: sectionPaths.chat
   },
   {
     id: "nextcloud",

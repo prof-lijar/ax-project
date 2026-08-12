@@ -8,6 +8,22 @@ The first Linux desktop implementation has been added under `frontend/`. It prov
 
 The app is usable as a web preview and builds successfully as a Debian package.
 
+## Update: Agent Server Chat
+
+Date: 2026-08-10
+
+The Workspace/Mission Control section and its unused workspace command, models,
+and sample data were removed. Chat is now the default section at `/chat` and
+connects to the AX Agent Server through a reusable streaming client. The page
+checks `/ok`, sends one stateless message per `/runs/stream` request, safely
+parses chunked SSE responses, retains the visible transcript for the current
+frontend session, and supports cancellation and explicit failure feedback.
+
+Browser development and preview use a same-origin Vite proxy. Packaged Tauri
+builds connect directly to the configured LAN endpoint under a narrowly scoped
+CSP rule. See [Agent Server Chat](agent-server-chat.md) for configuration,
+validation, security constraints, and remaining live-server verification.
+
 ## Update: Simplified Sidebar Status
 
 Date: 2026-08-03
@@ -46,11 +62,8 @@ npm run build
 ## What Is Done
 
 - Created `frontend/` as a Tauri 2 + React + TypeScript + Vite project.
-- Added a simplified Mission Control first screen with:
-  - one primary decision area
-  - current work
-  - co-worker presence
-  - recent activity
+- Added an AX chatbot as the first screen with streamed responses, cancellation,
+  session-only transcript state, and Agent Server availability reporting.
 - Added secondary views for Tasks, Approvals, Team, Activity, and Settings.
 - Added a NextCloud Drive surface for read-first file browsing through the local backend.
 - Added a NextCloud document viewer for PDF, Markdown, text, images, DOCX, PPTX, and XLSX.
@@ -149,7 +162,7 @@ npm run tauri:build
 - Approval decisions are visible in the UI but do not mutate persistent state yet.
 - AppImage bundling is not enabled by default because it failed in this environment with a read-only filesystem error.
 - The Tauri icon is a generated placeholder and should be replaced with a proper product icon.
-- Event streaming is represented in the architecture but not implemented yet.
+- Agent chat streaming is implemented; general domain event streaming is not.
 
 ## Next Work
 

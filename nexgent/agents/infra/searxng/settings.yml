@@ -1,0 +1,36 @@
+use_default_settings:
+  engines:
+    keep_only:
+      - bing
+      - brave
+      - duckduckgo
+      - google
+
+general:
+  debug: false
+  instance_name: AX Private Search
+
+search:
+  safe_search: 1
+  default_lang: auto
+  max_page: 1
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: change-this-through-SEARXNG_SECRET
+  limiter: false
+  image_proxy: false
+  public_instance: false
+
+outgoing:
+  request_timeout: 5.0
+  max_request_timeout: 10.0
+  pool_connections: 50
+  pool_maxsize: 20
+  enable_http2: true
+
+plugins:
+  searx.plugins.tracker_url_remover.SXNGPlugin:
+    active: true

@@ -10,6 +10,11 @@ from .models import (
     TaskEnvelope,
     ToolRequest,
     ToolResult,
+    WebFetchInput,
+    WebFetchOutput,
+    WebSearchInput,
+    WebSearchOutput,
+    WebSearchResult,
 )
 
 __all__ = [
@@ -22,4 +27,9 @@ __all__ = [
     "TaskEnvelope",
     "ToolRequest",
     "ToolResult",
+    "WebFetchInput",
+    "WebFetchOutput",
+    "WebSearchInput",
+    "WebSearchOutput",
+    "WebSearchResult",
 ]

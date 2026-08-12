@@ -1,6 +1,62 @@
 name: nexgent
 
 services:
+  searxng:
+    image: searxng/searxng:2026.7.17-81c9c2386@sha256:252cfb5b348809167f5519970ca3457711e723afc76179a662b1c720cbbc1dd3
+    user: "977:977"
+    environment:
+      SEARXNG_SECRET: "${SEARXNG_SECRET:-development-only-change-me}"
+    volumes:
+      - ./agents/infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    tmpfs:
+      - /var/cache/searxng:rw,noexec,nosuid,size=64m,uid=977,gid=977,mode=0770
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/ >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  agent-server:
+    build:
+      context: ./agents
+      dockerfile: apps/agent_server/Dockerfile.dev
+    image: ax-agent-server-dev:local
+    env_file:
+      - ./agents/.env
+    environment:
+      LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
+      SEARXNG_BASE_URL: http://searxng:8080
+    init: true
+    ports:
+      - "192.168.0.18:2024:2024"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:2024/ok', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    stop_grace_period: 10s
+    depends_on:
+      searxng:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
@@ -53,12 +109,15 @@ services:
     environment:
       CHOKIDAR_USEPOLLING: "${CHOKIDAR_USEPOLLING:-true}"
       VITE_BACKEND_PORT: "${BACKEND_PORT:-8000}"
+      VITE_AGENT_SERVER_BASE_URL: http://agent-server:2024
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     depends_on:
+      agent-server:
+        condition: service_healthy
       backend:
         condition: service_healthy
     healthcheck:

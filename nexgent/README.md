@@ -1,9 +1,8 @@
 # Nexgent
 
-Nexgent currently consists of a FastAPI backend and a Vite web frontend. The
-Docker development stack starts both services with live reload. Agent services
-can be added to the Compose project later without changing the existing service
-boundaries.
+Nexgent currently consists of a FastAPI backend, a Vite web frontend, and a
+license-free LangGraph development Agent Server. The Docker development stack
+starts all three services together.
 
 ## Run with Docker
 
@@ -18,7 +17,13 @@ Create the ignored local environment file and fill in your Nextcloud values:
 cp backend/example.env backend/dev.env
 ```
 
-Start both services:
+Create the ignored Agent Server environment file and set `OPENAI_API_KEY`:
+
+```bash
+cp agents/.env.example agents/.env
+```
+
+Start the full development stack from this `nexgent/` directory:
 
 ```bash
 docker compose up --build
@@ -43,6 +48,8 @@ Local endpoints on the Docker host are:
 - Frontend: <http://localhost:5173>
 - Backend API docs: <http://localhost:8000/docs>
 - Backend health check: <http://localhost:8000/health>
+- Agent Server: <http://192.168.0.18:2024>
+- Agent Server API docs: <http://192.168.0.18:2024/docs>
 
 Source directories are bind-mounted, so Python and frontend source changes
 reload automatically. Rebuild the backend after changing its dependency lock
@@ -73,7 +80,8 @@ integration.
 
 ### Configuration
 
-The default host ports are `5173` and `8000`. They can be changed without
+The default host ports are `5173`, `8000`, and `2024`. The frontend and backend
+ports can be changed without
 editing Compose:
 
 ```bash

@@ -1,4 +1,3 @@
-export type PolicyMode = "guarded" | "strict";
 export type HealthStatus = "healthy" | "degraded";
 export type ServiceStatus = "ready" | "mocked" | "degraded";
 export type TaskStatus = "running" | "blocked" | "waiting" | "complete";
@@ -14,16 +13,6 @@ export type ActivityKind =
   | "approvalRequested"
   | "approvalDecided"
   | "systemWarning";
-
-export interface WorkspaceOverview {
-  name: string;
-  operator: string;
-  policyMode: PolicyMode;
-  emergencyPause: boolean;
-  activeMissions: number;
-  pendingApprovals: number;
-  degradedAgents: number;
-}
 
 export interface SystemHealth {
   status: HealthStatus;

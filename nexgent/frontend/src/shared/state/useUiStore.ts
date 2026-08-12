@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type AppSection =
-  | "mission-control"
+  | "chat"
   | "nextcloud"
   | "tasks"
   | "approvals"
@@ -17,7 +17,7 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  activeSection: "mission-control",
+  activeSection: "chat",
   search: "",
   setActiveSection: (activeSection) => set({ activeSection }),
   setSearch: (search) => set({ search })

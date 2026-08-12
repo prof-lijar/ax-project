@@ -1,0 +1,46 @@
+services:
+  searxng:
+    image: searxng/searxng:2026.7.17-81c9c2386@sha256:252cfb5b348809167f5519970ca3457711e723afc76179a662b1c720cbbc1dd3
+    user: "977:977"
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-development-only-change-me}
+    volumes:
+      - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    tmpfs:
+      - /var/cache/searxng:rw,noexec,nosuid,size=64m,uid=977,gid=977,mode=0770
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  agent-server:
+    build:
+      context: .
+      dockerfile: apps/agent_server/Dockerfile.dev
+    image: ax-agent-server-dev:local
+    environment:
+      URL: ${URL:-http://192.168.0.17:8000/v1}
+      MODEL: ${MODEL:-gemma-4-31b}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SEARXNG_BASE_URL: http://searxng:8080
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+    init: true
+    ports:
+      - "192.168.0.18:2024:2024"
+    depends_on:
+      searxng:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s

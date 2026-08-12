@@ -5,8 +5,7 @@ import {
   agents,
   approvals,
   systemHealth,
-  tasks,
-  workspace
+  tasks
 } from "./mockData";
 import {
   downloadBrowserNextcloudFile,
@@ -21,8 +20,7 @@ import type {
   ApprovalRequest,
   CommandError,
   SystemHealth,
-  TaskSummary,
-  WorkspaceOverview
+  TaskSummary
 } from "../types/domain";
 import type {
   NextcloudDownloadResponse,
@@ -94,8 +92,6 @@ function normalizeCommandError(error: unknown): CommandError {
 }
 
 export const desktopApi = {
-  getWorkspace: () =>
-    callCommand<WorkspaceOverview>("workspace_get", () => workspace),
   getSystemHealth: () =>
     callCommand<SystemHealth>("system_health", () => systemHealth),
   listTasks: () => callCommand<TaskSummary[]>("tasks_list", () => tasks),

@@ -121,12 +121,20 @@
   color: var(--color-red);
 }
 
-.main {
+.main,
+.mainChat {
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: var(--color-canvas);
+}
+
+.main {
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+.mainChat {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .commandStrip {
@@ -222,6 +230,12 @@
   min-height: 0;
   overflow: auto;
   padding: 40px 48px 56px;
+}
+
+.chatContent {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 1120px) {

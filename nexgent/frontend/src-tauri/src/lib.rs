@@ -6,7 +6,6 @@ mod error;
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            commands::workspace::workspace_get,
             commands::system::system_health,
             commands::tasks::tasks_list,
             commands::tasks::tasks_get,

@@ -3,7 +3,7 @@ import { useLayoutEffect } from "react";
 import { ActivityPage } from "../features/activity/ActivityPage";
 import { AgentsPage } from "../features/agents/AgentsPage";
 import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
-import { MissionControl } from "../features/mission-control/MissionControl";
+import { ChatPage } from "../features/chat/ChatPage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { TasksPage } from "../features/tasks/TasksPage";
@@ -22,7 +22,7 @@ export function App() {
 
   return (
     <AppShell>
-      {activeSection === "mission-control" && <MissionControl />}
+      {activeSection === "chat" && <ChatPage />}
       {activeSection === "nextcloud" && <NextcloudPage />}
       {activeSection === "tasks" && <TasksPage />}
       {activeSection === "approvals" && <ApprovalsPage />}

@@ -1,20 +1,8 @@
 use super::models::{
     ActivityEvent, ActivityKind, ActivitySeverity, AgentAvailability, AgentHealth, AgentSummary,
-    ApprovalRequest, HealthStatus, PolicyMode, Priority, RiskLevel, ServiceStatus, SystemHealth,
-    TaskStatus, TaskSummary, WorkspaceOverview,
+    ApprovalRequest, HealthStatus, Priority, RiskLevel, ServiceStatus, SystemHealth, TaskStatus,
+    TaskSummary,
 };
-
-pub fn workspace() -> WorkspaceOverview {
-    WorkspaceOverview {
-        name: "AX Project".into(),
-        operator: "Local operator".into(),
-        policy_mode: PolicyMode::Guarded,
-        emergency_pause: false,
-        active_missions: 4,
-        pending_approvals: 3,
-        degraded_agents: 1,
-    }
-}
 
 pub fn system_health() -> SystemHealth {
     SystemHealth {
