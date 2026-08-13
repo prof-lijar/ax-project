@@ -119,6 +119,22 @@ all three Compose configurations passed. The opt-in live quality evaluation was
 skipped as designed; live container startup still requires operator Docker
 access on the host.
 
+Weekly reporter update on 2026-08-12: `ansimk_weekly_reporter` is the first
+business-specific graph. A manually triggered coordinator loads a stable
+three-user mock work-activity window and uses bounded LangGraph fan-out into an
+isolated per-user calculation, Korean narrative, and Markdown composition
+subgraph. Python owns every numeric calculation; the OpenAI-compatible model
+may produce only validated, digit-free prose. Model configuration, request,
+empty-output, and narrative-validation failures yield disclosed deterministic
+fallback reports without failing the batch. Strict weekly-report contracts and
+deterministic evaluator gates cover ordering, Korean structure,
+personalization, numeric grounding, and fallback disclosure. The workflow is
+registered in `langgraph.json`; scheduling, real database access, report
+persistence, authentication, and delivery remain deferred integration work.
+Ruff, all 70 deterministic tests, and LangGraph validation with three graph
+entries passed; the opt-in live web-quality evaluation remained skipped as
+designed.
+
 ## 1. Design goals and constraints
 
 The system must be clean, maintainable, fast, modular, secure, and suitable
@@ -248,6 +264,10 @@ Required contracts are:
 - `ArtifactRef`: URI, type, version, and optional checksum;
 - `EvaluationResult`: criterion, status, severity, score, evidence, and
   recommendation.
+- `WeeklyReportRequest`, `WeeklyMetricSnapshot`, `WeeklyMetricDelta`,
+  `UserWeeklyMetrics`, `UserWeeklyReport`, and `WeeklyReportBatchResult`: the
+  versioned input, deterministic calculations, personal Markdown output, and
+  ordered batch result for `ansimk_weekly_reporter`.
 
 LangGraph state should contain only the minimum working state needed by the
 graph. Durable state must be associated with a stable `thread_id`; checkpoint
@@ -272,6 +292,11 @@ history and task writes are relied on for resumption and failure recovery.
   a production checkpointer rather than in-memory storage. [Human-in-the-loop](https://docs.langchain.com/oss/python/langchain/human-in-the-loop)
 - Do not instantiate production checkpointers or stores inside graph modules;
   Agent Server injects those resources at deployment time. [Agent Server persistence](https://docs.langchain.com/langsmith/agent-server)
+- `ansimk_weekly_reporter` uses a coordinator plus isolated per-user subgraph.
+  `Send` fans out only after repository validation, and branches return only
+  finalized reports and warnings through reducers. Default callers bound
+  execution to four concurrent tasks, while the graph rejects more than one
+  hundred users per batch.
 
 ## 6. Gateway API
 
@@ -408,9 +433,11 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 
 ## 12. Known limitations and decisions deferred
 
-- The current scaffold has no business-specific agent; its model-backed chat
-  workflow is intentionally a minimal one-turn path and does not yet compose
-  the reusable web research tools.
+- The weekly reporter is the first business-specific workflow, but uses mock
+  work-activity records and only returns/display reports. Its database,
+  scheduler, persistence, authentication, and delivery adapters are not yet
+  implemented. The model-backed chat workflow remains a minimal one-turn path
+  and does not yet compose the reusable web research tools.
 - No-key SearXNG engines may be throttled, challenged by CAPTCHAs, or change
   without notice. Their live quality is monitored separately from deterministic
   CI and is not equivalent to a paid search-provider availability contract.

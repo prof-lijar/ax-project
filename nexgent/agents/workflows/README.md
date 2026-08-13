@@ -23,6 +23,7 @@ depend on shared packages, but shared packages must never import a workflow.
 
 The `orchestrator` is reserved for cross-workflow coordination that cannot be
 expressed as deterministic application routing. Planned workflows are
-`risk_monitoring`, `weekly_report`,
-`call_recommendation`, and `device_management`. They are intentionally empty
-until their business contracts and acceptance criteria are defined.
+`risk_monitoring`, `call_recommendation`, and `device_management` remain planned.
+`weekly_report` is implemented as the manually triggered
+`ansimk_weekly_reporter` batch graph with deterministic calculations, bounded
+per-user subgraphs, Korean model-written narrative, and template fallback.

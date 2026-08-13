@@ -2,6 +2,21 @@
 
 Date: 2026-08-03
 
+## Update: Canonical Agents Route
+
+Date: 2026-08-13
+
+The former Co-workers navigation item and `/co-workers` path were replaced by
+Agents at `/agents`. Direct requests to `/co-workers`, with or without a
+trailing slash, are normalized to `/agents` so existing links remain valid.
+The compatibility path selects the same Agents section and is replaced in
+browser history rather than adding an extra navigation entry.
+
+Route resolution tests cover the canonical path, compatibility redirect,
+trailing-slash normalization, and unknown-path behavior. See
+[Agents Management Interface](agents-management-interface.md) for the feature
+design, data boundary, validation, and remaining live integration work.
+
 ## Implemented
 
 Every left-sidebar section now has a stable browser route:

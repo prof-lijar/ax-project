@@ -69,6 +69,13 @@ one message, invokes the shared OpenAI-compatible adapter asynchronously, and
 returns the generated response. It is intentionally separate from `smoke` so
 model availability does not affect deterministic runtime checks.
 
+The `workflows/weekly_report` graph is the first business-specific workflow.
+It fans out a mock two-week activity window per user, calculates all metrics in
+Python, limits the model to digit-free Korean narrative, composes Markdown, and
+merges reports deterministically. Model or narrative-validation failures use a
+disclosed template fallback instead of failing the batch. Real data access,
+scheduling, persistence, and delivery remain outside this v1 graph.
+
 Each workflow is a vertical module that owns its `graph.py`, minimal
 `state.py`, nodes, optional local agents and prompts, and workflow policy. The
 smoke workflow demonstrates the minimum `graph`/`state`/`nodes` separation.
@@ -178,4 +185,7 @@ owns the behavior.
 - Durable production persistence and business-specific tools are not
   configured; reusable public-web research is the first real read-only tool
   capability.
-- Evaluation datasets and automated quality gates are not yet present.
+- Weekly-report deterministic evaluators now gate batch completeness, Korean
+  Markdown structure, personalization, numeric grounding, and fallback
+  disclosure. Broader production datasets and online quality gates remain
+  future work.

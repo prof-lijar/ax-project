@@ -6,6 +6,8 @@ from ax_contracts import (
     WebFetchInput,
     WebSearchInput,
     WebSearchResult,
+    WeeklyMetricSnapshot,
+    WeeklyReportRequest,
 )
 from pydantic import ValidationError
 
@@ -26,8 +28,12 @@ def test_tool_request_requires_idempotency_key() -> None:
         ToolRequest(tool_name="lookup", arguments={})  # type: ignore[call-arg]
 
 
-def test_web_search_contract_normalizes_domains_and_rejects_conflicting_filters() -> None:
-    input = WebSearchInput(query="current LangGraph release", allowed_domains=["Docs.LangChain.com."])
+def test_web_search_contract_normalizes_domains_and_rejects_conflicting_filters() -> (
+    None
+):
+    input = WebSearchInput(
+        query="current LangGraph release", allowed_domains=["Docs.LangChain.com."]
+    )
     assert input.allowed_domains == ["docs.langchain.com"]
 
     with pytest.raises(ValidationError, match="mutually exclusive"):
@@ -51,4 +57,41 @@ def test_web_contracts_reject_unknown_fields_and_credential_urls() -> None:
             title="mismatched source",
             url="https://example.com/page",
             domain="attacker.example",
+        )
+
+
+def test_weekly_report_request_validates_period_and_timezone() -> None:
+    request = WeeklyReportRequest(week_start="2026-08-03")
+    assert request.week_end.isoformat() == "2026-08-10"
+    assert request.timezone == "Asia/Seoul"
+
+    with pytest.raises(ValidationError, match="Monday"):
+        WeeklyReportRequest(week_start="2026-08-04")
+    with pytest.raises(ValidationError, match="IANA"):
+        WeeklyReportRequest(week_start="2026-08-03", timezone="Mars/Olympus")
+    with pytest.raises(ValidationError):
+        WeeklyReportRequest(week_start="2026-08-03", unknown=True)  # type: ignore[call-arg]
+
+
+def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:
+    with pytest.raises(ValidationError, match="must match"):
+        WeeklyMetricSnapshot(
+            assigned_tasks=10,
+            completed_tasks=8,
+            completion_rate_percent=75,
+            focus_minutes=300,
+            active_days=4,
+            blockers_opened=1,
+            blockers_resolved=1,
+        )
+
+    with pytest.raises(ValidationError, match="must not exceed"):
+        WeeklyMetricSnapshot(
+            assigned_tasks=1,
+            completed_tasks=2,
+            completion_rate_percent=100,
+            focus_minutes=0,
+            active_days=1,
+            blockers_opened=0,
+            blockers_resolved=0,
         )

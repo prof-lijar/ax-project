@@ -37,7 +37,7 @@ export const navItems: Array<{
     icon: ShieldCheck,
     path: sectionPaths.approvals
   },
-  { id: "agents", label: "Co-workers", icon: Bot, path: sectionPaths.agents },
+  { id: "agents", label: "Agents", icon: Bot, path: sectionPaths.agents },
   {
     id: "activity",
     label: "Activity",

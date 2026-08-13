@@ -22,6 +22,7 @@ This documentation set defines the product architecture before implementation be
 - [Dashboard Content Scrolling](08-implementation/dashboard-content-scrolling.md): app-shell sizing fix that keeps left-navigation section content scrollable within the desktop window.
 - [Frontend Section Routing](08-implementation/frontend-section-routing.md): stable URL paths, direct-load behavior, and browser-history synchronization for sidebar sections.
 - [Agent Server Chat](08-implementation/agent-server-chat.md): Workspace replacement, streamed AX chatbot client, session transcript, networking, and validation.
+- [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
 
 ## Stage-One Definition
 

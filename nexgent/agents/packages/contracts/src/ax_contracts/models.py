@@ -1,11 +1,12 @@
 """Pydantic contracts crossing package, process, or persistence boundaries."""
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from ipaddress import ip_address
 from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -138,7 +139,9 @@ class WebSearchInput(ContractModel):
     @model_validator(mode="after")
     def validate_domain_filters(self) -> "WebSearchInput":
         if self.allowed_domains and self.blocked_domains:
-            raise ValueError("allowed_domains and blocked_domains are mutually exclusive")
+            raise ValueError(
+                "allowed_domains and blocked_domains are mutually exclusive"
+            )
         return self
 
 
@@ -204,6 +207,129 @@ class WebFetchOutput(ContractModel):
     @classmethod
     def validate_final_url(cls, value: str) -> str:
         return _validate_http_url(value)
+
+
+class WeeklyReportRequest(ContractModel):
+    """Boundary input for one manually triggered weekly-report batch."""
+
+    week_start: date
+    timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
+
+    @field_validator("week_start")
+    @classmethod
+    def validate_monday(cls, value: date) -> date:
+        if value.weekday() != 0:
+            raise ValueError("week_start must be a Monday")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return value
+
+    @property
+    def week_end(self) -> date:
+        """Exclusive end date for the requested reporting week."""
+
+        return self.week_start + timedelta(days=7)
+
+
+class WeeklyMetricSnapshot(ContractModel):
+    """Deterministically calculated values for one seven-day period."""
+
+    assigned_tasks: int = Field(ge=0)
+    completed_tasks: int = Field(ge=0)
+    completion_rate_percent: float = Field(ge=0, le=100)
+    focus_minutes: int = Field(ge=0)
+    active_days: int = Field(ge=0, le=7)
+    blockers_opened: int = Field(ge=0)
+    blockers_resolved: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_task_counts(self) -> "WeeklyMetricSnapshot":
+        if self.completed_tasks > self.assigned_tasks:
+            raise ValueError("completed_tasks must not exceed assigned_tasks")
+        expected_rate = (
+            round(self.completed_tasks / self.assigned_tasks * 100, 1)
+            if self.assigned_tasks
+            else 0.0
+        )
+        if self.completion_rate_percent != expected_rate:
+            raise ValueError("completion_rate_percent must match the task counts")
+        return self
+
+
+class WeeklyMetricDelta(ContractModel):
+    """Current week minus the immediately preceding week."""
+
+    assigned_tasks: int
+    completed_tasks: int
+    completion_rate_percentage_points: float
+    focus_minutes: int
+    active_days: int
+    blockers_opened: int
+    blockers_resolved: int
+
+
+class UserWeeklyMetrics(ContractModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=256)
+    week_start: date
+    week_end: date
+    current: WeeklyMetricSnapshot
+    previous: WeeklyMetricSnapshot
+    delta: WeeklyMetricDelta
+
+    @model_validator(mode="after")
+    def validate_period(self) -> "UserWeeklyMetrics":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        return self
+
+
+class UserWeeklyReport(ContractModel):
+    user_id: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=256)
+    metrics: UserWeeklyMetrics
+    markdown: str = Field(min_length=1, max_length=40_000)
+    generation_mode: Literal["llm", "template_fallback"]
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "UserWeeklyReport":
+        if (
+            self.user_id != self.metrics.user_id
+            or self.display_name != self.metrics.display_name
+        ):
+            raise ValueError("report identity must match metrics identity")
+        return self
+
+
+class WeeklyReportBatchResult(ContractModel):
+    status: Literal["completed"]
+    week_start: date
+    week_end: date
+    timezone: str = Field(min_length=1, max_length=128)
+    reports: list[UserWeeklyReport] = Field(min_length=1, max_length=100)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_batch(self) -> "WeeklyReportBatchResult":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        user_ids = [report.user_id for report in self.reports]
+        if len(user_ids) != len(set(user_ids)):
+            raise ValueError("reports must contain unique users")
+        if user_ids != sorted(user_ids):
+            raise ValueError("reports must be sorted by user_id")
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return self
 
 
 class Handoff(ContractModel):

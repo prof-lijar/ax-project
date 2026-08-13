@@ -5,7 +5,7 @@ export const sectionPaths: Record<AppSection, string> = {
   nextcloud: "/nextcloud",
   tasks: "/tasks",
   approvals: "/approvals",
-  agents: "/co-workers",
+  agents: "/agents",
   activity: "/activity",
   settings: "/settings"
 };
@@ -21,10 +21,10 @@ export function navigateToSection(section: AppSection) {
 export function syncSectionFromLocation() {
   const currentPath = window.location.pathname;
   const pathname = normalizePath(currentPath);
-  const section = sectionFromPath(pathname);
+  const location = resolveSectionLocation(pathname);
 
-  if (section) {
-    const path = sectionPaths[section];
+  if (location) {
+    const { path, section } = location;
     if (currentPath !== path) {
       window.history.replaceState({ section }, "", path);
     }
@@ -41,15 +41,24 @@ export function syncSectionFromLocation() {
   useUiStore.getState().setActiveSection(fallback);
 }
 
-function sectionFromPath(pathname: string): AppSection | null {
-  if (pathname === "/") {
-    return "chat";
+export function resolveSectionLocation(
+  pathname: string
+): { section: AppSection; path: string } | null {
+  const normalizedPathname = normalizePath(pathname);
+
+  if (normalizedPathname === "/") {
+    return { section: "chat", path: sectionPaths.chat };
+  }
+
+  if (normalizedPathname === "/co-workers") {
+    return { section: "agents", path: sectionPaths.agents };
   }
 
   const entry = Object.entries(sectionPaths).find(
-    ([, path]) => path === pathname
+    ([, path]) => path === normalizedPathname
   );
-  return (entry?.[0] as AppSection | undefined) ?? null;
+  const section = entry?.[0] as AppSection | undefined;
+  return section ? { section, path: sectionPaths[section] } : null;
 }
 
 function normalizePath(pathname: string) {

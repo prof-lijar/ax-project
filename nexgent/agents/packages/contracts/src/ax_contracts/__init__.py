@@ -10,11 +10,17 @@ from .models import (
     TaskEnvelope,
     ToolRequest,
     ToolResult,
+    UserWeeklyMetrics,
+    UserWeeklyReport,
     WebFetchInput,
     WebFetchOutput,
     WebSearchInput,
     WebSearchOutput,
     WebSearchResult,
+    WeeklyMetricDelta,
+    WeeklyMetricSnapshot,
+    WeeklyReportBatchResult,
+    WeeklyReportRequest,
 )
 
 __all__ = [
@@ -27,9 +33,15 @@ __all__ = [
     "TaskEnvelope",
     "ToolRequest",
     "ToolResult",
+    "UserWeeklyMetrics",
+    "UserWeeklyReport",
     "WebFetchInput",
     "WebFetchOutput",
     "WebSearchInput",
     "WebSearchOutput",
     "WebSearchResult",
+    "WeeklyMetricDelta",
+    "WeeklyMetricSnapshot",
+    "WeeklyReportBatchResult",
+    "WeeklyReportRequest",
 ]

@@ -14,3 +14,7 @@ AX_RUN_LIVE_WEB_EVALS=1 SEARXNG_BASE_URL=http://searxng:8080 \
 It covers current, technical, multilingual, and domain-filtered discovery and
 reports result diversity, duplicates, latency, and fetch success. It is skipped
 in deterministic CI because no-key upstream engines can throttle or change.
+
+`test_weekly_report_quality.py` is deterministic and always runs. It checks the
+first business workflow's metric grounding, Korean report structure,
+personalization, fallback disclosure, and release-gate failure behavior.

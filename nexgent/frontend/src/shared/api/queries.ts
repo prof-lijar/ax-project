@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { desktopApi } from "./client";
 import { agentServerClient } from "./agentServerClient";
+import { agentCatalogClient } from "./agentCatalogClient";
 
 export const queryKeys = {
   health: ["system-health"] as const,
@@ -9,6 +10,7 @@ export const queryKeys = {
   tasks: ["tasks"] as const,
   approvals: ["approvals"] as const,
   agents: ["agents"] as const,
+  agentCatalog: ["agent-catalog"] as const,
   activity: ["activity"] as const,
   nextcloudStatus: ["nextcloud-status"] as const,
   nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
@@ -51,6 +53,13 @@ export function useAgents() {
   return useQuery({
     queryKey: queryKeys.agents,
     queryFn: desktopApi.listAgents
+  });
+}
+
+export function useAgentCatalog() {
+  return useQuery({
+    queryKey: queryKeys.agentCatalog,
+    queryFn: agentCatalogClient.listAgents
   });
 }
 
