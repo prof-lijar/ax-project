@@ -2,6 +2,28 @@
 
 Date: 2026-08-03
 
+## Update: Agent Detail Routes
+
+Date: 2026-08-14
+
+The existing History API router now recognizes one dynamic route shape,
+`/agents/:id`, in addition to the flat section paths. Agent detail URLs remain
+part of the `agents` section so the sidebar state does not change when moving
+between the catalog and a detail page.
+
+Zustand now tracks the active normalized path alongside the active section.
+Initial URL synchronization, client-side navigation, and `popstate` updates set
+both values atomically. `App.tsx` uses the active path to choose the catalog at
+`/agents` or the detail view at `/agents/:id`. Detail IDs are URL-decoded for
+catalog lookup, and paths with additional segments remain unresolved.
+
+Focused route tests cover the canonical list path, detail paths, trailing-slash
+normalization, decoded IDs, unknown nested paths, the existing legacy
+`/co-workers` redirect, and the Weekly Reporter test route. See
+[Agents Management Interface](agents-management-interface.md) for the detail
+UX, sequential mock ID mapping, frontend-only execution boundary, and complete
+validation record.
+
 ## Update: Canonical Agents Route
 
 Date: 2026-08-13

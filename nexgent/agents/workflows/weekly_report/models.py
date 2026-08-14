@@ -1,7 +1,8 @@
 """Workflow-local records that never cross the public graph boundary."""
 
 import re
-from datetime import date
+from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -10,37 +11,49 @@ class WorkflowModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-class DailyActivity(WorkflowModel):
-    activity_date: date
-    assigned_tasks: int = Field(ge=0)
-    completed_tasks: int = Field(ge=0)
-    focus_minutes: int = Field(ge=0)
-    blockers_opened: int = Field(ge=0)
-    blockers_resolved: int = Field(ge=0)
-
-    @property
-    def is_active(self) -> bool:
-        return any(
-            (
-                self.assigned_tasks,
-                self.completed_tasks,
-                self.focus_minutes,
-                self.blockers_opened,
-                self.blockers_resolved,
-            )
-        )
+class WardDangerDay(WorkflowModel):
+    ward_id: int = Field(ge=1)
+    danger_date: date
+    first_detected_at: datetime
 
 
-class UserActivityWindow(WorkflowModel):
-    user_id: str = Field(min_length=1, max_length=128)
+class WardRiskWindow(WorkflowModel):
+    ward_id: int = Field(ge=1)
     display_name: str = Field(min_length=1, max_length=256)
-    records: list[DailyActivity] = Field(max_length=14)
+    records: list[WardDangerDay] = Field(min_length=1, max_length=14)
 
     @model_validator(mode="after")
-    def validate_unique_dates(self) -> "UserActivityWindow":
-        dates = [record.activity_date for record in self.records]
+    def validate_records(self) -> "WardRiskWindow":
+        dates = [record.danger_date for record in self.records]
         if len(dates) != len(set(dates)):
-            raise ValueError("activity records must have unique dates per user")
+            raise ValueError("danger records must have unique dates per ward")
+        if any(record.ward_id != self.ward_id for record in self.records):
+            raise ValueError("danger records must match their ward window")
+        return self
+
+
+class WardRiskSelection(WorkflowModel):
+    windows: list[WardRiskWindow] = Field(min_length=1, max_length=25)
+    selection_truncated: bool
+
+
+class McpRowsResult(WorkflowModel):
+    """Bounded page returned by the MCP structured query tool."""
+
+    schema_name: str = Field(min_length=1, max_length=128)
+    table_name: str = Field(min_length=1, max_length=128)
+    columns: list[str] = Field(min_length=1, max_length=32)
+    rows: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    row_count: int = Field(ge=0, le=100)
+    truncated: bool
+    offset: int = Field(ge=0)
+    duration_ms: float = Field(ge=0)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_page(self) -> "McpRowsResult":
+        if self.row_count != len(self.rows):
+            raise ValueError("MCP row_count must match returned rows")
         return self
 
 

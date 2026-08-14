@@ -1,73 +1,58 @@
-"""Deterministic Korean fallback and Markdown rendering."""
+"""Deterministic Korean fallback and ward-risk Markdown rendering."""
 
-from ax_contracts import UserWeeklyMetrics, UserWeeklyReport
+from ax_contracts import WardWeeklyMetrics, WardWeeklyReport
 
 from .models import KoreanNarrative
 
 
-def build_fallback_narrative(metrics: UserWeeklyMetrics) -> KoreanNarrative:
-    completion_delta = metrics.delta.completion_rate_percentage_points
-    if metrics.current.assigned_tasks == 0:
-        summary = "이번 주에는 기록된 배정 업무가 없어 업무 흐름을 판단하기 어렵습니다."
-    elif completion_delta > 0:
-        summary = "지난주보다 업무 완료 흐름이 개선되어 안정적인 진전이 확인됩니다."
-    elif completion_delta < 0:
-        summary = "업무 완료 흐름이 지난주보다 낮아져 우선순위와 방해 요인을 점검할 필요가 있습니다."
+def build_fallback_narrative(metrics: WardWeeklyMetrics) -> KoreanNarrative:
+    current = metrics.current.danger_days
+    delta = metrics.delta.danger_days
+    if current == 0:
+        summary = "이번 주에는 위험 감지일이 확인되지 않았습니다. 현재 관찰 흐름을 유지할 수 있습니다."
+    elif delta > 0:
+        summary = "지난주보다 위험 감지일이 늘어 최근 감지 내역을 우선 확인할 필요가 있습니다."
+    elif delta < 0:
+        summary = "위험 감지일은 지난주보다 줄었지만 최근 감지 원인을 계속 확인할 필요가 있습니다."
     else:
-        summary = "업무 완료 흐름이 지난주와 비슷한 수준으로 유지되었습니다."
+        summary = "위험 감지일이 지난주와 같은 수준으로 이어져 반복 원인을 확인할 필요가 있습니다."
 
-    suggestions: list[str] = []
-    if metrics.current.blockers_opened > metrics.current.blockers_resolved:
-        suggestions.append(
-            "남아 있는 블로커의 담당자와 해소 조건을 먼저 명확히 하세요."
-        )
-    if metrics.delta.focus_minutes < 0:
-        suggestions.append("집중 업무 시간을 방해하는 일정과 알림을 정리해 보세요.")
-    if completion_delta < 0:
-        suggestions.append(
-            "진행 중인 업무의 우선순위를 다시 확인하고 범위를 조정하세요."
-        )
-    if completion_delta >= 0:
-        suggestions.append(
-            "현재의 업무 완료 흐름을 유지할 수 있는 습관을 기록해 보세요."
-        )
-    if len(suggestions) < 2:
-        suggestions.append(
-            "다음 주에 가장 중요한 업무와 예상 방해 요인을 미리 정리하세요."
-        )
-    return KoreanNarrative(summary=summary, suggestions=suggestions[:3])
+    suggestions = [
+        "최근 위험 감지 시점의 환경과 활동 기록을 함께 확인하세요.",
+        "필요한 후속 확인이 완료되었는지 담당 기록을 점검하세요.",
+    ]
+    if current == 0:
+        suggestions = [
+            "현재의 관찰 기준과 점검 주기를 유지하세요.",
+            "새로운 변화가 있는지 다음 관찰 기록과 비교하세요.",
+        ]
+    return KoreanNarrative(summary=summary, suggestions=suggestions)
 
 
 def render_report(
-    metrics: UserWeeklyMetrics,
+    metrics: WardWeeklyMetrics,
     narrative: KoreanNarrative,
     generation_mode: str,
-) -> UserWeeklyReport:
+) -> WardWeeklyReport:
     mode_label = (
         "AI 기반 서술"
         if generation_mode == "llm"
         else "규칙 기반 대체 문안 — AI 서술을 사용할 수 없어 자동 대체됨"
     )
-    current = metrics.current
-    previous = metrics.previous
-    delta = metrics.delta
-    suggestions = "\n".join(f"- {suggestion}" for suggestion in narrative.suggestions)
-    markdown = f"""# {metrics.display_name}님의 주간 업무 리포트
+    suggestions = "\n".join(
+        f"- {suggestion}" for suggestion in narrative.suggestions
+    )
+    markdown = f"""# {metrics.display_name} 주간 위험 리포트
 
 - 기간: {metrics.week_start.isoformat()} ~ {metrics.week_end.isoformat()} (종료일 제외)
 - 생성 방식: {mode_label}
+- 데이터 기준: 일별 위험 감지 기록
 
 ## 핵심 지표
 
 | 지표 | 이번 주 | 지난 주 | 변화 |
 | --- | ---: | ---: | ---: |
-| 배정 업무 | {current.assigned_tasks}건 | {previous.assigned_tasks}건 | {_signed(delta.assigned_tasks, "건")} |
-| 완료 업무 | {current.completed_tasks}건 | {previous.completed_tasks}건 | {_signed(delta.completed_tasks, "건")} |
-| 완료율 | {current.completion_rate_percent:.1f}% | {previous.completion_rate_percent:.1f}% | {_signed(delta.completion_rate_percentage_points, "%p", one_decimal=True)} |
-| 집중 시간 | {_duration(current.focus_minutes)} | {_duration(previous.focus_minutes)} | {_signed(delta.focus_minutes, "분")} |
-| 활동일 | {current.active_days}일 | {previous.active_days}일 | {_signed(delta.active_days, "일")} |
-| 새 블로커 | {current.blockers_opened}건 | {previous.blockers_opened}건 | {_signed(delta.blockers_opened, "건")} |
-| 해결 블로커 | {current.blockers_resolved}건 | {previous.blockers_resolved}건 | {_signed(delta.blockers_resolved, "건")} |
+| 위험 감지일 | {metrics.current.danger_days}일 | {metrics.previous.danger_days}일 | {_signed(metrics.delta.danger_days, "일")} |
 
 ## 이번 주 요약
 
@@ -77,8 +62,8 @@ def render_report(
 
 {suggestions}
 """
-    return UserWeeklyReport(
-        user_id=metrics.user_id,
+    return WardWeeklyReport(
+        ward_id=metrics.ward_id,
         display_name=metrics.display_name,
         metrics=metrics,
         markdown=markdown,
@@ -86,11 +71,5 @@ def render_report(
     )
 
 
-def _duration(minutes: int) -> str:
-    hours, remainder = divmod(minutes, 60)
-    return f"{hours}시간 {remainder}분"
-
-
-def _signed(value: float, unit: str, *, one_decimal: bool = False) -> str:
-    rendered = f"{value:+.1f}" if one_decimal else f"{int(value):+d}"
-    return f"{rendered}{unit}"
+def _signed(value: int, unit: str) -> str:
+    return f"{value:+d}{unit}"

@@ -23,6 +23,7 @@ This documentation set defines the product architecture before implementation be
 - [Frontend Section Routing](08-implementation/frontend-section-routing.md): stable URL paths, direct-load behavior, and browser-history synchronization for sidebar sections.
 - [Agent Server Chat](08-implementation/agent-server-chat.md): Workspace replacement, streamed AX chatbot client, session transcript, networking, and validation.
 - [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
+- [Weekly Reporter Test Route](08-implementation/weekly-reporter-test-route.md): live `/test-agent` runner, streamed progress, report inspection UX, Agent Server contract, and validation.
 
 ## Stage-One Definition
 

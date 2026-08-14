@@ -7,17 +7,25 @@ import {
 } from "./agentCatalogClient";
 
 describe("agentCatalogClient", () => {
-  it("returns one deterministic Weekly Reporter preview", async () => {
+  it("returns six deterministic previews with route IDs separate from graph IDs", async () => {
     const first = await agentCatalogClient.listAgents();
     const second = await agentCatalogClient.listAgents();
 
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
-    expect(first).toHaveLength(1);
+    expect(first).toHaveLength(6);
+    expect(first.map(({ id, graphId }) => ({ id, graphId }))).toEqual([
+      { id: "1", graphId: "ansimk_weekly_reporter" },
+      { id: "2", graphId: "preview_data_analyst" },
+      { id: "3", graphId: "preview_report_qa" },
+      { id: "4", graphId: "preview_document_assistant" },
+      { id: "5", graphId: "preview_database_assistant" },
+      { id: "6", graphId: "preview_risk_monitoring_agent" }
+    ]);
     expect(first[0]).toMatchObject({
-      id: "ansimk-weekly-reporter",
+      id: "1",
       graphId: "ansimk_weekly_reporter",
-      observationMode: "preview",
+      observationMode: "live",
       readiness: "ready"
     });
     expect(first[0].limitations).toContain(

@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentServerError,
   agentServerClient,
-  readFinalAssistantResponse
+  readFinalAssistantResponse,
+  readWeeklyReportResult
 } from "./agentServerClient";
 
 afterEach(() => {
@@ -123,6 +124,29 @@ describe("agentServerClient", () => {
     });
   });
 
+  it("runs the weekly reporter with the selected reporting period", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(textStream([weeklyReportStream()]))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      agentServerClient.runWeeklyReport({
+        week_start: "2026-08-03",
+        timezone: "Asia/Seoul"
+      })
+    ).resolves.toMatchObject({ status: "completed", reports: [{ ward_id: 12031 }] });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/agent-server/runs/stream");
+    expect(JSON.parse(init.body as string)).toEqual({
+      assistant_id: "ansimk_weekly_reporter",
+      input: { week_start: "2026-08-03", timezone: "Asia/Seoul" },
+      stream_mode: ["custom", "values"],
+      on_disconnect: "cancel"
+    });
+  });
+
   it("reports HTTP failures with their status", async () => {
     vi.stubGlobal(
       "fetch",
@@ -166,6 +190,80 @@ describe("agentServerClient", () => {
     });
   });
 });
+
+describe("readWeeklyReportResult", () => {
+  it("reports progress and returns the final batch result", async () => {
+    const progress: string[] = [];
+    const result = await readWeeklyReportResult(
+      textStream([weeklyReportStream()]),
+      (event) => progress.push(event.event)
+    );
+
+    expect(progress).toEqual([
+      "batch_started",
+      "risk_data_loaded",
+      "ward_report_ready",
+      "batch_completed"
+    ]);
+    expect(result.reports[0]).toMatchObject({
+      display_name: "Ward 12031",
+      generation_mode: "llm"
+    });
+  });
+
+  it("rejects a completed event with an invalid report contract", async () => {
+    await expect(
+      readWeeklyReportResult(
+        textStream([
+          'event: values\ndata: {"status":"completed","reports":[]}\n\n'
+        ])
+      )
+    ).rejects.toMatchObject({ code: "malformed_stream" });
+  });
+});
+
+function weeklyReportStream() {
+  const report = {
+    status: "completed",
+    week_start: "2026-08-03",
+    week_end: "2026-08-10",
+    timezone: "Asia/Seoul",
+    reports: [
+      {
+        ward_id: 12031,
+        display_name: "Ward 12031",
+        metrics: {
+          ward_id: 12031,
+          display_name: "Ward 12031",
+          week_start: "2026-08-03",
+          week_end: "2026-08-10",
+          current: metricSnapshot(),
+          previous: metricSnapshot(),
+          delta: {
+            danger_days: 0
+          }
+        },
+        markdown: "# Ward 12031\n\n## 이번 주 요약",
+        generation_mode: "llm"
+      }
+    ],
+    warnings: []
+  };
+
+  return [
+    'event: custom\ndata: {"event":"batch_started","week_start":"2026-08-03"}\n\n',
+    'event: custom\ndata: {"event":"risk_data_loaded","ward_count":1,"selection_truncated":true}\n\n',
+    'event: custom\ndata: {"event":"ward_report_ready","generation_mode":"llm"}\n\n',
+    'event: custom\ndata: {"event":"batch_completed","report_count":1,"fallback_count":0}\n\n',
+    `event: values\ndata: ${JSON.stringify(report)}\n\n`
+  ].join("");
+}
+
+function metricSnapshot() {
+  return {
+    danger_days: 3
+  };
+}
 
 function textStream(chunks: string[]) {
   const encoder = new TextEncoder();

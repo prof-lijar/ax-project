@@ -70,11 +70,14 @@ returns the generated response. It is intentionally separate from `smoke` so
 model availability does not affect deterministic runtime checks.
 
 The `workflows/weekly_report` graph is the first business-specific workflow.
-It fans out a mock two-week activity window per user, calculates all metrics in
-Python, limits the model to digit-free Korean narrative, composes Markdown, and
-merges reports deterministically. Model or narrative-validation failures use a
-disclosed template fallback instead of failing the batch. Real data access,
-scheduling, persistence, and delivery remain outside this v1 graph.
+Its current prototype loads a bounded two-week danger-day window from
+`ansimk.analysis_warddangerdaily` through the database MCP, selects three wards,
+fans out per ward, calculates current/previous danger-day counts in Python,
+limits the model to digit-free Korean narrative, and merges Markdown reports
+deterministically. The workflow allowlists only `query_data`, validates every
+untrusted MCP result, and discloses source truncation. Model or narrative
+validation failures use a disclosed template fallback. Scheduling,
+persistence, delivery, and final risk semantics remain outside this prototype.
 
 Each workflow is a vertical module that owns its `graph.py`, minimal
 `state.py`, nodes, optional local agents and prompts, and workflow policy. The
@@ -93,6 +96,10 @@ The current implementation provides `ToolPolicy`, `authorize()`, and reusable
 provider-neutral executors, authorize each read-risk call, attach deterministic
 idempotency, and return normalized artifacts. An agent must not freely invoke
 an unapproved tool or destructive operation.
+It also converts discovered MCP tool definitions into collision-safe,
+namespaced `StructuredTool` instances. Remote JSON Schemas are checked locally,
+unclassified tools fail closed, and every call passes through the same
+allowlist and read/write/destructive policy.
 
 ## `ax-integrations`
 
@@ -110,6 +117,11 @@ configuration. The real Agent Server client remains to be implemented.
 It also provides a pooled SearXNG search adapter and an SSRF-safe public-page
 fetch adapter with bounded extraction. These adapters satisfy the web tool
 ports without making tools or workflows depend on SearXNG.
+The MCP integration adds a strict JSON server registry, environment-only HTTP
+header sources, pooled Streamable HTTP clients, paginated tool discovery,
+normalized untrusted call results, and a safe inspection CLI. The first entry
+is the read-only `db_mcp_server`; workflows still choose and allowlist its tools
+explicitly.
 
 ## `apps/gateway`
 
@@ -160,8 +172,10 @@ It owns evaluation datasets, deterministic contract checks, trajectory and
 tool-use evaluation, LLM-as-judge evaluators, regression comparisons, CI/CD
 thresholds, and production feedback analysis.
 
-The current package only exposes the shared `EvaluationResult` contract.
-Datasets and evaluators will be added with the first business-specific agent.
+The current package exposes the shared `EvaluationResult` contract plus
+deterministic weekly-report evaluators for batch completeness, Korean Markdown
+structure, identity, metric grounding, and fallback disclosure. Broader
+datasets and online evaluation remain future work.
 
 ## Practical ownership rule
 

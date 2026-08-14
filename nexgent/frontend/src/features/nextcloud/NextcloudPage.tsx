@@ -104,50 +104,12 @@ export function NextcloudPage() {
 
   return (
     <section className={styles.page}>
-      <header className={styles.toolbar}>
-        {currentPath ? (
-          <nav className={styles.breadcrumbs} aria-label="NextCloud path">
-            <button
-              aria-label="Back one folder"
-              title="Back"
-              type="button"
-              onClick={() => openFolder(parentPath(currentPath))}
-            >
-              <ArrowLeft size={17} aria-hidden />
-            </button>
-            {pathParts(currentPath).map((part) => (
-              <span key={part.path}>
-                <ChevronRight size={14} />
-                <button type="button" onClick={() => openFolder(part.path)}>
-                  {part.name}
-                </button>
-              </span>
-            ))}
-          </nav>
-        ) : null}
-        <div className={styles.viewSwitch} role="group" aria-label="File layout">
-          <button
-            aria-label="List view"
-            aria-pressed={viewMode === "list"}
-            className={styles.viewSwitchButton}
-            onClick={() => setViewMode("list")}
-            title="List view"
-            type="button"
-          >
-            <List size={18} aria-hidden />
-          </button>
-          <button
-            aria-label="Card view"
-            aria-pressed={viewMode === "card"}
-            className={styles.viewSwitchButton}
-            onClick={() => setViewMode("card")}
-            title="Card view"
-            type="button"
-          >
-            <LayoutGrid size={18} aria-hidden />
-          </button>
-        </div>
-      </header>
+      <NextcloudToolbar
+        currentPath={currentPath}
+        onOpenFolder={openFolder}
+        onViewModeChange={setViewMode}
+        viewMode={viewMode}
+      />
 
       <div className={styles.workspace}>
         {viewerItem ? (
@@ -187,32 +149,125 @@ export function NextcloudPage() {
             ) : items.length === 0 ? (
               <EmptyState />
             ) : (
-              items.map((item) => (
-                <FileRow
-                  downloadError={
-                    downloadMutation.isError &&
-                    downloadMutation.variables === item.path
-                  }
-                  downloading={downloadingPath === item.path}
-                  downloadResult={
-                    downloadMutation.data?.path === item.path
-                      ? downloadMutation.data
-                      : undefined
-                  }
-                  item={item}
-                  key={item.path}
-                  onDownload={() => downloadMutation.mutate(item.path)}
-                  onOpenFolder={() => openFolder(item.path)}
-                  onOpen={() => openViewer(item)}
-                  viewMode={viewMode}
-                  viewable={isViewable(item)}
-                />
-              ))
+              <>
+                {viewMode === "list" ? <FileListHeader /> : null}
+                {items.map((item) => (
+                  <FileRow
+                    downloadError={
+                      downloadMutation.isError &&
+                      downloadMutation.variables === item.path
+                    }
+                    downloading={downloadingPath === item.path}
+                    downloadResult={
+                      downloadMutation.data?.path === item.path
+                        ? downloadMutation.data
+                        : undefined
+                    }
+                    item={item}
+                    key={item.path}
+                    onDownload={() => downloadMutation.mutate(item.path)}
+                    onOpenFolder={() => openFolder(item.path)}
+                    onOpen={() => openViewer(item)}
+                    viewMode={viewMode}
+                    viewable={isViewable(item)}
+                  />
+                ))}
+              </>
             )}
           </section>
         )}
       </div>
     </section>
+  );
+}
+
+export function NextcloudToolbar({
+  currentPath,
+  onOpenFolder,
+  onViewModeChange,
+  viewMode
+}: {
+  currentPath: string;
+  onOpenFolder: (path: string) => void;
+  onViewModeChange: (viewMode: "list" | "card") => void;
+  viewMode: "list" | "card";
+}) {
+  return (
+    <header className={styles.toolbar}>
+      <h1>NextCloud</h1>
+      <div className={styles.locationRow}>
+        <nav className={styles.breadcrumbs} aria-label="NextCloud path">
+          {currentPath ? (
+            <>
+              <button
+                className={styles.breadcrumbBack}
+                aria-label="Back one folder"
+                title="Back"
+                type="button"
+                onClick={() => onOpenFolder(parentPath(currentPath))}
+              >
+                <ArrowLeft size={16} aria-hidden />
+              </button>
+              <button type="button" onClick={() => onOpenFolder("")}>
+                All files
+              </button>
+              {pathParts(currentPath).map((part) => (
+                <span key={part.path}>
+                  <ChevronRight size={13} aria-hidden />
+                  <button
+                    type="button"
+                    onClick={() => onOpenFolder(part.path)}
+                  >
+                    {part.name}
+                  </button>
+                </span>
+              ))}
+            </>
+          ) : (
+            <span className={styles.currentLocation}>All files</span>
+          )}
+        </nav>
+
+        <div
+          className={styles.viewSwitch}
+          role="group"
+          aria-label="File layout"
+        >
+          <button
+            aria-label="List view"
+            aria-pressed={viewMode === "list"}
+            className={styles.viewSwitchButton}
+            onClick={() => onViewModeChange("list")}
+            title="List view"
+            type="button"
+          >
+            <List size={17} aria-hidden />
+          </button>
+          <button
+            aria-label="Card view"
+            aria-pressed={viewMode === "card"}
+            className={styles.viewSwitchButton}
+            onClick={() => onViewModeChange("card")}
+            title="Card view"
+            type="button"
+          >
+            <LayoutGrid size={17} aria-hidden />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function FileListHeader() {
+  return (
+    <div className={styles.fileListHeader} aria-hidden>
+      <span className={styles.listHeaderName}>Name</span>
+      <span className={styles.listHeaderType}>Type</span>
+      <span className={styles.listHeaderModified}>Modified</span>
+      <span className={styles.listHeaderSize}>Size</span>
+      <span />
+    </div>
   );
 }
 
@@ -279,20 +334,27 @@ function FileRow({
   if (item.isDirectory) {
     return (
       <button
-        className={`${styles.fileItem} ${
+        className={`${styles.fileItem} ${styles.folderRow} ${
           viewMode === "card" ? styles.folderCard : ""
         }`}
         onClick={onOpenFolder}
         type="button"
       >
         <span className={styles.fileIcon}>
-          <Folder size={viewMode === "card" ? 28 : 19} />
+          <Folder size={19} />
         </span>
         <span className={styles.fileCopy}>
           <strong>{item.name}</strong>
-          <small>{itemSubtitle(item)}</small>
+          <small className={styles.compactMetadata}>{itemSubtitle(item)}</small>
         </span>
-        <span className={styles.fileMeta}>Folder</span>
+        <span className={styles.fileMetadata}>
+          <span className={styles.fileType}>Folder</span>
+          <span className={styles.fileModified}>
+            {formatModified(item.lastModified)}
+          </span>
+          <span className={styles.fileSize}>—</span>
+        </span>
+        <span className={styles.rowActionSpacer} aria-hidden />
       </button>
     );
   }
@@ -300,11 +362,11 @@ function FileRow({
   const fileDetails = (
     <>
       <span className={styles.fileIcon}>
-        {iconForFile(item, viewMode === "card" ? 28 : 19)}
+        {iconForFile(item, 19)}
       </span>
       <span className={styles.fileCopy}>
         <strong>{item.name}</strong>
-        <small>
+        <small className={styles.compactMetadata}>
           {downloadError
             ? "Download failed"
             : downloadResult
@@ -312,7 +374,19 @@ function FileRow({
               : itemSubtitle(item)}
         </small>
       </span>
-      <span className={styles.fileMeta}>{formatSize(item.size)}</span>
+      <span className={styles.fileMetadata}>
+        <span className={styles.fileType}>
+          {downloadError
+            ? "Download failed"
+            : downloadResult
+              ? `Downloaded ${formatSize(downloadResult.bytesWritten)}`
+              : fileTypeLabel(item)}
+        </span>
+        <span className={styles.fileModified}>
+          {formatModified(item.lastModified)}
+        </span>
+        <span className={styles.fileSize}>{formatSize(item.size)}</span>
+      </span>
     </>
   );
 
@@ -890,7 +964,39 @@ function itemSubtitle(item: NextcloudFileItem) {
   return `${item.contentType ?? "File"} · ${formatModified(item.lastModified)}`;
 }
 
-function sortItems(items: NextcloudFileItem[]) {
+export function fileTypeLabel(item: NextcloudFileItem) {
+  if (item.isDirectory) {
+    return "Folder";
+  }
+
+  const extension = extensionFor(item);
+  const labels: Record<string, string> = {
+    csv: "CSV",
+    docx: "Word document",
+    gif: "GIF image",
+    jpeg: "JPEG image",
+    jpg: "JPEG image",
+    json: "JSON",
+    md: "Markdown",
+    markdown: "Markdown",
+    pdf: "PDF",
+    png: "PNG image",
+    pptx: "Presentation",
+    txt: "Text document",
+    webp: "WebP image",
+    xlsx: "Spreadsheet"
+  };
+
+  if (labels[extension]) {
+    return labels[extension];
+  }
+  if (extension) {
+    return extension.toLocaleUpperCase();
+  }
+  return item.contentType?.split(";", 1)[0] ?? "File";
+}
+
+export function sortItems(items: NextcloudFileItem[]) {
   return [...items].sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) {
       return a.isDirectory ? -1 : 1;
@@ -900,7 +1006,7 @@ function sortItems(items: NextcloudFileItem[]) {
   });
 }
 
-function pathParts(path: string) {
+export function pathParts(path: string) {
   if (!path) {
     return [];
   }
@@ -916,7 +1022,7 @@ function parentPath(path: string) {
   return path.split("/").slice(0, -1).join("/");
 }
 
-function formatSize(size: number | null) {
+export function formatSize(size: number | null) {
   if (size === null) {
     return "-";
   }

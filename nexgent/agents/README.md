@@ -30,6 +30,9 @@ for configuring and invoking the `chat` graph.
 See [the web research tool guide](docs/web-research-tools.md) for creating the
 reusable provider-neutral `web_search` and `web_fetch` tools. They are not wired
 into the current chat graph.
+See [the MCP integration guide](docs/mcp-integrations.md) for registering remote
+Streamable HTTP MCPs, inspecting tools, managing environment-backed headers,
+and exposing explicitly allowlisted MCP tools to workflows.
 
 ## Docker development server
 

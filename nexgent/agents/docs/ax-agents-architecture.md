@@ -24,6 +24,8 @@ The baseline described here is implemented as of 2026-08-05:
 - capability/risk-based tool authorization policy;
 - reusable authorized `web_search` and SSRF-safe `web_fetch` tools backed by a
   private no-provider-key SearXNG deployment;
+- declarative remote MCP registry, environment-backed Streamable HTTP client,
+  discovery CLI, and policy-enforced namespaced MCP tool adapters;
 - Agent Server adapter port and FastAPI gateway with health, submit, status,
   SSE events, and interrupt-resume route contracts;
 - self-hosted PostgreSQL/Redis/Agent Server Compose baseline;
@@ -134,6 +136,65 @@ persistence, authentication, and delivery remain deferred integration work.
 Ruff, all 70 deterministic tests, and LangGraph validation with three graph
 entries passed; the opt-in live web-quality evaluation remained skipped as
 designed.
+
+MCP integration update on 2026-08-13: `ax-integrations` now uses the official
+MCP Python SDK behind a strict JSON server registry. HTTP headers resolve only
+from environment variables, clients reuse bounded connection pools, failures
+are normalized without credentials, and `ax-mcp inspect` performs non-secret
+server/tool discovery. `ax-tools` converts discovered definitions into
+namespaced LangChain tools, validates remote JSON Schemas locally, rejects
+unclassified risks, and applies the existing per-call authorization policy.
+The first configured endpoint, `db_mcp_server`, negotiated protocol
+`2025-11-25` with server version `1.29.0`; its ten advertised read-only tools
+are classified as `read` but are not automatically granted to any workflow.
+Ruff, 84 tests with one opt-in live evaluation skipped, LangGraph validation
+with three graph entries, both in-scope Compose configurations, live discovery,
+and one allowlisted `server_info` call passed.
+
+Weekly reporter MCP update on 2026-08-13: the production
+`ansimk_weekly_reporter` repository now loads its fourteen-day activity window
+through `db_mcp_server`. Its workflow-local gateway exposes only the classified
+read tools `find_columns` and `query_data`; it never grants the remaining MCP
+surface. A strict canonical row contract covers user identity, activity date,
+task counts, focus minutes, and blocker counts. Operators may configure an
+explicit schema, table, and canonical-to-physical column mapping; otherwise,
+exact-name discovery must identify one common table or view. Retrieval selects
+only required columns, uses half-open date filters and deterministic sorting,
+pages by one hundred rows, caps the batch at fourteen hundred rows, validates
+all untrusted output, and fails closed without a production mock fallback. The
+stable mock repository is test-only. The MCP protocol and tool schemas were
+verified live, while end-to-end data readiness remains blocked by the remote
+server's rejected backing PostgreSQL credential. Ruff passed, 89 tests passed
+with one opt-in live evaluation skipped, all three LangGraph entries validated,
+and both Compose configurations rendered successfully.
+
+Ward-risk prototype update on 2026-08-14: live schema inspection showed that
+the Ansimk database does not contain the generic task/focus/blocker contract and
+that `analysis_wardperiodreport` is currently empty. The weekly graph now uses
+the populated `ansimk.analysis_warddangerdaily` source for a deliberately small
+end-to-end validation slice. Its repository grants only `query_data`, scans one
+bounded identity page for the requested fourteen-day window, selects three
+sorted wards by default, and re-queries those identities for complete daily
+histories. Python computes current and previous danger-day counts and their
+delta; an isolated branch generates validated Korean narrative and grounded
+Markdown for each ward. Output warns when source selection is truncated, all
+MCP data remains untrusted until validated, and no write occurs. A live cycle
+for 2026-08-03 completed through MCP, the OpenAI-compatible model, LangGraph,
+and terminal rendering with three AI-narrated reports. This is a validation
+prototype, not an approved production interpretation of risk data. Ruff
+passed, 86 tests passed with one opt-in live evaluation skipped, all three
+LangGraph entries validated, and both Compose configurations rendered.
+
+Frontend launch integration update on 2026-08-14: the Agents catalog marks
+`ansimk_weekly_reporter` as the single live-data entry. Both of its **Run in
+Chat** actions create a one-shot run intent in UI state and navigate to Chat.
+Chat consumes that intent once, chooses the most recent completed Monday in
+the local calendar with `Asia/Seoul`, and calls the existing Agent Server SSE
+boundary with cancellation enabled. Custom workflow events drive a live
+four-stage trace; the completed per-ward Markdown reports and any warnings are
+rendered in the transcript. Frontend parsing mirrors the ward danger-day
+contract and rejects malformed events or results. The browser stores no MCP
+endpoint or credential. Other preview agents still have no live runner.
 
 ## 1. Design goals and constraints
 
@@ -264,10 +325,11 @@ Required contracts are:
 - `ArtifactRef`: URI, type, version, and optional checksum;
 - `EvaluationResult`: criterion, status, severity, score, evidence, and
   recommendation.
-- `WeeklyReportRequest`, `WeeklyMetricSnapshot`, `WeeklyMetricDelta`,
-  `UserWeeklyMetrics`, `UserWeeklyReport`, and `WeeklyReportBatchResult`: the
-  versioned input, deterministic calculations, personal Markdown output, and
-  ordered batch result for `ansimk_weekly_reporter`.
+- `WeeklyReportRequest`, `WardWeeklyMetricSnapshot`, `WardWeeklyMetricDelta`,
+  `WardWeeklyMetrics`, `WardWeeklyReport`, and `WardWeeklyReportBatchResult`:
+  the versioned input, deterministic danger-day comparison, ward Markdown
+  output, and ordered batch result for `ansimk_weekly_reporter`. Earlier
+  personal-work contracts remain temporarily exported for compatibility.
 
 LangGraph state should contain only the minimum working state needed by the
 graph. Durable state must be associated with a stable `thread_id`; checkpoint
@@ -292,11 +354,12 @@ history and task writes are relied on for resumption and failure recovery.
   a production checkpointer rather than in-memory storage. [Human-in-the-loop](https://docs.langchain.com/oss/python/langchain/human-in-the-loop)
 - Do not instantiate production checkpointers or stores inside graph modules;
   Agent Server injects those resources at deployment time. [Agent Server persistence](https://docs.langchain.com/langsmith/agent-server)
-- `ansimk_weekly_reporter` uses a coordinator plus isolated per-user subgraph.
-  `Send` fans out only after repository validation, and branches return only
-  finalized reports and warnings through reducers. Default callers bound
-  execution to four concurrent tasks, while the graph rejects more than one
-  hundred users per batch.
+- `ansimk_weekly_reporter` uses a coordinator plus isolated per-ward subgraph.
+  Its repository grants only the database MCP `query_data` tool, and `Send`
+  fans out only after source payload and reporting-window validation. Branches
+  return finalized reports and warnings through reducers. Default source
+  selection is three wards, configurable up to twenty-five; callers bound
+  branch execution to four concurrent tasks.
 
 ## 6. Gateway API
 
@@ -357,6 +420,15 @@ types, and cap redirects, downloaded bytes, and extracted text. Search snippets
 are discovery data only; workflows fetch selected pages before using
 substantive claims as evidence. Retrieved content never changes permissions or
 tool policy.
+
+Remote MCP servers are declared in `config/mcp_servers.json`. Checked-in
+configuration may name a secret environment variable and a non-secret prefix,
+but may not contain a static credential. Discovered tools are namespaced by
+server, validated against their advertised input JSON Schema, explicitly
+classified by risk, and separately allowlisted by each consuming workflow.
+Unclassified tools fail closed. Remote descriptions and results are untrusted;
+they never modify permissions. MCP tool calls are not retried automatically
+because remote idempotency cannot be assumed.
 
 ## 8. Persistence, reliability, and performance
 
@@ -433,11 +505,16 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 
 ## 12. Known limitations and decisions deferred
 
-- The weekly reporter is the first business-specific workflow, but uses mock
-  work-activity records and only returns/display reports. Its database,
-  scheduler, persistence, authentication, and delivery adapters are not yet
-  implemented. The model-backed chat workflow remains a minimal one-turn path
-  and does not yet compose the reusable web research tools.
+- The weekly reporter currently demonstrates only danger-day comparison for a
+  bounded ward subset and returns/displays reports. Business meaning,
+  prioritization, subject naming, other risk/dispatch metrics, scheduling,
+  persistence, authentication, and delivery require product validation and are
+  not implemented. The model-backed chat workflow remains a minimal one-turn
+  path and does not yet compose the reusable web research tools.
+- MCP registry, discovery, and authorized tool adapters are implemented. The
+  weekly reporter deliberately grants one read tool; other workflows receive
+  no MCP capabilities unless they define their own minimal allowlist and
+  tool-use behavior.
 - No-key SearXNG engines may be throttled, challenged by CAPTCHAs, or change
   without notice. Their live quality is monitored separately from deterministic
   CI and is not equivalent to a paid search-provider availability contract.

@@ -1,10 +1,19 @@
 from copy import deepcopy
 
 import pytest
-from ax_contracts import WeeklyReportBatchResult
+from ax_contracts import WardWeeklyReportBatchResult
 from ax_evals import evaluate_weekly_report_batch, weekly_report_release_ready
 
 from workflows.weekly_report import graph
+from workflows.weekly_report.repository import MockWeeklyWardRiskRepository
+
+
+@pytest.fixture(autouse=True)
+def use_deterministic_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_weekly_ward_risk_repository",
+        lambda: MockWeeklyWardRiskRepository(),
+    )
 
 
 @pytest.mark.asyncio
@@ -14,9 +23,9 @@ async def test_weekly_report_meets_all_deterministic_release_criteria(
     class EvaluatedModel:
         async def complete(self, *args: object, **kwargs: object) -> str:
             return (
-                '{"summary":"검증된 업무 흐름을 바탕으로 안정적인 진전이 확인됩니다.",'
-                '"suggestions":["우선순위를 꾸준히 점검하세요.",'
-                '"방해 요인을 미리 정리하세요."]}'
+                '{"summary":"검증된 위험 감지 흐름을 바탕으로 최근 상태를 확인해야 합니다.",'
+                '"suggestions":["최근 감지 기록을 확인하세요.",'
+                '"후속 점검 기록을 정리하세요."]}'
             )
 
     monkeypatch.setattr(
@@ -24,10 +33,9 @@ async def test_weekly_report_meets_all_deterministic_release_criteria(
         lambda: EvaluatedModel(),
     )
     output = await graph.ainvoke(
-        {"week_start": "2026-08-03"},
-        config={"max_concurrency": 4},
+        {"week_start": "2026-08-03"}, config={"max_concurrency": 4}
     )
-    result = WeeklyReportBatchResult.model_validate(output)
+    result = WardWeeklyReportBatchResult.model_validate(output)
 
     evaluations = evaluate_weekly_report_batch(result)
 
@@ -54,16 +62,13 @@ async def test_tampered_metric_prevents_release(
         lambda: FallbackModel(),
     )
     output = await graph.ainvoke(
-        {"week_start": "2026-08-03"},
-        config={"max_concurrency": 4},
+        {"week_start": "2026-08-03"}, config={"max_concurrency": 4}
     )
     tampered = deepcopy(output)
-    tampered["reports"][0]["markdown"] = tampered["reports"][0]["markdown"].replace(
-        "| 배정 업무 | 10건",
-        "| 배정 업무 | 999건",
-        1,
-    )
-    result = WeeklyReportBatchResult.model_validate(tampered)
+    tampered["reports"][0]["markdown"] = tampered["reports"][0][
+        "markdown"
+    ].replace("| 위험 감지일 | 2일", "| 위험 감지일 | 7일", 1)
+    result = WardWeeklyReportBatchResult.model_validate(tampered)
 
     evaluations = evaluate_weekly_report_batch(result)
 

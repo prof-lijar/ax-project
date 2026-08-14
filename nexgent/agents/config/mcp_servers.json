@@ -1,0 +1,32 @@
+{
+  "servers": {
+    "db_mcp_server": {
+      "transport": "streamable_http",
+      "url": "http://192.168.0.11:8001/mcp",
+      "headers": {
+        "Authorization": {
+          "env": "DB_MCP_SERVER_BEARER_TOKEN",
+          "prefix": "Bearer "
+        }
+      },
+      "connect_timeout_seconds": 10.0,
+      "read_timeout_seconds": 120.0,
+      "max_result_characters": 200000,
+      "connect_mode": "legacy",
+      "terminate_on_close": true,
+      "enabled": true,
+      "tool_risks": {
+        "server_info": "read",
+        "server_status": "read",
+        "list_schemas": "read",
+        "list_tables": "read",
+        "describe_table": "read",
+        "find_columns": "read",
+        "get_relationships": "read",
+        "preview_table": "read",
+        "query_data": "read",
+        "explain_query": "read"
+      }
+    }
+  }
+}

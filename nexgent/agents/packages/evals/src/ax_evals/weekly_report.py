@@ -1,25 +1,25 @@
-"""Deterministic release-gate checks for personal weekly reports."""
+"""Deterministic release-gate checks for ward-risk weekly reports."""
 
 import re
 
-from ax_contracts import EvaluationResult, UserWeeklyReport, WeeklyReportBatchResult
+from ax_contracts import EvaluationResult, WardWeeklyReport, WardWeeklyReportBatchResult
 
 REQUIRED_HEADINGS = ("## 핵심 지표", "## 이번 주 요약", "## 다음 주 제안")
 
 
 def evaluate_weekly_report_batch(
-    result: WeeklyReportBatchResult,
+    result: WardWeeklyReportBatchResult,
 ) -> list[EvaluationResult]:
     """Evaluate observable batch, format, identity, and grounding behavior."""
 
-    checks = [
+    return [
         _criterion(
             "batch_completeness",
             bool(result.reports)
-            and [report.user_id for report in result.reports]
-            == sorted(report.user_id for report in result.reports),
-            f"validated {len(result.reports)} sorted unique reports",
-            "return at least one report and sort reports by user_id",
+            and [report.ward_id for report in result.reports]
+            == sorted(report.ward_id for report in result.reports),
+            f"validated {len(result.reports)} sorted unique ward reports",
+            "return at least one report and sort reports by ward_id",
         ),
         _criterion(
             "korean_markdown_structure",
@@ -35,18 +35,18 @@ def evaluate_weekly_report_batch(
             "personalization",
             all(
                 report.markdown.startswith(
-                    f"# {report.display_name}님의 주간 업무 리포트"
+                    f"# {report.display_name} 주간 위험 리포트"
                 )
                 for report in result.reports
             ),
-            "every report title matches its validated user identity",
+            "every report title matches its validated ward identity",
             "render each title from the report contract identity",
         ),
         _criterion(
             "numeric_grounding",
-            all(_has_grounded_kpi_rows(report) for report in result.reports)
+            all(_has_grounded_kpi_row(report) for report in result.reports)
             and all(not _narrative_has_digits(report) for report in result.reports),
-            "KPI rows match calculated metrics and narrative sections contain no digits",
+            "danger-day rows match calculated metrics and narrative has no digits",
             "render numbers only from validated metrics and reject numeric model prose",
         ),
         _criterion(
@@ -60,7 +60,6 @@ def evaluate_weekly_report_batch(
             "label reports that use deterministic fallback prose",
         ),
     ]
-    return checks
 
 
 def weekly_report_release_ready(results: list[EvaluationResult]) -> bool:
@@ -83,32 +82,15 @@ def _criterion(
     )
 
 
-def _has_grounded_kpi_rows(report: UserWeeklyReport) -> bool:
-    current = report.metrics.current
-    previous = report.metrics.previous
-    delta = report.metrics.delta
-    rows = (
-        f"| 배정 업무 | {current.assigned_tasks}건 | {previous.assigned_tasks}건 | {_signed(delta.assigned_tasks, '건')} |",
-        f"| 완료 업무 | {current.completed_tasks}건 | {previous.completed_tasks}건 | {_signed(delta.completed_tasks, '건')} |",
-        f"| 완료율 | {current.completion_rate_percent:.1f}% | {previous.completion_rate_percent:.1f}% | {_signed(delta.completion_rate_percentage_points, '%p', one_decimal=True)} |",
-        f"| 집중 시간 | {_duration(current.focus_minutes)} | {_duration(previous.focus_minutes)} | {_signed(delta.focus_minutes, '분')} |",
-        f"| 활동일 | {current.active_days}일 | {previous.active_days}일 | {_signed(delta.active_days, '일')} |",
-        f"| 새 블로커 | {current.blockers_opened}건 | {previous.blockers_opened}건 | {_signed(delta.blockers_opened, '건')} |",
-        f"| 해결 블로커 | {current.blockers_resolved}건 | {previous.blockers_resolved}건 | {_signed(delta.blockers_resolved, '건')} |",
+def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
+    metrics = report.metrics
+    expected = (
+        f"| 위험 감지일 | {metrics.current.danger_days}일 | "
+        f"{metrics.previous.danger_days}일 | {metrics.delta.danger_days:+d}일 |"
     )
-    return all(row in report.markdown for row in rows)
+    return expected in report.markdown
 
 
-def _narrative_has_digits(report: UserWeeklyReport) -> bool:
+def _narrative_has_digits(report: WardWeeklyReport) -> bool:
     _, separator, narrative = report.markdown.partition("## 이번 주 요약")
     return not separator or re.search(r"\d", narrative) is not None
-
-
-def _duration(minutes: int) -> str:
-    hours, remainder = divmod(minutes, 60)
-    return f"{hours}시간 {remainder}분"
-
-
-def _signed(value: float, unit: str, *, one_decimal: bool = False) -> str:
-    rendered = f"{value:+.1f}" if one_decimal else f"{int(value):+d}"
-    return f"{rendered}{unit}"

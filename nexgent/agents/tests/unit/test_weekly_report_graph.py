@@ -6,12 +6,21 @@ from ax_integrations import ChatMessage, ModelRequestError
 from pydantic import ValidationError
 
 from workflows.weekly_report import graph
+from workflows.weekly_report.repository import MockWeeklyWardRiskRepository
 
 VALID_NARRATIVE = (
-    '{"summary":"업무 흐름을 안정적으로 이어가고 있습니다.",'
-    '"suggestions":["우선순위를 꾸준히 점검하세요.",'
-    '"방해 요인을 미리 정리하세요."]}'
+    '{"summary":"위험 감지 흐름을 바탕으로 최근 상태를 확인할 필요가 있습니다.",'
+    '"suggestions":["최근 감지 기록을 점검하세요.",'
+    '"후속 확인 기록을 정리하세요."]}'
 )
+
+
+@pytest.fixture(autouse=True)
+def use_deterministic_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_weekly_ward_risk_repository",
+        lambda: MockWeeklyWardRiskRepository(),
+    )
 
 
 class FakeNarrativeModel:
@@ -37,12 +46,10 @@ class MixedFailureModel(FakeNarrativeModel):
         max_tokens: int = 500,
         temperature: float = 0.7,
     ) -> str:
-        if "박준호" in messages[1]["content"]:
+        if "관리 대상 102" in messages[1]["content"]:
             raise ModelRequestError("synthetic model failure", retryable=False)
         return await super().complete(
-            messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
+            messages, max_tokens=max_tokens, temperature=temperature
         )
 
 
@@ -57,7 +64,7 @@ class FixedResponseModel:
 
 
 @pytest.mark.asyncio
-async def test_graph_fans_out_and_returns_ordered_korean_reports(
+async def test_graph_returns_ordered_grounded_ward_reports(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -71,19 +78,14 @@ async def test_graph_fans_out_and_returns_ordered_korean_reports(
     )
 
     assert result["status"] == "completed"
-    assert [report["user_id"] for report in result["reports"]] == [
-        "user-001",
-        "user-002",
-        "user-003",
-    ]
-    assert len({report["user_id"] for report in result["reports"]}) == 3
+    assert [report["ward_id"] for report in result["reports"]] == [101, 102, 103]
     assert all(report["generation_mode"] == "llm" for report in result["reports"])
-    assert all("## 이번 주 요약" in report["markdown"] for report in result["reports"])
+    assert all("| 위험 감지일 |" in report["markdown"] for report in result["reports"])
     assert result["warnings"] == []
 
 
 @pytest.mark.asyncio
-async def test_one_user_model_failure_uses_fallback_and_batch_continues(
+async def test_one_ward_model_failure_uses_fallback_and_batch_continues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -92,22 +94,14 @@ async def test_one_user_model_failure_uses_fallback_and_batch_continues(
     )
 
     result = await graph.ainvoke(
-        {"week_start": "2026-08-03"},
-        config={"max_concurrency": 4},
+        {"week_start": "2026-08-03"}, config={"max_concurrency": 4}
     )
 
-    modes = {
-        report["user_id"]: report["generation_mode"] for report in result["reports"]
-    }
-    assert modes == {
-        "user-001": "llm",
-        "user-002": "template_fallback",
-        "user-003": "llm",
-    }
+    modes = {report["ward_id"]: report["generation_mode"] for report in result["reports"]}
+    assert modes == {101: "llm", 102: "template_fallback", 103: "llm"}
     assert result["warnings"] == [
-        "user-002: model_narrative_unavailable; template fallback used"
+        "ward-102: model_narrative_unavailable; template fallback used"
     ]
-    assert "자동 대체됨" in result["reports"][1]["markdown"]
 
 
 @pytest.mark.asyncio
@@ -116,7 +110,7 @@ async def test_one_user_model_failure_uses_fallback_and_batch_continues(
     [
         "",
         "not-json",
-        '{"summary":"완료율이 90퍼센트입니다.","suggestions":["흐름을 유지하세요.","방해 요인을 정리하세요."]}',
+        '{"summary":"위험이 2일 감지되었습니다.","suggestions":["기록을 확인하세요.","후속 조치를 점검하세요."]}',
         ModelRequestError("synthetic failure", retryable=False),
     ],
 )
@@ -130,18 +124,18 @@ async def test_invalid_or_failed_model_output_falls_back(
     )
 
     result = await graph.ainvoke(
-        {"week_start": "2026-08-03"},
-        config={"max_concurrency": 4},
+        {"week_start": "2026-08-03"}, config={"max_concurrency": 4}
     )
 
     assert all(
-        report["generation_mode"] == "template_fallback" for report in result["reports"]
+        report["generation_mode"] == "template_fallback"
+        for report in result["reports"]
     )
     assert len(result["warnings"]) == 3
 
 
 @pytest.mark.asyncio
-async def test_progress_events_are_bounded_and_do_not_expose_activity_records(
+async def test_progress_events_are_bounded_and_do_not_expose_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -161,7 +155,7 @@ async def test_progress_events_are_bounded_and_do_not_expose_activity_records(
     custom = [data for _, mode, data in events if mode == "custom"]
 
     assert custom[0] == {"event": "batch_started", "week_start": "2026-08-03"}
-    assert sum(event["event"] == "user_report_ready" for event in custom) == 3
+    assert sum(event["event"] == "ward_report_ready" for event in custom) == 3
     assert custom[-1] == {
         "event": "batch_completed",
         "report_count": 3,
@@ -170,7 +164,7 @@ async def test_progress_events_are_bounded_and_do_not_expose_activity_records(
     serialized = repr(custom)
     assert "records" not in serialized
     assert "display_name" not in serialized
-    assert "provider" not in serialized
+    assert "ward_id" not in serialized
 
 
 @pytest.mark.asyncio

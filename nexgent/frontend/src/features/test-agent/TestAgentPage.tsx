@@ -1,0 +1,497 @@
+import {
+  AlertTriangle,
+  Bot,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  CircleStop,
+  Clock3,
+  FlaskConical,
+  Play,
+  RefreshCw,
+  Sparkles,
+  MapPin
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  AgentServerError,
+  agentServerClient
+} from "../../shared/api/agentServerClient";
+import { useAgentServerHealth } from "../../shared/api/queries";
+import type {
+  WardWeeklyReport,
+  WeeklyReportBatchResult,
+  WeeklyReportProgressEvent
+} from "../../shared/types/weeklyReport";
+import { ChatMarkdown } from "../chat/ChatMarkdown";
+import styles from "./TestAgentPage.module.css";
+
+const TIMEZONES = ["Asia/Seoul", "UTC", "America/New_York", "Europe/London"];
+
+export function TestAgentPage() {
+  const [weekStart, setWeekStart] = useState(getLatestMonday);
+  const [timezone, setTimezone] = useState("Asia/Seoul");
+  const [result, setResult] = useState<WeeklyReportBatchResult | null>(null);
+  const [selectedWardId, setSelectedWardId] = useState<number | null>(null);
+  const [progress, setProgress] = useState<WeeklyReportProgressEvent[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const healthQuery = useAgentServerHealth();
+  const weekStartIsValid = isMonday(weekStart);
+
+  const selectedReport = useMemo(
+    () =>
+      result?.reports.find((report) => report.ward_id === selectedWardId) ??
+      result?.reports[0] ??
+      null,
+    [result, selectedWardId]
+  );
+
+  useEffect(() => {
+    if (!isRunning) {
+      return;
+    }
+    const startedAt = Date.now();
+    setElapsedSeconds(0);
+    const interval = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [isRunning]);
+
+  useEffect(
+    () => () => {
+      abortControllerRef.current?.abort();
+    },
+    []
+  );
+
+  async function runReporter() {
+    if (!weekStartIsValid || isRunning) {
+      return;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsRunning(true);
+    setErrorMessage(null);
+    setResult(null);
+    setSelectedWardId(null);
+    setProgress([]);
+
+    try {
+      const batch = await agentServerClient.runWeeklyReport(
+        { week_start: weekStart, timezone },
+        {
+          signal: controller.signal,
+          onProgress: (event) => setProgress((current) => [...current, event])
+        }
+      );
+      setResult(batch);
+      setSelectedWardId(batch.reports[0]?.ward_id ?? null);
+    } catch (error) {
+      if (error instanceof AgentServerError && error.code === "cancelled") {
+        setErrorMessage("Run cancelled. Adjust the inputs or start it again.");
+      } else {
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "The Weekly Reporter could not complete the run."
+        );
+        void healthQuery.refetch();
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsRunning(false);
+    }
+  }
+
+  return (
+    <section className={styles.page}>
+      <header className={styles.pageHeader}>
+        <div className={styles.titleGroup}>
+          <span className={styles.titleIcon} aria-hidden>
+            <FlaskConical size={22} />
+          </span>
+          <div>
+            <h1>Weekly Reporter test</h1>
+            <p>Run a reporting week and inspect every generated ward report.</p>
+          </div>
+        </div>
+        <ServerStatus
+          isPending={healthQuery.isPending}
+          isError={healthQuery.isError}
+          isFetching={healthQuery.isFetching}
+          onRetry={() => void healthQuery.refetch()}
+        />
+      </header>
+
+      <div className={styles.workbench}>
+        <aside className={styles.runPanel} aria-label="Run configuration">
+          <div className={styles.agentIdentity}>
+            <span aria-hidden><Bot size={20} /></span>
+            <div>
+              <strong>Weekly Reporter</strong>
+              <code>ansimk_weekly_reporter</code>
+            </div>
+          </div>
+
+          <form
+            className={styles.runForm}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runReporter();
+            }}
+          >
+            <label>
+              <span>Week starts</span>
+              <div className={styles.fieldControl}>
+                <CalendarDays size={16} aria-hidden />
+                <input
+                  type="date"
+                  value={weekStart}
+                  onChange={(event) => setWeekStart(event.target.value)}
+                  aria-describedby="week-start-help"
+                  disabled={isRunning}
+                />
+              </div>
+              <small
+                id="week-start-help"
+                className={weekStartIsValid ? undefined : styles.fieldError}
+              >
+                {weekStartIsValid
+                  ? `${formatDate(weekStart)} — ${formatDate(addDays(weekStart, 6))}`
+                  : "Choose a Monday to match the agent contract."}
+              </small>
+            </label>
+
+            <label>
+              <span>Timezone</span>
+              <select
+                value={timezone}
+                onChange={(event) => setTimezone(event.target.value)}
+                disabled={isRunning}
+              >
+                {TIMEZONES.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+              <small>Applied to the Monday-to-Monday activity window.</small>
+            </label>
+
+            {isRunning ? (
+              <button
+                className={styles.stopButton}
+                type="button"
+                onClick={() => abortControllerRef.current?.abort()}
+              >
+                <CircleStop size={17} />
+                Cancel run
+              </button>
+            ) : (
+              <button
+                className={styles.runButton}
+                type="submit"
+                disabled={!weekStartIsValid || healthQuery.isError}
+              >
+                <Play size={17} fill="currentColor" />
+                Run reporter
+              </button>
+            )}
+          </form>
+
+          <RunProgress
+            progress={progress}
+            isRunning={isRunning}
+            elapsedSeconds={elapsedSeconds}
+            hasResult={result !== null}
+          />
+        </aside>
+
+        <main className={styles.resultPanel}>
+          {errorMessage ? (
+            <ErrorState message={errorMessage} onRetry={() => void runReporter()} />
+          ) : isRunning ? (
+            <RunningState progress={progress} elapsedSeconds={elapsedSeconds} />
+          ) : result && selectedReport ? (
+            <ReportResult
+              result={result}
+              selectedReport={selectedReport}
+              onSelectReport={setSelectedWardId}
+            />
+          ) : (
+            <EmptyState weekStart={weekStart} />
+          )}
+        </main>
+      </div>
+    </section>
+  );
+}
+
+function ServerStatus({
+  isPending,
+  isError,
+  isFetching,
+  onRetry
+}: {
+  isPending: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div className={styles.serverStatus} aria-live="polite">
+      <span
+        className={
+          isPending
+            ? styles.statusChecking
+            : isError
+              ? styles.statusOffline
+              : styles.statusOnline
+        }
+        aria-hidden
+      />
+      <span>{isPending ? "Checking server" : isError ? "Server offline" : "Server ready"}</span>
+      {isError && (
+        <button type="button" onClick={onRetry} disabled={isFetching}>
+          <RefreshCw size={13} /> Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RunProgress({
+  progress,
+  isRunning,
+  elapsedSeconds,
+  hasResult
+}: {
+  progress: WeeklyReportProgressEvent[];
+  isRunning: boolean;
+  elapsedSeconds: number;
+  hasResult: boolean;
+}) {
+  if (progress.length === 0 && !isRunning && !hasResult) {
+    return (
+      <div className={styles.contractNote}>
+        <strong>Live data</strong>
+        <p>The graph reads a bounded ward subset through the database MCP.</p>
+      </div>
+    );
+  }
+
+  const loaded = progress.find((event) => event.event === "risk_data_loaded");
+  const wardCount = loaded?.event === "risk_data_loaded" ? loaded.ward_count : 3;
+  const readyCount = progress.filter((event) => event.event === "ward_report_ready").length;
+  const completed = progress.some((event) => event.event === "batch_completed");
+
+  return (
+    <div className={styles.progressBlock} aria-live="polite">
+      <div className={styles.progressHeading}>
+        <strong>{completed ? "Run complete" : "Run progress"}</strong>
+        <span><Clock3 size={13} /> {elapsedSeconds}s</span>
+      </div>
+      <ProgressRow complete={progress.length > 0} active={isRunning && progress.length === 0} label="Start batch" />
+      <ProgressRow complete={Boolean(loaded)} active={isRunning && progress.length > 0 && !loaded} label="Load ward risk data" />
+      <ProgressRow complete={readyCount === wardCount} active={isRunning && Boolean(loaded) && readyCount < wardCount} label={`Build reports · ${readyCount}/${wardCount}`} />
+      <ProgressRow complete={completed} active={isRunning && readyCount === wardCount} label="Aggregate results" />
+    </div>
+  );
+}
+
+function ProgressRow({ complete, active, label }: { complete: boolean; active: boolean; label: string }) {
+  return (
+    <div className={styles.progressRow}>
+      <span className={complete ? styles.progressDone : active ? styles.progressActive : styles.progressIdle}>
+        {complete ? <Check size={12} /> : null}
+      </span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function RunningState({ progress, elapsedSeconds }: { progress: WeeklyReportProgressEvent[]; elapsedSeconds: number }) {
+  const loaded = progress.find((event) => event.event === "risk_data_loaded");
+  const total = loaded?.event === "risk_data_loaded" ? loaded.ward_count : 3;
+  const ready = progress.filter((event) => event.event === "ward_report_ready").length;
+  return (
+    <div className={styles.centerState} aria-live="polite">
+      <span className={styles.runningIcon}><Sparkles size={26} /></span>
+      <h2>{ready > 0 ? `Writing report ${Math.min(ready + 1, total)} of ${total}` : "Loading ward risk data"}</h2>
+      <p>The agent is comparing danger-day totals with the previous seven days.</p>
+      <div className={styles.pulseTrack}><span style={{ width: `${Math.max(12, ready * (90 / total))}%` }} /></div>
+      <small>{elapsedSeconds}s elapsed · reports appear when the batch is complete</small>
+    </div>
+  );
+}
+
+function EmptyState({ weekStart }: { weekStart: string }) {
+  return (
+    <div className={styles.centerState}>
+      <span className={styles.emptyIcon}><CalendarDays size={28} /></span>
+      <h2>Ready for a test run</h2>
+      <p>Run the week of {weekStart ? formatDate(weekStart) : "your choice"} to review report quality and metrics.</p>
+      <div className={styles.expectationList}>
+        <span><Check size={14} /> Three ward reports</span>
+        <span><Check size={14} /> Week-over-week danger days</span>
+        <span><Check size={14} /> LLM or fallback visibility</span>
+      </div>
+    </div>
+  );
+}
+
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className={styles.centerState} role="alert">
+      <span className={styles.errorIcon}><AlertTriangle size={26} /></span>
+      <h2>Run did not finish</h2>
+      <p>{message}</p>
+      <button className={styles.retryButton} type="button" onClick={onRetry}>
+        <RefreshCw size={16} /> Try again
+      </button>
+    </div>
+  );
+}
+
+function ReportResult({
+  result,
+  selectedReport,
+  onSelectReport
+}: {
+  result: WeeklyReportBatchResult;
+  selectedReport: WardWeeklyReport;
+  onSelectReport: (wardId: number) => void;
+}) {
+  const fallbackCount = result.reports.filter(
+    (report) => report.generation_mode === "template_fallback"
+  ).length;
+  return (
+    <div className={styles.reportWorkspace}>
+      <header className={styles.resultHeader}>
+        <div>
+          <span className={styles.successLabel}><Check size={13} /> Completed</span>
+          <h2>{formatDate(result.week_start)} weekly reports</h2>
+          <p>{result.reports.length} wards · {result.timezone} · {fallbackCount ? `${fallbackCount} fallback` : "All model-generated"}</p>
+        </div>
+      </header>
+
+      {result.warnings.length > 0 && (
+        <div className={styles.warningBanner} role="note">
+          <AlertTriangle size={16} />
+          <div><strong>Fallback used</strong><span>{result.warnings.join(" · ")}</span></div>
+        </div>
+      )}
+
+      <div className={styles.reportBody}>
+        <nav className={styles.peopleList} aria-label="Generated ward reports">
+          <span className={styles.peopleLabel}>Reports</span>
+          {result.reports.map((report) => {
+            const selected = report.ward_id === selectedReport.ward_id;
+            return (
+              <button
+                key={report.ward_id}
+                className={selected ? styles.personActive : styles.person}
+                type="button"
+                onClick={() => onSelectReport(report.ward_id)}
+                aria-current={selected ? "true" : undefined}
+              >
+                <span className={styles.personAvatar}><MapPin size={16} /></span>
+                <span><strong>{report.display_name}</strong><small>{report.generation_mode === "llm" ? "Model narrative" : "Template fallback"}</small></span>
+                <ChevronRight size={15} />
+              </button>
+            );
+          })}
+        </nav>
+
+        <article className={styles.reportDocument}>
+          <header className={styles.documentHeader}>
+            <div>
+              <span>Report preview</span>
+              <h3>{selectedReport.display_name}</h3>
+            </div>
+            <span className={selectedReport.generation_mode === "llm" ? styles.modeLlm : styles.modeFallback}>
+              {selectedReport.generation_mode === "llm" ? "LLM" : "Fallback"}
+            </span>
+          </header>
+
+          <MetricStrip report={selectedReport} />
+          <div className={styles.markdownDocument} lang="ko">
+            <ChatMarkdown content={selectedReport.markdown} />
+          </div>
+
+          <details className={styles.rawOutput}>
+            <summary>Inspect raw report data</summary>
+            <pre>{JSON.stringify(selectedReport, null, 2)}</pre>
+          </details>
+        </article>
+      </div>
+    </div>
+  );
+}
+
+function MetricStrip({ report }: { report: WardWeeklyReport }) {
+  const { current, delta } = report.metrics;
+  const metrics = [
+    {
+      label: "Danger days",
+      value: `${current.danger_days} days`,
+      delta: signed(delta.danger_days)
+    },
+    {
+      label: "Previous week",
+      value: `${report.metrics.previous.danger_days} days`,
+      delta: "baseline"
+    }
+  ];
+  return (
+    <dl className={styles.metricStrip}>
+      {metrics.map((metric) => (
+        <div key={metric.label}>
+          <dt>{metric.label}</dt>
+          <dd>{metric.value}</dd>
+          <small className={metric.delta.startsWith("-") ? styles.deltaDown : styles.deltaUp}>{metric.delta} vs prior</small>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function getLatestMonday() {
+  const now = new Date();
+  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const daysSinceMonday = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - daysSinceMonday - 7);
+  return toDateInputValue(date);
+}
+
+function isMonday(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  return new Date(`${value}T00:00:00Z`).getUTCDay() === 1;
+}
+
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function signed(value: number) {
+  return value > 0 ? `+${value}` : String(value);
+}

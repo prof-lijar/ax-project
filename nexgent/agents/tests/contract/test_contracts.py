@@ -3,6 +3,9 @@ from ax_contracts import (
     AgentInput,
     RunContext,
     ToolRequest,
+    WardWeeklyMetricDelta,
+    WardWeeklyMetrics,
+    WardWeeklyMetricSnapshot,
     WebFetchInput,
     WebSearchInput,
     WebSearchResult,
@@ -94,4 +97,17 @@ def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:
             active_days=1,
             blockers_opened=0,
             blockers_resolved=0,
+        )
+
+
+def test_ward_weekly_metrics_reject_inconsistent_delta() -> None:
+    with pytest.raises(ValidationError, match="delta must match"):
+        WardWeeklyMetrics(
+            ward_id=101,
+            display_name="관리 대상 101",
+            week_start="2026-08-03",
+            week_end="2026-08-10",
+            current=WardWeeklyMetricSnapshot(danger_days=2),
+            previous=WardWeeklyMetricSnapshot(danger_days=1),
+            delta=WardWeeklyMetricDelta(danger_days=0),
         )

@@ -10,6 +10,17 @@ from .chat import (
     OpenAICompatibleSettings,
     get_default_chat_model,
 )
+from .mcp import (
+    DEFAULT_MCP_REGISTRY_PATH,
+    MCP_REGISTRY_ENV,
+    McpConfigurationError,
+    McpHeaderSource,
+    McpIntegrationError,
+    McpRegistrySettings,
+    McpServerClient,
+    McpServerSettings,
+    load_mcp_registry,
+)
 from .web import (
     AsyncHostResolver,
     HostResolver,
@@ -25,12 +36,20 @@ from .web import (
 )
 
 __all__ = [
+    "DEFAULT_MCP_REGISTRY_PATH",
+    "MCP_REGISTRY_ENV",
     "AgentServerClient",
     "AgentServerUnavailable",
     "AsyncHostResolver",
     "ChatMessage",
     "ChatModel",
     "HostResolver",
+    "McpConfigurationError",
+    "McpHeaderSource",
+    "McpIntegrationError",
+    "McpRegistrySettings",
+    "McpServerClient",
+    "McpServerSettings",
     "ModelConfigurationError",
     "ModelRequestError",
     "OpenAICompatibleChatModel",
@@ -44,5 +63,6 @@ __all__ = [
     "get_default_chat_model",
     "get_default_web_fetch_client",
     "get_default_web_search_client",
+    "load_mcp_registry",
     "source_id_for_url",
 ]

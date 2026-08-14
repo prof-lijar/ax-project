@@ -76,6 +76,37 @@ class ToolResult(ContractModel):
     retryable: bool = False
 
 
+class McpToolDefinition(ContractModel):
+    """Normalized metadata for one tool discovered from an MCP server."""
+
+    server_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    name: str = Field(min_length=1, max_length=128)
+    title: str | None = Field(default=None, max_length=512)
+    description: str | None = Field(default=None, max_length=8_000)
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any] | None = None
+    risk: Literal["read", "write", "destructive"] | None = None
+
+    @field_validator("input_schema")
+    @classmethod
+    def validate_input_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
+        schema_type = value.get("type")
+        if schema_type not in {None, "object"}:
+            raise ValueError("MCP tool input schema must describe an object")
+        return value
+
+
+class McpToolCallResult(ContractModel):
+    """Normalized, explicitly untrusted result returned by a remote MCP tool."""
+
+    server_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    tool_name: str = Field(min_length=1, max_length=128)
+    content: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    structured_content: Any = None
+    is_error: bool = False
+    content_is_untrusted: Literal[True] = True
+
+
 _DOMAIN_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 
 
@@ -325,6 +356,80 @@ class WeeklyReportBatchResult(ContractModel):
             raise ValueError("reports must contain unique users")
         if user_ids != sorted(user_ids):
             raise ValueError("reports must be sorted by user_id")
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return self
+
+
+class WardWeeklyMetricSnapshot(ContractModel):
+    """Validated ward-risk values for one seven-day period."""
+
+    danger_days: int = Field(ge=0, le=7)
+
+
+class WardWeeklyMetricDelta(ContractModel):
+    """Current week minus previous week for ward-risk values."""
+
+    danger_days: int = Field(ge=-7, le=7)
+
+
+class WardWeeklyMetrics(ContractModel):
+    """Grounded weekly danger-day comparison for one ward."""
+
+    ward_id: int = Field(ge=1)
+    display_name: str = Field(min_length=1, max_length=256)
+    week_start: date
+    week_end: date
+    current: WardWeeklyMetricSnapshot
+    previous: WardWeeklyMetricSnapshot
+    delta: WardWeeklyMetricDelta
+
+    @model_validator(mode="after")
+    def validate_period_and_delta(self) -> "WardWeeklyMetrics":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        expected_delta = self.current.danger_days - self.previous.danger_days
+        if self.delta.danger_days != expected_delta:
+            raise ValueError("danger_days delta must match current minus previous")
+        return self
+
+
+class WardWeeklyReport(ContractModel):
+    ward_id: int = Field(ge=1)
+    display_name: str = Field(min_length=1, max_length=256)
+    metrics: WardWeeklyMetrics
+    markdown: str = Field(min_length=1, max_length=40_000)
+    generation_mode: Literal["llm", "template_fallback"]
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "WardWeeklyReport":
+        if (
+            self.ward_id != self.metrics.ward_id
+            or self.display_name != self.metrics.display_name
+        ):
+            raise ValueError("report identity must match ward metrics identity")
+        return self
+
+
+class WardWeeklyReportBatchResult(ContractModel):
+    status: Literal["completed"]
+    week_start: date
+    week_end: date
+    timezone: str = Field(min_length=1, max_length=128)
+    reports: list[WardWeeklyReport] = Field(min_length=1, max_length=25)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_batch(self) -> "WardWeeklyReportBatchResult":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        ward_ids = [report.ward_id for report in self.reports]
+        if len(ward_ids) != len(set(ward_ids)):
+            raise ValueError("reports must contain unique wards")
+        if ward_ids != sorted(ward_ids):
+            raise ValueError("reports must be sorted by ward_id")
         try:
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:

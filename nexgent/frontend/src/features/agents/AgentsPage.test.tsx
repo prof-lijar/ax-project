@@ -2,15 +2,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { AgentDefinition } from "../../shared/types/agents";
+import { getRunStatusPresentation } from "./AgentDetailPage";
 import {
   AgentsPageView,
   filterAgents,
-  getReadinessPresentation,
-  getRunStatusPresentation
+  getReadinessPresentation
 } from "./AgentsPage";
 
 const agent: AgentDefinition = {
-  id: "weekly-reporter",
+  id: "1",
   name: "Weekly Reporter",
   role: "Work insight collaborator",
   description: "Prepares Korean weekly reports.",
@@ -46,15 +46,16 @@ describe("AgentsPage", () => {
     expect(getRunStatusPresentation("cancelled").tone).toBe("neutral");
   });
 
-  it("labels preview content and handles empty run history", () => {
+  it("renders a compact catalog with detail and direct Chat actions", () => {
     const markup = renderToStaticMarkup(
       <AgentsPageView agents={[agent]} search="" />
     );
 
     expect(markup).toContain("Preview data");
-    expect(markup).toContain("No sample runs yet.");
-    expect(markup).toContain("ansimk_weekly_reporter");
-    expect(markup).not.toContain("Run agent");
+    expect(markup).toContain('href="/agents/1"');
+    expect(markup).toContain("Run in Chat");
+    expect(markup).not.toContain("No sample runs yet.");
+    expect(markup).not.toContain("Graph ID");
   });
 
   it("shows an operational no-results state", () => {
@@ -63,6 +64,6 @@ describe("AgentsPage", () => {
     );
 
     expect(markup).toContain("No agents match your workspace search.");
-    expect(markup).toContain("Select an agent to inspect");
+    expect(markup).not.toContain("Agent details");
   });
 });

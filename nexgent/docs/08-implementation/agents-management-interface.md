@@ -2,6 +2,105 @@
 
 Date: 2026-08-13
 
+## Update: Weekly Reporter Runs in Chat
+
+Date: 2026-08-14
+
+Weekly Reporter is now the first live-data catalog entry. Clicking **Run in
+Chat** on either its `/agents` card or `/agents/1` detail page selects the
+agent, records a one-shot run request, and navigates to `/chat`. Chat consumes
+that request once and immediately calls `ansimk_weekly_reporter`; it no longer
+stops after changing the selected-agent label.
+
+The run uses the most recent completed local Monday and `Asia/Seoul`. It sends
+`POST /runs/stream` with `stream_mode: [custom, values]` and
+`on_disconnect: cancel` through the shared Agent Server client. Live workflow
+events advance the visible data-load/report-generation trace. On completion,
+all ward Markdown reports and batch warnings are rendered in the transcript.
+Cancellation uses the existing Chat stop control.
+
+The frontend weekly contract now mirrors the ward-risk prototype:
+
+- numeric `ward_id` and ward display name;
+- current and previous `danger_days` plus their delta;
+- `risk_data_loaded`, `ward_report_ready`, and fallback progress events; and
+- ordered per-ward Markdown reports with batch warnings.
+
+The UI holds only the transient run intent and transcript. MCP endpoint and
+authorization configuration remain server-side. Other preview agents show a
+clear no-live-runner error if invoked; no generic execution authority was
+added.
+
+Validation from `frontend/` passed with 34 tests across seven files and a
+successful TypeScript/Vite production build. The live frontend and health
+proxy both returned HTTP 200. Runtime execution exposed a stale deployed
+Agent Server image on port 2024 that registers only `agent` and `chat`; the
+Compose `agent-server` must be rebuilt from the current `agents/langgraph.json`
+before browser end-to-end validation can pass.
+
+## Update: Dedicated Agent Detail Routes
+
+Date: 2026-08-14
+
+The Agents workspace now separates catalog scanning from detailed inspection.
+`/agents` remains the compact card grid, while `/agents/:id` renders the
+selected catalog record as a dedicated detail page. The detail view preserves
+the former inspector information: identity, readiness, description, graph ID,
+runtime, last observation, capabilities, input/output contract, configuration,
+limitations, and recent sample runs.
+
+Each card body links directly to its detail route. A separate `Run in Chat`
+button is available on both the card and detail page. Weekly Reporter uses the
+live one-shot behavior described above; other records remain previews. The
+card action is a sibling of the detail link and stops event propagation
+defensively, so it cannot open the detail route.
+
+The six preview catalog records now use sequential frontend IDs:
+
+| ID | Agent | Graph ID |
+| --- | --- | --- |
+| `1` | Weekly Reporter | `ansimk_weekly_reporter` |
+| `2` | Data Analyst | `preview_data_analyst` |
+| `3` | Report QA | `preview_report_qa` |
+| `4` | Document Assistant | `preview_document_assistant` |
+| `5` | Database Assistant | `preview_database_assistant` |
+| `6` | Risk Monitoring Agent | `preview_risk_monitoring_agent` |
+
+These IDs are route and frontend catalog identifiers only; runtime calls use
+the graph ID. The detail page reads the existing TanStack Query catalog and
+does not duplicate agent metadata.
+
+The History API/Zustand navigation layer now stores the active path as well as
+the active section. This lets `/agents` and `/agents/:id` render different
+views while keeping the Agents sidebar item active, and keeps direct loads and
+browser Back/Forward navigation synchronized. Unknown catalog IDs render an
+operational not-found state with a route back to the list.
+
+Validation completed from `frontend/`:
+
+```bash
+npm test -- src/features/agents/AgentsPage.test.tsx src/features/agents/AgentDetailPage.test.tsx src/shared/navigation/sections.test.ts src/shared/api/agentCatalogClient.test.ts
+npm run build
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-check.AytMsV cargo check --manifest-path src-tauri/Cargo.toml
+npm audit --audit-level=moderate
+```
+
+All 13 focused tests passed. The TypeScript check and Vite production build
+also passed. Cargo check passed with a fresh temporary target directory; the
+repository's existing default target cache contains stale generated paths from
+the former `workflow-helper` location and was left untouched. The dependency
+audit reported zero vulnerabilities. No browser automation dependency is
+configured, so the remaining manual verification is:
+
+```bash
+npm run dev -- --host 127.0.0.1
+```
+
+Open `/agents`, follow each card to `/agents/1` through `/agents/6`, exercise
+Back/Forward, and confirm that both `Run in Chat` actions open Chat with the
+chosen agent displayed in the existing dropdown without first opening the
+detail page from the card action.
+
 ## Summary
 
 The placeholder Co-workers surface was replaced with a read-only Agents

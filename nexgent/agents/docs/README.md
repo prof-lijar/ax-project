@@ -19,9 +19,12 @@
 - [Reusable web research tools](web-research-tools.md): provider-neutral
   `web_search`/`web_fetch` contracts, private SearXNG deployment, reuse, source
   evidence, SSRF controls, and retrieval limits.
-- [Personal weekly reporter](../workflows/weekly_report/README.md): manual batch
-  input, deterministic work metrics, Korean narrative generation, progress
-  events, and template fallback behavior.
+- [MCP development and integration](mcp-integrations.md): declarative remote
+  server registry, environment-backed headers, discovery CLI, namespaced tool
+  adapters, risk classification, and the configured read-only database MCP.
+- [Ward-risk weekly reporter](../workflows/weekly_report/README.md): database
+  MCP-backed danger-day input, deterministic comparisons, Korean narrative
+  generation, bounded demo selection, and template fallback behavior.
 - [Workspace README](../README.md#docker-development-server): license-free
   Docker development startup, parent Nexgent Compose integration, and
   trusted-LAN publishing.

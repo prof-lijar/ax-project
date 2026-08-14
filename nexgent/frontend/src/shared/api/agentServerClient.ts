@@ -1,3 +1,10 @@
+import type {
+  WardWeeklyReport,
+  WeeklyReportBatchResult,
+  WeeklyReportProgressEvent,
+  WeeklyReportRequest
+} from "../types/weeklyReport";
+
 export const DEFAULT_AGENT_SERVER_BASE_URL = "http://192.168.0.18:2024";
 
 export type AgentServerErrorCode =
@@ -30,6 +37,10 @@ interface RequestOptions {
 
 interface ChatRequestOptions extends RequestOptions {
   onResponse?: (response: string) => void;
+}
+
+interface WeeklyReportRequestOptions extends RequestOptions {
+  onProgress?: (event: WeeklyReportProgressEvent) => void;
 }
 
 interface SseEvent {
@@ -96,6 +107,46 @@ export const agentServerClient = {
         error,
         signal,
         "The Agent Server could not complete the request."
+      );
+    }
+  },
+
+  async runWeeklyReport(
+    input: WeeklyReportRequest,
+    { signal, onProgress }: WeeklyReportRequestOptions = {}
+  ): Promise<WeeklyReportBatchResult> {
+    try {
+      const response = await fetch(agentServerUrl("/runs/stream"), {
+        method: "POST",
+        headers: {
+          Accept: "text/event-stream",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          assistant_id: "ansimk_weekly_reporter",
+          input,
+          stream_mode: ["custom", "values"],
+          on_disconnect: "cancel"
+        }),
+        signal
+      });
+
+      if (!response.ok) {
+        throw await httpError(response, "Weekly report request failed");
+      }
+      if (!response.body) {
+        throw new AgentServerError(
+          "malformed_stream",
+          "The Agent Server returned an empty response stream."
+        );
+      }
+
+      return await readWeeklyReportResult(response.body, onProgress);
+    } catch (error) {
+      throw normalizeRequestError(
+        error,
+        signal,
+        "The Weekly Reporter could not complete the request."
       );
     }
   }
@@ -182,6 +233,180 @@ export async function readFinalAssistantResponse(
   }
 
   return finalResponse;
+}
+
+export async function readWeeklyReportResult(
+  stream: ReadableStream<Uint8Array>,
+  onProgress?: (event: WeeklyReportProgressEvent) => void
+): Promise<WeeklyReportBatchResult> {
+  let finalResult: WeeklyReportBatchResult | null = null;
+
+  await readSseStream(stream, (event) => {
+    if (event.event === "custom") {
+      const data = parseJsonEvent(event.data, "weekly report progress data");
+      const progress = parseWeeklyReportProgress(data);
+      onProgress?.(progress);
+      return;
+    }
+    if (event.event !== "values") {
+      return;
+    }
+
+    const value = parseJsonEvent(event.data, "weekly report data");
+    if (!isRecord(value) || value.status !== "completed") {
+      return;
+    }
+    finalResult = parseWeeklyReportResult(value);
+  });
+
+  if (finalResult === null) {
+    throw new AgentServerError(
+      "malformed_stream",
+      "The Agent Server stream ended without a weekly report result."
+    );
+  }
+  return finalResult;
+}
+
+async function readSseStream(
+  stream: ReadableStream<Uint8Array>,
+  onEvent: (event: SseEvent) => void
+) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const parser = new SseParser(onEvent);
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      parser.push(decoder.decode(value, { stream: true }));
+    }
+    parser.push(decoder.decode());
+    parser.finish();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function parseWeeklyReportProgress(value: unknown): WeeklyReportProgressEvent {
+  if (!isRecord(value) || typeof value.event !== "string") {
+    throw malformedWeeklyReportData("progress event");
+  }
+
+  if (value.event === "batch_started" && typeof value.week_start === "string") {
+    return { event: value.event, week_start: value.week_start };
+  }
+  if (
+    value.event === "risk_data_loaded" &&
+    typeof value.ward_count === "number" &&
+    typeof value.selection_truncated === "boolean"
+  ) {
+    return {
+      event: value.event,
+      ward_count: value.ward_count,
+      selection_truncated: value.selection_truncated
+    };
+  }
+  if (value.event === "ward_report_fallback") {
+    return { event: value.event };
+  }
+  if (value.event === "ward_report_ready" && isGenerationMode(value.generation_mode)) {
+    return {
+      event: value.event,
+      generation_mode: value.generation_mode
+    };
+  }
+  if (
+    value.event === "batch_completed" &&
+    typeof value.report_count === "number" &&
+    typeof value.fallback_count === "number"
+  ) {
+    return {
+      event: value.event,
+      report_count: value.report_count,
+      fallback_count: value.fallback_count
+    };
+  }
+  throw malformedWeeklyReportData("progress event");
+}
+
+function parseWeeklyReportResult(value: Record<string, unknown>) {
+  if (
+    value.status !== "completed" ||
+    typeof value.week_start !== "string" ||
+    typeof value.week_end !== "string" ||
+    typeof value.timezone !== "string" ||
+    !Array.isArray(value.reports) ||
+    value.reports.length === 0 ||
+    !Array.isArray(value.warnings) ||
+    !value.warnings.every((warning) => typeof warning === "string")
+  ) {
+    throw malformedWeeklyReportData("result");
+  }
+
+  const reports = value.reports.map(parseWardWeeklyReport);
+  return {
+    status: value.status,
+    week_start: value.week_start,
+    week_end: value.week_end,
+    timezone: value.timezone,
+    reports,
+    warnings: value.warnings as string[]
+  } satisfies WeeklyReportBatchResult;
+}
+
+function parseWardWeeklyReport(value: unknown): WardWeeklyReport {
+  if (
+    !isRecord(value) ||
+    typeof value.ward_id !== "number" ||
+    typeof value.display_name !== "string" ||
+    typeof value.markdown !== "string" ||
+    !isGenerationMode(value.generation_mode) ||
+    !isRecord(value.metrics) ||
+    !isMetricSnapshot(value.metrics.current) ||
+    !isMetricSnapshot(value.metrics.previous) ||
+    !isMetricDelta(value.metrics.delta) ||
+    typeof value.metrics.ward_id !== "number" ||
+    typeof value.metrics.display_name !== "string" ||
+    typeof value.metrics.week_start !== "string" ||
+    typeof value.metrics.week_end !== "string"
+  ) {
+    throw malformedWeeklyReportData("ward report");
+  }
+  return value as unknown as WardWeeklyReport;
+}
+
+function isMetricSnapshot(value: unknown) {
+  return hasNumberFields(value, ["danger_days"]);
+}
+
+function isMetricDelta(value: unknown) {
+  return hasNumberFields(value, ["danger_days"]);
+}
+
+function hasNumberFields(value: unknown, fields: string[]) {
+  return (
+    isRecord(value) &&
+    fields.every((field) => typeof value[field] === "number")
+  );
+}
+
+function isGenerationMode(value: unknown): value is WardWeeklyReport["generation_mode"] {
+  return value === "llm" || value === "template_fallback";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function malformedWeeklyReportData(description: string) {
+  return new AgentServerError(
+    "malformed_stream",
+    `The Agent Server returned an invalid weekly report ${description}.`
+  );
 }
 
 function parseJsonEvent(data: string, description: string): unknown {

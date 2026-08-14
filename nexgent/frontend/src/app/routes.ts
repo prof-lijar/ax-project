@@ -1,5 +1,6 @@
 import {
   Activity,
+  FlaskConical,
   Bot,
   CheckSquare,
   Cloud,
@@ -38,6 +39,12 @@ export const navItems: Array<{
     path: sectionPaths.approvals
   },
   { id: "agents", label: "Agents", icon: Bot, path: sectionPaths.agents },
+  {
+    id: "test-agent",
+    label: "Test agent",
+    icon: FlaskConical,
+    path: sectionPaths["test-agent"]
+  },
   {
     id: "activity",
     label: "Activity",
