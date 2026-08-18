@@ -16,6 +16,9 @@
 - [Chat response streaming](chat-response-streaming.md): provider-token to
   LangGraph custom-event contract, cancel-on-disconnect behavior, validation,
   and deployment.
+- [Chat attachments](chat-attachments.md): transient reference contract,
+  secure file reader, document/image provider payloads, safe errors, and
+  runtime limits.
 - [Reusable web research tools](web-research-tools.md): provider-neutral
   `web_search`/`web_fetch` contracts, private SearXNG deployment, reuse, source
   evidence, SSRF controls, and retrieval limits.
@@ -24,7 +27,8 @@
   adapters, risk classification, and the configured read-only database MCP.
 - [Ward-risk weekly reporter](../workflows/weekly_report/README.md): database
   MCP-backed danger-day input, deterministic comparisons, Korean narrative
-  generation, bounded demo selection, and template fallback behavior.
+  generation, bounded demo selection, template fallback behavior, and the live
+  `/agents/1` frontend workbench integration.
 - [Workspace README](../README.md#docker-development-server): license-free
   Docker development startup, parent Nexgent Compose integration, and
   trusted-LAN publishing.

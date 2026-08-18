@@ -4,6 +4,8 @@ import type {
   AgentRunStatus
 } from "../types/agents";
 
+export const WEEKLY_REPORTER_AGENT_ID = "1";
+
 export interface AgentCatalogRecord extends Omit<AgentDefinition, "readiness" | "recentRuns"> {
   readiness: string;
   recentRuns: Array<Omit<AgentDefinition["recentRuns"][number], "status"> & {
@@ -12,7 +14,7 @@ export interface AgentCatalogRecord extends Omit<AgentDefinition, "readiness" | 
 }
 
 const weeklyReporterRecord: AgentCatalogRecord = {
-  id: "1",
+  id: WEEKLY_REPORTER_AGENT_ID,
   name: "Weekly Reporter",
   role: "Ward risk reporting collaborator",
   description:

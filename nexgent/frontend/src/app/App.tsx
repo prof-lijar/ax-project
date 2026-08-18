@@ -16,11 +16,18 @@ import {
 import { useUiStore } from "../shared/state/useUiStore";
 import { AppShell } from "./shell/AppShell";
 
+export function getAgentsRoute(agentId: string | null) {
+  return agentId
+    ? ({ kind: "detail", agentId } as const)
+    : ({ kind: "catalog" } as const);
+}
+
 export function App() {
   const activeSection = useUiStore((state) => state.activeSection);
   const activePath = useUiStore((state) => state.activePath);
   const activeAgentId =
     activeSection === "agents" ? getAgentIdFromPath(activePath) : null;
+  const agentsRoute = getAgentsRoute(activeAgentId);
 
   useLayoutEffect(() => {
     syncSectionFromLocation();
@@ -35,8 +42,8 @@ export function App() {
       {activeSection === "tasks" && <TasksPage />}
       {activeSection === "approvals" && <ApprovalsPage />}
       {activeSection === "agents" &&
-        (activeAgentId ? (
-          <AgentDetailPage agentId={activeAgentId} />
+        (agentsRoute.kind === "detail" ? (
+          <AgentDetailPage agentId={agentsRoute.agentId} />
         ) : (
           <AgentsPage />
         ))}

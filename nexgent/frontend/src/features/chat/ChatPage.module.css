@@ -224,6 +224,7 @@
 }
 
 .mockExecutionComplete {
+  margin-top: 10px;
   color: var(--color-forest);
   font-weight: 500;
 }
@@ -671,7 +672,6 @@
 }
 
 .attachment {
-  grid-column: 1 / -1;
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -688,11 +688,25 @@
   font-size: 11px;
 }
 
+.attachmentList {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
 .attachment span {
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.attachment small {
+  flex: 0 0 auto;
+  color: var(--color-text-soft);
+  font-size: 10px;
 }
 
 .attachment button {
@@ -713,6 +727,42 @@
 .attachment button:hover {
   color: var(--color-text);
   background: var(--color-neutral-soft);
+}
+
+.messageAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.messageAttachments li {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font-size: 11px;
+}
+
+.messageAttachments span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messageAttachments small {
+  flex: 0 0 auto;
+  color: var(--color-text-soft);
+  font-size: 10px;
 }
 
 .composer textarea {

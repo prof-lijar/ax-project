@@ -1,12 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { useUiStore } from "../../shared/state/useUiStore";
 import type { AgentDefinition } from "../../shared/types/agents";
-import { getRunStatusPresentation } from "./AgentDetailPage";
 import {
   AgentsPageView,
   filterAgents,
-  getReadinessPresentation
+  getReadinessPresentation,
+  prepareAgentChatSelection
 } from "./AgentsPage";
 
 const agent: AgentDefinition = {
@@ -28,6 +29,10 @@ const agent: AgentDefinition = {
   recentRuns: []
 };
 
+beforeEach(() => {
+  useUiStore.setState({ selectedAgent: null, pendingAgentRun: null });
+});
+
 describe("AgentsPage", () => {
   it("matches search across agent identity, graph id, and capabilities", () => {
     expect(filterAgents([agent], "weekly")).toEqual([agent]);
@@ -36,14 +41,12 @@ describe("AgentsPage", () => {
     expect(filterAgents([agent], "delivery")).toEqual([]);
   });
 
-  it("maps readiness and run states to restrained status presentations", () => {
+  it("maps readiness to restrained status presentations", () => {
     expect(getReadinessPresentation("ready")).toEqual({
       label: "Ready",
       tone: "green"
     });
     expect(getReadinessPresentation("degraded").tone).toBe("amber");
-    expect(getRunStatusPresentation("failed").tone).toBe("red");
-    expect(getRunStatusPresentation("cancelled").tone).toBe("neutral");
   });
 
   it("renders a compact catalog with detail and direct Chat actions", () => {
@@ -53,9 +56,20 @@ describe("AgentsPage", () => {
 
     expect(markup).toContain("Preview data");
     expect(markup).toContain('href="/agents/1"');
-    expect(markup).toContain("Run in Chat");
+    expect(markup).toContain("Chat");
+    expect(markup).toContain("0 runs");
+    expect(markup).not.toContain("sample runs");
     expect(markup).not.toContain("No sample runs yet.");
     expect(markup).not.toContain("Graph ID");
+  });
+
+  it("prepares Chat with the selected agent without a pending run intent", () => {
+    useUiStore.getState().requestAgentRun(agent);
+
+    prepareAgentChatSelection(agent);
+
+    expect(useUiStore.getState().selectedAgent).toEqual(agent);
+    expect(useUiStore.getState().pendingAgentRun).toBeNull();
   });
 
   it("shows an operational no-results state", () => {

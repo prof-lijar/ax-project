@@ -39,11 +39,10 @@ export function AgentsPageView({
   isError = false
 }: AgentsPageViewProps) {
   const selectedAgent = useUiStore((state) => state.selectedAgent);
-  const requestAgentRun = useUiStore((state) => state.requestAgentRun);
   const visibleAgents = filterAgents(agents, search);
 
   function openAgentDetail(
-    event: MouseEvent<HTMLAnchorElement>,
+    event: MouseEvent<HTMLElement>,
     agent: AgentDefinition
   ) {
     if (
@@ -64,7 +63,7 @@ export function AgentsPageView({
     agent: AgentDefinition
   ) {
     event.stopPropagation();
-    requestAgentRun(agent);
+    prepareAgentChatSelection(agent);
     navigateToSection("chat");
   }
 
@@ -124,11 +123,11 @@ export function AgentsPageView({
                   }
                   key={agent.id}
                   role="listitem"
+                  onClick={(event) => openAgentDetail(event, agent)}
                 >
                   <a
                     className={styles.agentCardBody}
                     href={`/agents/${encodeURIComponent(agent.id)}`}
-                    onClick={(event) => openAgentDetail(event, agent)}
                   >
                     <span className={styles.agentCardHeader}>
                       <span className={styles.agentIdentity}>
@@ -154,7 +153,7 @@ export function AgentsPageView({
                   <footer className={styles.cardFooter}>
                     <span className={styles.cardMetadata}>
                       <Badge>{agent.runtimeLabel}</Badge>
-                      <span>{agent.recentRuns.length} sample runs</span>
+                      <span>{agent.recentRuns.length} runs</span>
                     </span>
                     <button
                       className={styles.runInChatButton}
@@ -162,7 +161,7 @@ export function AgentsPageView({
                       onClick={(event) => openAgentInChat(event, agent)}
                     >
                       <MessageSquare size={15} aria-hidden />
-                      Run in Chat
+                      Chat
                     </button>
                   </footer>
                 </article>
@@ -173,6 +172,12 @@ export function AgentsPageView({
       </section>
     </section>
   );
+}
+
+export function prepareAgentChatSelection(agent: AgentDefinition) {
+  const { clearPendingAgentRun, selectAgent } = useUiStore.getState();
+  clearPendingAgentRun();
+  selectAgent(agent);
 }
 
 function CatalogMessage({ children }: { children: string }) {

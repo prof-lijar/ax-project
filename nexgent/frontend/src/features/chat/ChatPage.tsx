@@ -10,7 +10,7 @@ import {
   Square,
   User,
   X
-} from "lucide-react"; // FileText, Paperclip, X added for file clip
+} from "lucide-react";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -18,7 +18,7 @@ import {
   useEffect,
   useRef,
   useState
-} from "react"; // ChangeEvent added for file clip
+} from "react";
 
 import {
   AgentServerError,
@@ -29,21 +29,41 @@ import {
   useAgentServerHealth
 } from "../../shared/api/queries";
 import {
+  type ChatAttachmentSummary,
   type ChatRole,
   useChatStore
 } from "../../shared/state/useChatStore";
+import {
+  getMockAgentRunStageState,
+  MOCK_AGENT_RUN_STAGES,
+  type MockAgentRun,
+  useAgentRunStore
+} from "../../shared/state/useAgentRunStore";
 import { useUiStore } from "../../shared/state/useUiStore";
 import { ChatMarkdown } from "./ChatMarkdown";
 import styles from "./ChatPage.module.css";
 
 const WEEKLY_REPORTER_GRAPH_ID = "ansimk_weekly_reporter";
 const REPORT_TIMEZONE = "Asia/Seoul";
-const MOCK_EXECUTION_STAGES = [
-  "Planning request",
-  "Reading relevant data",
-  "Processing information",
-  "Generating response"
-] as const;
+const MAX_ATTACHMENT_COUNT = 5;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
+  "csv",
+  "docx",
+  "jpeg",
+  "jpg",
+  "md",
+  "pdf",
+  "png",
+  "txt",
+  "webp"
+]);
+const ATTACHMENT_ACCEPT =
+  ".pdf,.txt,.md,.csv,.docx,.png,.jpg,.jpeg,.webp," +
+  "application/pdf,text/plain,text/markdown,text/csv," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+  "image/png,image/jpeg,image/webp";
 const LIVE_REPORT_STAGES = [
   "Starting report batch",
   "Reading ward risk data",
@@ -59,7 +79,7 @@ const MOCK_SLASH_COMMANDS = [
 
 type MockSlashCommand = (typeof MOCK_SLASH_COMMANDS)[number];
 
-interface MockExecutionProgress {
+interface LiveExecutionProgress {
   agentId: string;
   agentName: string;
   assistantMessageId: string;
@@ -67,13 +87,22 @@ interface MockExecutionProgress {
   startedAt: number;
   durationSeconds: number | null;
   status: "running" | "finished" | "stopped";
-  mode: "live" | "mock";
+  mode: "live";
 }
+
+type ExecutionProgress = LiveExecutionProgress | MockAgentRun;
 
 export function ChatPage() {
   const messages = useChatStore((state) => state.messages);
   const appendMessage = useChatStore((state) => state.appendMessage);
   const updateMessage = useChatStore((state) => state.updateMessage);
+  const errorMessage = useChatStore((state) => state.errorMessage);
+  const setErrorMessage = useChatStore((state) => state.setErrorMessage);
+  const mockRunsByAgentId = useAgentRunStore((state) => state.runsByAgentId);
+  const startMockRun = useAgentRunStore((state) => state.startRun);
+  const completeMockRun = useAgentRunStore((state) => state.completeRun);
+  const failMockRun = useAgentRunStore((state) => state.failRun);
+  const cancelMockRun = useAgentRunStore((state) => state.cancelRun);
   const selectedAgent = useUiStore((state) => state.selectedAgent);
   const selectAgent = useUiStore((state) => state.selectAgent);
   const clearSelectedAgent = useUiStore((state) => state.clearSelectedAgent);
@@ -84,32 +113,47 @@ export function ChatPage() {
   const healthQuery = useAgentServerHealth();
   const catalogQuery = useAgentCatalog();
   const [draft, setDraft] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Added for file clip
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [mockExecution, setMockExecution] =
-    useState<MockExecutionProgress | null>(null);
+  const [liveExecution, setLiveExecution] =
+    useState<LiveExecutionProgress | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
   const [highlightedSlashCommandIndex, setHighlightedSlashCommandIndex] =
     useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null); // Added for file clip
+  const composerRef = useRef<HTMLFormElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const agentSelectorRef = useRef<HTMLDetailsElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const mockExecutionTimerRef = useRef<number | null>(null);
+  const activeMockRunRef = useRef<{ agentId: string; runId: string } | null>(
+    null
+  );
   const requestInFlightRef = useRef(false);
   const handledAgentRunRef = useRef<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const latestMessageContent = messages[messages.length - 1]?.content;
-  const mockExecutionHasResponse =
-    mockExecution !== null &&
-    messages.some(
-      (message) => message.id === mockExecution.assistantMessageId
-    );
+  const mockRuns = Object.values(mockRunsByAgentId);
+  const executions: ExecutionProgress[] = liveExecution
+    ? [liveExecution, ...mockRuns]
+    : mockRuns;
+  const pendingExecution = executions
+    .filter(
+      (execution) =>
+        !messages.some(
+          (message) => message.id === execution.assistantMessageId
+        )
+    )
+    .sort((left, right) => right.startedAt - left.startedAt)[0] ?? null;
+  const executionUpdateKey = executions
+    .map(
+      (execution) =>
+        `${execution.agentId}:${execution.activeStageIndex}:${execution.status}`
+    )
+    .join("|");
   const slashQuery = getSlashQuery(draft);
   const filteredSlashCommands =
     slashQuery === null
@@ -129,17 +173,74 @@ export function ChatPage() {
     isSending,
     errorMessage,
     notice,
-    mockExecution?.activeStageIndex,
-    mockExecution?.status
+    executionUpdateKey
   ]);
 
   useEffect(
     () => () => {
       abortControllerRef.current?.abort();
-      clearMockExecutionTimer();
     },
     []
   );
+
+  useEffect(() => {
+    function closeAgentSelectorOnOutsideClick(event: PointerEvent) {
+      const selector = agentSelectorRef.current;
+      if (
+        !selector?.open ||
+        !(event.target instanceof Node) ||
+        selector.contains(event.target)
+      ) {
+        return;
+      }
+      selector.open = false;
+    }
+
+    function closeAgentSelectorOnEscape(event: globalThis.KeyboardEvent) {
+      const selector = agentSelectorRef.current;
+      if (!selector?.open || event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      selector.open = false;
+      selector.querySelector<HTMLElement>("summary")?.focus();
+    }
+
+    document.addEventListener("pointerdown", closeAgentSelectorOnOutsideClick);
+    document.addEventListener("keydown", closeAgentSelectorOnEscape);
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        closeAgentSelectorOnOutsideClick
+      );
+      document.removeEventListener("keydown", closeAgentSelectorOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!slashMenuIsOpen) {
+      return;
+    }
+
+    function closeSlashMenuOnOutsideClick(event: PointerEvent) {
+      const composer = composerRef.current;
+      if (
+        !composer ||
+        !(event.target instanceof Node) ||
+        composer.contains(event.target)
+      ) {
+        return;
+      }
+      setSlashMenuDismissed(true);
+    }
+
+    document.addEventListener("pointerdown", closeSlashMenuOnOutsideClick);
+    return () =>
+      document.removeEventListener(
+        "pointerdown",
+        closeSlashMenuOnOutsideClick
+      );
+  }, [slashMenuIsOpen]);
 
   useEffect(() => {
     if (!pendingAgentRun || pendingAgentRun.agentId !== selectedAgent?.id) {
@@ -207,7 +308,7 @@ export function ChatPage() {
         void healthQuery.refetch();
       }
     } finally {
-      finishMockExecution(requestCompleted);
+      finishLiveExecution(requestCompleted);
       abortControllerRef.current = null;
       requestInFlightRef.current = false;
       setIsSending(false);
@@ -226,24 +327,40 @@ export function ChatPage() {
     setErrorMessage(null);
     setNotice(null);
     setDraft("");
-    const userMessage = createMessage("user", message);
+    const files = selectedFiles;
+    setSelectedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    const userMessage = createMessage(
+      "user",
+      message,
+      files.map(toAttachmentSummary)
+    );
     appendMessage(userMessage);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const assistantMessageId = createMessageId();
 
-    if (selectedAgent) {
-      startMockExecution(selectedAgent, assistantMessageId);
-    } else {
-      clearMockExecution();
-    }
+    const mockRun = selectedAgent
+      ? {
+          agentId: selectedAgent.id,
+          runId: startMockRun({
+            agentId: selectedAgent.id,
+            agentName: selectedAgent.name,
+            assistantMessageId,
+            prompt: message
+          })
+        }
+      : null;
+    activeMockRunRef.current = mockRun;
 
     let assistantMessageStarted = false;
-    let requestCompleted = false;
 
     try {
       const response = await agentServerClient.streamChat(message, {
+        files,
         signal: controller.signal,
         onResponse: (partialResponse) => {
           if (!assistantMessageStarted) {
@@ -269,11 +386,19 @@ export function ChatPage() {
           content: response
         });
       }
-      requestCompleted = true;
+      if (mockRun) {
+        completeMockRun(mockRun.agentId, mockRun.runId);
+      }
     } catch (error) {
       if (error instanceof AgentServerError && error.code === "cancelled") {
+        if (mockRun) {
+          cancelMockRun(mockRun.agentId, mockRun.runId);
+        }
         setNotice("Response cancelled. You can send another message.");
       } else {
+        if (mockRun) {
+          failMockRun(mockRun.agentId, mockRun.runId);
+        }
         setErrorMessage(
           error instanceof Error
             ? error.message
@@ -282,7 +407,12 @@ export function ChatPage() {
         void healthQuery.refetch();
       }
     } finally {
-      finishMockExecution(requestCompleted);
+      if (
+        mockRun &&
+        activeMockRunRef.current?.runId === mockRun.runId
+      ) {
+        activeMockRunRef.current = null;
+      }
       abortControllerRef.current = null;
       requestInFlightRef.current = false;
       setStreamingMessageId(null);
@@ -346,59 +476,18 @@ export function ChatPage() {
   }
 
   function cancelRequest() {
-    abortControllerRef.current?.abort();
-  }
-
-  function clearMockExecutionTimer() {
-    if (mockExecutionTimerRef.current !== null) {
-      window.clearInterval(mockExecutionTimerRef.current);
-      mockExecutionTimerRef.current = null;
+    const activeMockRun = activeMockRunRef.current;
+    if (activeMockRun) {
+      cancelMockRun(activeMockRun.agentId, activeMockRun.runId);
     }
-  }
-
-  function clearMockExecution() {
-    clearMockExecutionTimer();
-    setMockExecution(null);
-  }
-
-  function startMockExecution(
-    agent: { id: string; name: string },
-    assistantMessageId: string
-  ) {
-    clearMockExecutionTimer();
-    setMockExecution({
-      agentId: agent.id,
-      agentName: agent.name,
-      assistantMessageId,
-      activeStageIndex: 0,
-      startedAt: Date.now(),
-      durationSeconds: null,
-      status: "running",
-      mode: "mock"
-    });
-    mockExecutionTimerRef.current = window.setInterval(() => {
-      setMockExecution((current) => {
-        if (!current || current.status !== "running") {
-          return current;
-        }
-        const lastRunningStageIndex = MOCK_EXECUTION_STAGES.length - 1;
-        if (current.activeStageIndex >= lastRunningStageIndex) {
-          return current;
-        }
-        return {
-          ...current,
-          activeStageIndex: current.activeStageIndex + 1
-        };
-      });
-    }, 700);
+    abortControllerRef.current?.abort();
   }
 
   function startLiveExecution(
     agent: { id: string; name: string },
     assistantMessageId: string
   ) {
-    clearMockExecutionTimer();
-    setMockExecution({
+    setLiveExecution({
       agentId: agent.id,
       agentName: agent.name,
       assistantMessageId,
@@ -420,7 +509,7 @@ export function ChatPage() {
           : event.event === "batch_completed"
             ? 3
             : 0;
-    setMockExecution((current) =>
+    setLiveExecution((current) =>
       current && current.mode === "live"
         ? {
             ...current,
@@ -430,16 +519,15 @@ export function ChatPage() {
     );
   }
 
-  function finishMockExecution(completed: boolean) {
-    clearMockExecutionTimer();
-    setMockExecution((current) => {
+  function finishLiveExecution(completed: boolean) {
+    setLiveExecution((current) => {
       if (!current) {
         return current;
       }
       return completed
         ? {
             ...current,
-            activeStageIndex: MOCK_EXECUTION_STAGES.length - 1,
+            activeStageIndex: LIVE_REPORT_STAGES.length - 1,
             durationSeconds: (Date.now() - current.startedAt) / 1000,
             status: "finished"
           }
@@ -461,19 +549,27 @@ export function ChatPage() {
     }
   }
 
-  // Added for file clip
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
-    setSelectedFile(file);
+    const incoming = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (incoming.length === 0) {
+      return;
+    }
+
+    const files = deduplicateFiles([...selectedFiles, ...incoming]);
+    const validationError = validateSelectedFiles(files);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+    setSelectedFiles(files);
+    setErrorMessage(null);
   }
 
-  // Added for file clip
-  function removeSelectedFile() {
-    setSelectedFile(null);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+  function removeSelectedFile(fileToRemove: File) {
+    setSelectedFiles((files) =>
+      files.filter((file) => attachmentKey(file) !== attachmentKey(fileToRemove))
+    );
   }
 
   return (
@@ -529,9 +625,11 @@ export function ChatPage() {
           ) : (
             messages.map((message) => {
               const messageExecution =
-                message.role === "assistant" &&
-                mockExecution?.assistantMessageId === message.id
-                  ? mockExecution
+                message.role === "assistant"
+                  ? executions.find(
+                      (execution) =>
+                        execution.assistantMessageId === message.id
+                    ) ?? null
                   : null;
 
               return (
@@ -553,7 +651,12 @@ export function ChatPage() {
                         : messageExecution?.agentName ?? "AX"}
                     </strong>
                     {message.role === "user" ? (
-                      <p className={styles.plainText}>{message.content}</p>
+                      <>
+                        <p className={styles.plainText}>{message.content}</p>
+                        {message.attachments && message.attachments.length > 0 && (
+                          <AttachmentSummaryList attachments={message.attachments} />
+                        )}
+                      </>
                     ) : (
                       <>
                         {messageExecution && (
@@ -563,6 +666,9 @@ export function ChatPage() {
                         {streamingMessageId === message.id && (
                           <span className={styles.streamCursor} aria-hidden />
                         )}
+                        {messageExecution && (
+                          <ExecutionCompletion progress={messageExecution} />
+                        )}
                       </>
                     )}
                   </div>
@@ -571,21 +677,21 @@ export function ChatPage() {
             })
           )}
 
-          {mockExecution && !mockExecutionHasResponse && (
+          {pendingExecution && (
             <article className={styles.assistantMessage} aria-live="polite">
               <span className={styles.avatar} aria-hidden>
                 <Bot size={17} />
               </span>
               <div>
                 <strong className={styles.speaker}>
-                  {mockExecution.agentName}
+                  {pendingExecution.agentName}
                 </strong>
-                <MockExecutionTrace progress={mockExecution} />
+                <MockExecutionTrace progress={pendingExecution} />
               </div>
             </article>
           )}
 
-          {isSending && !streamingMessageId && !mockExecution && (
+          {isSending && !streamingMessageId && !pendingExecution && (
             <article className={styles.assistantMessage} aria-live="polite">
               <span className={styles.avatar} aria-hidden>
                 <Bot size={17} />
@@ -599,7 +705,7 @@ export function ChatPage() {
 
           {errorMessage && (
             <p className={styles.error} role="alert">
-              {errorMessage} Check the server and try sending the message again.
+              {errorMessage}
             </p>
           )}
           {notice && (
@@ -678,7 +784,11 @@ export function ChatPage() {
             </div>
           </details>
         </div>
-        <form className={styles.composer} onSubmit={sendMessage}>
+        <form
+          className={styles.composer}
+          ref={composerRef}
+          onSubmit={sendMessage}
+        >
           {slashMenuIsOpen && (
             <div
               className={styles.slashCommandMenu}
@@ -727,20 +837,27 @@ export function ChatPage() {
             ref={fileInputRef}
             className={styles.fileInput}
             type="file"
+            accept={ATTACHMENT_ACCEPT}
+            multiple
             onChange={handleFileChange}
           />
 
-          {selectedFile && (
-            <div className={styles.attachment}>
-              <FileText size={16} />
-              <span title={selectedFile.name}>{selectedFile.name}</span>
-              <button
-                type="button"
-                onClick={removeSelectedFile}
-                aria-label={`Remove ${selectedFile.name}`}
-              >
-                <X size={14} />
-              </button>
+          {selectedFiles.length > 0 && (
+            <div className={styles.attachmentList} aria-label="Selected attachments">
+              {selectedFiles.map((file) => (
+                <div className={styles.attachment} key={attachmentKey(file)}>
+                  <FileText size={16} />
+                  <span title={file.name}>{file.name}</span>
+                  <small>{formatFileSize(file.size)}</small>
+                  <button
+                    type="button"
+                    onClick={() => removeSelectedFile(file)}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -795,7 +912,7 @@ export function ChatPage() {
             </button>
           )}
         </form>
-        <small>Enter to send · Shift+Enter for a new line</small>
+        <small>Enter to send · Shift+Enter for a new line · Up to 5 files / 25 MB</small>
       </footer>
     </div>
   );
@@ -804,30 +921,32 @@ export function ChatPage() {
 function MockExecutionTrace({
   progress
 }: {
-  progress: MockExecutionProgress;
+  progress: ExecutionProgress;
 }) {
-  const stages =
-    progress.mode === "live" ? LIVE_REPORT_STAGES : MOCK_EXECUTION_STAGES;
+  const isLive = isLiveExecution(progress);
+  const stages = isLive ? LIVE_REPORT_STAGES : MOCK_AGENT_RUN_STAGES;
   return (
     <section
       className={styles.mockExecution}
-      aria-label={`${progress.mode === "live" ? "Live" : "Frontend-only mock"} execution for ${progress.agentName}`}
+      aria-label={`${isLive ? "Live" : "Frontend-only mock"} execution for ${progress.agentName}`}
       aria-live="polite"
     >
       <header className={styles.mockExecutionHeader}>
         <small
           title={
-            progress.mode === "live"
+            isLive
               ? "Live Agent Server events"
               : "Simulated frontend events"
           }
         >
-          {progress.mode === "live" ? "Live run" : "Mock execution"}
+          {isLive ? "Live run" : "Mock execution"}
         </small>
       </header>
       <ol className={styles.mockStageList}>
         {stages.map((stage, index) => {
-          const stageState = getMockStageState(progress, index);
+          const stageState = isLive
+            ? getLiveStageState(progress, index)
+            : getMockAgentRunStageState(progress, index);
           if (stageState === "pending") {
             return null;
           }
@@ -843,25 +962,48 @@ function MockExecutionTrace({
             </li>
           );
         })}
-        {progress.status === "finished" && progress.durationSeconds !== null && (
-          <li className={styles.mockExecutionComplete}>
-            <Check size={15} aria-hidden />
-            <span>Completed in {progress.durationSeconds.toFixed(1)} sec</span>
-          </li>
-        )}
       </ol>
-      {progress.status === "stopped" && (
+      {isLive && progress.status === "stopped" && (
         <small className={styles.mockExecutionStopped}>
-          {progress.mode === "live" ? "Run" : "Mock execution"} stopped before
-          completion.
+          Run stopped before completion.
+        </small>
+      )}
+      {!isLive && progress.status === "cancelled" && (
+        <small className={styles.mockExecutionStopped}>
+          Mock execution stopped before completion.
+        </small>
+      )}
+      {!isLive && progress.status === "failed" && (
+        <small className={styles.mockExecutionStopped}>
+          Mock execution failed before completion.
         </small>
       )}
     </section>
   );
 }
 
-function getMockStageState(
-  progress: MockExecutionProgress,
+function ExecutionCompletion({
+  progress
+}: {
+  progress: ExecutionProgress;
+}) {
+  const completed = isLiveExecution(progress)
+    ? progress.status === "finished"
+    : progress.status === "completed";
+  if (!completed || progress.durationSeconds === null) {
+    return null;
+  }
+
+  return (
+    <div className={styles.mockExecutionComplete} role="status">
+      <Check size={15} aria-hidden />
+      <span>Completed in {progress.durationSeconds.toFixed(1)} sec</span>
+    </div>
+  );
+}
+
+function getLiveStageState(
+  progress: LiveExecutionProgress,
   stageIndex: number
 ): "pending" | "active" | "completed" {
   if (progress.status === "finished" || stageIndex < progress.activeStageIndex) {
@@ -874,6 +1016,12 @@ function getMockStageState(
     return "active";
   }
   return "pending";
+}
+
+function isLiveExecution(
+  progress: ExecutionProgress
+): progress is LiveExecutionProgress {
+  return "mode" in progress && progress.mode === "live";
 }
 
 function getSlashQuery(value: string): string | null {
@@ -910,11 +1058,81 @@ function formatWeeklyReportBatch(result: {
 
 let messageSequence = 0;
 
-function createMessage(role: ChatRole, content: string) {
+function AttachmentSummaryList({
+  attachments
+}: {
+  attachments: ChatAttachmentSummary[];
+}) {
+  return (
+    <ul className={styles.messageAttachments} aria-label="Message attachments">
+      {attachments.map((attachment) => (
+        <li key={`${attachment.name}:${attachment.size}`}>
+          <FileText size={14} aria-hidden />
+          <span title={attachment.name}>{attachment.name}</span>
+          <small>{formatFileSize(attachment.size)}</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function validateSelectedFiles(files: File[]) {
+  if (files.length > MAX_ATTACHMENT_COUNT) {
+    return `Attach no more than ${MAX_ATTACHMENT_COUNT} files.`;
+  }
+  for (const file of files) {
+    const extension = file.name.split(".").pop()?.toLocaleLowerCase() ?? "";
+    if (!ACCEPTED_ATTACHMENT_EXTENSIONS.has(extension)) {
+      return `${file.name} is not a supported attachment type.`;
+    }
+    if (file.size === 0) {
+      return `${file.name} is empty.`;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      return `${file.name} exceeds the 10 MB per-file limit.`;
+    }
+  }
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return "Attachments exceed the 25 MB total limit.";
+  }
+  return null;
+}
+
+function deduplicateFiles(files: File[]) {
+  return Array.from(
+    new Map(files.map((file) => [attachmentKey(file), file])).values()
+  );
+}
+
+function attachmentKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function toAttachmentSummary(file: File): ChatAttachmentSummary {
+  return { name: file.name, size: file.size, type: file.type };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createMessage(
+  role: ChatRole,
+  content: string,
+  attachments?: ChatAttachmentSummary[]
+) {
   return {
     id: createMessageId(),
     role,
-    content
+    content,
+    ...(attachments && attachments.length > 0 ? { attachments } : {})
   };
 }
 

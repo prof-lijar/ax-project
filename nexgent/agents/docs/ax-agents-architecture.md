@@ -30,6 +30,8 @@ The baseline described here is implemented as of 2026-08-05:
   SSE events, and interrupt-resume route contracts;
 - self-hosted PostgreSQL/Redis/Agent Server Compose baseline;
 - pooled asynchronous OpenAI-compatible model adapter and one-turn chat graph;
+- transient document/image attachment references, secure local artifact reads,
+  and opt-in multimodal chat content;
 - architecture governance in `AGENTS.md` and this document.
 
 Validation completed:
@@ -196,6 +198,30 @@ rendered in the transcript. Frontend parsing mirrors the ward danger-day
 contract and rejects malformed events or results. The browser stores no MCP
 endpoint or credential. Other preview agents still have no live runner.
 
+Weekly Reporter detail integration update on 2026-08-14: the stable catalog
+route `/agents/1` now renders the live `ansimk_weekly_reporter` workbench
+directly. Operators can select a reporting Monday and timezone, observe
+validated custom progress events, cancel the active Agent Server run, and
+inspect per-ward Markdown and metrics without leaving the agent detail route.
+The existing `/test-agent` route reuses the same workbench in test-oriented
+presentation, while all other agent detail routes retain their preview UI.
+
+Chat attachment runtime update on 2026-08-14: `ax-contracts` defines strict
+references for gateway-normalized transient chat artifacts and safe attachment
+error payloads. The chat graph accepts at most five references while keeping
+file bytes and extracted document text outside graph state and stream events.
+`ax-integrations` resolves only absolute `file://` paths below
+`AX_CHAT_ARTIFACT_ROOT`, rejects traversal and symlinks, opens every path
+component with no-follow semantics, and verifies regular-file type, size,
+stability, and SHA-256 before constructing provider content. Documents become
+delimited untrusted text parts; normalized PNG, JPEG, and WebP files become
+base64 `image_url` parts only when `OPENAI_SUPPORTS_VISION=true`. Vision remains
+disabled by default and must be enabled only after a live capability check.
+The product backend requests only LangGraph `custom` stream mode for attachment
+runs, preventing the runtime's initial values event from echoing private file
+references; a terminal `response_complete` custom event verifies the assembled
+answer. Text-only chat retains the existing `custom` plus `values` contract.
+
 ## 1. Design goals and constraints
 
 The system must be clean, maintainable, fast, modular, secure, and suitable
@@ -323,6 +349,10 @@ Required contracts are:
 - `Handoff`: source/target ownership, objective, artifacts, evidence, and stop
   conditions;
 - `ArtifactRef`: URI, type, version, and optional checksum;
+- `ChatAttachmentRef`: transient attachment identity, safe filename, kind,
+  normalized media type, local file URI, byte size, and SHA-256;
+- `ChatErrorPayload`: safe attachment/capability error code, message, and
+  optional affected filename for custom stream events and terminal chat state;
 - `EvaluationResult`: criterion, status, severity, score, evidence, and
   recommendation.
 - `WeeklyReportRequest`, `WardWeeklyMetricSnapshot`, `WardWeeklyMetricDelta`,
@@ -404,6 +434,19 @@ for shared environments. It normalizes server, `/v1`, and full completion URLs;
 uses streamed SSE responses; reuses a bounded async connection pool; and
 retries transient failures only before any response content has been emitted.
 Provider errors must not expose credentials or unrestricted response bodies.
+Its provider-neutral message contract accepts either text or validated
+OpenAI-compatible text/image content parts. Remote image URLs are rejected;
+image inputs use data URLs assembled transiently from verified normalized
+artifacts. `OPENAI_SUPPORTS_VISION` defaults to false and is a deployment
+capability assertion, not automatic model detection.
+
+The transient chat attachment reader is an integration boundary because it
+owns filesystem access and provider-payload assembly. The gateway passes only
+`ChatAttachmentRef` objects. The reader enforces five files, 10 MiB per file,
+25 MiB combined, and 100,000 extracted document characters. It accepts
+normalized UTF-8 plain/Markdown/CSV text and normalized PNG/JPEG/WebP bytes.
+Every attachment and original filename is explicitly labeled untrusted in the
+model request so multi-file prompts can still refer to files by name.
 
 Reusable web research is split into discovery and evidence retrieval.
 `web_search` calls an injected provider-neutral executor; the initial adapter
@@ -446,6 +489,10 @@ because remote idempotency cannot be assumed.
   and parallel fan-out only for independent work.
 - Store large documents and generated artifacts outside graph state and pass
   typed references across nodes and handoffs.
+- Chat attachments remain in a private shared transient volume. The graph reads
+  them only for the active model call; normalized bytes, extracted text, and
+  image data URLs are never returned in state or custom events. Attachment
+  references are cleared from terminal state after success or safe failure.
 - Reuse bounded HTTP and database connection pools in adapters; never create a
   client per node invocation.
 - Track queue delay separately from graph execution time and model/tool latency.
@@ -509,8 +556,10 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   bounded ward subset and returns/displays reports. Business meaning,
   prioritization, subject naming, other risk/dispatch metrics, scheduling,
   persistence, authentication, and delivery require product validation and are
-  not implemented. The model-backed chat workflow remains a minimal one-turn
-  path and does not yet compose the reusable web research tools.
+  not implemented. The model-backed chat workflow remains a one-turn path and
+  does not yet compose the reusable web research tools. Chat attachments are
+  transient and cannot be referenced by later turns; scanned-PDF OCR and
+  durable or multi-host artifact storage remain outside the agent runtime.
 - MCP registry, discovery, and authorized tool adapters are implemented. The
   weekly reporter deliberately grants one read tool; other workflows receive
   no MCP capabilities unless they define their own minimal allowlist and

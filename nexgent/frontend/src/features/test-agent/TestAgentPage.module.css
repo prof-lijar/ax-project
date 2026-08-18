@@ -8,6 +8,25 @@
   margin: 0 auto;
 }
 
+.pageHeading {
+  display: grid;
+  gap: 14px;
+}
+
+.backLink {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-self: start;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--color-text);
+}
+
 .pageHeader,
 .titleGroup,
 .serverStatus,

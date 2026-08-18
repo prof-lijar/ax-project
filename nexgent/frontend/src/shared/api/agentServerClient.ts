@@ -4,29 +4,41 @@ import type {
   WeeklyReportProgressEvent,
   WeeklyReportRequest
 } from "../types/weeklyReport";
+import { backendUrl } from "./nextcloudBackendClient";
 
 export const DEFAULT_AGENT_SERVER_BASE_URL = "http://192.168.0.18:2024";
 
 export type AgentServerErrorCode =
+  | "attachment_error"
   | "cancelled"
   | "http_error"
   | "malformed_stream"
-  | "network_error";
+  | "network_error"
+  | "request_error";
 
 export class AgentServerError extends Error {
   readonly code: AgentServerErrorCode;
   readonly status?: number;
+  readonly serverCode?: string;
+  readonly filename?: string;
   readonly originalCause?: unknown;
 
   constructor(
     code: AgentServerErrorCode,
     message: string,
-    options?: { cause?: unknown; status?: number }
+    options?: {
+      cause?: unknown;
+      filename?: string;
+      serverCode?: string;
+      status?: number;
+    }
   ) {
     super(message);
     this.name = "AgentServerError";
     this.code = code;
     this.status = options?.status;
+    this.serverCode = options?.serverCode;
+    this.filename = options?.filename;
     this.originalCause = options?.cause;
   }
 }
@@ -36,6 +48,7 @@ interface RequestOptions {
 }
 
 interface ChatRequestOptions extends RequestOptions {
+  files?: readonly File[];
   onResponse?: (response: string) => void;
 }
 
@@ -73,21 +86,19 @@ export const agentServerClient = {
 
   async streamChat(
     message: string,
-    { signal, onResponse }: ChatRequestOptions = {}
+    { files = [], signal, onResponse }: ChatRequestOptions = {}
   ): Promise<string> {
     try {
-      const response = await fetch(agentServerUrl("/runs/stream"), {
+      const body = new FormData();
+      body.append("prompt", message);
+      for (const file of files) {
+        body.append("files", file, file.name);
+      }
+
+      const response = await fetch(backendUrl("/api/chat/stream"), {
         method: "POST",
-        headers: {
-          Accept: "text/event-stream",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          assistant_id: "chat",
-          input: { message },
-          stream_mode: ["custom", "values"],
-          on_disconnect: "cancel"
-        }),
+        headers: { Accept: "text/event-stream" },
+        body,
         signal
       });
 
@@ -160,9 +171,31 @@ export async function readFinalAssistantResponse(
   const decoder = new TextDecoder();
   let finalResponse: string | null = null;
   let streamedResponse = "";
+  let fullyRead = false;
   const parser = new SseParser((event) => {
-    if (event.event === "custom") {
+    if (event.event === "custom" || event.event === "error") {
       const deltaEvent = parseJsonEvent(event.data, "streamed chat data");
+      const requestError = parseStreamedRequestError(deltaEvent);
+      if (requestError) {
+        throw requestError;
+      }
+      if (event.event === "error") {
+        throw new AgentServerError(
+          "malformed_stream",
+          "The chat service returned an invalid error event."
+        );
+      }
+      if (
+        isRecord(deltaEvent) &&
+        typeof deltaEvent.response_complete === "string"
+      ) {
+        finalResponse = deltaEvent.response_complete;
+        if (finalResponse !== streamedResponse) {
+          streamedResponse = finalResponse;
+          onResponse?.(finalResponse);
+        }
+        return;
+      }
       if (
         typeof deltaEvent !== "object" ||
         deltaEvent === null ||
@@ -221,7 +254,15 @@ export async function readFinalAssistantResponse(
     }
     parser.push(decoder.decode());
     parser.finish();
+    fullyRead = true;
   } finally {
+    if (!fullyRead) {
+      try {
+        await reader.cancel();
+      } catch {
+        // Preserve the original stream/parser error.
+      }
+    }
     reader.releaseLock();
   }
 
@@ -233,6 +274,25 @@ export async function readFinalAssistantResponse(
   }
 
   return finalResponse;
+}
+
+function parseStreamedRequestError(value: unknown): AgentServerError | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const nested = isRecord(value.error) ? value.error : value;
+  const code = nested.code ?? nested.error_code;
+  const message = nested.message ?? nested.error_message;
+  if (typeof code !== "string" || typeof message !== "string") {
+    return null;
+  }
+  const filename = typeof nested.filename === "string" ? nested.filename : undefined;
+  return new AgentServerError(
+    "request_error",
+    structuredErrorMessage(message, filename),
+    { filename, serverCode: code }
+  );
 }
 
 export async function readWeeklyReportResult(
@@ -500,17 +560,52 @@ function isTauriRuntime() {
 
 async function httpError(response: Response, prefix: string) {
   let detail = "";
+  let errorCode: AgentServerErrorCode = "http_error";
+  let filename: string | undefined;
+  let serverCode: string | undefined;
   try {
-    detail = (await response.text()).trim().slice(0, 300);
+    const rawBody = (await response.text()).trim();
+    if (rawBody) {
+      try {
+        const parsed = JSON.parse(rawBody) as unknown;
+        if (isRecord(parsed)) {
+          const nested = isRecord(parsed.detail)
+            ? parsed.detail
+            : isRecord(parsed.error)
+              ? parsed.error
+              : parsed;
+          const message = nested.message ?? nested.detail;
+          if (typeof message === "string") {
+            detail = message.slice(0, 300);
+          }
+          if (typeof nested.code === "string") {
+            errorCode = "attachment_error";
+            serverCode = nested.code;
+          }
+          if (typeof nested.filename === "string") {
+            filename = nested.filename;
+          }
+        }
+      } catch {
+        detail = rawBody.slice(0, 300);
+      }
+    }
   } catch {
     // The status code still provides a useful error if the body cannot be read.
   }
-  const suffix = detail ? `: ${detail}` : ".";
+  const suffix = detail ? `: ${structuredErrorMessage(detail, filename)}` : ".";
   return new AgentServerError(
-    "http_error",
+    errorCode,
     `${prefix} (${response.status})${suffix}`,
-    { status: response.status }
+    { filename, serverCode, status: response.status }
   );
+}
+
+function structuredErrorMessage(message: string, filename?: string) {
+  if (!filename || message.includes(filename)) {
+    return message;
+  }
+  return `${filename}: ${message}`;
 }
 
 function normalizeRequestError(

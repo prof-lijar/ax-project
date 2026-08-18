@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowLeft,
   Bot,
   CalendarDays,
   Check,
@@ -12,13 +13,20 @@ import {
   Sparkles,
   MapPin
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent
+} from "react";
 
 import {
   AgentServerError,
   agentServerClient
 } from "../../shared/api/agentServerClient";
 import { useAgentServerHealth } from "../../shared/api/queries";
+import { navigateToSection } from "../../shared/navigation/sections";
 import type {
   WardWeeklyReport,
   WeeklyReportBatchResult,
@@ -29,7 +37,11 @@ import styles from "./TestAgentPage.module.css";
 
 const TIMEZONES = ["Asia/Seoul", "UTC", "America/New_York", "Europe/London"];
 
-export function TestAgentPage() {
+interface TestAgentPageProps {
+  mode?: "test" | "agent";
+}
+
+export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
   const [weekStart, setWeekStart] = useState(getLatestMonday);
   const [timezone, setTimezone] = useState("Asia/Seoul");
   const [result, setResult] = useState<WeeklyReportBatchResult | null>(null);
@@ -41,6 +53,7 @@ export function TestAgentPage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const healthQuery = useAgentServerHealth();
   const weekStartIsValid = isMonday(weekStart);
+  const isAgentPage = mode === "agent";
 
   const selectedReport = useMemo(
     () =>
@@ -109,25 +122,51 @@ export function TestAgentPage() {
     }
   }
 
+  function backToAgents(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    navigateToSection("agents");
+  }
+
   return (
     <section className={styles.page}>
-      <header className={styles.pageHeader}>
-        <div className={styles.titleGroup}>
-          <span className={styles.titleIcon} aria-hidden>
-            <FlaskConical size={22} />
-          </span>
-          <div>
-            <h1>Weekly Reporter test</h1>
-            <p>Run a reporting week and inspect every generated ward report.</p>
+      <div className={styles.pageHeading}>
+        {isAgentPage && (
+          <a className={styles.backLink} href="/agents" onClick={backToAgents}>
+            <ArrowLeft size={16} aria-hidden />
+            Back to Agents
+          </a>
+        )}
+        <header className={styles.pageHeader}>
+          <div className={styles.titleGroup}>
+            <span className={styles.titleIcon} aria-hidden>
+              {isAgentPage ? <Bot size={22} /> : <FlaskConical size={22} />}
+            </span>
+            <div>
+              <h1>{isAgentPage ? "Weekly Reporter" : "Weekly Reporter test"}</h1>
+              <p>
+                {isAgentPage
+                  ? "Run the live ward-risk workflow and review every generated report."
+                  : "Run a reporting week and inspect every generated ward report."}
+              </p>
+            </div>
           </div>
-        </div>
-        <ServerStatus
-          isPending={healthQuery.isPending}
-          isError={healthQuery.isError}
-          isFetching={healthQuery.isFetching}
-          onRetry={() => void healthQuery.refetch()}
-        />
-      </header>
+          <ServerStatus
+            isPending={healthQuery.isPending}
+            isError={healthQuery.isError}
+            isFetching={healthQuery.isFetching}
+            onRetry={() => void healthQuery.refetch()}
+          />
+        </header>
+      </div>
 
       <div className={styles.workbench}>
         <aside className={styles.runPanel} aria-label="Run configuration">
@@ -223,7 +262,7 @@ export function TestAgentPage() {
               onSelectReport={setSelectedWardId}
             />
           ) : (
-            <EmptyState weekStart={weekStart} />
+            <EmptyState weekStart={weekStart} isAgentPage={isAgentPage} />
           )}
         </main>
       </div>
@@ -329,11 +368,17 @@ function RunningState({ progress, elapsedSeconds }: { progress: WeeklyReportProg
   );
 }
 
-function EmptyState({ weekStart }: { weekStart: string }) {
+function EmptyState({
+  weekStart,
+  isAgentPage
+}: {
+  weekStart: string;
+  isAgentPage: boolean;
+}) {
   return (
     <div className={styles.centerState}>
       <span className={styles.emptyIcon}><CalendarDays size={28} /></span>
-      <h2>Ready for a test run</h2>
+      <h2>{isAgentPage ? "Ready for a live run" : "Ready for a test run"}</h2>
       <p>Run the week of {weekStart ? formatDate(weekStart) : "your choice"} to review report quality and metrics.</p>
       <div className={styles.expectationList}>
         <span><Check size={14} /> Three ward reports</span>

@@ -2,6 +2,196 @@
 
 Date: 2026-08-13
 
+## Update: Catalog Detail and Test Workbench Route Separation
+
+Date: 2026-08-14
+
+All `/agents/:id` locations now render the dedicated catalog Agent Detail
+page, including Weekly Reporter at `/agents/1`. The prior application-level
+special case that rendered the test workbench for frontend agent ID `1` was
+removed. The sidebar **Test agent** entry remains a distinct `/test-agent`
+section and its page behavior was not changed.
+
+Agent cards retain a real `/agents/:id` body link and also route clicks on the
+remaining non-Chat card surface to the same detail location. The compact
+**Chat** button stops event propagation, clears stale run intent, selects the
+agent, and opens Chat without triggering the detail route or starting an
+execution.
+
+Validation completed from `frontend/`:
+
+```bash
+npm run test -- --run src/app/App.test.tsx src/shared/navigation/sections.test.ts src/features/agents/AgentsPage.test.tsx src/features/agents/AgentDetailPage.test.tsx
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml --target-dir /tmp/nexgent-cargo-chat-lifecycle
+npm audit --audit-level=moderate
+```
+
+The focused routing and Agents suite passed 17 tests across four files, the
+TypeScript/Vite production build completed successfully, the Tauri Rust check
+passed, and the dependency audit reported zero vulnerabilities.
+
+## Update: Request-aligned Mock Runs and Chat Errors
+
+Date: 2026-08-14
+
+The frontend mock stage timer now advances selected-agent runs only as far as
+**Generating response**. It cannot mark a run completed. Successful mock
+completion is owned by Chat after `agentServerClient.streamChat()` resolves,
+while request failures and cancellations retain their existing failed and
+cancelled terminal outcomes. The stream cancellation path also cancels its
+associated mock run, including when navigation aborts an in-flight request.
+Per-agent run isolation, run ID guards, and terminal-state protections remain
+unchanged. Weekly Reporter's separate live SSE lifecycle was not modified.
+
+The visible Chat error string now lives additively in the existing in-memory
+Chat Zustand store alongside the transcript. Errors therefore remain visible
+after navigating away from and back to Chat, and are cleared when a new
+request begins. No browser-storage persistence was added, so a browser reload
+or app restart still clears both session-only UI state and errors.
+
+Validation completed from `frontend/`:
+
+```bash
+npm run test -- --run src/shared/state/useAgentRunStore.test.ts src/shared/state/useChatStore.test.ts
+npm test
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml --target-dir /tmp/nexgent-cargo-chat-lifecycle
+npm audit --audit-level=moderate
+```
+
+The focused store suite passed 9 tests across two files, the complete frontend
+suite passed 54 tests across ten files, and the TypeScript/Vite production
+build completed successfully. The Tauri Rust check passed using a clean
+temporary target directory, and the dependency audit reported zero
+vulnerabilities. Browser automation is not configured; the remaining manual
+check is to begin a slow selected-agent response, confirm **Generating
+response** remains active until streaming finishes, and verify that a request
+error survives navigation away from and back to Chat.
+
+## Update: Current and Latest Frontend Mock Runs
+
+Date: 2026-08-14
+
+Agent Detail now separates the active frontend mock lifecycle from the most
+recent terminal mock result. **Current run** renders only a running record with
+its prompt, existing four-stage progress, elapsed time, and frontend-only Stop
+control. **Latest run** retains one completed, cancelled, or failed record per
+agent with its prompt, duration, finished timestamp, final status, and a
+contextual Chat action. No run-history array or paused/resumable state was
+added.
+
+The shared store keeps the existing `runsByAgentId` contract intact for Chat
+and adds `latestRunsByAgentId` as a terminal snapshot map. Completing,
+cancelling, or failing a mock run updates both maps atomically. Starting a new
+run replaces the current slot for that agent without erasing its prior latest
+terminal snapshot; other agents remain independent. Existing timers, run ID
+guards, and terminal-state protections remain unchanged.
+
+**Run again in Chat** and **Retry in Chat** reuse the existing selection-only
+navigation path. They clear stale pending intent, select the agent, and open
+Chat without resending the prior prompt, creating a run, or starting network
+execution. Weekly Reporter's Chat-local live SSE lifecycle remains separate
+and is neither stored nor controlled by these mock Current/Latest sections.
+
+Validation completed from `frontend/`:
+
+```bash
+npm run test -- --run src/features/agents/AgentDetailPage.test.tsx src/shared/state/useAgentRunStore.test.ts
+npm test
+npm run build
+```
+
+The focused suite passed 12 tests across two files, the complete frontend
+suite passed 52 tests across nine files, and the TypeScript/Vite production
+build completed successfully. Browser automation is not configured; a manual
+follow-up should confirm the compact Current/Latest layout and the contextual
+navigation actions at wide and narrow desktop widths.
+
+## Update: Selection-only Chat Entry
+
+Date: 2026-08-14
+
+The Agent Detail **Run in Chat** action and the Agents catalog **Chat** action
+now clear any stale one-shot run intent, select the chosen agent, and navigate
+to Chat. Chat opens with that agent visible in the existing selector and waits
+for the user to type and send a message. Navigating from Agents no longer
+creates the generated `Run Weekly Reporter for YYYY-MM-DD (Asia/Seoul).`
+message or starts Weekly Reporter automatically.
+
+The existing `requestAgentRun` state, Chat pending-run consumer,
+`runWeeklyReport()` implementation, SSE lifecycle, request payloads, and
+backend execution path remain unchanged. This update changes only the two
+frontend Agents entry points and does not remove the one-shot infrastructure.
+
+Validation completed from `frontend/`:
+
+```bash
+npm run test -- --run src/features/agents/AgentsPage.test.tsx src/features/agents/AgentDetailPage.test.tsx src/shared/state/useUiStore.test.ts src/shared/state/useAgentRunStore.test.ts
+npm test
+npm run build
+```
+
+The focused suite passed 15 tests across four files, the complete frontend
+suite passed 49 tests across nine files, and the TypeScript/Vite production
+build completed successfully. Browser automation is not configured, so the
+remaining manual check is to open both Agents entry points and confirm Chat
+shows the chosen agent without adding or starting a Weekly Reporter run.
+
+## Update: Simplified Detail and Shared Mock Runs
+
+Date: 2026-08-14
+
+Agent Detail is now a compact execution-control view. Its rendered content is
+limited to the agent identity, observation/readiness badges, **Run in Chat**
+action, description, and a **Current run** section. Graph/runtime metadata,
+capabilities, contract, configuration, limitations, and sample run history
+remain in the frontend catalog contract but are no longer rendered on this
+page. The readiness badge and Chat action share one right-side column and
+stack responsively below the identity at narrow widths.
+
+The Agents catalog keeps card-body detail navigation while shortening its
+secondary action to **Chat** and its history count to **N runs**. The catalog
+uses three fluid columns at wide widths, two at medium widths, and one at
+narrow widths without changing route or selection behavior.
+
+`src/shared/state/useAgentRunStore.ts` owns frontend-only simulated agent run
+state keyed by frontend agent ID. Starting a selected-agent Chat message
+replaces only that agent's prior mock run; other agents continue independently.
+The store owns the existing four-stage simulated timer, triggering prompt,
+timestamps, duration, and running/completed/cancelled/failed terminal state.
+Chat and Agent Detail subscribe to the same records. Agent Detail's **Stop**
+action clears only that mock timer and preserves a cancelled state; it does not
+call Chat cancellation, abort an HTTP request, or invoke a backend endpoint.
+Late completion and failure updates cannot overwrite a cancelled terminal run.
+
+The live Weekly Reporter path remains separate and Chat-local. Its
+`runWeeklyReport()` request, SSE progress events, payload, AbortController, and
+existing Chat cancellation behavior were not moved into or consumed by the
+mock store. Consequently, Agent Detail's Current run section represents only
+the frontend mock lifecycle and does not claim to monitor or cancel a live
+Weekly Reporter execution. Normal AX Chat without a selected agent creates no
+agent run.
+
+Validation completed from `frontend/`:
+
+```bash
+npm run test -- --run src/features/agents/AgentsPage.test.tsx src/features/agents/AgentDetailPage.test.tsx src/shared/state/useAgentRunStore.test.ts
+npm test
+npm run build
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-check-agent-runs cargo check --manifest-path src-tauri/Cargo.toml
+npm audit --audit-level=moderate
+```
+
+The focused suite passed 13 tests across three files, the complete frontend
+suite passed 44 tests across nine files, the TypeScript/Vite production build
+passed, the Rust check passed with a fresh temporary target, and the dependency
+audit reported zero vulnerabilities. The repository's default Cargo target
+still contains stale generated paths from the former `workflow-helper`
+location, so the first default-target check failed before the clean temporary
+target succeeded. Browser automation is not configured; responsive layout and
+cross-route progress should still receive a manual browser check.
+
 ## Update: Weekly Reporter Runs in Chat
 
 Date: 2026-08-14

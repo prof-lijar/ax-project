@@ -61,6 +61,69 @@ class ArtifactRef(ContractModel):
     version: str | None = None
 
 
+_DOCUMENT_MEDIA_TYPES = frozenset({"text/plain", "text/markdown", "text/csv"})
+_IMAGE_MEDIA_TYPES = frozenset({"image/png", "image/jpeg", "image/webp"})
+
+
+class ChatAttachmentRef(ContractModel):
+    """Reference to one gateway-normalized, transient chat attachment."""
+
+    attachment_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    filename: str = Field(min_length=1, max_length=255)
+    kind: Literal["document", "image"]
+    media_type: str = Field(min_length=1, max_length=128)
+    uri: str = Field(min_length=1, max_length=4_096)
+    byte_size: int = Field(ge=1, le=10 * 1024 * 1024)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("filename")
+    @classmethod
+    def validate_safe_filename(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("filename must be a basename")
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("filename must not contain control characters")
+        return value
+
+    @field_validator("uri")
+    @classmethod
+    def validate_local_file_uri(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "file"
+            or parsed.netloc not in {"", "localhost"}
+            or not parsed.path.startswith("/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("uri must be an absolute local file URI")
+        return value
+
+    @model_validator(mode="after")
+    def validate_media_type_for_kind(self) -> "ChatAttachmentRef":
+        allowed = (
+            _DOCUMENT_MEDIA_TYPES if self.kind == "document" else _IMAGE_MEDIA_TYPES
+        )
+        if self.media_type not in allowed:
+            raise ValueError(f"media_type is not supported for {self.kind} attachments")
+        return self
+
+
+class ChatErrorPayload(ContractModel):
+    """Safe error included in chat custom events and terminal graph state."""
+
+    code: Literal[
+        "attachment_invalid",
+        "attachment_not_found",
+        "attachment_too_large",
+        "attachment_integrity_error",
+        "attachment_unreadable",
+        "vision_not_supported",
+    ]
+    message: str = Field(min_length=1, max_length=500)
+    filename: str | None = Field(default=None, min_length=1, max_length=255)
+
+
 class ToolRequest(ContractModel):
     tool_name: str = Field(min_length=1, max_length=128)
     arguments: dict[str, Any] = Field(default_factory=dict)

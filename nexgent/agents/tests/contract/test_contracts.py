@@ -1,6 +1,7 @@
 import pytest
 from ax_contracts import (
     AgentInput,
+    ChatAttachmentRef,
     RunContext,
     ToolRequest,
     WardWeeklyMetricDelta,
@@ -29,6 +30,37 @@ def test_context_has_thread_and_correlation_identity() -> None:
 def test_tool_request_requires_idempotency_key() -> None:
     with pytest.raises(ValidationError):
         ToolRequest(tool_name="lookup", arguments={})  # type: ignore[call-arg]
+
+
+def test_chat_attachment_reference_is_strict_and_kind_safe() -> None:
+    reference = ChatAttachmentRef(
+        attachment_id="upload_123",
+        filename="notes.txt",
+        kind="document",
+        media_type="text/plain",
+        uri="file:///var/lib/ax-chat/upload_123/normalized.txt",
+        byte_size=12,
+        sha256="a" * 64,
+    )
+    assert reference.filename == "notes.txt"
+
+    with pytest.raises(ValidationError, match="basename"):
+        ChatAttachmentRef(
+            **(reference.model_dump(exclude={"filename"}) | {"filename": "../notes.txt"})
+        )
+    with pytest.raises(ValidationError, match="not supported"):
+        ChatAttachmentRef(
+            **(
+                reference.model_dump(exclude={"media_type"})
+                | {"media_type": "image/png"}
+            )
+        )
+    with pytest.raises(ValidationError, match="local file URI"):
+        ChatAttachmentRef(
+            **(reference.model_dump(exclude={"uri"}) | {"uri": "https://example.com/a"})
+        )
+    with pytest.raises(ValidationError):
+        ChatAttachmentRef(**(reference.model_dump() | {"unexpected": True}))
 
 
 def test_web_search_contract_normalizes_domains_and_rejects_conflicting_filters() -> (

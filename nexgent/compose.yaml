@@ -39,6 +39,10 @@ services:
     environment:
       LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
       SEARXNG_BASE_URL: http://searxng:8080
+      OPENAI_SUPPORTS_VISION: "${OPENAI_SUPPORTS_VISION:-false}"
+      AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
+    volumes:
+      - chat_attachments:/run/ax-chat:ro
     init: true
     ports:
       - "192.168.0.18:2024:2024"
@@ -78,10 +82,13 @@ services:
       NEXGENT_CORS_FRONTEND_PORT: "${FRONTEND_PORT:-5173}"
       NEXGENT_CORS_ORIGIN_REGEX: "${NEXGENT_CORS_ORIGIN_REGEX:-}"
       WATCHFILES_FORCE_POLLING: "${WATCHFILES_FORCE_POLLING:-true}"
+      AX_AGENT_SERVER_URL: http://agent-server:2024
+      AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
+      - chat_attachments:/run/ax-chat
     healthcheck:
       test:
         - CMD
@@ -136,3 +143,9 @@ services:
 
 volumes:
   frontend_node_modules:
+  chat_attachments:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=256m,uid=10001,gid=10001,mode=0700

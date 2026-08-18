@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 from collections.abc import AsyncIterator, Mapping, Sequence
@@ -16,12 +17,32 @@ import httpx
 COMPLETIONS_PATH = "/chat/completions"
 
 
+class ChatTextContentPart(TypedDict):
+    type: Literal["text"]
+    text: str
+
+
+class ChatImageUrl(TypedDict):
+    url: str
+
+
+class ChatImageContentPart(TypedDict):
+    type: Literal["image_url"]
+    image_url: ChatImageUrl
+
+
+ChatContentPart = ChatTextContentPart | ChatImageContentPart
+
+
 class ChatMessage(TypedDict):
     role: Literal["system", "user", "assistant"]
-    content: str
+    content: str | list[ChatContentPart]
 
 
 class ChatModel(Protocol):
+    @property
+    def supports_vision(self) -> bool: ...
+
     async def complete(
         self,
         messages: Sequence[ChatMessage],
@@ -65,6 +86,7 @@ class OpenAICompatibleSettings:
     api_key: str = field(repr=False)
     timeout_seconds: float = 120.0
     max_attempts: int = 3
+    supports_vision: bool = False
 
     def __post_init__(self) -> None:
         parsed = urlsplit(self.base_url)
@@ -78,6 +100,8 @@ class OpenAICompatibleSettings:
             raise ModelConfigurationError("model timeout must be positive")
         if self.max_attempts < 1:
             raise ModelConfigurationError("model max attempts must be at least 1")
+        if not isinstance(self.supports_vision, bool):
+            raise ModelConfigurationError("supports_vision must be a boolean")
 
     @property
     def completions_url(self) -> str:
@@ -97,6 +121,7 @@ class OpenAICompatibleSettings:
         base_url = values.get("OPENAI_BASE_URL") or values.get("URL")
         model = values.get("OPENAI_MODEL") or values.get("MODEL")
         api_key = values.get("OPENAI_API_KEY")
+        supports_vision_value = values.get("OPENAI_SUPPORTS_VISION", "false")
 
         missing = [
             name
@@ -112,7 +137,18 @@ class OpenAICompatibleSettings:
                 "missing model configuration: " + ", ".join(missing)
             )
 
-        return cls(base_url=base_url, model=model, api_key=api_key)
+        normalized_supports_vision = supports_vision_value.strip().lower()
+        if normalized_supports_vision not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+            raise ModelConfigurationError(
+                "OPENAI_SUPPORTS_VISION must be a boolean value"
+            )
+
+        return cls(
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            supports_vision=normalized_supports_vision in {"1", "true", "yes", "on"},
+        )
 
 
 class OpenAICompatibleChatModel:
@@ -130,6 +166,10 @@ class OpenAICompatibleChatModel:
             timeout=httpx.Timeout(settings.timeout_seconds),
             limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
         )
+
+    @property
+    def supports_vision(self) -> bool:
+        return self.settings.supports_vision
 
     async def complete(
         self,
@@ -224,15 +264,26 @@ class OpenAICompatibleChatModel:
         if not 0 <= temperature <= 2:
             raise ValueError("temperature must be between 0 and 2")
 
-        normalized_messages: list[ChatMessage] = []
+        normalized_messages: list[dict[str, object]] = []
         for message in messages:
             role = message.get("role")
             content = message.get("content")
             if role not in {"system", "user", "assistant"}:
                 raise ValueError(f"unsupported message role: {role!r}")
-            if not isinstance(content, str) or not content.strip():
-                raise ValueError("message content must be a non-empty string")
-            normalized_messages.append({"role": role, "content": content})
+            normalized_content: str | list[dict[str, object]]
+            if isinstance(content, str):
+                if not content.strip():
+                    raise ValueError("message content must not be empty")
+                normalized_content = content
+            elif isinstance(content, list) and content:
+                normalized_content = [
+                    self._normalize_content_part(role, part) for part in content
+                ]
+            else:
+                raise ValueError(
+                    "message content must be a non-empty string or content-part list"
+                )
+            normalized_messages.append({"role": role, "content": normalized_content})
 
         return {
             "model": self.settings.model,
@@ -241,6 +292,57 @@ class OpenAICompatibleChatModel:
             "temperature": temperature,
             "stream": True,
         }
+
+    def _normalize_content_part(
+        self,
+        role: str,
+        part: object,
+    ) -> dict[str, object]:
+        if not isinstance(part, dict):
+            raise TypeError("message content parts must be objects")
+        part_type = part.get("type")
+        if part_type == "text":
+            if set(part) != {"type", "text"}:
+                raise ValueError("text content parts contain unsupported fields")
+            text = part.get("text")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("text content parts must not be empty")
+            return {"type": "text", "text": text}
+        if part_type == "image_url":
+            if role != "user":
+                raise ValueError("image content parts are supported only for user messages")
+            if not self.supports_vision:
+                raise ValueError("image content requires a vision-capable model")
+            if set(part) != {"type", "image_url"}:
+                raise ValueError("image content parts contain unsupported fields")
+            image_url = part.get("image_url")
+            if not isinstance(image_url, dict) or set(image_url) != {"url"}:
+                raise ValueError("image_url must contain only a url")
+            url = image_url.get("url")
+            self._validate_image_data_url(url)
+            return {"type": "image_url", "image_url": {"url": url}}
+        raise ValueError(f"unsupported message content part: {part_type!r}")
+
+    @staticmethod
+    def _validate_image_data_url(url: object) -> None:
+        if not isinstance(url, str):
+            raise TypeError("image URL must be a string")
+        prefix, separator, encoded = url.partition(",")
+        if (
+            not separator
+            or prefix
+            not in {
+                "data:image/png;base64",
+                "data:image/jpeg;base64",
+                "data:image/webp;base64",
+            }
+            or not encoded
+        ):
+            raise ValueError("image URL must be a supported base64 data URL")
+        try:
+            base64.b64decode(encoded, validate=True)
+        except (ValueError, base64.binascii.Error) as exc:
+            raise ValueError("image URL contains invalid base64 data") from exc
 
     async def _iter_sse_content(
         self,

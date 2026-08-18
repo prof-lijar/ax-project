@@ -1,9 +1,23 @@
 """Integration ports; implementations stay outside graph topology."""
 
 from .agent_server import AgentServerClient, AgentServerUnavailable
+from .attachments import (
+    MAX_ATTACHMENT_BYTES,
+    MAX_ATTACHMENT_COUNT,
+    MAX_TOTAL_ATTACHMENT_BYTES,
+    MAX_TOTAL_DOCUMENT_CHARACTERS,
+    UNTRUSTED_ATTACHMENT_INSTRUCTION,
+    AttachmentReadError,
+    ChatAttachmentReader,
+    get_default_attachment_reader,
+)
 from .chat import (
+    ChatContentPart,
+    ChatImageContentPart,
+    ChatImageUrl,
     ChatMessage,
     ChatModel,
+    ChatTextContentPart,
     ModelConfigurationError,
     ModelRequestError,
     OpenAICompatibleChatModel,
@@ -37,12 +51,23 @@ from .web import (
 
 __all__ = [
     "DEFAULT_MCP_REGISTRY_PATH",
+    "MAX_ATTACHMENT_BYTES",
+    "MAX_ATTACHMENT_COUNT",
+    "MAX_TOTAL_ATTACHMENT_BYTES",
+    "MAX_TOTAL_DOCUMENT_CHARACTERS",
     "MCP_REGISTRY_ENV",
+    "UNTRUSTED_ATTACHMENT_INSTRUCTION",
     "AgentServerClient",
     "AgentServerUnavailable",
     "AsyncHostResolver",
+    "AttachmentReadError",
+    "ChatAttachmentReader",
+    "ChatContentPart",
+    "ChatImageContentPart",
+    "ChatImageUrl",
     "ChatMessage",
     "ChatModel",
+    "ChatTextContentPart",
     "HostResolver",
     "McpConfigurationError",
     "McpHeaderSource",
@@ -60,6 +85,7 @@ __all__ = [
     "WebFetchSettings",
     "WebRetrievalError",
     "canonicalize_url",
+    "get_default_attachment_reader",
     "get_default_chat_model",
     "get_default_web_fetch_client",
     "get_default_web_search_client",

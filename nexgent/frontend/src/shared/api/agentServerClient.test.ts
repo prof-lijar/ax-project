@@ -59,6 +59,48 @@ describe("readFinalAssistantResponse", () => {
     expect(streamedResponses).toEqual(["Hello", "Hello world"]);
   });
 
+  it("completes attachment streams without values events", async () => {
+    const payload = [
+      'event: custom\ndata: {"response_delta":"Visual"}\n\n',
+      'event: custom\ndata: {"response_delta":" answer"}\n\n',
+      'event: custom\ndata: {"response_complete":"Visual answer"}\n\n'
+    ].join("");
+    const streamedResponses: string[] = [];
+
+    await expect(
+      readFinalAssistantResponse(textStream([payload]), (response) =>
+        streamedResponses.push(response)
+      )
+    ).resolves.toBe("Visual answer");
+    expect(streamedResponses).toEqual(["Visual", "Visual answer"]);
+  });
+
+  it("surfaces safe streamed request errors", async () => {
+    const payload =
+      'event: custom\ndata: {"error":{"schema_version":"1","code":"vision_not_supported","message":"Image attachments are not supported by the configured model.","filename":"scan.png"}}\n\n';
+
+    await expect(
+      readFinalAssistantResponse(textStream([payload]))
+    ).rejects.toMatchObject({
+      code: "request_error",
+      filename: "scan.png",
+      serverCode: "vision_not_supported",
+      message: "scan.png: Image attachments are not supported by the configured model."
+    });
+  });
+
+  it("surfaces safe backend stream errors", async () => {
+    const payload =
+      'event: error\ndata: {"error":{"schema_version":"1","code":"agent_server_stream_error","message":"The chat stream ended unexpectedly."}}\n\n';
+
+    await expect(
+      readFinalAssistantResponse(textStream([payload]))
+    ).rejects.toMatchObject({
+      code: "request_error",
+      message: "The chat stream ended unexpectedly."
+    });
+  });
+
   it("ignores malformed metadata and values events without a response", async () => {
     const payload = [
       "event: metadata\ndata: not-json\n\n",
@@ -97,7 +139,7 @@ describe("agentServerClient", () => {
     );
   });
 
-  it("sends one message and cancels the run when its stream disconnects", async () => {
+  it("sends prompt and files to the backend multipart chat boundary", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         textStream(['event: values\ndata: {"response":"done"}\n\n'])
@@ -105,23 +147,24 @@ describe("agentServerClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(agentServerClient.streamChat("current message")).resolves.toBe(
-      "done"
-    );
+    const files = [
+      new File(["notes"], "notes.md", { type: "text/markdown" }),
+      new File([new Uint8Array([1, 2, 3])], "photo.png", {
+        type: "image/png"
+      })
+    ];
+    await expect(
+      agentServerClient.streamChat("current message", { files })
+    ).resolves.toBe("done");
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/agent-server/runs/stream");
+    expect(url).toBe("http://127.0.0.1:8000/api/chat/stream");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({
-      assistant_id: "chat",
-      input: { message: "current message" },
-      stream_mode: ["custom", "values"],
-      on_disconnect: "cancel"
-    });
-    expect(init.headers).toEqual({
-      Accept: "text/event-stream",
-      "Content-Type": "application/json"
-    });
+    expect(init.headers).toEqual({ Accept: "text/event-stream" });
+    expect(init.body).toBeInstanceOf(FormData);
+    const body = init.body as FormData;
+    expect(body.get("prompt")).toBe("current message");
+    expect(body.getAll("files")).toEqual(files);
   });
 
   it("runs the weekly reporter with the selected reporting period", async () => {
@@ -156,6 +199,36 @@ describe("agentServerClient", () => {
     await expect(agentServerClient.streamChat("hello")).rejects.toMatchObject({
       code: "http_error",
       status: 503
+    });
+  });
+
+  it("maps structured attachment validation failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              schema_version: "1",
+              code: "attachment_too_large",
+              message: "brief.pdf exceeds the 10 MB per-file limit.",
+              filename: "brief.pdf"
+            }
+          }),
+          {
+            status: 413,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+    );
+
+    await expect(agentServerClient.streamChat("hello")).rejects.toMatchObject({
+      code: "attachment_error",
+      filename: "brief.pdf",
+      serverCode: "attachment_too_large",
+      status: 413,
+      message: expect.stringContaining("brief.pdf exceeds")
     });
   });
 
