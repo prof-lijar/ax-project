@@ -4,7 +4,16 @@ import re
 
 from ax_contracts import EvaluationResult, WardWeeklyReport, WardWeeklyReportBatchResult
 
-REQUIRED_HEADINGS = ("## 주요 관찰", "## 핵심 지표", "## 실내 환경", "## 다음 주 제안")
+REQUIRED_HEADINGS = (
+    "## 기본 정보",
+    "## 한 주 요약",
+    "## 1. 수면 패턴",
+    "## 2. 활동량",
+    "## 3. 실내 환경",
+    "## 4. 기기 데이터 수신",
+    "## 5. 위험 관리",
+    "# 보호자 행동 제안",
+)
 FORBIDDEN_PHRASES = (
     "위험합니다",
     "응급",
@@ -43,19 +52,18 @@ def evaluate_weekly_report_batch(
         _criterion(
             "personalization",
             all(
-                report.markdown.startswith(
-                    f"# {report.display_name} 주간 리포트"
-                )
+                report.markdown.startswith("# 주간 생활 리포트")
+                and f"- 가입자: {report.display_name}" in report.markdown
                 for report in result.reports
             ),
-            "every report title matches its validated ward identity",
-            "render each title from the report contract identity",
+            "every report identifies its validated ward in the basic information",
+            "render each ward identity in the basic information section",
         ),
         _criterion(
             "numeric_grounding",
             all(_has_grounded_kpi_row(report) for report in result.reports)
             and all(not _narrative_has_digits(report) for report in result.reports),
-            "danger-day rows match calculated metrics and narrative has no digits",
+            "risk-event rows match calculated metrics and narrative has no digits",
             "render numbers only from validated metrics and reject numeric model prose",
         ),
         _criterion(
@@ -106,8 +114,10 @@ def _criterion(
 def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
     metrics = report.metrics
     expected = (
-        f"| 위험 감지일 | {metrics.current.danger_days}일 | "
-        f"{metrics.previous.danger_days}일 | {metrics.delta.danger_days:+d}일 |"
+        f"  - 위험 감지: {metrics.current.risk_detected_count}회\n"
+        f"  - 정상 해제: {metrics.current.risk_resolved_count}회\n"
+        f"  - 지난주: {metrics.previous.risk_detected_count}회 / "
+        f"{metrics.previous.risk_resolved_count}회"
     )
     return expected in report.markdown
 

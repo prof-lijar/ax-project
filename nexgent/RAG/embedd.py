@@ -8,6 +8,8 @@ import os
 import re
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,11 +21,11 @@ MODEL_CACHE = BASE_DIR / ".cache" / "huggingface"
 DEVICE = "cuda:0"
 EMBEDDING_DIMENSION = 1024
 NORM_TOLERANCE = 0.01
-MIN_CHUNK_CHARS = 300
-MAX_CHUNK_CHARS = 500
-MIN_OVERLAP_CHARS = 50
-TARGET_OVERLAP_CHARS = 75
-MAX_OVERLAP_CHARS = 100
+MIN_CHUNK_TOKENS = 300
+MAX_CHUNK_TOKENS = 500
+MIN_OVERLAP_TOKENS = 40
+TARGET_OVERLAP_TOKENS = 60
+MAX_OVERLAP_TOKENS = 80
 EXIT_COMMANDS = {".exit", ".quit"}
 INSERT_SQL = """
 INSERT INTO rag.embeddings (context, vector)
@@ -55,6 +57,19 @@ os.environ.setdefault("TORCH_DISABLE_NATIVE_JIT", "1")
 import psycopg  # noqa: E402
 import torch  # noqa: E402
 from sentence_transformers import SentenceTransformer  # noqa: E402
+from transformers import AutoTokenizer, PreTrainedTokenizerBase  # noqa: E402
+
+
+@dataclass(frozen=True)
+class ChunkingResult:
+    """Token measurements and exact source spans for one chunking run."""
+
+    source_text: str
+    source_token_count: int
+    chunks: list[str]
+    chunk_token_counts: list[int]
+    chunk_spans: list[tuple[int, int]]
+    overlap_token_counts: list[int]
 
 
 def read_document(input_fn: Callable[[str], str] = input) -> tuple[str, bool]:
@@ -174,95 +189,238 @@ def _boundary_positions(text: str) -> tuple[tuple[list[int], ...], tuple[list[in
     return end_groups, start_groups
 
 
+def count_tokens(tokenizer: PreTrainedTokenizerBase, text: str) -> int:
+    """Count Qwen tokenizer tokens without adding model special tokens."""
+    return len(tokenizer.encode(text, add_special_tokens=False))
+
+
+def _token_offsets(
+    tokenizer: PreTrainedTokenizerBase, text: str
+) -> list[tuple[int, int]]:
+    """Return fast-tokenizer character offsets for exact source slicing."""
+    encoded = tokenizer(
+        text,
+        add_special_tokens=False,
+        return_offsets_mapping=True,
+    )
+    raw_offsets = encoded.get("offset_mapping")
+    if raw_offsets is None:
+        raise RuntimeError("The selected Qwen tokenizer does not expose offsets")
+    offsets = [
+        (int(start), int(end))
+        for start, end in raw_offsets
+        if int(end) > int(start)
+    ]
+    if text and not offsets:
+        raise RuntimeError("The selected Qwen tokenizer produced no usable offsets")
+    return offsets
+
+
+def _max_end_within_token_limit(
+    text: str,
+    start: int,
+    tokenizer: PreTrainedTokenizerBase,
+    span_token_count: Callable[[int, int], int],
+) -> int:
+    """Find an exact source end whose re-tokenized span fits the maximum."""
+    offsets = _token_offsets(tokenizer, text[start:])
+    if len(offsets) <= MAX_CHUNK_TOKENS:
+        return len(text)
+
+    token_index = min(MAX_CHUNK_TOKENS, len(offsets)) - 1
+    while token_index >= 0:
+        end = start + offsets[token_index][1]
+        if end > start and span_token_count(start, end) <= MAX_CHUNK_TOKENS:
+            return end
+        token_index -= 1
+    raise RuntimeError("Token-level hard split could not make forward progress")
+
+
 def _choose_chunk_end(
     text: str,
     start: int,
+    previous_end: int,
+    tokenizer: PreTrainedTokenizerBase,
+    span_token_count: Callable[[int, int], int],
     end_groups: tuple[list[int], ...],
     protected_ranges: list[tuple[int, int]],
 ) -> int:
-    """Choose a natural chunk end while reserving useful text after the split."""
-    max_end = min(start + MAX_CHUNK_CHARS, len(text) - MAX_OVERLAP_CHARS)
-    preferred_start = start + MIN_CHUNK_CHARS
+    """Choose a natural boundary using re-tokenized span sizes."""
+    hard_end = _max_end_within_token_limit(
+        text, start, tokenizer, span_token_count
+    )
+    if hard_end <= previous_end:
+        raise RuntimeError("Chunking cannot add new source content")
 
-    for positions in end_groups:
-        candidates = [
-            position
-            for position in positions
-            if preferred_start <= position <= max_end
-            and not _is_protected_boundary(position, protected_ranges)
-        ]
-        if candidates:
-            return max(candidates)
+    fallback_minimum = max(MIN_CHUNK_TOKENS // 2, MAX_OVERLAP_TOKENS + 1)
+    for minimum_tokens in (MIN_CHUNK_TOKENS, fallback_minimum):
+        for positions in end_groups:
+            for position in reversed(positions):
+                if position <= max(start, previous_end) or position > hard_end:
+                    continue
+                if _is_protected_boundary(position, protected_ranges):
+                    continue
+                tokens = span_token_count(start, position)
+                if minimum_tokens <= tokens <= MAX_CHUNK_TOKENS:
+                    return position
 
-    fallback_start = start + (MIN_CHUNK_CHARS // 2)
-    for positions in end_groups:
-        candidates = [
-            position
-            for position in positions
-            if fallback_start <= position <= max_end
-            and not _is_protected_boundary(position, protected_ranges)
-        ]
-        if candidates:
-            return max(candidates)
-
-    return max_end
+    return hard_end
 
 
 def _choose_overlap_start(
+    text: str,
     start: int,
     end: int,
+    tokenizer: PreTrainedTokenizerBase,
+    span_token_count: Callable[[int, int], int],
     start_groups: tuple[list[int], ...],
 ) -> int:
-    """Choose a natural 50–100 character overlap, aiming near 75 characters."""
-    earliest = max(start + 1, end - MAX_OVERLAP_CHARS)
-    latest = end - MIN_OVERLAP_CHARS
-    target = end - TARGET_OVERLAP_CHARS
+    """Choose an exact 40–80-token suffix, aiming near 60 tokens."""
+    chunk_tokens = span_token_count(start, end)
 
     for positions in start_groups:
-        candidates = [position for position in positions if earliest <= position <= latest]
+        candidates: list[tuple[int, int]] = []
+        for position in positions:
+            if not start < position < end:
+                continue
+            overlap_tokens = span_token_count(position, end)
+            if (
+                MIN_OVERLAP_TOKENS <= overlap_tokens <= MAX_OVERLAP_TOKENS
+                and overlap_tokens < chunk_tokens
+            ):
+                candidates.append((position, overlap_tokens))
         if candidates:
-            return min(candidates, key=lambda position: (abs(position - target), position))
+            return min(
+                candidates,
+                key=lambda item: (
+                    abs(item[1] - TARGET_OVERLAP_TOKENS),
+                    item[0],
+                ),
+            )[0]
 
-    return min(max(target, earliest), latest)
+    offsets = _token_offsets(tokenizer, text[start:end])
+    candidates = []
+    for local_start, _ in offsets:
+        position = start + local_start
+        if not start < position < end:
+            continue
+        overlap_tokens = span_token_count(position, end)
+        if (
+            MIN_OVERLAP_TOKENS <= overlap_tokens <= MAX_OVERLAP_TOKENS
+            and overlap_tokens < chunk_tokens
+        ):
+            candidates.append((position, overlap_tokens))
+    if not candidates:
+        raise RuntimeError("Token-level overlap selection could not make progress")
+    return min(
+        candidates,
+        key=lambda item: (abs(item[1] - TARGET_OVERLAP_TOKENS), item[0]),
+    )[0]
 
 
-def chunk_document(document: str) -> list[str]:
-    """Split a source document into overlapping Korean-context-aware chunks."""
+def chunk_document(
+    document: str, tokenizer: PreTrainedTokenizerBase
+) -> ChunkingResult:
+    """Split a document using Qwen token counts and exact source spans."""
     text = document.strip()
     if not text:
-        return []
-    if len(text) <= MAX_CHUNK_CHARS:
-        return [text]
+        return ChunkingResult("", 0, [], [], [], [])
 
+    @lru_cache(maxsize=None)
+    def span_token_count(start: int, end: int) -> int:
+        return count_tokens(tokenizer, text[start:end])
+
+    source_token_count = span_token_count(0, len(text))
     end_groups, start_groups = _boundary_positions(text)
     protected_ranges = _heading_protected_ranges(text)
     chunks: list[str] = []
+    chunk_token_counts: list[int] = []
+    chunk_spans: list[tuple[int, int]] = []
+    overlap_token_counts: list[int] = []
     start = 0
 
     while start < len(text):
-        if len(text) - start <= MAX_CHUNK_CHARS:
+        previous_end = chunk_spans[-1][1] if chunk_spans else 0
+        if span_token_count(start, len(text)) <= MAX_CHUNK_TOKENS:
             end = len(text)
         else:
-            end = _choose_chunk_end(text, start, end_groups, protected_ranges)
+            end = _choose_chunk_end(
+                text,
+                start,
+                previous_end,
+                tokenizer,
+                span_token_count,
+                end_groups,
+                protected_ranges,
+            )
 
         if end <= start:
             raise RuntimeError("Chunking failed to make forward progress")
+        if chunk_spans and end <= previous_end:
+            raise RuntimeError("Chunking failed to add new source content")
+
         chunk = text[start:end]
         if not chunk.strip():
             raise RuntimeError("Chunking produced an empty chunk")
+        chunk_tokens = span_token_count(start, end)
+        if chunk_tokens > MAX_CHUNK_TOKENS:
+            raise RuntimeError(
+                f"Chunk exceeds {MAX_CHUNK_TOKENS} tokens: {chunk_tokens}"
+            )
+
+        if chunk_spans:
+            previous_start, previous_end = chunk_spans[-1]
+            if not previous_start < start < previous_end:
+                raise RuntimeError("Adjacent chunks do not contain an overlap")
+            overlap_text = text[start:previous_end]
+            if not chunks[-1].endswith(overlap_text) or not chunk.startswith(
+                overlap_text
+            ):
+                raise RuntimeError("Adjacent chunks do not preserve exact overlap")
+            overlap_tokens = span_token_count(start, previous_end)
+            if not MIN_OVERLAP_TOKENS <= overlap_tokens <= MAX_OVERLAP_TOKENS:
+                raise RuntimeError(
+                    f"Overlap outside token range: {overlap_tokens}"
+                )
+            if overlap_tokens >= chunk_token_counts[-1]:
+                raise RuntimeError("Overlap would repeat the entire previous chunk")
+            overlap_token_counts.append(overlap_tokens)
+
         chunks.append(chunk)
+        chunk_token_counts.append(chunk_tokens)
+        chunk_spans.append((start, end))
 
         if end == len(text):
             break
 
-        next_start = _choose_overlap_start(start, end, start_groups)
+        next_start = _choose_overlap_start(
+            text,
+            start,
+            end,
+            tokenizer,
+            span_token_count,
+            start_groups,
+        )
         if not start < next_start < end:
             raise RuntimeError("Overlap selection failed to make forward progress")
-        if end - next_start >= len(chunk):
-            raise RuntimeError("Overlap would duplicate the entire previous chunk")
         start = next_start
 
-    return chunks
+    if chunk_spans[0][0] != 0 or chunk_spans[-1][1] != len(text):
+        raise RuntimeError("Chunking did not cover the complete source document")
+    for (_, previous_end), (next_start, _) in zip(
+        chunk_spans, chunk_spans[1:], strict=False
+    ):
+        if next_start > previous_end:
+            raise RuntimeError("Chunking left a gap in the source document")
+
+    return ChunkingResult(
+        source_text=text,
+        source_token_count=source_token_count,
+        chunks=chunks,
+        chunk_token_counts=chunk_token_counts,
+        chunk_spans=chunk_spans,
+        overlap_token_counts=overlap_token_counts,
+    )
 
 
 def database_config() -> dict[str, str | int]:
@@ -287,6 +445,19 @@ def database_config() -> dict[str, str | int]:
         "password": password,
         "connect_timeout": 10,
     }
+
+
+def load_tokenizer() -> PreTrainedTokenizerBase:
+    """Load the authoritative Qwen tokenizer used for chunk measurements."""
+    print(f"Loading tokenizer for {MODEL_ID}...")
+    tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_ID,
+        cache_dir=str(MODEL_CACHE),
+        use_fast=True,
+    )
+    if not tokenizer.is_fast:
+        raise RuntimeError("Token-based chunking requires a fast Qwen tokenizer")
+    return tokenizer
 
 
 def load_model() -> SentenceTransformer:
@@ -357,24 +528,34 @@ def insert_chunks(chunks: list[str], vectors: list[list[float]]) -> list[int]:
 
 
 def ingest_document(
-    document: str, model: SentenceTransformer | None
-) -> tuple[SentenceTransformer, list[int]]:
+    document: str,
+    tokenizer: PreTrainedTokenizerBase | None,
+    model: SentenceTransformer | None,
+) -> tuple[PreTrainedTokenizerBase, SentenceTransformer, list[int]]:
     """Chunk, embed, and atomically insert one non-empty source document."""
-    chunks = chunk_document(document)
-    chunk_lengths = ", ".join(str(len(chunk)) for chunk in chunks)
-    print(f"Source characters: {len(document.strip())}")
-    print(f"Generated chunks: {len(chunks)}")
-    print(f"Chunk lengths: [{chunk_lengths}]")
+    if tokenizer is None:
+        tokenizer = load_tokenizer()
+    result = chunk_document(document, tokenizer)
+    token_lengths = ", ".join(str(value) for value in result.chunk_token_counts)
+    character_lengths = ", ".join(str(len(chunk)) for chunk in result.chunks)
+    overlap_lengths = ", ".join(str(value) for value in result.overlap_token_counts)
+    print(f"Source characters: {len(result.source_text)}")
+    print(f"Source tokens: {result.source_token_count}")
+    print(f"Generated chunks: {len(result.chunks)}")
+    print(f"Chunk token lengths: [{token_lengths}]")
+    print(f"Chunk character lengths: [{character_lengths}]")
+    print(f"Overlap token lengths: [{overlap_lengths}]")
 
     if model is None:
         model = load_model()
-    vectors = embed_documents(model, chunks)
-    inserted_ids = insert_chunks(chunks, vectors)
-    return model, inserted_ids
+    vectors = embed_documents(model, result.chunks)
+    inserted_ids = insert_chunks(result.chunks, vectors)
+    return tokenizer, model, inserted_ids
 
 
 def run_interactive_mode() -> int:
     """Ingest multiple interactively entered documents in one process."""
+    tokenizer: PreTrainedTokenizerBase | None = None
     model: SentenceTransformer | None = None
     document_number = 0
     print("Persistent ingestion session started.")
@@ -387,7 +568,9 @@ def run_interactive_mode() -> int:
             print("No source document entered; start another or exit.")
             continue
 
-        model, inserted_ids = ingest_document(document, model)
+        tokenizer, model, inserted_ids = ingest_document(
+            document, tokenizer, model
+        )
         document_number += 1
         print(
             f"Inserted document {document_number}: "
@@ -402,6 +585,7 @@ def run_interactive_mode() -> int:
 def run_file_mode(path_values: list[str]) -> int:
     """Ingest validated UTF-8 files with one lazily loaded model."""
     sources = read_source_files(path_values)
+    tokenizer: PreTrainedTokenizerBase | None = None
     model: SentenceTransformer | None = None
     inserted_documents = 0
 
@@ -411,7 +595,9 @@ def run_file_mode(path_values: list[str]) -> int:
             continue
 
         print(f"Source file: {path}")
-        model, inserted_ids = ingest_document(document, model)
+        tokenizer, model, inserted_ids = ingest_document(
+            document, tokenizer, model
+        )
         inserted_documents += 1
         print(
             f"Inserted file {path}: "

@@ -35,11 +35,12 @@ production/source-document integration is not yet complete.**
 - **Embedding:** `Qwen/Qwen3-Embedding-0.6B` runs in BF16 on CUDA and produces
   normalized 1024-dimensional vectors. Documents use no query prompt; queries
   use `prompt_name="query"`.
-- **Chunking:** Source documents are split automatically with a preferred
-  300–500-character range, a maximum target of 500 characters, and 50–100
-  characters of overlap aimed near 75. Boundaries are selected in paragraph →
-  sentence → whitespace → hard-split order. These are starting parameters that
-  still require evaluation with real project documents.
+- **Chunking:** Source documents are split with the Qwen tokenizer using an
+  experimental preferred range of 300–500 tokens, a maximum target of 500
+  tokens, and 40–80 tokens of exact overlap aimed near 60. Boundaries are
+  selected in paragraph → sentence → whitespace → token-level hard-split
+  order. These starting parameters still require evaluation with real project
+  documents.
 - **Ingestion:** `embedd.py` supports a persistent interactive multi-document
   session and UTF-8 file mode (`embedd.py file1.txt file2.txt`); file mode does
   not require `.done`. Qwen loads lazily once and is reused across documents or
@@ -145,10 +146,11 @@ production/source-document integration is not yet complete.**
   but does not settle the project owner's final deployment-topology choice.
 - Initial retrieval is implemented and validated as exact cosine search with no
   HNSW or IVFFlat index.
-- The initial automatic chunking parameters are a preferred 300–500-character
-  range and 50–100-character overlap aimed near 75, with paragraph, sentence,
-  whitespace, then hard-split boundary priority. These are practical starting
-  values that require evaluation against real project documents.
+- The current experimental automatic chunking parameters are a preferred
+  300–500-token range, a 500-token maximum, and 40–80-token overlap aimed near
+  60, with paragraph, sentence, whitespace, then token-level hard-split
+  priority. Qwen's tokenizer is the authoritative counter. These values require
+  evaluation against real project documents.
 - Duplicate ingestion remains allowed. No `UNIQUE(context)` constraint is added
   because identical text may legitimately belong to different sources; stable
   source/chunk identity must be designed with the real ingestion format.
@@ -166,9 +168,8 @@ production/source-document integration is not yet complete.**
 - The source documents and their formats have not yet been identified.
 - The automatic Korean-aware chunker is implemented and validated with
   synthetic and controlled proof-of-concept documents. Its current
-  300–500-character and 50–100-character overlap parameters are not claimed to
-  be optimal and still require evaluation/refinement against real source
-  formats.
+  300–500-token range and 40–80-token overlap are not claimed to be optimal and
+  still require evaluation/refinement against real source formats.
 - A duplicate/re-ingestion identity policy remains unresolved. Candidate inputs
   include a source/document identifier, stable chunk identifier or index,
   content hash, replace/upsert rules, and deliberate document versioning.
@@ -313,9 +314,10 @@ estimates because they were not run locally.
 - `.exit` or `.quit` ends the session and discards any partial document. EOF
   ingests a non-empty partial final document once and then exits; Ctrl+C cancels
   the session cleanly.
-- An empty `.done` reprompts before loading Qwen or connecting to PostgreSQL.
-  Each non-empty document prints source character count, generated chunk count,
-  and per-chunk character lengths without printing embeddings.
+- An empty `.done` reprompts before loading the tokenizer or Qwen and does not
+  connect to PostgreSQL. Each non-empty document prints source character and
+  token counts, generated chunk count, per-chunk token and character lengths,
+  and overlap token lengths without printing embeddings.
 - If one or more positional paths are supplied, `embedd.py` switches to file
   mode. It reads each file as UTF-8, preserves all internal line breaks, and
   treats each non-empty file as one source document. File mode does not require
@@ -324,25 +326,29 @@ estimates because they were not run locally.
   loading Qwen or inserting any document. A missing path, directory, unreadable
   file, or invalid UTF-8 file aborts the entire run; low-level exception details
   are not printed. Empty files are reported and skipped.
-- Documents of at most 500 characters remain one chunk. Longer documents use a
-  preferred 300–500-character chunk range and 50–100 characters of exact
-  adjacent overlap, targeting 75 characters when a natural boundary permits.
+- Documents of at most 500 Qwen tokens remain one chunk. Longer documents use
+  an experimental preferred 300–500-token range and 40–80 tokens of exact
+  adjacent overlap, targeting 60 tokens when a natural boundary permits.
 - Chunk ends prefer paragraph boundaries, then sentence endings, then
-  whitespace, and finally a hard character split. Recognized sentence endings
-  are `.`, `!`, `?`, `。`, `！`, and `？`, including trailing Unicode/ASCII
-  quotation or bracket characters.
+  whitespace, and finally a token-level hard split based on the fast Qwen
+  tokenizer's offset mapping. Recognized sentence endings are `.`, `!`, `?`,
+  `。`, `！`, and `？`, including trailing Unicode/ASCII quotation or bracket
+  characters.
 - A deterministic heading heuristic protects Markdown headings, bracketed
   headings, colon-terminated lines, and short standalone lines from being
   separated from following content when avoidable.
 - Overlap starts prefer paragraph, sentence, then whitespace boundaries. The
   selected previous-chunk suffix is the actual next-chunk prefix. Explicit
   guards prevent zero progress and whole-chunk repetition.
-- These character parameters are initial practical choices, not empirically
+- Natural boundaries remain character offsets only to preserve exact source
+  slices. Candidate spans, hard splits, and overlaps are accepted according to
+  tokenizer counts of the exact substrings with special tokens disabled.
+- These token parameters are initial experimental choices, not empirically
   optimal values for all Korean documents; real project documents still need
   evaluation.
-- In either mode, load Qwen lazily after the first non-empty document is
-  chunked, retain that model instance for the rest of the process, and encode
-  every document's generated chunks with
+- In either mode, lazily load and retain one Qwen tokenizer for chunking and one
+  Qwen embedding-model instance for encoding. Reuse both for the rest of the
+  process and encode every document's generated chunks with
   `Qwen/Qwen3-Embedding-0.6B`, BF16, `normalize_embeddings=True`, and no query
   prompt or `prompt_name`.
 - Require finite output with shape `(chunk_count, 1024)` and unit norms within
@@ -575,10 +581,11 @@ done
   inserted three Korean rows into `rag.embeddings`, and subsequent read-only
   exact cosine searches returned the expected top-1 context for all three
   Korean queries, as recorded in the dated validation entries below.
-- Deterministic automatic-chunking checks passed for short/long documents,
-  paragraph and Korean/Unicode sentence boundaries, exact suffix/prefix overlap,
-  hard-split progress safeguards, heading attachment, multiline blank-line
-  preservation, `.done`, and empty input.
+- The earlier character-based deterministic chunking checks passed and remain
+  historical evidence. The superseding token-based suite uses the cached Qwen
+  tokenizer and validates short/long Korean documents, paragraph and sentence
+  boundaries, token-level hard splits, exact overlap, the 500-token maximum,
+  empty input, forward progress, and lossless source coverage.
 - Controlled automatic ingestion inserted new urban-ecology chunks as IDs 10
   and 11. Both stored vectors are normalized and 1024-dimensional; subsequent
   paraphrased queries ranked the appropriate new chunk first.
@@ -593,6 +600,15 @@ done
   invalid-UTF-8 rejection, sanitized unreadable-file errors, use of the existing
   document pipeline for one file, and reuse of one mocked model across two
   files.
+- The complete offline ingestion suite passed 17 tests in 2.671 seconds: the
+  nine file-mode tests plus seven token-chunking cases and one interactive
+  tokenizer/model-reuse regression case. It loaded tokenizer files from the
+  local cache but did not load model weights or access PostgreSQL.
+- Model-free comparison of `manual_long_test.txt` changed the 1,388-character
+  source from four historical character-based chunks of
+  `[421, 499, 321, 374]` characters to two token-based chunks. The source has
+  792 Qwen tokens; chunk token lengths are `[478, 362]`, character lengths are
+  `[835, 641]`, and the exact overlap is 48 tokens.
 - A persistent two-query search session loaded Qwen exactly once, respected
   top-k 2 and top-k 1, and left the 9-row pre-ingestion database fingerprint
   unchanged. A later two-query retrieval check for IDs 10 and 11 also loaded
@@ -628,9 +644,9 @@ The following work remains before real source-document integration:
   retain the validated isolated RAG instance, or use a different existing
   PostgreSQL instance if one is identified and explicitly approved for RAG.
 - Identify the actual source-document types and formats.
-- Evaluate and refine the implemented 300–500-character, 50–100-character
-  overlap chunker against those real formats before production ingestion. The
-  current parameters are selected starting values, not proven optima.
+- Evaluate and refine the implemented 300–500-token, 40–80-token overlap
+  chunker against those real formats before production ingestion. The current
+  parameters are experimental starting values, not proven optima.
 - Define source/chunk identity and duplicate/re-ingestion semantics before real
   ingestion. Do not default to `UNIQUE(context)` without source requirements.
 - Determine the backend/agent integration requirements, including lifecycle,
@@ -1749,3 +1765,121 @@ sudo docker ps -a --format 'table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}' 
 - Only this documentation file was intentionally edited; no application or test
   code, configuration, database, Docker resource, model, package, or runtime
   state was changed.
+
+### 2026-08-19 — Manual live end-to-end validation
+
+**Observed live results — distinct from deterministic/mock validation**
+
+- File-mode ingestion was manually validated with the real Qwen model and
+  PostgreSQL. A 364-character Korean file was ingested as one chunk.
+- Two files were ingested in one `embedd.py` process. Qwen loaded only once,
+  confirming same-process model reuse.
+- A 1,388-character Korean document was split automatically into four chunks
+  with lengths `[421, 499, 321, 374]` and inserted as IDs 15–18.
+- `search.py` retrieved the appropriate long-document chunks for questions
+  about the service purpose, extreme-weather/environment information,
+  response-history records, and the unique keyword
+  `보라코끼리청킹테스트`.
+- Interactive ingestion was also independently validated earlier with one
+  document inserted as ID 19.
+- Interactive multi-document ingestion was manually validated. The first
+  document was inserted as ID 20 and the second as ID 21; Qwen loaded for the
+  first document only and was reused for the second.
+- `.done` completed a document and kept the ingestion session alive. `.exit`
+  then closed the session normally.
+- A read-only PostgreSQL inspection showed 21 total rows and confirmed that the
+  expected test rows and chunks were present.
+- Duplicate rows remain present by design, including the previously observed
+  duplicate-ingestion behavior.
+
+### 2026-08-19 — Token-based Korean chunking design
+
+**Historical pre-change checkpoint**
+
+- The validated automatic chunker still measured chunk and overlap limits with
+  Python character counts. Its earlier 300–500-character chunks and
+  50–100-character overlap remain preserved as superseded proof-of-concept
+  history.
+
+**Decided for implementation**
+
+- Use the tokenizer for `Qwen/Qwen3-Embedding-0.6B` as the authoritative token
+  counter. Natural boundary locations remain character offsets so source text
+  can be sliced exactly, but every chunk-size, hard-split, and overlap decision
+  must use re-tokenized substring counts.
+- Use an experimental preferred range of 300–500 tokens, a maximum target of
+  500 tokens, and 40–80 tokens of overlap aimed near 60. These are initial PoC
+  values that require evaluation against real project documents; they are not
+  final production requirements.
+- Retain paragraph, sentence, whitespace, then token-level hard-split boundary
+  priority. Preserve exact suffix/prefix overlap and add explicit guards against
+  empty chunks, zero progress, lost source content, and repetition of an entire
+  preceding chunk.
+- Keep interactive and file-mode behavior, per-document atomic insertion,
+  same-process tokenizer/model reuse, no-query-prompt document embeddings,
+  1024-dimensional vectors, and exact search unchanged.
+
+**Validation required before any live insertion**
+
+- Run deterministic tokenizer-based checks for short and long Korean text,
+  paragraph and sentence boundaries, token-level fallback, overlap, empty
+  input, forward progress, the 500-token maximum, and lossless source coverage.
+- Run a model-free comparison with `manual_long_test.txt`, retaining the prior
+  result of 1,388 characters and character-chunk lengths
+  `[421, 499, 321, 374]` for comparison.
+- Do not perform a live database write until the tokenization results are
+  reported and reviewed.
+
+**Implemented; deterministic validation pending at this checkpoint**
+
+- Replaced the character-limit constants with experimental token limits:
+  preferred 300–500, maximum 500, and overlap 40–80 aimed near 60.
+- Added one lazily loaded Qwen tokenizer per ingestion process. It is reused
+  across interactive documents or files independently of the already retained
+  embedding-model instance.
+- Natural boundaries remain exact source character offsets, but candidate
+  chunk and overlap spans are accepted only after re-tokenizing the exact
+  substring with `add_special_tokens=False`. Token-level fallback uses the fast
+  tokenizer's offset mapping and then revalidates the sliced substring count.
+- Added chunk-span metadata and runtime guards for the 500-token maximum, exact
+  suffix/prefix overlap, 40–80-token overlap, non-empty output, forward
+  progress, new source coverage per chunk, and complete source coverage.
+- Updated ingestion summaries to report source characters, source tokens,
+  chunk count, per-chunk token and character lengths, and overlap token lengths.
+- Preserved file and interactive input behavior, model reuse, document
+  prompting, embedding validation, SQL, and per-document atomic transactions.
+- Added deterministic token-chunking tests and updated the file-ingestion mocks
+  for the new reusable-tokenizer lifecycle. These tests do not load model
+  weights or connect to PostgreSQL.
+
+**Deterministic and tokenizer-only validation results**
+
+- All 17 offline tests passed in 2.671 seconds: nine existing file-ingestion
+  tests, seven token-chunking tests, and one persistent-interactive lifecycle
+  regression test.
+- The token suite covered empty and short input, long Korean documents,
+  paragraph-first and sentence-first boundaries, token-level hard-split
+  fallback, exact overlap, monotonically increasing source coverage, and
+  complete lossless coverage. Every generated chunk was non-empty and at most
+  500 tokens. Every overlap in documents with sufficient content was 40–80
+  tokens, was an exact previous-suffix/next-prefix, and was smaller than the
+  previous chunk.
+- The lifecycle regression used mocks to process two interactive documents.
+  The tokenizer and embedding model each loaded once and were reused; each
+  document retained a separate mocked insert call.
+- Tests loaded the real Qwen tokenizer from the local Hugging Face cache with
+  `local_files_only=True`, `HF_HUB_OFFLINE=1`, and
+  `TRANSFORMERS_OFFLINE=1`. They did not load embedding-model weights, invoke
+  CUDA, connect to PostgreSQL, or write a database row.
+
+**`manual_long_test.txt` tokenizer-only comparison**
+
+- Historical character-based result: 1,388 source characters produced four
+  chunks with character lengths `[421, 499, 321, 374]`.
+- Token-based result with the Qwen tokenizer: 1,388 source characters, 792
+  source tokens, two chunks, token lengths `[478, 362]`, character lengths
+  `[835, 641]`, and an exact 48-token overlap. The exact source spans were
+  `(0, 835)` and `(747, 1388)`.
+- This comparison only loaded the tokenizer and called the chunker. No live
+  embedding or database insertion was performed. Live database writes remain
+  deferred pending review of these results.

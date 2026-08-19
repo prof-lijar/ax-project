@@ -60,11 +60,15 @@ async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch)
     tampered = deepcopy(output)
     metrics = tampered["reports"][0]["metrics"]
     expected = (
-        f"| 위험 감지일 | {metrics['current']['danger_days']}일 | "
-        f"{metrics['previous']['danger_days']}일 | {metrics['delta']['danger_days']:+d}일 |"
+        f"  - 위험 감지: {metrics['current']['risk_detected_count']}회\n"
+        f"  - 정상 해제: {metrics['current']['risk_resolved_count']}회\n"
+        f"  - 지난주: {metrics['previous']['risk_detected_count']}회 / "
+        f"{metrics['previous']['risk_resolved_count']}회"
     )
     tampered["reports"][0]["markdown"] = tampered["reports"][0]["markdown"].replace(
-        expected, "| 위험 감지일 | 7일 | 7일 | +0일 |", 1
+        expected,
+        "  - 위험 감지: 7회\n  - 정상 해제: 7회\n  - 지난주: 7회 / 7회",
+        1,
     )
     evaluations = evaluate_weekly_report_batch(
         WardWeeklyReportBatchResult.model_validate(tampered)

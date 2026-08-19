@@ -27,6 +27,15 @@ weighted, activity averages are arithmetic means, and clock times use the
 existing linear averaging behavior. Both periods are half-open Monday ranges
 in the requested IANA timezone.
 
+The rendered Markdown follows the guardian-facing `주간 생활 리포트` layout:
+basic information, a weekly summary, five numbered sections for sleep,
+activity, environment, data reception, and risk management, then up to three
+grounded action suggestions. The exclusive period end is displayed as the
+inclusive Sunday. Fields without approved source semantics, including a
+subscriber score, environmental recommendation thresholds, signal-loss
+counts, and management-note details, are marked unavailable rather than
+inferred.
+
 ## Narrative boundary
 
 After calculation, Python converts numbers into an allowlisted qualitative

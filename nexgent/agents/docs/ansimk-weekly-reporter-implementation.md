@@ -9,8 +9,9 @@ Status: **Implemented manual reporting path**
 `ansimk_weekly_reporter` calculates a current and previous seven-day snapshot
 for each selected ward, creates a grounded qualitative fact package, asks the
 configured LLM for warm Korean prose, validates it, and renders deterministic
-Markdown. The spreadsheet wording tab is a tone and safety reference only;
-its field names, scores, and thresholds are not calculation rules.
+Markdown in the guardian-facing weekly-life-report template. The spreadsheet
+wording tab is a tone and safety reference only; its field names, scores, and
+thresholds are not calculation rules.
 
 ## Boundaries
 
@@ -108,6 +109,23 @@ corrective retry.
 
 Numbers are rendered only from `WardWeeklyMetrics`; generated prose is never
 parsed to create calculations.
+
+## Rendered report template
+
+The deterministic renderer uses the following order:
+
+1. `주간 생활 리포트` basic information and weekly summary;
+2. sleep pattern, activity, indoor environment, device-data reception, and
+   risk-management sections with current/prior metrics;
+3. up to three guardian action suggestions, each paired with a validated
+   observation as its basis.
+
+The contract's exclusive Monday `week_end` is displayed as the inclusive
+Sunday reporting date. Activity and sleep status labels describe only verified
+week-over-week direction. Until product-owned rules are versioned, subscriber
+status scores and environmental recommendation ranges are explicitly shown as
+undefined. Signal-loss counts and risk-management notes are not present in the
+source contract; the report does not invent them or expose raw management text.
 
 ## Configuration and operation
 

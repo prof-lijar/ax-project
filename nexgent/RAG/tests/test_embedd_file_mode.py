@@ -15,6 +15,15 @@ import embedd  # noqa: E402
 
 
 class FileIngestionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tokenizer = embedd.AutoTokenizer.from_pretrained(
+            embedd.MODEL_ID,
+            cache_dir=str(embedd.MODEL_CACHE),
+            use_fast=True,
+            local_files_only=True,
+        )
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
@@ -41,6 +50,9 @@ class FileIngestionTests(unittest.TestCase):
         fake_model = object()
 
         with (
+            patch.object(
+                embedd, "load_tokenizer", return_value=self.tokenizer
+            ) as load_tokenizer,
             patch.object(embedd, "load_model", return_value=fake_model) as load,
             patch.object(
                 embedd, "embed_documents", return_value=[[0.1] * 1024]
@@ -51,6 +63,7 @@ class FileIngestionTests(unittest.TestCase):
             result = embedd.main([str(path)])
 
         self.assertEqual(result, 0)
+        load_tokenizer.assert_called_once_with()
         load.assert_called_once_with()
         embed.assert_called_once_with(
             fake_model, ["문서 제목\n\n첫 문단입니다.\n둘째 줄입니다."]
@@ -72,6 +85,11 @@ class FileIngestionTests(unittest.TestCase):
         empty = self.write_text("empty.txt", "\n\n")
 
         with (
+            patch.object(
+                embedd,
+                "load_tokenizer",
+                side_effect=AssertionError("tokenizer called"),
+            ),
             patch.object(embedd, "load_model", side_effect=AssertionError("model called")),
             patch.object(embedd, "insert_chunks", side_effect=AssertionError("database called")),
             redirect_stdout(io.StringIO()) as output,
@@ -87,6 +105,11 @@ class FileIngestionTests(unittest.TestCase):
         missing = self.root / "missing.txt"
 
         with (
+            patch.object(
+                embedd,
+                "load_tokenizer",
+                side_effect=AssertionError("tokenizer called"),
+            ),
             patch.object(embedd, "load_model", side_effect=AssertionError("model called")),
             patch.object(embedd, "insert_chunks", side_effect=AssertionError("database called")),
             redirect_stderr(io.StringIO()) as errors,
@@ -130,11 +153,13 @@ class FileIngestionTests(unittest.TestCase):
         first = self.write_text("first.txt", "서울의 생태 관찰 문서입니다.")
         second = self.write_text("second.txt", "제주의 생태 관찰 문서입니다.")
         fake_model = object()
+        load_tokenizer = Mock(return_value=self.tokenizer)
         load = Mock(return_value=fake_model)
         embed = Mock(side_effect=[[[0.1] * 1024], [[0.2] * 1024]])
         insert = Mock(side_effect=[[20], [21]])
 
         with (
+            patch.object(embedd, "load_tokenizer", load_tokenizer),
             patch.object(embedd, "load_model", load),
             patch.object(embedd, "embed_documents", embed),
             patch.object(embedd, "insert_chunks", insert),
@@ -143,6 +168,7 @@ class FileIngestionTests(unittest.TestCase):
             result = embedd.main([str(first), str(second)])
 
         self.assertEqual(result, 0)
+        self.assertEqual(load_tokenizer.call_count, 1)
         self.assertEqual(load.call_count, 1)
         self.assertEqual(embed.call_count, 2)
         self.assertTrue(all(call.args[0] is fake_model for call in embed.call_args_list))

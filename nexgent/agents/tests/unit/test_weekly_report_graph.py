@@ -79,7 +79,11 @@ async def test_graph_returns_ordered_grounded_warm_reports(
     assert result["status"] == "completed"
     assert [report["ward_id"] for report in result["reports"]] == [101, 102, 103]
     assert all(report["generation_mode"] == "llm" for report in result["reports"])
-    assert all("| 위험 감지일 |" in report["markdown"] for report in result["reports"])
+    assert all(
+        report["markdown"].startswith("# 주간 생활 리포트")
+        for report in result["reports"]
+    )
+    assert all("## 5. 위험 관리" in report["markdown"] for report in result["reports"])
     assert all(report["narrative"]["analysis_text"] == ANALYSIS for report in result["reports"])
 
 
