@@ -106,6 +106,10 @@ def test_weekly_report_request_validates_period_and_timezone() -> None:
         WeeklyReportRequest(week_start="2026-08-03", timezone="Mars/Olympus")
     with pytest.raises(ValidationError):
         WeeklyReportRequest(week_start="2026-08-03", unknown=True)  # type: ignore[call-arg]
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        WeeklyReportRequest(week_start="2026-08-03", ward_ids=[1], cursor="opaque")
+    with pytest.raises(ValidationError, match="unique"):
+        WeeklyReportRequest(week_start="2026-08-03", ward_ids=[1, 1])
 
 
 def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:

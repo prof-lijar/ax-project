@@ -136,7 +136,9 @@ export const agentServerClient = {
         body: JSON.stringify({
           assistant_id: "ansimk_weekly_reporter",
           input,
+          config: { max_concurrency: 4 },
           stream_mode: ["custom", "values"],
+          stream_subgraphs: true,
           on_disconnect: "cancel"
         }),
         signal
@@ -302,7 +304,7 @@ export async function readWeeklyReportResult(
   let finalResult: WeeklyReportBatchResult | null = null;
 
   await readSseStream(stream, (event) => {
-    if (event.event === "custom") {
+    if (isCustomStreamEvent(event.event)) {
       const data = parseJsonEvent(event.data, "weekly report progress data");
       const progress = parseWeeklyReportProgress(data);
       onProgress?.(progress);
@@ -326,6 +328,10 @@ export async function readWeeklyReportResult(
     );
   }
   return finalResult;
+}
+
+function isCustomStreamEvent(eventName: string) {
+  return eventName === "custom" || eventName.startsWith("custom|");
 }
 
 async function readSseStream(
@@ -400,7 +406,10 @@ function parseWeeklyReportResult(value: Record<string, unknown>) {
     typeof value.week_end !== "string" ||
     typeof value.timezone !== "string" ||
     !Array.isArray(value.reports) ||
-    value.reports.length === 0 ||
+    value.reports.length > 25 ||
+    !Array.isArray(value.skipped) ||
+    !value.skipped.every(isSkippedWard) ||
+    !(value.next_cursor === null || typeof value.next_cursor === "string") ||
     !Array.isArray(value.warnings) ||
     !value.warnings.every((warning) => typeof warning === "string")
   ) {
@@ -414,6 +423,8 @@ function parseWeeklyReportResult(value: Record<string, unknown>) {
     week_end: value.week_end,
     timezone: value.timezone,
     reports,
+    skipped: value.skipped,
+    next_cursor: value.next_cursor,
     warnings: value.warnings as string[]
   } satisfies WeeklyReportBatchResult;
 }
@@ -425,6 +436,8 @@ function parseWardWeeklyReport(value: unknown): WardWeeklyReport {
     typeof value.display_name !== "string" ||
     typeof value.markdown !== "string" ||
     !isGenerationMode(value.generation_mode) ||
+    !isWeeklyNarrative(value.narrative) ||
+    !isGenerationMetadata(value.generation) ||
     !isRecord(value.metrics) ||
     !isMetricSnapshot(value.metrics.current) ||
     !isMetricSnapshot(value.metrics.previous) ||
@@ -440,17 +453,117 @@ function parseWardWeeklyReport(value: unknown): WardWeeklyReport {
 }
 
 function isMetricSnapshot(value: unknown) {
-  return hasNumberFields(value, ["danger_days"]);
+  return (
+    hasNumberFields(value, [
+      "covered_days",
+      "daily_summary_count",
+      "device_count",
+      "temperature_count",
+      "humidity_count",
+      "light_count",
+      "risk_detected_count",
+      "risk_resolved_count",
+      "danger_days",
+      "dispatch_request_count",
+      "unresolved_dispatch_count"
+    ]) &&
+    hasNullableNumberFields(value, [
+      "temperature_avg",
+      "temperature_min",
+      "temperature_max",
+      "humidity_avg",
+      "humidity_min",
+      "humidity_max",
+      "light_avg",
+      "light_min",
+      "light_max",
+      "light_on_time_minutes_avg",
+      "movement_count_avg",
+      "remote_control_count_avg",
+      "night_awake_count_avg",
+      "risk_score_avg"
+    ]) &&
+    hasNullableStringFields(value, ["wake_up_time_avg", "sleep_time_avg"])
+  );
 }
 
 function isMetricDelta(value: unknown) {
-  return hasNumberFields(value, ["danger_days"]);
+  return (
+    hasNumberFields(value, [
+      "covered_days",
+      "risk_detected_count",
+      "risk_resolved_count",
+      "danger_days",
+      "dispatch_request_count",
+      "unresolved_dispatch_count"
+    ]) &&
+    hasNullableNumberFields(value, [
+      "temperature_avg",
+      "humidity_avg",
+      "light_avg",
+      "light_on_time_minutes_avg",
+      "movement_count_avg",
+      "remote_control_count_avg",
+      "wake_up_time_minutes",
+      "sleep_time_minutes",
+      "night_awake_count_avg",
+      "risk_score_avg"
+    ])
+  );
 }
 
 function hasNumberFields(value: unknown, fields: string[]) {
   return (
     isRecord(value) &&
     fields.every((field) => typeof value[field] === "number")
+  );
+}
+
+function hasNullableNumberFields(value: unknown, fields: string[]) {
+  return (
+    isRecord(value) &&
+    fields.every(
+      (field) => value[field] === null || typeof value[field] === "number"
+    )
+  );
+}
+
+function hasNullableStringFields(value: unknown, fields: string[]) {
+  return (
+    isRecord(value) &&
+    fields.every(
+      (field) => value[field] === null || typeof value[field] === "string"
+    )
+  );
+}
+
+function isWeeklyNarrative(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.headline === "string" &&
+    typeof value.analysis_text === "string" &&
+    Array.isArray(value.observations) &&
+    value.observations.every((item) => typeof item === "string") &&
+    Array.isArray(value.suggestions) &&
+    value.suggestions.every((item) => typeof item === "string")
+  );
+}
+
+function isGenerationMetadata(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.prompt_version === "string" &&
+    (value.model === null || typeof value.model === "string") &&
+    (value.validation_status === "passed" || value.validation_status === "fallback") &&
+    (value.fallback_reason === null || typeof value.fallback_reason === "string")
+  );
+}
+
+function isSkippedWard(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.ward_id === "number" &&
+    (value.reason === "not_found" || value.reason === "source_error")
   );
 }
 

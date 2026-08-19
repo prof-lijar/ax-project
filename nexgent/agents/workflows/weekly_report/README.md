@@ -1,61 +1,75 @@
 # `ansimk_weekly_reporter`
 
-This manually triggered LangGraph workflow reads daily ward-danger records
-through the database MCP, compares a requested Monday-to-Monday week with its
-preceding week, and returns Korean Markdown reports for a bounded ward subset.
-It is an end-to-end prototype for validating the MCP, model, graph, and output
-path before final business requirements are defined.
+This manually triggered LangGraph workflow produces grounded Korean weekly
+reports for up to twenty-five wards. It preserves the registered graph ID and
+the existing `danger_days` fields used by the frontend.
 
-Python calculates every danger-day count and delta. The configured
-OpenAI-compatible model receives validated metrics and may write only
-digit-free narrative text. A missing, failed, empty, or invalid model response
-uses a disclosed deterministic Korean fallback without failing other reports.
+## Data flow
 
-## Input and local run
+The private `apps.weekly_report_api` FastAPI process reads raw `ansimk` tables
+through a reusable pooled `asyncpg` integration. It returns versioned current
+and previous seven-day snapshots to the graph through a private-network HTTP
+client. The graph never receives database credentials and exposes no arbitrary
+SQL tool.
+
+The source service reads schema-qualified tables only from `ansimk`:
+
+- `ansimk.analysis_devicedailysummary` for environment, activity, and sleep;
+- `ansimk.analysis_wardevaluation` for risk events, danger days, score averages, and
+  `DANGER` to `STABLE` transitions;
+- `ansimk.dispatch_dispatchrequest` for requests and unresolved requests;
+- `ansimk.resources_ward` for ward identity.
+
+Matching tables under `ansimk_clone` and `archive` are deliberately excluded.
+
+Python owns all arithmetic. Environment averages are measurement-count
+weighted, activity averages are arithmetic means, and clock times use the
+existing linear averaging behavior. Both periods are half-open Monday ranges
+in the requested IANA timezone.
+
+## Narrative boundary
+
+After calculation, Python converts numbers into an allowlisted qualitative
+fact package. The model receives no raw rows, notes, descriptions, or numeric
+values. It writes a warm, calm Korean headline, analysis, observations, and up
+to three gentle suggestions. Validation rejects digits, malformed structure,
+categorical risk language, diagnoses, excessive certainty, and output outside
+the required length and sentence bounds. One corrected retry is allowed;
+failure uses a disclosed deterministic warm fallback. A single complete
+Markdown `json` code fence is normalized before strict validation because some
+OpenAI-compatible models wrap otherwise valid JSON; surrounding prose and
+malformed fences remain invalid.
+Prompt version `weekly-korean-warm-v2` also requires explicit sentence-ending
+punctuation and gives the one corrective retry a safe rule-specific message
+instead of an opaque validation code.
+
+## Input
 
 ```json
 {
   "week_start": "2026-08-03",
-  "timezone": "Asia/Seoul"
+  "timezone": "Asia/Seoul",
+  "ward_ids": [101, 102],
+  "limit": 25
 }
 ```
 
-`week_start` must be a Monday. The current and previous seven-day periods are
-half-open. Run the verified demo cycle with:
+`week_start` must be Monday. Omit `ward_ids` for automatic candidate discovery
+and use `next_cursor` on a later manual request. `ward_ids` and `cursor` are
+mutually exclusive.
 
-```bash
-uv run --env-file .env python playground/weekly_report.py --week-start 2026-08-03
-```
+Required source configuration is documented in `.env.example`. The FastAPI
+service is private in Compose and performs read-only transactions. Scheduling
+and rendered-report persistence remain outside this workflow.
 
-The ignored `.env` must provide `DB_MCP_SERVER_BEARER_TOKEN`. Model settings
-use `OPENAI_BASE_URL`, `OPENAI_MODEL`, and `OPENAI_API_KEY` or their supported
-aliases. The runner bounds LangGraph concurrency to four.
+## Slack delivery
 
-## Database MCP source
-
-The repository defaults to:
-
-- server: `db_mcp_server`
-- schema: `ansimk`
-- table: `analysis_warddangerdaily`
-- demo batch: three wards
-
-Only the MCP `query_data` read tool is granted. The first bounded query selects
-ward identities with danger records in the fourteen-day window. A second query
-retrieves complete `ward_id`, `date`, and `first_at` histories for the selected
-wards. Every untrusted MCP result is validated before entering graph state.
-
-Configure the source with `WEEKLY_REPORT_MCP_SERVER`,
-`WEEKLY_REPORT_MCP_SCHEMA`, and `WEEKLY_REPORT_MCP_TABLE`. Set
-`WEEKLY_REPORT_MAX_WARDS` between one and twenty-five; the prototype defaults
-to three and emits a warning when it reports only a subset. The checked-in
-mock repository is used only by deterministic tests.
-
-The live cycle on 2026-08-14 generated three AI-narrated reports for the week
-starting 2026-08-03. This prototype intentionally reports only danger-day
-counts. Risk semantics, subject naming, prioritization, dispatch joins,
-delivery, scheduling, and persistence require product validation before real
-use.
-
-The workflow remains registered as `ansimk_weekly_reporter` in
-`langgraph.json`; it performs no database write or delivery operation.
+`slack_delivery.py` is an explicit post-generation boundary for sending an
+already validated batch through the shared `SlackService`. It uses the
+approved default channel unless an operator selects a configured logical
+destination such as `reports`, rejects arbitrary channel IDs, spaces multi-ward
+messages, and requires human confirmation because reports contain care-related
+information. It is intentionally not a graph node, so a LangGraph retry cannot
+silently duplicate a Slack side effect. Setup and the manual end-to-end command
+are documented in
+`docs/slack-outbound-messaging.md`.

@@ -51,10 +51,10 @@ const weeklyReporterRecord: AgentCatalogRecord = {
     { label: "Default timezone", value: "Asia/Seoul" },
     { label: "Reporting window", value: "Monday to Monday" },
     { label: "Data source", value: "ansimk.analysis_warddangerdaily via db MCP" },
-    { label: "Ward limit", value: "First 3 complete wards" }
+    { label: "Ward limit", value: "Operator-selected, 1–25" }
   ],
   limitations: [
-    "Prototype processes a bounded subset of three wards",
+    "Each run processes a bounded subset of up to 25 eligible wards",
     "Danger-day semantics require domain validation",
     "Scheduling and delivery are not connected",
     "Run history is not persisted",

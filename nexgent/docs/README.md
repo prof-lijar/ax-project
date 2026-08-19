@@ -24,7 +24,7 @@ This documentation set defines the product architecture before implementation be
 - [Agent Server Chat](08-implementation/agent-server-chat.md): Workspace replacement, streamed AX chatbot client, session transcript, networking, and validation.
 - [Chat File Attachments](08-implementation/chat-file-attachments.md): transient multi-file upload, document extraction, multimodal model input, security boundaries, and validation.
 - [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
-- [Weekly Reporter Test Route](08-implementation/weekly-reporter-test-route.md): live `/test-agent` runner, streamed progress, report inspection UX, Agent Server contract, and validation.
+- [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): live `/agents/1` configurable 1–25 report runner, first-report selection, private source runtime path, contract validation, and operator UX.
 
 ## Stage-One Definition
 

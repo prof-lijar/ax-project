@@ -1,154 +1,105 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
-from ax_contracts import McpToolCallResult, McpToolDefinition
+from ax_contracts import WeeklyReportRequest
 
-from workflows.weekly_report.repository import (
-    QUERY_DATA_TOOL,
-    McpWeeklyWardRiskRepository,
-    McpWeeklyWardRiskSettings,
-    PolicyEnforcedWeeklyReportMcpGateway,
-    WeeklyWardRiskRepositoryError,
+from workflows.weekly_report.source.queries import (
+    CANDIDATE_WARDS_SQL,
+    DAILY_ROWS_SQL,
+    DISPATCH_AGGREGATES_SQL,
+    EXPLICIT_WARDS_SQL,
+    RISK_AGGREGATES_SQL,
+)
+from workflows.weekly_report.source.service import (
+    SourceRequestError,
+    WeeklyReportSourceService,
 )
 
 
-class FakeGateway:
+class FakeDatabase:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
 
-    async def call(self, tool_name: str, arguments: dict[str, Any]) -> Any:
-        self.calls.append((tool_name, arguments))
-        columns = arguments["columns"]
-        if columns == ["ward_id", "date"]:
-            rows = [
-                {"ward_id": ward_id, "date": "2026-08-03"}
-                for ward_id in (101, 102, 103, 104)
+    async def start(self) -> None: pass
+
+    async def close(self) -> None: pass
+
+    async def health(self) -> bool: return True
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, Any] | None:
+        return {"ok": 1}
+
+    async def fetch(self, query: str, *args: object) -> list[dict[str, Any]]:
+        self.calls.append((query, args))
+        if query == CANDIDATE_WARDS_SQL:
+            return [
+                {"ward_id": 10, "full_name": "첫 대상"},
+                {"ward_id": 20, "full_name": "둘째 대상"},
+                {"ward_id": 30, "full_name": "셋째 대상"},
             ]
-            truncated = True
-        else:
-            rows = [
+        if query == DAILY_ROWS_SQL:
+            return []
+        if query == RISK_AGGREGATES_SQL:
+            return [
                 {
                     "ward_id": ward_id,
-                    "date": danger_date,
-                    "first_at": f"{danger_date}T01:00:00+00:00",
+                    "period_index": index,
+                    "risk_detected_count": 0,
+                    "risk_resolved_count": 0,
+                    "risk_score_avg": None,
+                    "danger_days": 0,
                 }
-                for ward_id, danger_date in (
-                    (101, "2026-07-29"),
-                    (101, "2026-08-03"),
-                    (102, "2026-08-04"),
-                    (103, "2026-08-05"),
-                )
+                for ward_id in args[0]
+                for index in (0, 1)
             ]
-            truncated = False
-        return {
-            "schema_name": "ansimk",
-            "table_name": "analysis_warddangerdaily",
-            "columns": columns,
-            "rows": rows,
-            "row_count": len(rows),
-            "truncated": truncated,
-            "offset": 0,
-            "duration_ms": 1.0,
-            "warnings": [],
-        }
-
-
-class FakeMcpClient:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-        self.closed = False
-
-    async def list_tools(self) -> list[McpToolDefinition]:
-        return [
-            McpToolDefinition(
-                server_name="db_mcp_server",
-                name=name,
-                input_schema={"type": "object", "additionalProperties": True},
-                risk="read",
-            )
-            for name in (QUERY_DATA_TOOL, "preview_table")
-        ]
-
-    async def call_tool(
-        self, tool_name: str, arguments: dict[str, Any]
-    ) -> McpToolCallResult:
-        self.calls.append((tool_name, arguments))
-        return McpToolCallResult(
-            server_name="db_mcp_server",
-            tool_name=tool_name,
-            structured_content={"tool": tool_name},
-        )
-
-    async def aclose(self) -> None:
-        self.closed = True
-
-
-class FakeRegistry:
-    def __init__(self, client: FakeMcpClient) -> None:
-        self.client = client
-
-    def create_client(self, server_name: str) -> FakeMcpClient:
-        assert server_name == "db_mcp_server"
-        return self.client
+        if query == DISPATCH_AGGREGATES_SQL:
+            return []
+        return []
 
 
 @pytest.mark.asyncio
-async def test_repository_selects_bounded_wards_then_loads_complete_histories() -> (
-    None
-):
-    gateway = FakeGateway()
-    repository = McpWeeklyWardRiskRepository(gateway=gateway)
+async def test_source_service_pages_candidates_with_opaque_cursor() -> None:
+    service = WeeklyReportSourceService(FakeDatabase())
+    request = WeeklyReportRequest(week_start=date(2026, 8, 3), limit=2)
+    result = await service.build(request)
+    assert [item.ward_id for item in result.items] == [10, 20]
+    assert result.next_cursor
 
-    selection = await repository.load_week(
-        week_start=date(2026, 8, 3), timezone="Asia/Seoul"
+    next_request = WeeklyReportRequest(
+        week_start=date(2026, 8, 3), limit=2, cursor=result.next_cursor
     )
-
-    assert [window.ward_id for window in selection.windows] == [101, 102, 103]
-    assert selection.selection_truncated is True
-    assert len(gateway.calls) == 2
-    discovery = gateway.calls[0][1]
-    assert discovery["filters"] == [
-        {"column": "date", "operator": "gte", "value": "2026-07-27"},
-        {"column": "date", "operator": "lt", "value": "2026-08-10"},
-    ]
-    detail = gateway.calls[1][1]
-    assert detail["filters"][-1] == {
-        "column": "ward_id",
-        "operator": "in",
-        "value": [101, 102, 103],
-    }
+    assert service._decode_cursor(next_request) == 20
 
 
-@pytest.mark.asyncio
-async def test_gateway_exposes_only_query_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = FakeMcpClient()
-    monkeypatch.setattr(
-        "workflows.weekly_report.repository.load_mcp_registry",
-        lambda: FakeRegistry(client),
+def test_cursor_is_bound_to_period_and_timezone() -> None:
+    service = WeeklyReportSourceService(FakeDatabase())
+    first = WeeklyReportRequest(week_start=date(2026, 8, 3))
+    cursor = service._encode_cursor(first, 20)
+    changed = WeeklyReportRequest(
+        week_start=date(2026, 8, 10), cursor=cursor, timezone="Asia/Seoul"
     )
-    gateway = PolicyEnforcedWeeklyReportMcpGateway("db_mcp_server")
-
-    result = await gateway.call(QUERY_DATA_TOOL, {"table": "safe"})
-
-    assert result == {"tool": QUERY_DATA_TOOL}
-    with pytest.raises(WeeklyWardRiskRepositoryError, match="not authorized"):
-        await gateway.call("preview_table", {"table": "safe"})
-    assert len(client.calls) == 1
-    await gateway.aclose()
-    assert client.closed is True
+    with pytest.raises(SourceRequestError, match="does not match"):
+        service._decode_cursor(changed)
 
 
-def test_settings_default_to_ansimk_danger_source_and_three_wards() -> None:
-    settings = McpWeeklyWardRiskSettings.from_env({})
-
-    assert settings.schema_name == "ansimk"
-    assert settings.table_name == "analysis_warddangerdaily"
-    assert settings.max_wards == 3
+def test_source_period_timestamps_are_timezone_aware() -> None:
+    value = datetime.combine(date(2026, 8, 3), datetime.min.time(), ZoneInfo("Asia/Seoul"))
+    assert value.utcoffset() is not None
 
 
-def test_settings_reject_unbounded_demo_selection() -> None:
-    with pytest.raises(WeeklyWardRiskRepositoryError, match="configuration is invalid"):
-        McpWeeklyWardRiskSettings.from_env({"WEEKLY_REPORT_MAX_WARDS": "1000"})
+def test_source_queries_are_bound_to_authoritative_ansimk_schema() -> None:
+    combined = (
+        f"{CANDIDATE_WARDS_SQL}\n{EXPLICIT_WARDS_SQL}\n{DAILY_ROWS_SQL}\n"
+        f"{RISK_AGGREGATES_SQL}\n{DISPATCH_AGGREGATES_SQL}"
+    )
+    for table in (
+        "resources_ward",
+        "analysis_devicedailysummary",
+        "analysis_wardevaluation",
+        "dispatch_dispatchrequest",
+    ):
+        assert f"ansimk.{table}" in combined
+    assert "ansimk_clone." not in combined
+    assert "archive." not in combined

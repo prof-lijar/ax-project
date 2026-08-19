@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleStop,
   Clock3,
+  Files,
   FlaskConical,
   Play,
   RefreshCw,
@@ -30,12 +31,16 @@ import { navigateToSection } from "../../shared/navigation/sections";
 import type {
   WardWeeklyReport,
   WeeklyReportBatchResult,
-  WeeklyReportProgressEvent
+  WeeklyReportProgressEvent,
+  WeeklyReportRequest
 } from "../../shared/types/weeklyReport";
 import { ChatMarkdown } from "../chat/ChatMarkdown";
 import styles from "./TestAgentPage.module.css";
 
 const TIMEZONES = ["Asia/Seoul", "UTC", "America/New_York", "Europe/London"];
+const DEFAULT_REPORT_LIMIT = 3;
+const MIN_REPORT_LIMIT = 1;
+const MAX_REPORT_LIMIT = 25;
 
 interface TestAgentPageProps {
   mode?: "test" | "agent";
@@ -44,6 +49,9 @@ interface TestAgentPageProps {
 export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
   const [weekStart, setWeekStart] = useState(getLatestMonday);
   const [timezone, setTimezone] = useState("Asia/Seoul");
+  const [reportLimitInput, setReportLimitInput] = useState(
+    String(DEFAULT_REPORT_LIMIT)
+  );
   const [result, setResult] = useState<WeeklyReportBatchResult | null>(null);
   const [selectedWardId, setSelectedWardId] = useState<number | null>(null);
   const [progress, setProgress] = useState<WeeklyReportProgressEvent[]>([]);
@@ -53,13 +61,12 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const healthQuery = useAgentServerHealth();
   const weekStartIsValid = isMonday(weekStart);
+  const reportLimit = parseReportLimit(reportLimitInput);
+  const reportLimitIsValid = reportLimit !== null;
   const isAgentPage = mode === "agent";
 
   const selectedReport = useMemo(
-    () =>
-      result?.reports.find((report) => report.ward_id === selectedWardId) ??
-      result?.reports[0] ??
-      null,
+    () => selectWeeklyReport(result, selectedWardId),
     [result, selectedWardId]
   );
 
@@ -83,7 +90,12 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
   );
 
   async function runReporter() {
-    if (!weekStartIsValid || isRunning) {
+    const request = buildWeeklyReportRequest(
+      weekStart,
+      timezone,
+      reportLimitInput
+    );
+    if (!weekStartIsValid || request === null || isRunning) {
       return;
     }
 
@@ -97,7 +109,7 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
 
     try {
       const batch = await agentServerClient.runWeeklyReport(
-        { week_start: weekStart, timezone },
+        request,
         {
           signal: controller.signal,
           onProgress: (event) => setProgress((current) => [...current, event])
@@ -154,7 +166,7 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
               <h1>{isAgentPage ? "Weekly Reporter" : "Weekly Reporter test"}</h1>
               <p>
                 {isAgentPage
-                  ? "Run the live ward-risk workflow and review every generated report."
+                  ? "Choose a batch size, generate live weekly summaries, and review one subscriber at a time."
                   : "Run a reporting week and inspect every generated ward report."}
               </p>
             </div>
@@ -221,6 +233,33 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
               <small>Applied to the Monday-to-Monday activity window.</small>
             </label>
 
+            <label>
+              <span>Reports to generate</span>
+              <div className={styles.fieldControl}>
+                <Files size={16} aria-hidden />
+                <input
+                  type="number"
+                  min={MIN_REPORT_LIMIT}
+                  max={MAX_REPORT_LIMIT}
+                  step="1"
+                  inputMode="numeric"
+                  value={reportLimitInput}
+                  onChange={(event) => setReportLimitInput(event.target.value)}
+                  aria-describedby="report-limit-help"
+                  aria-invalid={!reportLimitIsValid}
+                  disabled={isRunning}
+                />
+              </div>
+              <small
+                id="report-limit-help"
+                className={reportLimitIsValid ? undefined : styles.fieldError}
+              >
+                {reportLimitIsValid
+                  ? "Choose 1–25 eligible subscribers for this batch."
+                  : "Enter a whole number from 1 to 25."}
+              </small>
+            </label>
+
             {isRunning ? (
               <button
                 className={styles.stopButton}
@@ -234,10 +273,14 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
               <button
                 className={styles.runButton}
                 type="submit"
-                disabled={!weekStartIsValid || healthQuery.isError}
+                disabled={
+                  !weekStartIsValid || !reportLimitIsValid || healthQuery.isError
+                }
               >
                 <Play size={17} fill="currentColor" />
-                Run reporter
+                {reportLimit === null
+                  ? "Choose report count"
+                  : `Generate ${reportCountLabel(reportLimit)}`}
               </button>
             )}
           </form>
@@ -247,6 +290,7 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
             isRunning={isRunning}
             elapsedSeconds={elapsedSeconds}
             hasResult={result !== null}
+            requestedCount={reportLimit ?? DEFAULT_REPORT_LIMIT}
           />
         </aside>
 
@@ -254,20 +298,64 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
           {errorMessage ? (
             <ErrorState message={errorMessage} onRetry={() => void runReporter()} />
           ) : isRunning ? (
-            <RunningState progress={progress} elapsedSeconds={elapsedSeconds} />
+            <RunningState
+              progress={progress}
+              elapsedSeconds={elapsedSeconds}
+              requestedCount={reportLimit ?? DEFAULT_REPORT_LIMIT}
+            />
           ) : result && selectedReport ? (
             <ReportResult
               result={result}
               selectedReport={selectedReport}
               onSelectReport={setSelectedWardId}
             />
+          ) : result ? (
+            <NoReportsState result={result} />
           ) : (
-            <EmptyState weekStart={weekStart} isAgentPage={isAgentPage} />
+            <EmptyState
+              weekStart={weekStart}
+              isAgentPage={isAgentPage}
+              requestedCount={reportLimit ?? DEFAULT_REPORT_LIMIT}
+            />
           )}
         </main>
       </div>
     </section>
   );
+}
+
+export function selectWeeklyReport(
+  result: WeeklyReportBatchResult | null,
+  selectedWardId: number | null
+) {
+  return (
+    result?.reports.find((report) => report.ward_id === selectedWardId) ??
+    result?.reports[0] ??
+    null
+  );
+}
+
+export function parseReportLimit(value: string): number | null {
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) &&
+    parsed >= MIN_REPORT_LIMIT &&
+    parsed <= MAX_REPORT_LIMIT
+    ? parsed
+    : null;
+}
+
+export function buildWeeklyReportRequest(
+  weekStart: string,
+  timezone: string,
+  reportLimitInput: string
+): WeeklyReportRequest | null {
+  const limit = parseReportLimit(reportLimitInput);
+  return limit === null
+    ? null
+    : { week_start: weekStart, timezone, limit };
 }
 
 function ServerStatus({
@@ -307,25 +395,34 @@ function RunProgress({
   progress,
   isRunning,
   elapsedSeconds,
-  hasResult
+  hasResult,
+  requestedCount
 }: {
   progress: WeeklyReportProgressEvent[];
   isRunning: boolean;
   elapsedSeconds: number;
   hasResult: boolean;
+  requestedCount: number;
 }) {
   if (progress.length === 0 && !isRunning && !hasResult) {
     return (
       <div className={styles.contractNote}>
         <strong>Live data</strong>
-        <p>The graph reads a bounded ward subset through the database MCP.</p>
+        <p>
+          The graph reads approved weekly metadata through the private source
+          service. This run will request up to {requestedCount} eligible
+          subscribers.
+        </p>
       </div>
     );
   }
 
   const loaded = progress.find((event) => event.event === "risk_data_loaded");
-  const wardCount = loaded?.event === "risk_data_loaded" ? loaded.ward_count : 3;
-  const readyCount = progress.filter((event) => event.event === "ward_report_ready").length;
+  const wardCount =
+    loaded?.event === "risk_data_loaded" ? loaded.ward_count : requestedCount;
+  const readyCount = progress.filter(
+    (event) => event.event === "ward_report_ready"
+  ).length;
   const completed = progress.some((event) => event.event === "batch_completed");
 
   return (
@@ -334,15 +431,39 @@ function RunProgress({
         <strong>{completed ? "Run complete" : "Run progress"}</strong>
         <span><Clock3 size={13} /> {elapsedSeconds}s</span>
       </div>
-      <ProgressRow complete={progress.length > 0} active={isRunning && progress.length === 0} label="Start batch" />
-      <ProgressRow complete={Boolean(loaded)} active={isRunning && progress.length > 0 && !loaded} label="Load ward risk data" />
-      <ProgressRow complete={readyCount === wardCount} active={isRunning && Boolean(loaded) && readyCount < wardCount} label={`Build reports · ${readyCount}/${wardCount}`} />
-      <ProgressRow complete={completed} active={isRunning && readyCount === wardCount} label="Aggregate results" />
+      <ProgressRow
+        complete={progress.length > 0}
+        active={isRunning && progress.length === 0}
+        label="Start batch"
+      />
+      <ProgressRow
+        complete={Boolean(loaded)}
+        active={isRunning && progress.length > 0 && !loaded}
+        label="Load weekly summaries"
+      />
+      <ProgressRow
+        complete={readyCount === wardCount}
+        active={isRunning && Boolean(loaded) && readyCount < wardCount}
+        label={`Write reports · ${readyCount}/${wardCount}`}
+      />
+      <ProgressRow
+        complete={completed}
+        active={isRunning && readyCount === wardCount}
+        label="Aggregate results"
+      />
     </div>
   );
 }
 
-function ProgressRow({ complete, active, label }: { complete: boolean; active: boolean; label: string }) {
+function ProgressRow({
+  complete,
+  active,
+  label
+}: {
+  complete: boolean;
+  active: boolean;
+  label: string;
+}) {
   return (
     <div className={styles.progressRow}>
       <span className={complete ? styles.progressDone : active ? styles.progressActive : styles.progressIdle}>
@@ -353,16 +474,35 @@ function ProgressRow({ complete, active, label }: { complete: boolean; active: b
   );
 }
 
-function RunningState({ progress, elapsedSeconds }: { progress: WeeklyReportProgressEvent[]; elapsedSeconds: number }) {
+function RunningState({
+  progress,
+  elapsedSeconds,
+  requestedCount
+}: {
+  progress: WeeklyReportProgressEvent[];
+  elapsedSeconds: number;
+  requestedCount: number;
+}) {
   const loaded = progress.find((event) => event.event === "risk_data_loaded");
-  const total = loaded?.event === "risk_data_loaded" ? loaded.ward_count : 3;
-  const ready = progress.filter((event) => event.event === "ward_report_ready").length;
+  const total =
+    loaded?.event === "risk_data_loaded" ? loaded.ward_count : requestedCount;
+  const progressTotal = Math.max(total, 1);
+  const ready = progress.filter(
+    (event) => event.event === "ward_report_ready"
+  ).length;
+  const heading = !loaded
+    ? "Loading weekly summaries"
+    : total === 0
+      ? "No eligible weekly summaries found"
+      : ready >= total
+        ? "Aggregating completed reports"
+        : `Writing reports · ${ready}/${total} complete`;
   return (
     <div className={styles.centerState} aria-live="polite">
       <span className={styles.runningIcon}><Sparkles size={26} /></span>
-      <h2>{ready > 0 ? `Writing report ${Math.min(ready + 1, total)} of ${total}` : "Loading ward risk data"}</h2>
-      <p>The agent is comparing danger-day totals with the previous seven days.</p>
-      <div className={styles.pulseTrack}><span style={{ width: `${Math.max(12, ready * (90 / total))}%` }} /></div>
+      <h2>{heading}</h2>
+      <p>The agent is comparing verified weekly activity, environment, risk, and dispatch metadata.</p>
+      <div className={styles.pulseTrack}><span style={{ width: `${Math.max(12, ready * (90 / progressTotal))}%` }} /></div>
       <small>{elapsedSeconds}s elapsed · reports appear when the batch is complete</small>
     </div>
   );
@@ -370,10 +510,12 @@ function RunningState({ progress, elapsedSeconds }: { progress: WeeklyReportProg
 
 function EmptyState({
   weekStart,
-  isAgentPage
+  isAgentPage,
+  requestedCount
 }: {
   weekStart: string;
   isAgentPage: boolean;
+  requestedCount: number;
 }) {
   return (
     <div className={styles.centerState}>
@@ -381,10 +523,26 @@ function EmptyState({
       <h2>{isAgentPage ? "Ready for a live run" : "Ready for a test run"}</h2>
       <p>Run the week of {weekStart ? formatDate(weekStart) : "your choice"} to review report quality and metrics.</p>
       <div className={styles.expectationList}>
-        <span><Check size={14} /> Three ward reports</span>
-        <span><Check size={14} /> Week-over-week danger days</span>
-        <span><Check size={14} /> LLM or fallback visibility</span>
+        <span><Check size={14} /> Up to {reportCountLabel(requestedCount)}</span>
+        <span><Check size={14} /> Current and prior week comparison</span>
+        <span><Check size={14} /> Verified narrative mode</span>
       </div>
+    </div>
+  );
+}
+
+function NoReportsState({ result }: { result: WeeklyReportBatchResult }) {
+  return (
+    <div className={styles.centerState} role="status">
+      <span className={styles.emptyIcon}><CalendarDays size={28} /></span>
+      <h2>No eligible reports for this week</h2>
+      <p>
+        The source returned no subscriber summaries for {formatDate(result.week_start)}.
+        Choose another completed Monday and try again.
+      </p>
+      {result.warnings.length > 0 && (
+        <small>{result.warnings.join(" · ")}</small>
+      )}
     </div>
   );
 }
@@ -402,7 +560,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function ReportResult({
+export function ReportResult({
   result,
   selectedReport,
   onSelectReport
@@ -420,20 +578,23 @@ function ReportResult({
         <div>
           <span className={styles.successLabel}><Check size={13} /> Completed</span>
           <h2>{formatDate(result.week_start)} weekly reports</h2>
-          <p>{result.reports.length} wards · {result.timezone} · {fallbackCount ? `${fallbackCount} fallback` : "All model-generated"}</p>
+          <p>
+            {result.reports.length} subscriber reports · {result.timezone} · {fallbackCount ? `${fallbackCount} deterministic fallback` : "All model-generated"}
+            {result.next_cursor ? " · More subscribers available" : ""}
+          </p>
         </div>
       </header>
 
       {result.warnings.length > 0 && (
         <div className={styles.warningBanner} role="note">
           <AlertTriangle size={16} />
-          <div><strong>Fallback used</strong><span>{result.warnings.join(" · ")}</span></div>
+          <div><strong>{fallbackCount ? "Generation notes" : "Data notes"}</strong><span>{result.warnings.join(" · ")}</span></div>
         </div>
       )}
 
       <div className={styles.reportBody}>
-        <nav className={styles.peopleList} aria-label="Generated ward reports">
-          <span className={styles.peopleLabel}>Reports</span>
+        <nav className={styles.peopleList} aria-label="Generated subscriber reports">
+          <span className={styles.peopleLabel}>Subscribers</span>
           {result.reports.map((report) => {
             const selected = report.ward_id === selectedReport.ward_id;
             return (
@@ -468,10 +629,11 @@ function ReportResult({
             <ChatMarkdown content={selectedReport.markdown} />
           </div>
 
-          <details className={styles.rawOutput}>
-            <summary>Inspect raw report data</summary>
-            <pre>{JSON.stringify(selectedReport, null, 2)}</pre>
-          </details>
+          <footer className={styles.reportProvenance}>
+            <span>Source coverage: {selectedReport.metrics.current.covered_days}/7 days</span>
+            <span>Prompt: {selectedReport.generation.prompt_version}</span>
+            <span>{selectedReport.generation.validation_status === "passed" ? "Narrative validated" : "Deterministic fallback"}</span>
+          </footer>
         </article>
       </div>
     </div>
@@ -482,14 +644,28 @@ function MetricStrip({ report }: { report: WardWeeklyReport }) {
   const { current, delta } = report.metrics;
   const metrics = [
     {
-      label: "Danger days",
-      value: `${current.danger_days} days`,
-      delta: signed(delta.danger_days)
+      label: "Data coverage",
+      value: `${current.covered_days}/7 days`,
+      delta: comparison(delta.covered_days),
+      tone: "neutral"
     },
     {
-      label: "Previous week",
-      value: `${report.metrics.previous.danger_days} days`,
-      delta: "baseline"
+      label: "Danger days",
+      value: `${current.danger_days} days`,
+      delta: comparison(delta.danger_days),
+      tone: delta.danger_days > 0 ? "negative" : delta.danger_days < 0 ? "positive" : "neutral"
+    },
+    {
+      label: "Movement average",
+      value: formatAverage(current.movement_count_avg, "/day"),
+      delta: comparison(delta.movement_count_avg),
+      tone: "neutral"
+    },
+    {
+      label: "Open dispatches",
+      value: String(current.unresolved_dispatch_count),
+      delta: comparison(delta.unresolved_dispatch_count),
+      tone: delta.unresolved_dispatch_count > 0 ? "negative" : delta.unresolved_dispatch_count < 0 ? "positive" : "neutral"
     }
   ];
   return (
@@ -498,7 +674,7 @@ function MetricStrip({ report }: { report: WardWeeklyReport }) {
         <div key={metric.label}>
           <dt>{metric.label}</dt>
           <dd>{metric.value}</dd>
-          <small className={metric.delta.startsWith("-") ? styles.deltaDown : styles.deltaUp}>{metric.delta} vs prior</small>
+          <small className={metric.tone === "positive" ? styles.deltaPositive : metric.tone === "negative" ? styles.deltaNegative : styles.deltaNeutral}>{metric.delta}</small>
         </div>
       ))}
     </dl>
@@ -537,6 +713,24 @@ function toDateInputValue(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function signed(value: number) {
-  return value > 0 ? `+${value}` : String(value);
+function comparison(value: number | null) {
+  if (value === null) {
+    return "No prior comparison";
+  }
+  if (value === 0) {
+    return "No change vs prior";
+  }
+  return `${value > 0 ? "+" : ""}${formatNumber(value)} vs prior`;
+}
+
+function formatAverage(value: number | null, suffix: string) {
+  return value === null ? "No data" : `${formatNumber(value)}${suffix}`;
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 1 }).format(value);
+}
+
+function reportCountLabel(count: number) {
+  return `${count} ${count === 1 ? "report" : "reports"}`;
 }

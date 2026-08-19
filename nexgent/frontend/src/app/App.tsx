@@ -17,6 +17,9 @@ import { useUiStore } from "../shared/state/useUiStore";
 import { AppShell } from "./shell/AppShell";
 
 export function getAgentsRoute(agentId: string | null) {
+  if (agentId === "1") {
+    return { kind: "weekly-reporter" } as const;
+  }
   return agentId
     ? ({ kind: "detail", agentId } as const)
     : ({ kind: "catalog" } as const);
@@ -42,7 +45,9 @@ export function App() {
       {activeSection === "tasks" && <TasksPage />}
       {activeSection === "approvals" && <ApprovalsPage />}
       {activeSection === "agents" &&
-        (agentsRoute.kind === "detail" ? (
+        (agentsRoute.kind === "weekly-reporter" ? (
+          <TestAgentPage mode="agent" />
+        ) : agentsRoute.kind === "detail" ? (
           <AgentDetailPage agentId={agentsRoute.agentId} />
         ) : (
           <AgentsPage />

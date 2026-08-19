@@ -483,6 +483,7 @@
 .peopleList {
   min-width: 0;
   padding: 14px 10px;
+  overflow-y: auto;
   border-right: 1px solid var(--color-border);
   background: var(--color-surface-raised);
 }
@@ -605,38 +606,25 @@
 .metricStrip dt { color: var(--color-text-soft); font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
 .metricStrip dd { margin: 4px 0 2px; font-size: 14px; font-weight: 500; }
 .metricStrip small { font-size: 9px; }
-.deltaUp { color: var(--color-green); }
-.deltaDown { color: var(--color-red); }
+.deltaPositive { color: var(--color-green); }
+.deltaNegative { color: var(--color-red); }
+.deltaNeutral { color: var(--color-text-soft); }
 
 .markdownDocument {
   max-width: 780px;
   margin: 0 auto;
 }
 
-.rawOutput {
+.reportProvenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
   max-width: 780px;
   margin: 28px auto 0;
+  padding-top: 14px;
   border-top: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-  font-size: 11px;
-}
-
-.rawOutput summary {
-  padding: 14px 0;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.rawOutput pre {
-  max-height: 360px;
-  margin: 0;
-  padding: 14px;
-  overflow: auto;
-  border-radius: var(--radius-sm);
-  color: #f5f7fa;
-  background: var(--color-primary-strong);
+  color: var(--color-text-soft);
   font-size: 10px;
-  line-height: 1.5;
 }
 
 @media (max-width: 1040px) {
@@ -655,7 +643,7 @@
   .workbench { grid-template-columns: 1fr; }
   .runPanel { border-right: 0; border-bottom: 1px solid var(--color-border); }
   .reportBody { grid-template-columns: 1fr; }
-  .peopleList { display: flex; gap: 6px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--color-border); }
+  .peopleList { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .peopleLabel { display: none; }
   .person,
   .personActive { flex: 0 0 170px; }

@@ -1,10 +1,19 @@
-"""Deterministic release-gate checks for ward-risk weekly reports."""
+"""Deterministic release gates for grounded, warm weekly reports."""
 
 import re
 
 from ax_contracts import EvaluationResult, WardWeeklyReport, WardWeeklyReportBatchResult
 
-REQUIRED_HEADINGS = ("## 핵심 지표", "## 이번 주 요약", "## 다음 주 제안")
+REQUIRED_HEADINGS = ("## 주요 관찰", "## 핵심 지표", "## 실내 환경", "## 다음 주 제안")
+FORBIDDEN_PHRASES = (
+    "위험합니다",
+    "응급",
+    "진단",
+    "반드시",
+    "확실히",
+    "하세요",
+    "하십시오",
+)
 
 
 def evaluate_weekly_report_batch(
@@ -35,7 +44,7 @@ def evaluate_weekly_report_batch(
             "personalization",
             all(
                 report.markdown.startswith(
-                    f"# {report.display_name} 주간 위험 리포트"
+                    f"# {report.display_name} 주간 리포트"
                 )
                 for report in result.reports
             ),
@@ -48,6 +57,18 @@ def evaluate_weekly_report_batch(
             and all(not _narrative_has_digits(report) for report in result.reports),
             "danger-day rows match calculated metrics and narrative has no digits",
             "render numbers only from validated metrics and reject numeric model prose",
+        ),
+        _criterion(
+            "narrative_safety",
+            all(
+                not _narrative_has_digits(report)
+                and not any(
+                    phrase in _narrative_text(report) for phrase in FORBIDDEN_PHRASES
+                )
+                for report in result.reports
+            ),
+            "model-authored narrative is digit-free and avoids categorical language",
+            "regenerate unsafe narrative or use the deterministic fallback",
         ),
         _criterion(
             "fallback_disclosure",
@@ -92,5 +113,16 @@ def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
 
 
 def _narrative_has_digits(report: WardWeeklyReport) -> bool:
-    _, separator, narrative = report.markdown.partition("## 이번 주 요약")
-    return not separator or re.search(r"\d", narrative) is not None
+    return re.search(r"\d", _narrative_text(report)) is not None
+
+
+def _narrative_text(report: WardWeeklyReport) -> str:
+    narrative = report.narrative
+    return " ".join(
+        [
+            narrative.headline,
+            narrative.analysis_text,
+            *narrative.observations,
+            *narrative.suggestions,
+        ]
+    )

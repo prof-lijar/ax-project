@@ -1,0 +1,9 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE SCHEMA IF NOT EXISTS rag;
+
+CREATE TABLE IF NOT EXISTS rag.embeddings (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    context text NOT NULL,
+    vector vector(1024) NOT NULL
+);

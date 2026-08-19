@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { getAgentsRoute } from "./App";
 
 describe("App agent routing", () => {
-  it("renders every catalog agent id with the dedicated detail page", () => {
-    expect(getAgentsRoute("1")).toEqual({ kind: "detail", agentId: "1" });
+  it("renders Weekly Reporter with its live workbench", () => {
+    expect(getAgentsRoute("1")).toEqual({ kind: "weekly-reporter" });
+  });
+
+  it("keeps other catalog agents on the generic detail page", () => {
     expect(getAgentsRoute("2")).toEqual({ kind: "detail", agentId: "2" });
   });
 

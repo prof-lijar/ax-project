@@ -41,6 +41,8 @@ services:
       SEARXNG_BASE_URL: http://searxng:8080
       OPENAI_SUPPORTS_VISION: "${OPENAI_SUPPORTS_VISION:-false}"
       AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
+      WEEKLY_REPORT_SOURCE_URL: http://weekly-report-api:8080
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: "${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}"
     volumes:
       - chat_attachments:/run/ax-chat:ro
     init: true
@@ -60,6 +62,31 @@ services:
     depends_on:
       searxng:
         condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+
+  weekly-report-api:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_api/Dockerfile
+    image: ax-weekly-report-api-dev:local
+    env_file:
+      - ./agents/.env
+    expose:
+      - "8080"
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 5s
 
   backend:
     build:

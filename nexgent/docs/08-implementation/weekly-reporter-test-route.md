@@ -1,120 +1,136 @@
-# Weekly Reporter Test Route
+# Weekly Reporter Frontend Workbench
 
-Date: 2026-08-13
+Date: 2026-08-19
 
 ## Summary
 
-The frontend now provides a dedicated `/test-agent` workbench for manually
-running and inspecting the `ansimk_weekly_reporter` LangGraph workflow. The
-page uses the live Agent Server boundary; it does not substitute mock results
-in the browser.
+The Weekly Reporter catalog route at `/agents/1` now renders the real
+`ansimk_weekly_reporter` workbench. The earlier `/test-agent` route remains as
+a test-oriented alias of the same component. Other `/agents/:id` routes retain
+the generic catalog detail experience.
 
-The workbench supports:
+Runs are explicit: opening the route does not query the database or send ward
+facts to a model. The operator chooses a completed Monday and timezone, then
+chooses how many reports to generate from 1 through 25. The frontend sends that
+validated value as `limit` through the Agent Server SSE boundary. The control
+defaults to three. On completion, the first report is selected while every
+other returned report remains available in the subscriber selector.
 
-- a Monday-only reporting-week input and an IANA timezone selector;
-- Agent Server availability feedback and retry;
-- starting and cancelling a stateless weekly-report run;
-- streamed batch, ward-data, per-ward, fallback, and completion progress;
-- individual report selection and Korean Markdown rendering;
-- current and prior danger-day totals with their delta;
-- visible model-versus-template generation mode and batch warnings; and
-- an expandable raw report payload for contract-level inspection.
+## User Experience
 
-## Architecture and Decisions
+The workbench provides:
 
-- `/test-agent` is a first-class app section. It participates in the existing
-  History API routing, direct-load normalization, sidebar selection, and
-  trailing-slash handling.
-- `src/shared/api/agentServerClient.ts` remains the network boundary. The page
-  does not call `fetch` directly.
-- Weekly report requests use `POST /runs/stream` with
-  `assistant_id: ansimk_weekly_reporter`, `stream_mode: [custom, values]`, and
+- a Monday-only week input and IANA timezone selector;
+- a validated 1–25 report-count control, defaulting to three;
+- Agent Server readiness, retry, active progress, elapsed time, and cancel;
+- one selected subscriber report at a time, with the first selected by
+  default;
+- four compact deterministic indicators: source coverage, danger days,
+  movement average, and unresolved dispatches;
+- safe Korean Markdown rendering, generation-mode disclosure, and prompt/
+  validation provenance; and
+- separate empty-result, source-warning, fallback, and request-error states.
+
+Raw report JSON is not exposed in the product view. This reduces accidental
+display of unnecessary care-related metadata while preserving the useful
+deterministic indicators and rendered summary.
+
+## Runtime Path
+
+```text
+/agents/1
+  -> shared Agent Server client
+  -> POST /runs/stream (assistant_id: ansimk_weekly_reporter, selected limit)
+     with max_concurrency: 4
+  -> private weekly-report FastAPI source
+  -> read-only ansimk PostgreSQL queries
+  -> deterministic metrics
+  -> validated Korean narrative or disclosed deterministic fallback
+  -> up to the selected number of ordered reports
+  -> first report selected in the workbench
+```
+
+The root `compose.yaml` now includes `weekly-report-api`, loads its database
+settings from `agents/.env`, and makes Agent Server wait for the source API's
+database-backed readiness check. The source service is private to the Compose
+network and exposes no browser endpoint.
+
+## Contracts and Security
+
+- `src/shared/api/agentServerClient.ts` is the only frontend network boundary.
+- The browser request uses `stream_mode: [custom, values]` and
+  `stream_subgraphs: true` so per-ward progress is visible, plus
   `on_disconnect: cancel`.
-- An `AbortController` disconnects an active request. The Agent Server cancel
-  policy ensures the graph run is cancelled as well as the browser stream.
-- The client validates progress-event shapes and the final report, metric, and
-  generation-mode fields before exposing the result to React. A completed
-  stream without a valid final batch is reported as malformed.
-- Report and progress contracts live in
-  `src/shared/types/weeklyReport.ts`. They mirror the Python contracts without
-  placing provider configuration or credentials in frontend state.
-- Existing `ChatMarkdown` rendering is reused for the generated report. Raw
-  HTML remains disabled, and links retain the existing safe external-link
-  behavior.
-- The date input defaults to the most recent completed local Monday.
-  Non-Monday values cannot be submitted, matching `WeeklyReportRequest`
-  validation.
+- Namespaced `custom|...` events are parsed only as progress. Final report
+  validation remains restricted to the top-level `values` event.
+- The frontend contract mirrors the current and prior weekly metric snapshots,
+  deltas, narrative, generation metadata, skipped wards, cursor, and warnings.
+- Runtime parsing rejects malformed report, metric, narrative, and generation
+  fields before React receives them.
+- Database credentials and model configuration remain server-side.
+- The page does not auto-run, persist reports, or deliver them to Slack.
 
 ## Operation
 
-Start the Agent Server from `agents/`:
+Configure `ANSIMK_DATABASE_DSN` in `agents/.env`, then run from the repository
+root:
 
 ```bash
-uv run langgraph dev --host 0.0.0.0 --port 2024
-```
-
-Start the frontend from `frontend/`:
-
-```bash
-npm run dev -- --host 127.0.0.1
+docker compose up --build -d weekly-report-api agent-server backend frontend
 ```
 
 Open:
 
 ```text
-http://127.0.0.1:5173/test-agent
+http://192.168.0.18:5173/agents/1
 ```
 
-For a non-default server, configure the same variable used by Chat:
-
-```bash
-VITE_AGENT_SERVER_BASE_URL=http://agent-host:2024 npm run dev -- --host 127.0.0.1
-```
-
-Choose a Monday, select the reporting timezone, and use **Run reporter**. The
-workflow queries a bounded three-ward slice from
-`ansimk.analysis_warddangerdaily` through the database MCP. When model
-configuration is unavailable, reports still complete through the workflow's
-template fallback and the workbench shows the warning and fallback mode.
+Choose a completed Monday, enter a report count from 1 through 25, and click
+**Generate N reports**. When enough eligible subscribers exist, confirm the
+requested number of subscriber choices appears and that the first report is
+already visible.
 
 ## Validation
 
-Completed from `frontend/`:
+The implementation is covered by route, selection, SSE payload, progress, and
+contract parsing tests. Validation commands are:
 
 ```bash
+cd frontend
 npm test
 npm run build
-CARGO_TARGET_DIR=/tmp/nexgent-cargo-check cargo check --manifest-path src-tauri/Cargo.toml
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-weekly-workbench \
+  cargo check --manifest-path src-tauri/Cargo.toml
+
+cd ..
+docker compose config --quiet
 ```
 
-Results:
+Validation on 2026-08-19 completed with:
 
-- all 34 Vitest assertions passed across seven test files;
-- the TypeScript check and Vite production build passed; and
-- the Tauri Rust check passed.
+- 72 frontend tests passing across 12 files;
+- a successful TypeScript and Vite production build;
+- a successful Tauri `cargo check`;
+- zero vulnerabilities from `npm audit --audit-level=moderate`;
+- 16 focused weekly source/repository/graph tests passing;
+- valid root and agents-only Compose configurations; and
+- a read-only live source check returning three ordered items for the then-
+  default count, with no skipped wards and a continuation cursor.
 
-The new regression coverage verifies `/test-agent` route resolution, the exact
-weekly-reporter request payload and cancel-on-disconnect setting, progress
-delivery, final batch parsing, and rejection of an invalid completed payload.
+The existing frontend and Agent Server health endpoints return HTTP 200 and
+the running Agent Server registers `ansimk_weekly_reporter`. That container
+predates this integration and still requires the documented Compose rebuild.
+The final model-backed batch run was not executed because ward-derived
+qualitative facts require explicit approval for the configured LLM endpoint.
 
-## Known Limitations and Remaining Verification
+## Known Limits
 
-- The frontend and health proxy returned HTTP 200, but the running Compose
-  Agent Server image is stale and registers only `agent` and `chat`. Rebuild
-  `agent-server` from the current agents workspace, then open
-  `http://127.0.0.1:5173/test-agent`, run a Monday, confirm three selectable
-  ward reports, and verify that cancelling a second run stops it.
-- `npm audit --audit-level=moderate` could not reach the npm advisory endpoint
-  in the sandbox. An elevated attempt was also denied because it would disclose
-  project dependency metadata to the public registry. Run the following in an
-  approved network environment:
-
-  ```bash
-  cd frontend
-  npm audit --audit-level=moderate
-  ```
-- The workflow is a bounded ward-risk validation prototype. Business meaning,
-  scheduling, authentication, persistence, and delivery are outside this
-  frontend test route.
-- Run history is not persisted. Starting a new run or reloading the app clears
-  the displayed result.
+- The workbench keeps only the current in-memory batch; reload clears it.
+- Report scheduling, persistence, approval, and Slack delivery are separate
+  workflows and are not triggered by this screen.
+- A batch may contain fewer reports than requested when the source has fewer
+  eligible subscribers or skips requested data; the UI presents an explicit
+  no-result state rather than fabricating reports.
+- The currently running root-owned Compose stack cannot be rebuilt by the
+  unprivileged development user. An authorized operator must run the Compose
+  command above before browser end-to-end verification.

@@ -33,6 +33,12 @@ into the current chat graph.
 See [the MCP integration guide](docs/mcp-integrations.md) for registering remote
 Streamable HTTP MCPs, inspecting tools, managing environment-backed headers,
 and exposing explicitly allowlisted MCP tools to workflows.
+See [the weekly reporter implementation](docs/ansimk-weekly-reporter-implementation.md)
+for the private FastAPI source, read-only Ansimk database settings, deterministic
+metrics, and grounded Korean narrative contract.
+See [the outbound Slack guide](docs/slack-outbound-messaging.md) for creating the
+Slack app, configuring approved channels, sending a smoke message, and manually
+delivering a human-approved weekly report.
 
 ## Docker development server
 
@@ -47,8 +53,9 @@ docker compose up --build -d
 docker compose logs -f agent-server
 ```
 
-The local `agents/compose.yaml` remains available when only the Agent Server is
-needed.
+The local `agents/compose.yaml` starts the Agent Server and its private weekly
+report source service. Set the weekly-report PostgreSQL connection from
+`.env.example` before using that workflow.
 
 Docker publishes the service only on `192.168.0.18:2024`. Inside the container,
 LangGraph binds `0.0.0.0:2024` because the host's LAN address does not exist in

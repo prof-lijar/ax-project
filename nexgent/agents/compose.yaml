@@ -38,10 +38,14 @@ services:
       AX_CHAT_ARTIFACT_ROOT: ${AX_CHAT_ARTIFACT_ROOT:-/run/ax-chat}
       DB_MCP_SERVER_BEARER_TOKEN: ${DB_MCP_SERVER_BEARER_TOKEN:-}
       MCP_SERVERS_CONFIG: ${MCP_SERVERS_CONFIG:-config/mcp_servers.json}
-      WEEKLY_REPORT_MCP_SERVER: ${WEEKLY_REPORT_MCP_SERVER:-db_mcp_server}
-      WEEKLY_REPORT_MCP_SCHEMA: ${WEEKLY_REPORT_MCP_SCHEMA:-ansimk}
-      WEEKLY_REPORT_MCP_TABLE: ${WEEKLY_REPORT_MCP_TABLE:-analysis_warddangerdaily}
-      WEEKLY_REPORT_MAX_WARDS: ${WEEKLY_REPORT_MAX_WARDS:-3}
+      WEEKLY_REPORT_SOURCE_URL: ${WEEKLY_REPORT_SOURCE_URL:-http://weekly-report-api:8080}
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: ${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_DEFAULT_CHANNEL_ID: ${SLACK_DEFAULT_CHANNEL_ID:-}
+      SLACK_CHANNEL_OPERATIONS: ${SLACK_CHANNEL_OPERATIONS:-}
+      SLACK_CHANNEL_REPORTS: ${SLACK_CHANNEL_REPORTS:-}
+      SLACK_CHANNEL_ALERTS: ${SLACK_CHANNEL_ALERTS:-}
+      SLACK_REQUEST_TIMEOUT_SECONDS: ${SLACK_REQUEST_TIMEOUT_SECONDS:-10}
       SEARXNG_BASE_URL: http://searxng:8080
       LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
     init: true
@@ -50,5 +54,34 @@ services:
     depends_on:
       searxng:
         condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+  weekly-report-api:
+    build:
+      context: .
+      dockerfile: apps/weekly_report_api/Dockerfile
+    image: ax-weekly-report-api-dev:local
+    environment:
+      ANSIMK_DATABASE_DSN: ${ANSIMK_DATABASE_DSN:-}
+      ANSIMK_DATABASE_MIN_POOL_SIZE: ${ANSIMK_DATABASE_MIN_POOL_SIZE:-1}
+      ANSIMK_DATABASE_MAX_POOL_SIZE: ${ANSIMK_DATABASE_MAX_POOL_SIZE:-5}
+      ANSIMK_DATABASE_CONNECT_TIMEOUT_SECONDS: ${ANSIMK_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}
+      ANSIMK_DATABASE_COMMAND_TIMEOUT_SECONDS: ${ANSIMK_DATABASE_COMMAND_TIMEOUT_SECONDS:-30}
+    expose:
+      - "8080"
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
     stop_grace_period: 10s

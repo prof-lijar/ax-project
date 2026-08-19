@@ -25,10 +25,18 @@
 - [MCP development and integration](mcp-integrations.md): declarative remote
   server registry, environment-backed headers, discovery CLI, namespaced tool
   adapters, risk classification, and the configured read-only database MCP.
-- [Ward-risk weekly reporter](../workflows/weekly_report/README.md): database
-  MCP-backed danger-day input, deterministic comparisons, Korean narrative
-  generation, bounded demo selection, template fallback behavior, and the live
-  `/agents/1` frontend workbench integration.
+- [Ansimk weekly reporter](../workflows/weekly_report/README.md): private
+  FastAPI/raw-PostgreSQL metadata source, deterministic current/prior metrics,
+  warm Korean narrative generation, validation, and fallback behavior.
+- [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
+  implemented FastAPI source boundary, calculation rules, LLM safety contract,
+  configuration, and verification gates.
+- [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
+  live `/agents/1` execution with an operator-selected 1–25 report batch,
+  first-report selection, safe report review, and the full Compose runtime path.
+- [Outbound Slack messaging](slack-outbound-messaging.md): approved-channel
+  configuration, reusable async delivery, safe failures, Slack app setup, and
+  human-approved weekly-report verification.
 - [Workspace README](../README.md#docker-development-server): license-free
   Docker development startup, parent Nexgent Compose integration, and
   trusted-LAN publishing.

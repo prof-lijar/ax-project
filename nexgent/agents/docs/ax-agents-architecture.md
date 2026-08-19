@@ -187,6 +187,63 @@ prototype, not an approved production interpretation of risk data. Ruff
 passed, 86 tests passed with one opt-in live evaluation skipped, all three
 LangGraph entries validated, and both Compose configurations rendered.
 
+Weekly reporter production-path update on 2026-08-18: the danger-day MCP
+prototype was replaced by a private `apps/weekly_report_api` FastAPI process.
+A reusable `asyncpg` integration owns pooled read-only PostgreSQL transactions;
+workflow-owned parameterized queries calculate current and prior raw seven-day
+environment, activity, sleep, risk, danger-day, and dispatch metadata. The
+graph consumes versioned snapshots through a private-network workflow-local
+HTTP client and preserves the registered graph ID plus compatibility
+`danger_days` fields. Python converts verified metrics into qualitative facts
+before a workflow-local reporter specialist writes warm Korean prose. The
+model sees no raw rows, free-text notes, or numeric values; structured output
+receives one validation retry and then a disclosed deterministic fallback.
+Automatic ward discovery is ordered, cursor-paged, and capped at twenty-five;
+explicit IDs return missing wards as skipped. Scheduling, delivery, and report
+persistence remain deferred.
+
+Outbound Slack integration update on 2026-08-18: `ax-integrations` now owns a
+reusable async adapter over the official Slack SDK and `chat.postMessage`.
+Environment configuration defines the default channel and an allowlist of
+logical destinations; runtime or model-generated channel IDs cannot expand
+that allowlist. The adapter supports text, Block Kit, and thread replies with
+bounded timeouts, one `Retry-After` rate-limit retry, sanitized result objects,
+and content-free structured delivery logs. The weekly reporter adds an
+explicit post-generation sender for an approved configured destination. It is
+kept outside graph execution and requires human confirmation before sending
+care-related content, preventing graph retries from duplicating Slack side
+effects. No inbound Slack capability was introduced.
+
+Weekly reporter source-schema correction on 2026-08-19: live execution against
+the configured archive database showed that unqualified relation names resolve
+through a deployment-specific `search_path`, while matching tables exist in
+`ansimk`, `ansimk_clone`, and `archive`. All weekly-report SQL now explicitly
+qualifies the approved `ansimk` schema. Clone and archive relations cannot be
+selected implicitly, and a regression test enforces that source binding.
+
+Weekly Reporter frontend integration update on 2026-08-19: the catalog route
+`/agents/1` owns the live workbench again, while `/test-agent` remains an alias
+for isolated testing. An operator-triggered request sends an explicit limit of
+1–25 selected in the UI through the existing Agent Server SSE boundary; the
+default is three, and no query or model call occurs merely by opening the page.
+The Agent Server run configuration caps graph concurrency at four so a larger
+batch does not fan out without a bound. The frontend validates the expanded weekly
+metric, narrative, generation, skip, and cursor contract, selects the first
+ordered report by default, and renders only useful indicators plus safe
+Markdown rather than exposing raw report JSON. The root development Compose
+stack now includes the private weekly-report FastAPI service and gates Agent
+Server startup on its database-backed readiness endpoint.
+The read-only source path was verified with an actual three-item batch. A live
+model-backed batch remains an explicit approval gate because even the
+allowlisted qualitative fact package is ward-derived care information.
+
+Weekly Reporter progress correction on 2026-08-19: the frontend Agent Server
+request enables subgraph streaming because `ward_report_ready` is emitted from
+each isolated per-ward branch. The SSE client accepts namespaced `custom|...`
+events as validated progress while continuing to accept the terminal report
+only from the top-level `values` event. This prevents completed batches from
+displaying a stale zero-of-requested report count without weakening result parsing.
+
 Frontend launch integration update on 2026-08-14: the Agents catalog marks
 `ansimk_weekly_reporter` as the single live-data entry. Both of its **Run in
 Chat** actions create a one-shot run intent in UI state and navigate to Chat.
@@ -357,8 +414,10 @@ Required contracts are:
   recommendation.
 - `WeeklyReportRequest`, `WardWeeklyMetricSnapshot`, `WardWeeklyMetricDelta`,
   `WardWeeklyMetrics`, `WardWeeklyReport`, and `WardWeeklyReportBatchResult`:
-  the versioned input, deterministic danger-day comparison, ward Markdown
-  output, and ordered batch result for `ansimk_weekly_reporter`. Earlier
+  the versioned selection input, full current/prior ward metadata, grounded
+  narrative, Markdown output, and ordered batch result for
+  `ansimk_weekly_reporter`. `WeeklyReportSourceResponse` is the private
+  FastAPI-to-workflow snapshot boundary. Earlier
   personal-work contracts remain temporarily exported for compatibility.
 
 LangGraph state should contain only the minimum working state needed by the
@@ -385,11 +444,13 @@ history and task writes are relied on for resumption and failure recovery.
 - Do not instantiate production checkpointers or stores inside graph modules;
   Agent Server injects those resources at deployment time. [Agent Server persistence](https://docs.langchain.com/langsmith/agent-server)
 - `ansimk_weekly_reporter` uses a coordinator plus isolated per-ward subgraph.
-  Its repository grants only the database MCP `query_data` tool, and `Send`
-  fans out only after source payload and reporting-window validation. Branches
-  return finalized reports and warnings through reducers. Default source
-  selection is three wards, configurable up to twenty-five; callers bound
-  branch execution to four concurrent tasks.
+  The coordinator calls only its private-network source API and `Send`
+  fans out after source and reporting-window validation. Branches transform
+  verified metrics into qualitative facts, request structured Korean prose,
+  validate or replace it, and return finalized reports through reducers.
+  Source selection accepts explicit ward IDs or an opaque validated cursor and
+  is capped at twenty-five; callers bound branch execution to four concurrent
+  tasks.
 
 ## 6. Gateway API
 
@@ -473,6 +534,23 @@ Unclassified tools fail closed. Remote descriptions and results are untrusted;
 they never modify permissions. MCP tool calls are not retried automatically
 because remote idempotency cannot be assumed.
 
+Reusable PostgreSQL access is exposed by `ax-integrations` as a bounded
+`asyncpg` pool. It accepts only application-owned parameterized query strings,
+runs each fetch in a read-only transaction, maps provider failures to safe
+errors, and keeps DSNs out of graph state. The weekly reporter is the first
+consumer through its private FastAPI process; it does not expose a
+model-callable SQL tool.
+
+Outbound Slack messaging is also exposed by `ax-integrations`, using the
+official async Slack Web API client. Only channel IDs loaded from
+`SLACK_DEFAULT_CHANNEL_ID` or `SLACK_CHANNEL_<NAME>` are authorized. Callers
+receive a typed success/failure result; provider exceptions, tokens, message
+text, blocks, and caller metadata are excluded from logs and normalized errors.
+Slack rate-limit handling is bounded, `chat.postMessage` requests have a
+configurable timeout, and tests inject a fake client. Business workflows must
+call this service instead of importing the Slack SDK. Sensitive outbound
+notifications retain their workflow-specific human-approval gate.
+
 ## 8. Persistence, reliability, and performance
 
 - PostgreSQL is the durable system of record for Agent Server resources,
@@ -552,16 +630,19 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 
 ## 12. Known limitations and decisions deferred
 
-- The weekly reporter currently demonstrates only danger-day comparison for a
-  bounded ward subset and returns/displays reports. Business meaning,
-  prioritization, subject naming, other risk/dispatch metrics, scheduling,
-  persistence, authentication, and delivery require product validation and are
-  not implemented. The model-backed chat workflow remains a one-turn path and
-  does not yet compose the reusable web research tools. Chat attachments are
-  transient and cannot be referenced by later turns; scanned-PDF OCR and
-  durable or multi-host artifact storage remain outside the agent runtime.
+- The weekly reporter now calculates broad raw weekly metadata and produces
+  validated warm Korean summaries. It remains manually triggered and does not
+  schedule or persist rendered reports. An operator can explicitly deliver a
+  completed batch to an approved Slack destination; delivery is not
+  an automatic graph side effect. Risk-score meaning and
+  business thresholds remain intentionally undefined; the model must not infer
+  them. The model-backed chat workflow remains a
+  one-turn path and does not yet compose the reusable web research tools. Chat
+  attachments are transient and cannot be referenced by later turns;
+  scanned-PDF OCR and durable or multi-host artifact storage remain outside the
+  agent runtime.
 - MCP registry, discovery, and authorized tool adapters are implemented. The
-  weekly reporter deliberately grants one read tool; other workflows receive
+  weekly reporter no longer grants an MCP tool; other workflows receive
   no MCP capabilities unless they define their own minimal allowlist and
   tool-use behavior.
 - No-key SearXNG engines may be throttled, challenged by CAPTCHAs, or change

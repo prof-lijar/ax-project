@@ -2,6 +2,23 @@
 
 Date: 2026-08-13
 
+## Update: Live Weekly Reporter Detail Workbench
+
+Date: 2026-08-19
+
+Weekly Reporter at `/agents/1` now intentionally uses its live batch-report
+workbench instead of the generic mock-run detail surface. This supersedes the
+2026-08-14 route-separation decision below. Other `/agents/:id` pages remain
+unchanged. Opening the route is read-only; the operator must explicitly click
+**Generate N reports** before the frontend invokes `ansimk_weekly_reporter`.
+
+The route validates an operator-selected count from 1 through 25, sends it as
+`limit`, renders streamed progress, selects the first ordered report by
+default, and lets the operator switch among all returned subscriber summaries.
+The count defaults to three and graph concurrency is capped at four. See
+[Weekly Reporter Frontend Workbench](weekly-reporter-test-route.md) for the
+runtime, security, UX, and validation details.
+
 ## Update: Catalog Detail and Test Workbench Route Separation
 
 Date: 2026-08-14

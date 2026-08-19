@@ -1,27 +1,22 @@
-"""Coordinator, ward metrics, narrative, rendering, and aggregation nodes."""
+"""Coordinator and isolated per-ward branch nodes."""
 
-import json
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 from ax_contracts import (
-    WardWeeklyMetricDelta,
     WardWeeklyMetrics,
-    WardWeeklyMetricSnapshot,
     WardWeeklyReportBatchResult,
     WeeklyReportRequest,
+    WeeklyReportSourceResponse,
 )
-from ax_integrations import ModelRequestError, get_default_chat_model
+from ax_integrations import get_default_chat_model
 from langgraph.config import get_stream_writer
 from langgraph.types import Send
 
-from .models import KoreanNarrative, WardRiskWindow
-from .prompts import build_narrative_messages
-from .rendering import build_fallback_narrative, render_report
-from .repository import get_weekly_ward_risk_repository
+from .agents.reporter import generate_narrative
+from .domain import build_fact_package, render_report
 from .state import WardReportBranchState, WeeklyReportState
-
-NARRATIVE_MAX_TOKENS = 600
+from .tools import get_weekly_report_source_repository
 
 
 async def validate_request(state: WeeklyReportState) -> dict[str, Any]:
@@ -29,56 +24,53 @@ async def validate_request(state: WeeklyReportState) -> dict[str, Any]:
         {
             "week_start": state.get("week_start"),
             "timezone": state.get("timezone", "Asia/Seoul"),
+            "ward_ids": state.get("ward_ids"),
+            "cursor": state.get("cursor"),
+            "limit": state.get("limit", 25),
         }
     )
     get_stream_writer()(
         {"event": "batch_started", "week_start": request.week_start.isoformat()}
     )
-    return {
-        "week_start": request.week_start.isoformat(),
-        "week_end": request.week_end.isoformat(),
-        "timezone": request.timezone,
-    }
+    return request.model_dump(mode="json") | {"week_end": request.week_end.isoformat()}
 
 
-async def load_risk_windows(state: WeeklyReportState) -> dict[str, Any]:
-    week_start = date.fromisoformat(state["week_start"])
-    selection = await get_weekly_ward_risk_repository().load_week(
-        week_start=week_start,
-        timezone=state["timezone"],
+async def load_source_data(state: WeeklyReportState) -> dict[str, Any]:
+    request = WeeklyReportRequest.model_validate(
+        {
+            "week_start": state["week_start"],
+            "timezone": state["timezone"],
+            "ward_ids": state.get("ward_ids"),
+            "cursor": state.get("cursor"),
+            "limit": state.get("limit", 25),
+        }
     )
-    windows = [WardRiskWindow.model_validate(window) for window in selection.windows]
-    window_start = week_start - timedelta(days=7)
-    window_end = week_start + timedelta(days=7)
-    for window in windows:
-        if any(
-            record.danger_date < window_start or record.danger_date >= window_end
-            for record in window.records
-        ):
-            raise ValueError("danger record falls outside the two-week window")
-    ward_ids = [window.ward_id for window in windows]
-    if len(ward_ids) != len(set(ward_ids)):
-        raise ValueError("weekly ward-risk repository returned duplicate wards")
-
-    warnings = (
-        ["demo_source_selection_limited; only the first configured wards were used"]
-        if selection.selection_truncated
-        else []
+    source = WeeklyReportSourceResponse.model_validate(
+        await get_weekly_report_source_repository().load(request)
     )
+    if source.week_start != request.week_start or source.timezone != request.timezone:
+        raise ValueError("weekly-report source returned a mismatched period")
+    ward_ids = [item.ward_id for item in source.items]
+    if ward_ids != sorted(set(ward_ids)):
+        raise ValueError("weekly-report source returned duplicate or unordered wards")
     get_stream_writer()(
         {
             "event": "risk_data_loaded",
-            "ward_count": len(windows),
-            "selection_truncated": selection.selection_truncated,
+            "ward_count": len(source.items),
+            "selection_truncated": source.next_cursor is not None,
         }
     )
     return {
-        "work_items": [window.model_dump(mode="json") for window in windows],
-        "warning_items": warnings,
+        "work_items": [item.model_dump(mode="json") for item in source.items],
+        "warning_items": source.warnings,
+        "skipped": [item.model_dump(mode="json") for item in source.skipped],
+        "next_cursor": source.next_cursor,
     }
 
 
-async def fan_out_wards(state: WeeklyReportState) -> list[Send]:
+async def fan_out_wards(state: WeeklyReportState) -> str | list[Send]:
+    if not state.get("work_items"):
+        return "aggregate_reports"
     common = {
         "week_start": state["week_start"],
         "week_end": state["week_end"],
@@ -91,81 +83,50 @@ async def fan_out_wards(state: WeeklyReportState) -> list[Send]:
 
 
 async def calculate_metrics(state: WardReportBranchState) -> dict[str, Any]:
-    window = WardRiskWindow.model_validate(state["work_item"])
-    week_start = date.fromisoformat(state["week_start"])
-    previous_start = week_start - timedelta(days=7)
-    week_end = week_start + timedelta(days=7)
-    previous_days = {
-        record.danger_date
-        for record in window.records
-        if previous_start <= record.danger_date < week_start
-    }
-    current_days = {
-        record.danger_date
-        for record in window.records
-        if week_start <= record.danger_date < week_end
-    }
-    current = WardWeeklyMetricSnapshot(danger_days=len(current_days))
-    previous = WardWeeklyMetricSnapshot(danger_days=len(previous_days))
-    metrics = WardWeeklyMetrics(
-        ward_id=window.ward_id,
-        display_name=window.display_name,
-        week_start=week_start,
-        week_end=week_end,
-        current=current,
-        previous=previous,
-        delta=WardWeeklyMetricDelta(
-            danger_days=current.danger_days - previous.danger_days
-        ),
-    )
+    metrics = WardWeeklyMetrics.model_validate(state["work_item"])
+    if metrics.week_start != date.fromisoformat(state["week_start"]):
+        raise ValueError("ward metrics do not match the branch period")
     return {"metrics": metrics.model_dump(mode="json")}
 
 
-async def generate_korean_narrative(
-    state: WardReportBranchState,
-) -> dict[str, Any]:
+async def generate_korean_narrative(state: WardReportBranchState) -> dict[str, Any]:
     metrics = WardWeeklyMetrics.model_validate(state["metrics"])
-    warning_items: list[str] = []
-    try:
-        response = await get_default_chat_model().complete(
-            build_narrative_messages(metrics),
-            max_tokens=NARRATIVE_MAX_TOKENS,
-            temperature=0.1,
-        )
-        narrative = _parse_narrative(response)
-        generation_mode = "llm"
-    except (ModelRequestError, ValueError):
-        narrative = build_fallback_narrative(metrics)
-        generation_mode = "template_fallback"
-        warning_items.append(
+    facts = build_fact_package(metrics)
+    narrative, generation_mode, generation = await generate_narrative(
+        get_default_chat_model(), facts
+    )
+    warnings = []
+    if generation_mode == "template_fallback":
+        warnings.append(
             f"ward-{metrics.ward_id}: model_narrative_unavailable; template fallback used"
         )
         get_stream_writer()({"event": "ward_report_fallback"})
     return {
         "narrative": narrative.model_dump(mode="json"),
         "generation_mode": generation_mode,
-        "warning_items": warning_items,
+        "generation": generation.model_dump(mode="json"),
+        "warning_items": warnings,
     }
 
 
-async def compose_markdown_report(
-    state: WardReportBranchState,
-) -> dict[str, Any]:
+async def compose_markdown_report(state: WardReportBranchState) -> dict[str, Any]:
+    from ax_contracts import NarrativeGenerationMetadata, WeeklyNarrative
+
     metrics = WardWeeklyMetrics.model_validate(state["metrics"])
-    narrative = KoreanNarrative.model_validate(state["narrative"])
-    report = render_report(metrics, narrative, state["generation_mode"])
+    report = render_report(
+        metrics,
+        WeeklyNarrative.model_validate(state["narrative"]),
+        state["generation_mode"],
+        NarrativeGenerationMetadata.model_validate(state["generation"]),
+    )
     get_stream_writer()(
-        {
-            "event": "ward_report_ready",
-            "generation_mode": report.generation_mode,
-        }
+        {"event": "ward_report_ready", "generation_mode": report.generation_mode}
     )
     return {"report_items": [report.model_dump(mode="json")]}
 
 
 async def aggregate_reports(state: WeeklyReportState) -> dict[str, Any]:
     reports = sorted(state.get("report_items", []), key=lambda item: item["ward_id"])
-    warnings = sorted(state.get("warning_items", []))
     result = WardWeeklyReportBatchResult.model_validate(
         {
             "status": "completed",
@@ -173,7 +134,9 @@ async def aggregate_reports(state: WeeklyReportState) -> dict[str, Any]:
             "week_end": state["week_end"],
             "timezone": state["timezone"],
             "reports": reports,
-            "warnings": warnings,
+            "skipped": state.get("skipped", []),
+            "next_cursor": state.get("next_cursor"),
+            "warnings": sorted(state.get("warning_items", [])),
         }
     )
     get_stream_writer()(
@@ -181,19 +144,8 @@ async def aggregate_reports(state: WeeklyReportState) -> dict[str, Any]:
             "event": "batch_completed",
             "report_count": len(result.reports),
             "fallback_count": sum(
-                report.generation_mode == "template_fallback"
-                for report in result.reports
+                report.generation_mode == "template_fallback" for report in result.reports
             ),
         }
     )
     return result.model_dump(mode="json")
-
-
-def _parse_narrative(response: str) -> KoreanNarrative:
-    normalized = response.strip()
-    if normalized.startswith("```") and normalized.endswith("```"):
-        lines = normalized.splitlines()
-        normalized = "\n".join(lines[1:-1]).strip()
-    if not normalized:
-        raise ValueError("model returned an empty narrative")
-    return KoreanNarrative.model_validate(json.loads(normalized))

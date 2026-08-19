@@ -1,8 +1,9 @@
 """Pydantic contracts crossing package, process, or persistence boundaries."""
 
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from ipaddress import ip_address
+from math import isclose
 from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -308,6 +309,9 @@ class WeeklyReportRequest(ContractModel):
 
     week_start: date
     timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
+    ward_ids: list[int] | None = Field(default=None, min_length=1, max_length=25)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
+    limit: int = Field(default=25, ge=1, le=25)
 
     @field_validator("week_start")
     @classmethod
@@ -324,6 +328,23 @@ class WeeklyReportRequest(ContractModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
         return value
+
+    @field_validator("ward_ids")
+    @classmethod
+    def validate_ward_ids(cls, values: list[int] | None) -> list[int] | None:
+        if values is None:
+            return None
+        if any(value < 1 for value in values):
+            raise ValueError("ward_ids must contain positive integers")
+        if len(values) != len(set(values)):
+            raise ValueError("ward_ids must be unique")
+        return sorted(values)
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> "WeeklyReportRequest":
+        if self.ward_ids is not None and self.cursor is not None:
+            raise ValueError("ward_ids and cursor are mutually exclusive")
+        return self
 
     @property
     def week_end(self) -> date:
@@ -427,15 +448,56 @@ class WeeklyReportBatchResult(ContractModel):
 
 
 class WardWeeklyMetricSnapshot(ContractModel):
-    """Validated ward-risk values for one seven-day period."""
+    """Deterministic metrics for one ward and one seven-day period."""
 
-    danger_days: int = Field(ge=0, le=7)
+    covered_days: int = Field(default=0, ge=0, le=7)
+    daily_summary_count: int = Field(default=0, ge=0)
+    device_count: int = Field(default=0, ge=0)
+    temperature_avg: float | None = None
+    temperature_min: float | None = None
+    temperature_max: float | None = None
+    temperature_count: int = Field(default=0, ge=0)
+    humidity_avg: float | None = None
+    humidity_min: float | None = None
+    humidity_max: float | None = None
+    humidity_count: int = Field(default=0, ge=0)
+    light_avg: float | None = None
+    light_min: float | None = None
+    light_max: float | None = None
+    light_count: int = Field(default=0, ge=0)
+    light_on_time_minutes_avg: float | None = None
+    movement_count_avg: float | None = None
+    remote_control_count_avg: float | None = None
+    wake_up_time_avg: time | None = None
+    sleep_time_avg: time | None = None
+    night_awake_count_avg: float | None = None
+    risk_detected_count: int = Field(default=0, ge=0)
+    risk_resolved_count: int = Field(default=0, ge=0)
+    risk_score_avg: float | None = None
+    danger_days: int = Field(default=0, ge=0, le=7)
+    dispatch_request_count: int = Field(default=0, ge=0)
+    unresolved_dispatch_count: int = Field(default=0, ge=0)
 
 
 class WardWeeklyMetricDelta(ContractModel):
-    """Current week minus previous week for ward-risk values."""
+    """Current week minus previous week for comparable metrics."""
 
+    covered_days: int = Field(default=0, ge=-7, le=7)
+    temperature_avg: float | None = None
+    humidity_avg: float | None = None
+    light_avg: float | None = None
+    light_on_time_minutes_avg: float | None = None
+    movement_count_avg: float | None = None
+    remote_control_count_avg: float | None = None
+    wake_up_time_minutes: float | None = None
+    sleep_time_minutes: float | None = None
+    night_awake_count_avg: float | None = None
+    risk_detected_count: int = 0
+    risk_resolved_count: int = 0
+    risk_score_avg: float | None = None
     danger_days: int = Field(ge=-7, le=7)
+    dispatch_request_count: int = 0
+    unresolved_dispatch_count: int = 0
 
 
 class WardWeeklyMetrics(ContractModel):
@@ -453,18 +515,102 @@ class WardWeeklyMetrics(ContractModel):
     def validate_period_and_delta(self) -> "WardWeeklyMetrics":
         if self.week_end != self.week_start + timedelta(days=7):
             raise ValueError("week_end must be seven days after week_start")
-        expected_delta = self.current.danger_days - self.previous.danger_days
-        if self.delta.danger_days != expected_delta:
-            raise ValueError("danger_days delta must match current minus previous")
+        integer_fields = (
+            "covered_days",
+            "risk_detected_count",
+            "risk_resolved_count",
+            "danger_days",
+            "dispatch_request_count",
+            "unresolved_dispatch_count",
+        )
+        for field_name in integer_fields:
+            expected = getattr(self.current, field_name) - getattr(
+                self.previous, field_name
+            )
+            if getattr(self.delta, field_name) != expected:
+                raise ValueError(f"{field_name} delta must match current minus previous")
+        float_fields = (
+            "temperature_avg",
+            "humidity_avg",
+            "light_avg",
+            "light_on_time_minutes_avg",
+            "movement_count_avg",
+            "remote_control_count_avg",
+            "night_awake_count_avg",
+            "risk_score_avg",
+        )
+        for field_name in float_fields:
+            _validate_optional_delta(
+                field_name,
+                getattr(self.current, field_name),
+                getattr(self.previous, field_name),
+                getattr(self.delta, field_name),
+            )
+        _validate_optional_delta(
+            "wake_up_time_minutes",
+            _clock_minutes(self.current.wake_up_time_avg),
+            _clock_minutes(self.previous.wake_up_time_avg),
+            self.delta.wake_up_time_minutes,
+        )
+        _validate_optional_delta(
+            "sleep_time_minutes",
+            _clock_minutes(self.current.sleep_time_avg),
+            _clock_minutes(self.previous.sleep_time_avg),
+            self.delta.sleep_time_minutes,
+        )
         return self
+
+
+def _clock_minutes(value: time | None) -> float | None:
+    if value is None:
+        return None
+    return (value.hour * 3600 + value.minute * 60 + value.second) / 60
+
+
+def _validate_optional_delta(
+    field_name: str,
+    current: float | None,
+    previous: float | None,
+    actual: float | None,
+) -> None:
+    if current is None or previous is None:
+        if actual is not None:
+            raise ValueError(f"{field_name} delta must be unavailable")
+        return
+    expected = current - previous
+    if actual is None or not isclose(actual, expected, rel_tol=1e-9, abs_tol=1e-9):
+        raise ValueError(f"{field_name} delta must match current minus previous")
+
+
+class WeeklyNarrative(ContractModel):
+    """Validated human-facing Korean prose generated from allowlisted facts."""
+
+    headline: str = Field(min_length=1, max_length=160)
+    analysis_text: str = Field(min_length=80, max_length=500)
+    observations: list[str] = Field(min_length=1, max_length=3)
+    suggestions: list[str] = Field(default_factory=list, max_length=3)
+
+
+class NarrativeGenerationMetadata(ContractModel):
+    prompt_version: str = Field(min_length=1, max_length=64)
+    model: str | None = Field(default=None, max_length=256)
+    validation_status: Literal["passed", "fallback"]
+    fallback_reason: str | None = Field(default=None, max_length=256)
+
+
+class SkippedWard(ContractModel):
+    ward_id: int = Field(ge=1)
+    reason: Literal["not_found", "source_error"]
 
 
 class WardWeeklyReport(ContractModel):
     ward_id: int = Field(ge=1)
     display_name: str = Field(min_length=1, max_length=256)
     metrics: WardWeeklyMetrics
+    narrative: WeeklyNarrative
     markdown: str = Field(min_length=1, max_length=40_000)
     generation_mode: Literal["llm", "template_fallback"]
+    generation: NarrativeGenerationMetadata
 
     @model_validator(mode="after")
     def validate_identity(self) -> "WardWeeklyReport":
@@ -481,7 +627,9 @@ class WardWeeklyReportBatchResult(ContractModel):
     week_start: date
     week_end: date
     timezone: str = Field(min_length=1, max_length=128)
-    reports: list[WardWeeklyReport] = Field(min_length=1, max_length=25)
+    reports: list[WardWeeklyReport] = Field(default_factory=list, max_length=25)
+    skipped: list[SkippedWard] = Field(default_factory=list, max_length=25)
+    next_cursor: str | None = Field(default=None, max_length=2_000)
     warnings: list[str] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
@@ -497,6 +645,24 @@ class WardWeeklyReportBatchResult(ContractModel):
             ZoneInfo(self.timezone)
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
+        return self
+
+
+class WeeklyReportSourceResponse(ContractModel):
+    """Private FastAPI response consumed by the weekly-report workflow."""
+
+    week_start: date
+    week_end: date
+    timezone: str = Field(min_length=1, max_length=128)
+    items: list[WardWeeklyMetrics] = Field(default_factory=list, max_length=25)
+    skipped: list[SkippedWard] = Field(default_factory=list, max_length=25)
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_period(self) -> "WeeklyReportSourceResponse":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
         return self
 
 

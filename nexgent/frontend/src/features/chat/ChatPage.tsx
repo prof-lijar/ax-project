@@ -284,7 +284,7 @@ export function ChatPage() {
     let requestCompleted = false;
     try {
       const result = await agentServerClient.runWeeklyReport(
-        { week_start: weekStart, timezone: REPORT_TIMEZONE },
+        { week_start: weekStart, timezone: REPORT_TIMEZONE, limit: 3 },
         {
           signal: controller.signal,
           onProgress: updateLiveExecution

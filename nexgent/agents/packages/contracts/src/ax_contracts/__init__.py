@@ -10,7 +10,9 @@ from .models import (
     Handoff,
     McpToolCallResult,
     McpToolDefinition,
+    NarrativeGenerationMetadata,
     RunContext,
+    SkippedWard,
     TaskEnvelope,
     ToolRequest,
     ToolResult,
@@ -28,8 +30,10 @@ from .models import (
     WebSearchResult,
     WeeklyMetricDelta,
     WeeklyMetricSnapshot,
+    WeeklyNarrative,
     WeeklyReportBatchResult,
     WeeklyReportRequest,
+    WeeklyReportSourceResponse,
 )
 
 __all__ = [
@@ -42,7 +46,9 @@ __all__ = [
     "Handoff",
     "McpToolCallResult",
     "McpToolDefinition",
+    "NarrativeGenerationMetadata",
     "RunContext",
+    "SkippedWard",
     "TaskEnvelope",
     "ToolRequest",
     "ToolResult",
@@ -60,6 +66,8 @@ __all__ = [
     "WebSearchResult",
     "WeeklyMetricDelta",
     "WeeklyMetricSnapshot",
+    "WeeklyNarrative",
     "WeeklyReportBatchResult",
     "WeeklyReportRequest",
+    "WeeklyReportSourceResponse",
 ]

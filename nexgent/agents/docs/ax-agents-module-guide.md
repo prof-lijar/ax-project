@@ -70,14 +70,16 @@ returns the generated response. It is intentionally separate from `smoke` so
 model availability does not affect deterministic runtime checks.
 
 The `workflows/weekly_report` graph is the first business-specific workflow.
-Its current prototype loads a bounded two-week danger-day window from
-`ansimk.analysis_warddangerdaily` through the database MCP, selects three wards,
-fans out per ward, calculates current/previous danger-day counts in Python,
-limits the model to digit-free Korean narrative, and merges Markdown reports
-deterministically. The workflow allowlists only `query_data`, validates every
-untrusted MCP result, and discloses source truncation. Model or narrative
-validation failures use a disclosed template fallback. Scheduling,
-persistence, delivery, and final risk semantics remain outside this prototype.
+It loads bounded current/prior metadata from the private weekly-report FastAPI
+source, fans out per ward, converts validated metrics to qualitative facts,
+limits the model to grounded digit-free Korean narrative, and merges Markdown
+reports deterministically. Model or narrative validation failures use a
+disclosed warm template fallback. Scheduling, persistence, delivery, and
+risk-score interpretation remain outside the generation graph. A separate
+workflow-local Slack delivery module accepts only completed validated batches,
+uses the shared integration service and an approved default or configured
+logical destination, and requires explicit human approval before sending
+care-related content.
 
 Each workflow is a vertical module that owns its `graph.py`, minimal
 `state.py`, nodes, optional local agents and prompts, and workflow policy. The
@@ -122,6 +124,16 @@ header sources, pooled Streamable HTTP clients, paginated tool discovery,
 normalized untrusted call results, and a safe inspection CLI. The first entry
 is the read-only `db_mcp_server`; workflows still choose and allowlist its tools
 explicitly.
+The PostgreSQL integration adds an environment-backed `asyncpg` pool whose
+application-owned queries run inside read-only transactions. The weekly-report
+FastAPI process is its first consumer; the graph and model never receive its
+DSN or an arbitrary SQL capability.
+The outbound Slack integration wraps the official asynchronous Slack SDK behind
+typed message/result dataclasses. It validates text, blocks, thread timestamps,
+timeouts, and channel IDs; approves only configured default or logical
+destinations; performs one bounded rate-limit retry; and logs delivery status
+without tokens, content, metadata, or raw provider errors. Agents and workflows
+must use this service rather than importing `slack_sdk` directly.
 
 ## `apps/gateway`
 
@@ -144,6 +156,14 @@ Current routes are:
 The default gateway returns `503` until a real Agent Server adapter is
 configured. Agent Server should remain private; clients should use this
 gateway instead of depending directly on LangGraph APIs.
+
+## `apps/weekly_report_api`
+
+The private weekly-report source boundary. It owns source request/response
+validation, pooled database lifecycle, readiness, and safe database-error
+mapping. Its business calculations remain
+workflow-owned under `workflows/weekly_report/source`; the app composes and
+serves them without exposing generic database access.
 
 ## `apps/workers`
 

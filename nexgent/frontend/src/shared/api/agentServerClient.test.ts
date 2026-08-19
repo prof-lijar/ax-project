@@ -176,7 +176,8 @@ describe("agentServerClient", () => {
     await expect(
       agentServerClient.runWeeklyReport({
         week_start: "2026-08-03",
-        timezone: "Asia/Seoul"
+        timezone: "Asia/Seoul",
+        limit: 12
       })
     ).resolves.toMatchObject({ status: "completed", reports: [{ ward_id: 12031 }] });
 
@@ -184,8 +185,10 @@ describe("agentServerClient", () => {
     expect(url).toBe("/agent-server/runs/stream");
     expect(JSON.parse(init.body as string)).toEqual({
       assistant_id: "ansimk_weekly_reporter",
-      input: { week_start: "2026-08-03", timezone: "Asia/Seoul" },
+      input: { week_start: "2026-08-03", timezone: "Asia/Seoul", limit: 12 },
+      config: { max_concurrency: 4 },
       stream_mode: ["custom", "values"],
+      stream_subgraphs: true,
       on_disconnect: "cancel"
     });
   });
@@ -288,7 +291,7 @@ describe("readWeeklyReportResult", () => {
     await expect(
       readWeeklyReportResult(
         textStream([
-          'event: values\ndata: {"status":"completed","reports":[]}\n\n'
+          'event: values\ndata: {"status":"completed","reports":[],"skipped":[],"next_cursor":null,"warnings":[]}\n\n'
         ])
       )
     ).rejects.toMatchObject({ code: "malformed_stream" });
@@ -313,20 +316,35 @@ function weeklyReportStream() {
           current: metricSnapshot(),
           previous: metricSnapshot(),
           delta: {
+            ...metricDelta(),
             danger_days: 0
           }
         },
+        narrative: {
+          headline: "차분한 한 주였어요",
+          analysis_text: "확인된 주간 지표를 바탕으로 생활 흐름을 정리한 충분히 긴 분석 문장입니다. 이전 주와 비교해 눈에 띄는 변화가 크지 않아 평소 리듬을 이어가고 있는 모습이에요.",
+          observations: ["주간 흐름이 안정적으로 이어졌어요."],
+          suggestions: ["평소처럼 가볍게 안부를 나눠보세요."]
+        },
         markdown: "# Ward 12031\n\n## 이번 주 요약",
-        generation_mode: "llm"
+        generation_mode: "llm",
+        generation: {
+          prompt_version: "weekly-ward-v1",
+          model: "test-model",
+          validation_status: "passed",
+          fallback_reason: null
+        }
       }
     ],
+    skipped: [],
+    next_cursor: "next-page",
     warnings: []
   };
 
   return [
     'event: custom\ndata: {"event":"batch_started","week_start":"2026-08-03"}\n\n',
     'event: custom\ndata: {"event":"risk_data_loaded","ward_count":1,"selection_truncated":true}\n\n',
-    'event: custom\ndata: {"event":"ward_report_ready","generation_mode":"llm"}\n\n',
+    'event: custom|build_ward_report:branch-1\ndata: {"event":"ward_report_ready","generation_mode":"llm"}\n\n',
     'event: custom\ndata: {"event":"batch_completed","report_count":1,"fallback_count":0}\n\n',
     `event: values\ndata: ${JSON.stringify(report)}\n\n`
   ].join("");
@@ -334,7 +352,54 @@ function weeklyReportStream() {
 
 function metricSnapshot() {
   return {
-    danger_days: 3
+    covered_days: 7,
+    daily_summary_count: 7,
+    device_count: 1,
+    temperature_avg: 23.5,
+    temperature_min: 20,
+    temperature_max: 27,
+    temperature_count: 100,
+    humidity_avg: 51,
+    humidity_min: 40,
+    humidity_max: 62,
+    humidity_count: 100,
+    light_avg: 120,
+    light_min: 0,
+    light_max: 400,
+    light_count: 100,
+    light_on_time_minutes_avg: 310,
+    movement_count_avg: 42,
+    remote_control_count_avg: 8,
+    wake_up_time_avg: "07:30:00",
+    sleep_time_avg: "22:40:00",
+    night_awake_count_avg: 1,
+    risk_detected_count: 3,
+    risk_resolved_count: 2,
+    risk_score_avg: 0.2,
+    danger_days: 3,
+    dispatch_request_count: 1,
+    unresolved_dispatch_count: 0
+  };
+}
+
+function metricDelta() {
+  return {
+    covered_days: 0,
+    temperature_avg: 0,
+    humidity_avg: 0,
+    light_avg: 0,
+    light_on_time_minutes_avg: 0,
+    movement_count_avg: 0,
+    remote_control_count_avg: 0,
+    wake_up_time_minutes: 0,
+    sleep_time_minutes: 0,
+    night_awake_count_avg: 0,
+    risk_detected_count: 0,
+    risk_resolved_count: 0,
+    risk_score_avg: 0,
+    danger_days: 0,
+    dispatch_request_count: 0,
+    unresolved_dispatch_count: 0
   };
 }
 
