@@ -46,3 +46,11 @@ def test_searxng_configuration_enables_json_and_only_no_key_engines() -> None:
         "duckduckgo",
         "google",
     ]
+
+
+def test_development_agent_server_accepts_concurrent_graph_runs() -> None:
+    dockerfile = (ROOT / "apps/agent_server/Dockerfile.dev").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"--n-jobs-per-worker", "4"' in dockerfile

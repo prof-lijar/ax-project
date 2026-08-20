@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { desktopApi } from "./client";
 import { agentServerClient } from "./agentServerClient";
 import { agentCatalogClient } from "./agentCatalogClient";
+import { ragClient, type RagSearchInput } from "./ragClient";
 
 export const queryKeys = {
   health: ["system-health"] as const,
@@ -107,5 +108,18 @@ export function useNextcloudPreviewFile(path: string, enabled: boolean) {
 export function useNextcloudDownloadFile() {
   return useMutation({
     mutationFn: (path: string) => desktopApi.downloadNextcloudFile(path)
+  });
+}
+
+export function useRagEmbed() {
+  return useMutation({
+    mutationFn: (file: File) => ragClient.embedFile(file)
+  });
+}
+
+export function useRagSearch() {
+  return useMutation({
+    mutationFn: ({ query, topK }: RagSearchInput) =>
+      ragClient.search(query, topK)
   });
 }

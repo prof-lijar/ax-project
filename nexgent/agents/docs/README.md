@@ -30,11 +30,13 @@
   warm Korean narrative generation, validation, and fallback behavior.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
   implemented FastAPI source boundary, calculation rules, monthly indoor
-  environment policy, LLM safety contract, configuration, and verification
-  gates.
+  environment policy, LLM safety contract, bulk worker operation, capacity
+  targets, configuration, and verification gates.
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   live `/agents/1` execution with an operator-selected 1–25 report batch,
-  first-report selection, safe report review, and the full Compose runtime path.
+  first-report selection, safe report review, concurrent background Chat, and
+  the four-slot Agent Server development runtime, shared-model capacity
+  reservation, and the full Compose runtime path.
 - [Outbound Slack messaging](slack-outbound-messaging.md): approved-channel
   configuration, reusable async delivery, safe failures, Slack app setup, and
   human-approved weekly-report verification.

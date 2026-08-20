@@ -42,6 +42,7 @@ import {
 import { useUiStore } from "../../shared/state/useUiStore";
 import { ChatMarkdown } from "./ChatMarkdown";
 import styles from "./ChatPage.module.css";
+import { RequestLanes } from "./requestLanes";
 
 const WEEKLY_REPORTER_GRAPH_ID = "ansimk_weekly_reporter";
 const REPORT_TIMEZONE = "Asia/Seoul";
@@ -114,11 +115,18 @@ export function ChatPage() {
   const catalogQuery = useAgentCatalog();
   const [draft, setDraft] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [isSending, setIsSending] = useState(false);
+  const [isChatSending, setIsChatSending] = useState(false);
+  const [isWeeklyReporterRunning, setIsWeeklyReporterRunning] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
   );
   const [notice, setNotice] = useState<string | null>(null);
+  const [weeklyReportError, setWeeklyReportError] = useState<string | null>(
+    null
+  );
+  const [weeklyReportNotice, setWeeklyReportNotice] = useState<string | null>(
+    null
+  );
   const [liveExecution, setLiveExecution] =
     useState<LiveExecutionProgress | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
@@ -128,14 +136,14 @@ export function ChatPage() {
   const composerRef = useRef<HTMLFormElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const agentSelectorRef = useRef<HTMLDetailsElement | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestLanesRef = useRef(new RequestLanes());
   const activeMockRunRef = useRef<{ agentId: string; runId: string } | null>(
     null
   );
-  const requestInFlightRef = useRef(false);
   const handledAgentRunRef = useRef<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const latestMessageContent = messages[messages.length - 1]?.content;
+  const isTranscriptBusy = isChatSending || isWeeklyReporterRunning;
   const mockRuns = Object.values(mockRunsByAgentId);
   const executions: ExecutionProgress[] = liveExecution
     ? [liveExecution, ...mockRuns]
@@ -165,20 +173,22 @@ export function ChatPage() {
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({
-      behavior: isSending ? "auto" : "smooth"
+      behavior: isTranscriptBusy ? "auto" : "smooth"
     });
   }, [
     messages.length,
     latestMessageContent,
-    isSending,
+    isTranscriptBusy,
     errorMessage,
     notice,
+    weeklyReportError,
+    weeklyReportNotice,
     executionUpdateKey
   ]);
 
   useEffect(
     () => () => {
-      abortControllerRef.current?.abort();
+      requestLanesRef.current.cancelAll();
     },
     []
   );
@@ -260,19 +270,17 @@ export function ChatPage() {
   }, [clearPendingAgentRun, pendingAgentRun, selectedAgent]);
 
   async function runWeeklyReporter(agent: { id: string; name: string }) {
-    if (requestInFlightRef.current) {
-      setNotice("A request is already running. Try Run in Chat again when it finishes.");
+    const controller = requestLanesRef.current.start("weekly-report");
+    if (!controller) {
+      setWeeklyReportNotice("Weekly Reporter is already running.");
       return;
     }
 
     const weekStart = getMostRecentCompletedMonday();
     const assistantMessageId = createMessageId();
-    const controller = new AbortController();
-    requestInFlightRef.current = true;
-    abortControllerRef.current = controller;
-    setIsSending(true);
-    setErrorMessage(null);
-    setNotice(null);
+    setIsWeeklyReporterRunning(true);
+    setWeeklyReportError(null);
+    setWeeklyReportNotice(null);
     appendMessage(
       createMessage(
         "user",
@@ -298,9 +306,11 @@ export function ChatPage() {
       requestCompleted = true;
     } catch (error) {
       if (error instanceof AgentServerError && error.code === "cancelled") {
-        setNotice("Weekly Reporter run cancelled. You can start it again from Agents.");
+        setWeeklyReportNotice(
+          "Weekly Reporter run cancelled. You can start it again from Agents."
+        );
       } else {
-        setErrorMessage(
+        setWeeklyReportError(
           error instanceof Error
             ? error.message
             : "The Weekly Reporter could not complete the run."
@@ -309,21 +319,23 @@ export function ChatPage() {
       }
     } finally {
       finishLiveExecution(requestCompleted);
-      abortControllerRef.current = null;
-      requestInFlightRef.current = false;
-      setIsSending(false);
+      requestLanesRef.current.finish("weekly-report", controller);
+      setIsWeeklyReporterRunning(false);
     }
   }
 
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
     const message = draft.trim();
-    if (!message || requestInFlightRef.current) {
+    if (!message) {
       return;
     }
 
-    requestInFlightRef.current = true;
-    setIsSending(true);
+    const controller = requestLanesRef.current.start("chat");
+    if (!controller) {
+      return;
+    }
+    setIsChatSending(true);
     setErrorMessage(null);
     setNotice(null);
     setDraft("");
@@ -339,21 +351,20 @@ export function ChatPage() {
     );
     appendMessage(userMessage);
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
     const assistantMessageId = createMessageId();
 
-    const mockRun = selectedAgent
-      ? {
-          agentId: selectedAgent.id,
-          runId: startMockRun({
+    const mockRun =
+      selectedAgent?.graphId !== WEEKLY_REPORTER_GRAPH_ID && selectedAgent
+        ? {
             agentId: selectedAgent.id,
-            agentName: selectedAgent.name,
-            assistantMessageId,
-            prompt: message
-          })
-        }
-      : null;
+            runId: startMockRun({
+              agentId: selectedAgent.id,
+              agentName: selectedAgent.name,
+              assistantMessageId,
+              prompt: message
+            })
+          }
+        : null;
     activeMockRunRef.current = mockRun;
 
     let assistantMessageStarted = false;
@@ -413,10 +424,9 @@ export function ChatPage() {
       ) {
         activeMockRunRef.current = null;
       }
-      abortControllerRef.current = null;
-      requestInFlightRef.current = false;
+      requestLanesRef.current.finish("chat", controller);
       setStreamingMessageId(null);
-      setIsSending(false);
+      setIsChatSending(false);
     }
   }
 
@@ -475,12 +485,16 @@ export function ChatPage() {
     window.requestAnimationFrame(() => composerInputRef.current?.focus());
   }
 
-  function cancelRequest() {
+  function cancelChatRequest() {
     const activeMockRun = activeMockRunRef.current;
     if (activeMockRun) {
       cancelMockRun(activeMockRun.agentId, activeMockRun.runId);
     }
-    abortControllerRef.current?.abort();
+    requestLanesRef.current.cancel("chat");
+  }
+
+  function cancelWeeklyReport() {
+    requestLanesRef.current.cancel("weekly-report");
   }
 
   function startLiveExecution(
@@ -613,10 +627,10 @@ export function ChatPage() {
       <section
         className={styles.transcript}
         aria-label="Chat transcript"
-        aria-busy={isSending}
+        aria-busy={isTranscriptBusy}
       >
         <div className={styles.messageColumn}>
-          {messages.length === 0 && !isSending ? (
+          {messages.length === 0 && !isTranscriptBusy ? (
             <div className={styles.emptyState}>
               <Bot size={28} />
               <h2>How can AX help?</h2>
@@ -691,7 +705,7 @@ export function ChatPage() {
             </article>
           )}
 
-          {isSending && !streamingMessageId && !pendingExecution && (
+          {isChatSending && !streamingMessageId && (
             <article className={styles.assistantMessage} aria-live="polite">
               <span className={styles.avatar} aria-hidden>
                 <Bot size={17} />
@@ -713,11 +727,29 @@ export function ChatPage() {
               {notice}
             </p>
           )}
+          {weeklyReportError && (
+            <p className={styles.error} role="alert">
+              {weeklyReportError}
+            </p>
+          )}
+          {weeklyReportNotice && (
+            <p className={styles.notice} role="status">
+              {weeklyReportNotice}
+            </p>
+          )}
           <div ref={scrollAnchorRef} />
         </div>
       </section>
 
       <footer className={styles.composerArea}>
+        {isWeeklyReporterRunning && (
+          <div className={styles.weeklyRunControl} role="status">
+            <span>Weekly Reporter is running in the background.</span>
+            <button type="button" onClick={cancelWeeklyReport}>
+              Cancel report
+            </button>
+          </div>
+        )}
         <div className={styles.composerMode}>
           <details className={styles.agentSelector} ref={agentSelectorRef}>
             <summary aria-label="Choose an agent for Chat">
@@ -892,11 +924,11 @@ export function ChatPage() {
             onKeyDown={handleComposerKeyDown}
           />
 
-          {isSending ? (
+          {isChatSending ? (
             <button
               className={styles.cancelButton}
               type="button"
-              onClick={cancelRequest}
+              onClick={cancelChatRequest}
               aria-label="Cancel response"
             >
               <Square size={16} fill="currentColor" />

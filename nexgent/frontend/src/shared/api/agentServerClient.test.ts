@@ -186,7 +186,7 @@ describe("agentServerClient", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       assistant_id: "ansimk_weekly_reporter",
       input: { week_start: "2026-08-03", timezone: "Asia/Seoul", limit: 12 },
-      config: { max_concurrency: 4 },
+      config: { max_concurrency: 1 },
       stream_mode: ["custom", "values"],
       stream_subgraphs: true,
       on_disconnect: "cancel"

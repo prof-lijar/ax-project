@@ -25,6 +25,7 @@ This documentation set defines the product architecture before implementation be
 - [Chat File Attachments](08-implementation/chat-file-attachments.md): transient multi-file upload, document extraction, multimodal model input, security boundaries, and validation.
 - [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
 - [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): live `/agents/1` configurable 1–25 report runner, first-report selection, private source runtime path, contract validation, and operator UX.
+- [RAG UI Integration](rag-ui-integration.md): sidebar and `/rag` page integration, file embedding and exact-search UI contracts, same-origin Vite proxy routing, validation, and deferred deployment topology.
 
 ## Stage-One Definition
 

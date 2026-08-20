@@ -32,6 +32,10 @@ from .models import (
     WeeklyMetricSnapshot,
     WeeklyNarrative,
     WeeklyReportBatchResult,
+    WeeklyReportBulkFailure,
+    WeeklyReportBulkJobRequest,
+    WeeklyReportBulkJobStatus,
+    WeeklyReportBulkManifest,
     WeeklyReportRequest,
     WeeklyReportSourceResponse,
 )
@@ -68,6 +72,10 @@ __all__ = [
     "WeeklyMetricSnapshot",
     "WeeklyNarrative",
     "WeeklyReportBatchResult",
+    "WeeklyReportBulkFailure",
+    "WeeklyReportBulkJobRequest",
+    "WeeklyReportBulkJobStatus",
+    "WeeklyReportBulkManifest",
     "WeeklyReportRequest",
     "WeeklyReportSourceResponse",
 ]

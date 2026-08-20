@@ -17,7 +17,7 @@ uv run pytest
 uv run python -c 'from workflows.smoke import graph; print(graph.invoke({"message": "hello"}))'
 uv run ruff check apps workflows packages tests
 uv run uvicorn apps.gateway.main:app --port 8080
-uv run langgraph dev --host 192.168.0.18 --port 2024 --no-browser
+uv run langgraph dev --host 192.168.0.18 --port 2024 --no-browser --n-jobs-per-worker 4
 ```
 
 The LAN development server exposes API docs at
@@ -43,9 +43,10 @@ delivering a human-approved weekly report.
 ## Docker development server
 
 The root development container runs that same license-free `langgraph dev`
-command automatically. Copy `.env.example` to the ignored `.env`, set
-`OPENAI_API_KEY`, then start the complete Nexgent stack from the parent
-`nexgent/` directory:
+command automatically with four graph-run slots so Chat can run while an
+interactive Weekly Reporter graph is active. Copy `.env.example` to the ignored
+`.env`, set `OPENAI_API_KEY`, then start the complete Nexgent stack from the
+parent `nexgent/` directory:
 
 ```bash
 cd ..

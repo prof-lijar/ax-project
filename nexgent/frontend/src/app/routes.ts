@@ -4,6 +4,7 @@ import {
   Bot,
   CheckSquare,
   Cloud,
+  Database,
   MessageSquare,
   Settings,
   ShieldCheck
@@ -51,5 +52,6 @@ export const navItems: Array<{
     icon: Activity,
     path: sectionPaths.activity
   },
+  { id: "rag", label: "RAG", icon: Database, path: sectionPaths.rag },
   { id: "settings", label: "Settings", icon: Settings, path: sectionPaths.settings }
 ];

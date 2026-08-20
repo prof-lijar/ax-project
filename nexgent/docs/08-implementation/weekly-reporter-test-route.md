@@ -2,6 +2,70 @@
 
 Date: 2026-08-19
 
+Update: 2026-08-20
+
+Chat and live Weekly Reporter execution now use independent request lanes in
+the shared Chat workspace. One chat stream and one report run may remain active
+at the same time. Each lane owns its own abort controller, loading state, error
+state, and Cancel action; cancelling or completing one does not mutate the
+other. A lane still rejects a second request of its own type. This removes the
+former frontend serialization while preserving bounded execution and
+cancel-on-disconnect for both network requests.
+
+The Agent Server development image now starts LangGraph with four concurrent
+run slots. This is required because the installed in-memory development runtime
+otherwise defaults to one active run and queues Chat behind the entire Weekly
+Reporter graph. The interactive report request itself uses
+`max_concurrency: 1`: report generation remains sequential inside that run so
+the shared model endpoint is not pre-filled with four report requests before a
+later Chat request arrives. This reserves scheduling opportunity, not GPU
+capacity; a Chat request can still wait for the single model generation already
+in progress.
+
+The implementation introduces a small `RequestLanes` owner with separate
+`chat` and `weekly-report` controllers. The Chat composer cancels only the chat
+lane. A persistent background-run control cancels only Weekly Reporter. Chat
+and report errors/notices are also separate, and normal chat does not create a
+mock Weekly Reporter trace while the real reporter is active.
+
+Validation completed on 2026-08-20:
+
+- 97 frontend tests passed across 15 files, including three request-lane
+  concurrency and cancellation regressions;
+- the complete agent test suite passed with one environment-dependent test
+  skipped, including the new development-server concurrency contract;
+- full agent Ruff checks and `langgraph validate` passed with three registered
+  graphs;
+- root `docker compose config --quiet` passed;
+- the TypeScript and Vite production build passed;
+- Tauri `cargo check` passed using the isolated target directory
+  `/tmp/nexgent-cargo-agent-concurrency`; and
+- `npm audit --audit-level=moderate` reported zero vulnerabilities.
+
+The full `docker compose up --build -d` deployment was attempted but could not
+connect to `/var/run/docker.sock` from the current account. The rebuilt runtime
+therefore remains an operator deployment step:
+
+```bash
+cd /home/nextor-ai-02/nextor_ai/ax-project/nexgent
+sudo docker compose up --build -d
+```
+
+This guarantees independent client requests and concurrent Agent Server run
+scheduling, but not constant chat latency if bulk generation saturates a shared
+inference server. Production deployment should reserve interactive model
+capacity or give bulk workers a separate OpenAI-compatible endpoint. Browser
+end-to-end verification remains:
+
+```bash
+cd frontend
+npm run dev -- --host 127.0.0.1
+```
+
+Start Weekly Reporter from Chat, submit a normal chat message before the report
+finishes, and confirm both progress independently and each Cancel action affects
+only its own request.
+
 ## Summary
 
 The Weekly Reporter catalog route at `/agents/1` now renders the real
@@ -41,7 +105,7 @@ deterministic indicators and rendered summary.
 /agents/1
   -> shared Agent Server client
   -> POST /runs/stream (assistant_id: ansimk_weekly_reporter, selected limit)
-     with max_concurrency: 4
+     with max_concurrency: 1 (interactive capacity reservation)
   -> private weekly-report FastAPI source
   -> read-only ansimk PostgreSQL queries
   -> deterministic metrics

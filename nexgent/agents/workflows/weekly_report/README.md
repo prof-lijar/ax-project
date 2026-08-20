@@ -75,6 +75,22 @@ Required source configuration is documented in `.env.example`. The FastAPI
 service is private in Compose and performs read-only transactions. Scheduling
 and rendered-report persistence remain outside this workflow.
 
+## Bulk export path
+
+The compatibility graph above remains capped at twenty-five. For up to 10,000
+reports, `workflows.weekly_report.bulk` uses the same source contracts,
+calculation rules, reporter specialist, and renderer behind a durable worker.
+A leased producer pages the source at twenty-five wards per request; bounded
+async consumers claim wards from PostgreSQL and write private atomic artifacts.
+The final export is a seven-day ZIP with a manifest, JSONL records, and one
+Markdown file per completed ward. Failed wards are recorded with safe error
+codes and up to three attempts; one bad ward does not discard successful work.
+
+This is intentionally not modeled as thousands of LangGraph subgraphs or
+process-local agents. Independent work is distributed through durable leases,
+so workers can restart or scale horizontally without duplicating completed
+reports or growing graph state.
+
 ## Slack delivery
 
 `slack_delivery.py` is an explicit post-generation boundary for sending an

@@ -122,7 +122,10 @@ async def _run(args: argparse.Namespace) -> int:
             "ward_ids": args.ward_ids,
             "limit": args.limit,
         },
-        config={"max_concurrency": 4},
+        # This is an operator-facing path that shares the interactive model
+        # endpoint. Keep only one report generation in flight so Chat retains
+        # an opportunity to enter the provider queue between reports.
+        config={"max_concurrency": 1},
     )
     batch = WardWeeklyReportBatchResult.model_validate(graph_result)
     delivery = await deliver_weekly_report_batch(

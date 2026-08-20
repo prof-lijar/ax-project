@@ -88,6 +88,25 @@ services:
       retries: 10
       start_period: 10s
 
+  weekly-report-worker:
+    image: ${WEEKLY_REPORT_WORKER_IMAGE}
+    env_file: ${COMPOSE_ENV_FILE:-.env}
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: ${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}
+      WEEKLY_REPORT_WORKER_CONCURRENCY: ${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}
+      WEEKLY_REPORT_SOURCE_URL: http://weekly-report-api:8080
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
   gateway:
     image: ${GATEWAY_IMAGE}
     environment:
@@ -99,3 +118,4 @@ services:
 
 volumes:
   ax-postgres-data:
+  weekly-report-artifacts:

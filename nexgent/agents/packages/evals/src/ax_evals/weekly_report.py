@@ -24,6 +24,34 @@ FORBIDDEN_PHRASES = (
     "하십시오",
 )
 
+BULK_TARGET_REPORTS = 10_000
+BULK_SLA_SECONDS = 2 * 60 * 60
+BULK_HEALTHY_SECONDS = 90 * 60
+
+
+def evaluate_weekly_report_bulk_capacity(
+    observed_reports_per_second: float,
+) -> list[EvaluationResult]:
+    """Turn a representative end-to-end benchmark into explicit SLA gates."""
+
+    if observed_reports_per_second <= 0:
+        raise ValueError("observed_reports_per_second must be positive")
+    projected_seconds = BULK_TARGET_REPORTS / observed_reports_per_second
+    return [
+        _criterion(
+            "bulk_two_hour_sla",
+            projected_seconds <= BULK_SLA_SECONDS,
+            f"projected {projected_seconds:.1f}s for {BULK_TARGET_REPORTS} reports",
+            "add inference capacity or reduce per-report latency before release",
+        ),
+        _criterion(
+            "bulk_ninety_minute_headroom",
+            projected_seconds <= BULK_HEALTHY_SECONDS,
+            f"projected {projected_seconds:.1f}s for {BULK_TARGET_REPORTS} reports",
+            "scale workers/model replicas until the ninety-minute healthy target passes",
+        ),
+    ]
+
 
 def evaluate_weekly_report_batch(
     result: WardWeeklyReportBatchResult,

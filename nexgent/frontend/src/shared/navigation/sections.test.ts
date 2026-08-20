@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { navItems } from "../../app/routes";
 import {
   getAgentIdFromPath,
   resolveSectionLocation,
@@ -30,6 +31,23 @@ describe("section routing", () => {
       section: "test-agent",
       path: "/test-agent"
     });
+  });
+
+  it("resolves the RAG route and keeps it immediately before Settings", () => {
+    expect(sectionPaths.rag).toBe("/rag");
+    expect(resolveSectionLocation("/rag")).toEqual({
+      section: "rag",
+      path: "/rag"
+    });
+    expect(resolveSectionLocation("/rag/")).toEqual({
+      section: "rag",
+      path: "/rag"
+    });
+
+    const ragIndex = navItems.findIndex((item) => item.id === "rag");
+    expect(ragIndex).toBeGreaterThan(-1);
+    expect(navItems[ragIndex]).toMatchObject({ label: "RAG", path: "/rag" });
+    expect(navItems[ragIndex + 1]?.id).toBe("settings");
   });
 
   it("redirects the legacy Co-workers route, including a trailing slash", () => {

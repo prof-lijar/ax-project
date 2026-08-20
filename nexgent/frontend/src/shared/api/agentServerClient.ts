@@ -136,7 +136,10 @@ export const agentServerClient = {
         body: JSON.stringify({
           assistant_id: "ansimk_weekly_reporter",
           input,
-          config: { max_concurrency: 4 },
+          // Keep the interactive reporter to one model call at a time. The
+          // Agent Server can still run Chat concurrently, and a later chat
+          // request is not trapped behind a fan-out of report generations.
+          config: { max_concurrency: 1 },
           stream_mode: ["custom", "values"],
           stream_subgraphs: true,
           on_disconnect: "cancel"

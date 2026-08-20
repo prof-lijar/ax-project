@@ -8,6 +8,7 @@ export const sectionPaths: Record<AppSection, string> = {
   agents: "/agents",
   "test-agent": "/test-agent",
   activity: "/activity",
+  rag: "/rag",
   settings: "/settings"
 };
 

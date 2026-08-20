@@ -1,0 +1,279 @@
+.page {
+  display: grid;
+  gap: 24px;
+  width: min(100%, 1080px);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+}
+
+.headerIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.header h1,
+.header p,
+.panelHeading h2,
+.panelHeading p,
+.note,
+.success,
+.error,
+.empty,
+.context {
+  margin: 0;
+}
+
+.header h1 {
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.header p,
+.panelHeading p {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.tabs {
+  display: inline-flex;
+  justify-self: start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.tab,
+.tabActive {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  font: inherit;
+}
+
+.tabActive {
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.workspace {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.panel {
+  display: grid;
+  gap: 24px;
+  padding: 28px;
+}
+
+.panelHeading h2 {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.form,
+.searchForm,
+.queryField,
+.topKField,
+.results {
+  display: grid;
+}
+
+.form {
+  gap: 14px;
+  max-width: 620px;
+}
+
+.searchForm {
+  grid-template-columns: minmax(240px, 1fr) 140px auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.queryField,
+.topKField {
+  gap: 7px;
+}
+
+.queryField > span,
+.topKField > span {
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.queryField input,
+.topKField input {
+  width: 100%;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.queryField input:focus,
+.topKField input:focus {
+  border-color: #458fff;
+  outline: none;
+}
+
+.topKField small,
+.note {
+  color: var(--color-text-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.fileInput {
+  display: none;
+}
+
+.filePicker,
+.primaryButton {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 500;
+}
+
+.filePicker {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.filePicker span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.primaryButton {
+  justify-self: start;
+  min-width: 132px;
+  padding: 0 16px;
+  border: 0;
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.filePicker:disabled,
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.success,
+.error {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 11px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.success {
+  color: var(--color-green);
+  background: var(--color-green-soft);
+}
+
+.error {
+  color: var(--color-red);
+  background: var(--color-red-soft);
+}
+
+.results {
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+.result {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.resultHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.resultHeader strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.resultHeader span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.context {
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  padding: 24px 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .searchForm {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+}

@@ -161,12 +161,76 @@ SLACK_REQUEST_TIMEOUT_SECONDS
 
 `SLACK_CHANNEL_REPORTS` is an optional logical destination.
 
-The first version remains manual. It does not schedule runs, write to the
-source database, or persist rendered reports. An operator may send a completed
-batch through the approved default or configured logical destination only after passing
-the explicit sensitive-delivery confirmation. Delivery is outside the graph so
-graph retries do not duplicate messages. Slack setup and the end-to-end command
-are documented in `docs/slack-outbound-messaging.md`.
+Both report paths remain manually triggered and never write to the source
+database. The interactive graph does not persist rendered reports. The bulk
+worker stores temporary private artifacts for seven days solely to support
+resume and export. An operator may send a completed interactive batch through
+the approved default or configured logical destination only after passing the
+explicit sensitive-delivery confirmation. Bulk Slack delivery is not
+implemented. Delivery remains outside generation so retries cannot duplicate
+messages. Slack setup is documented in `docs/slack-outbound-messaging.md`.
+
+## Concurrent interactive Chat
+
+The frontend treats normal Chat and a live Weekly Reporter run as independent
+bounded request lanes. One request of each type may run concurrently, with
+separate cancellation, loading, error, and notice state. The report appears as
+background work and does not disable the Chat composer. This changes only
+client-side ownership: both paths may still share an inference endpoint, so
+bulk worker concurrency must be benchmarked and interactive capacity reserved
+when necessary.
+
+## Bulk jobs: operation and recovery
+
+The bulk path targets 10,000 LLM-first reports in two hours, with a healthy
+target of ninety minutes. It reuses the source API's opaque cursor and maximum
+page size of twenty-five. PostgreSQL coordinates idempotent jobs, producer and
+finalizer leases, and per-ward `SKIP LOCKED` leases. Report payloads never enter
+PostgreSQL or LangGraph state. The private artifact volume holds validated
+input snapshots, report JSON, and a terminal ZIP containing:
+
+- `manifest.json`, including counts, safe failures, prompt/model metadata, and
+  the `reports.jsonl` checksum;
+- `reports.jsonl`, one validated report contract per line;
+- `reports/<ward_id>.md`, one guardian-facing Markdown report per ward.
+
+Start the development dependencies and worker with:
+
+```bash
+docker compose --profile bulk up -d weekly-report-jobs-db weekly-report-api weekly-report-worker
+```
+
+The same CLI can run on an operator host configured with
+`WEEKLY_REPORT_JOB_DATABASE_DSN`, `WEEKLY_REPORT_ARTIFACT_ROOT`, source, and
+model settings:
+
+```bash
+uv run python -m apps.workers.weekly_report submit \
+  --week-start 2026-08-17 --idempotency-key weekly-2026-08-17
+uv run python -m apps.workers.weekly_report status <job-id>
+uv run python -m apps.workers.weekly_report run <job-id> --concurrency 32
+uv run python -m apps.workers.weekly_report export <job-id> ./weekly-reports.zip
+uv run python -m apps.workers.weekly_report cancel <job-id>
+uv run python -m apps.workers.weekly_report cleanup
+uv run python -m apps.workers.weekly_report capacity \
+  --reports 1000 --elapsed-seconds 600
+```
+
+Multiple `serve` containers may share one PostgreSQL database and artifact
+volume. They all select the oldest active job, so later jobs remain queued in
+the first release. Expired producer, item, and finalizer leases are reclaimed.
+Completed items are immutable and idempotent; a process restart continues from
+the last committed source cursor. Cancellation stops discovery, marks unstarted
+or leased items cancelled, and still produces a manifest for completed work.
+
+Use a representative model-backed load run to measure end-to-end reports per
+second. The release evaluator requires at least 1.389 reports/second for the
+two-hour SLA and 1.852 reports/second for ninety-minute headroom. Raise bounded
+worker concurrency until the source or inference service saturates. If the
+healthy gate still fails, add private OpenAI-compatible/vLLM replicas behind a
+load-balanced endpoint; do not compensate with unbounded tasks or Python
+threads. Keep vLLM structured output and prefix caching enabled only after the
+deployed model/version passes the narrative quality evaluation.
 
 ## Verification gates
 
@@ -177,6 +241,12 @@ are documented in `docs/slack-outbound-messaging.md`.
   blocks, rate limits, timeout, provider failures, redaction, and the weekly
   delivery approval gate without contacting Slack.
 - Evaluations require sorted batches, Korean Markdown structure, identity,
-  numeric grounding, narrative safety, and fallback disclosure.
+  numeric grounding, narrative safety, fallback disclosure, and explicit bulk
+  two-hour/ninety-minute capacity projections.
+- Bulk unit and contract tests cover idempotent submission, leased claims,
+  atomic private artifacts, manifest/JSONL/Markdown export, safe partial
+  failure, cancellation, and lease recovery. A PostgreSQL-backed integration
+  run and a representative 10,000-report model benchmark remain deployment
+  release gates.
 - Deployment checks require Ruff, pytest, LangGraph validation, Compose config,
   and a live readiness check with operator-supplied secrets.

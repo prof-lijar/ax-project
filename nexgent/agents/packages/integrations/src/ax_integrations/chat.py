@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import os
+import time
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -77,6 +78,18 @@ class ModelRequestError(RuntimeError):
         super().__init__(message)
         self.retryable = retryable
         self.status_code = status_code
+
+
+@dataclass(frozen=True, slots=True)
+class StructuredChatCompletion:
+    """Validated provider-neutral metadata for one non-streaming completion."""
+
+    text: str
+    model: str
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    finish_reason: str | None
+    latency_ms: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +260,74 @@ class OpenAICompatibleChatModel:
                 raise error
             await asyncio.sleep(0.25 * (2 ** (attempt - 1)))
 
+    async def complete_structured(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        response_schema: Mapping[str, object],
+        schema_name: str,
+        max_tokens: int = 500,
+        temperature: float = 0.7,
+    ) -> StructuredChatCompletion:
+        """Request JSON-schema constrained output without SSE overhead."""
+
+        if not schema_name or len(schema_name) > 64:
+            raise ValueError("schema_name must contain 1 to 64 characters")
+        payload = self._build_payload(messages, max_tokens, temperature)
+        payload["stream"] = False
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_name,
+                "schema": dict(response_schema),
+            },
+        }
+        started = time.perf_counter()
+        for attempt in range(1, self.settings.max_attempts + 1):
+            try:
+                response = await self._client.post(
+                    self.settings.completions_url,
+                    headers={
+                        "Authorization": f"Bearer {self.settings.api_key}",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                return self._parse_structured_completion(
+                    response,
+                    latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
+                )
+            except httpx.HTTPStatusError as exc:
+                retryable = exc.response.status_code == 429 or (
+                    500 <= exc.response.status_code < 600
+                )
+                error = ModelRequestError(
+                    f"model request failed with HTTP {exc.response.status_code}",
+                    retryable=retryable,
+                    status_code=exc.response.status_code,
+                )
+            except httpx.TransportError as exc:
+                error = ModelRequestError(
+                    f"model request failed: {type(exc).__name__}", retryable=True
+                )
+            except (
+                KeyError,
+                IndexError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                error = ModelRequestError(
+                    "model returned an invalid structured response", retryable=False
+                )
+                error.__cause__ = exc
+            if not error.retryable or attempt >= self.settings.max_attempts:
+                raise error
+            await asyncio.sleep(0.25 * (2 ** (attempt - 1)))
+        raise AssertionError("unreachable structured completion retry state")
+
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
@@ -292,6 +373,29 @@ class OpenAICompatibleChatModel:
             "temperature": temperature,
             "stream": True,
         }
+
+    def _parse_structured_completion(
+        self, response: httpx.Response, *, latency_ms: int
+    ) -> StructuredChatCompletion:
+        body = response.json()
+        choice = body["choices"][0]
+        content = choice["message"]["content"]
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("structured completion content is empty")
+        usage = body.get("usage") or {}
+        prompt_tokens = usage.get("prompt_tokens")
+        completion_tokens = usage.get("completion_tokens")
+        finish_reason = choice.get("finish_reason")
+        return StructuredChatCompletion(
+            text=content,
+            model=str(body.get("model") or self.settings.model),
+            prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else None,
+            completion_tokens=(
+                completion_tokens if isinstance(completion_tokens, int) else None
+            ),
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
+            latency_ms=latency_ms,
+        )
 
     def _normalize_content_part(
         self,

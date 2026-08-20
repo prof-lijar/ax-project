@@ -85,3 +85,52 @@ services:
       start_period: 10s
     restart: unless-stopped
     stop_grace_period: 10s
+
+  weekly-report-jobs-db:
+    image: postgres:16
+    profiles: ["bulk"]
+    environment:
+      POSTGRES_DB: ${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      POSTGRES_USER: ${WEEKLY_REPORT_JOB_USER:-ax_bulk}
+      POSTGRES_PASSWORD: ${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}
+    volumes:
+      - weekly-report-job-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${WEEKLY_REPORT_JOB_USER:-ax_bulk} -d ${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  weekly-report-worker:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    image: ax-weekly-report-worker-dev:local
+    profiles: ["bulk"]
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: ${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}
+      WEEKLY_REPORT_WORKER_CONCURRENCY: ${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}
+      WEEKLY_REPORT_SOURCE_URL: http://weekly-report-api:8080
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: ${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}
+      URL: ${URL:-http://192.168.0.17:8000/v1}
+      MODEL: ${MODEL:-gemma-4-31b}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    depends_on:
+      weekly-report-jobs-db:
+        condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  weekly-report-job-data:
+  weekly-report-artifacts:

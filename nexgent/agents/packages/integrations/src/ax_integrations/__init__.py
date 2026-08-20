@@ -22,6 +22,7 @@ from .chat import (
     ModelRequestError,
     OpenAICompatibleChatModel,
     OpenAICompatibleSettings,
+    StructuredChatCompletion,
     get_default_chat_model,
 )
 from .mcp import (
@@ -108,6 +109,7 @@ __all__ = [
     "SlackService",
     "SlackSettings",
     "SlackWebClient",
+    "StructuredChatCompletion",
     "WebFetchSettings",
     "WebRetrievalError",
     "canonicalize_url",

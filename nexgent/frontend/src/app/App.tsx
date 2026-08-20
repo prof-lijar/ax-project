@@ -6,6 +6,7 @@ import { AgentsPage } from "../features/agents/AgentsPage";
 import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
 import { ChatPage } from "../features/chat/ChatPage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
+import { RagPage } from "../features/rag/RagPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { TasksPage } from "../features/tasks/TasksPage";
 import { TestAgentPage } from "../features/test-agent/TestAgentPage";
@@ -54,6 +55,7 @@ export function App() {
         ))}
       {activeSection === "test-agent" && <TestAgentPage />}
       {activeSection === "activity" && <ActivityPage />}
+      {activeSection === "rag" && <RagPage />}
       {activeSection === "settings" && <SettingsPage />}
     </AppShell>
   );

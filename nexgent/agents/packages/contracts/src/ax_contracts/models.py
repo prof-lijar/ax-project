@@ -596,6 +596,9 @@ class NarrativeGenerationMetadata(ContractModel):
     model: str | None = Field(default=None, max_length=256)
     validation_status: Literal["passed", "fallback"]
     fallback_reason: str | None = Field(default=None, max_length=256)
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+    latency_ms: int | None = Field(default=None, ge=0)
 
 
 class SkippedWard(ContractModel):
@@ -664,6 +667,108 @@ class WeeklyReportSourceResponse(ContractModel):
         if self.week_end != self.week_start + timedelta(days=7):
             raise ValueError("week_end must be seven days after week_start")
         return self
+
+
+WeeklyReportBulkJobState = Literal[
+    "pending",
+    "preparing",
+    "running",
+    "finalizing",
+    "completed",
+    "partial",
+    "failed",
+    "cancelling",
+    "cancelled",
+    "expired",
+]
+
+
+class WeeklyReportBulkJobRequest(ContractModel):
+    """Operator request for one resumable bulk weekly-report export."""
+
+    week_start: date
+    timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
+    max_reports: int = Field(default=10_000, ge=1, le=10_000)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+
+    @field_validator("week_start")
+    @classmethod
+    def validate_monday(cls, value: date) -> date:
+        if value.weekday() != 0:
+            raise ValueError("week_start must be a Monday")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return value
+
+
+class WeeklyReportBulkFailure(ContractModel):
+    ward_id: int | None = Field(default=None, ge=1)
+    error_code: str = Field(min_length=1, max_length=128)
+    attempts: int = Field(default=0, ge=0, le=3)
+
+
+class WeeklyReportBulkJobStatus(ContractModel):
+    """Content-free progress and terminal metadata for a bulk job."""
+
+    job_id: UUID
+    status: WeeklyReportBulkJobState
+    week_start: date
+    timezone: str = Field(min_length=1, max_length=128)
+    max_reports: int = Field(ge=1, le=10_000)
+    discovered_count: int = Field(default=0, ge=0, le=10_000)
+    pending_count: int = Field(default=0, ge=0, le=10_000)
+    running_count: int = Field(default=0, ge=0, le=10_000)
+    completed_count: int = Field(default=0, ge=0, le=10_000)
+    fallback_count: int = Field(default=0, ge=0, le=10_000)
+    failed_count: int = Field(default=0, ge=0, le=10_000)
+    producer_done: bool = False
+    selection_truncated: bool = False
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+    export: ArtifactRef | None = None
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "WeeklyReportBulkJobStatus":
+        terminal = self.completed_count + self.failed_count
+        if terminal + self.pending_count + self.running_count > self.discovered_count:
+            raise ValueError("bulk job item counts exceed discovered_count")
+        if self.fallback_count > self.completed_count:
+            raise ValueError("fallback_count must not exceed completed_count")
+        return self
+
+
+class WeeklyReportBulkManifest(ContractModel):
+    """Machine-readable manifest embedded in the temporary ZIP export."""
+
+    job_id: UUID
+    request: WeeklyReportBulkJobRequest
+    status: Literal["completed", "partial", "cancelled"]
+    report_count: int = Field(ge=0, le=10_000)
+    fallback_count: int = Field(ge=0, le=10_000)
+    failures: list[WeeklyReportBulkFailure] = Field(
+        default_factory=list, max_length=10_000
+    )
+    selection_truncated: bool = False
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    prompt_version: str = Field(min_length=1, max_length=64)
+    model: str | None = Field(default=None, max_length=256)
+    reports_jsonl_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    created_at: datetime
 
 
 class Handoff(ContractModel):

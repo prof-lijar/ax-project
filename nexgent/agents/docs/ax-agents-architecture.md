@@ -1,6 +1,6 @@
 # AX Agents Architecture
 
-Date: 2026-08-05
+Date: 2026-08-20
 
 Status: **Authoritative implementation specification**
 
@@ -48,6 +48,49 @@ The real Agent Server adapter, authentication provider, durable production
 database, and business-specific write tools remain intentionally unimplemented.
 Compose image build, PostgreSQL/Redis integration tests, and a live model
 readiness check are the next deployment verification gates.
+
+## Weekly-report bulk execution (2026-08-20)
+
+The manual `ansimk_weekly_reporter` LangGraph remains the compatibility path
+for interactive batches of at most twenty-five reports. High-volume generation
+is a separate workflow-owned execution path in `workflows/weekly_report/bulk`.
+It does not create one graph branch or one agent per ward and does not place
+thousands of reports in LangGraph state.
+
+An operator submits an idempotent job for at most 10,000 reports. One leased
+producer consumes the existing private source API in ordered pages of at most
+twenty-five and stages each validated metric snapshot exactly once. Bounded
+asynchronous consumers claim independent wards from PostgreSQL with
+`FOR UPDATE SKIP LOCKED`, call the existing reporter specialist, and atomically
+write report artifacts. Producer, item, and finalizer leases can be reclaimed
+after process loss. Additional worker processes or containers increase the
+consumer pool while all select the oldest active job, so the first release
+processes one bulk job at a time and queues later jobs.
+
+PostgreSQL contains only job metadata, opaque cursors, artifact references,
+checksums, attempt counts, leases, and safe error codes. Input snapshots,
+rendered reports, and the ZIP export live on a private persistent volume with
+owner-only permissions and atomic replacement. The terminal ZIP contains
+`manifest.json`, `reports.jsonl`, and deterministic per-ward Markdown paths.
+Artifacts expire after seven days; long-term report history, a public bulk API,
+scheduling, frontend controls, and bulk Slack delivery are deliberately out of
+scope. Slack remains a separate human-approved side-effect boundary.
+
+The model path is LLM-first for every report. OpenAI-compatible servers receive
+JSON-schema constrained, non-streaming requests and return token/latency
+metadata; the existing single correction and disclosed deterministic fallback
+policy is unchanged. The model still sees qualitative facts only. Python owns
+all metrics and rendering. Worker concurrency is async and bounded—Python
+threads and process-local sub-agent fan-out are not the scaling boundary.
+
+Release capacity is measured end to end against a representative private-model
+deployment. The hard gate is 10,000 reports in at most two hours (at least
+1.389 reports/second); the healthy target is ninety minutes (at least 1.852
+reports/second). Operators increase worker concurrency only until model or
+source saturation, then add private inference replicas. vLLM prefix caching,
+continuous batching, and structured output may be enabled at the inference
+deployment, but replica count is derived from the observed benchmark rather
+than fixed in application code.
 
 Architecture update on 2026-08-05: workflow modules moved from `graphs/` to
 `workflows/`; `apps/workers`, `packages/persistence`, and
@@ -264,6 +307,33 @@ rendered in the transcript. Frontend parsing mirrors the ward danger-day
 contract and rejects malformed events or results. The browser stores no MCP
 endpoint or credential. Other preview agents still have no live runner.
 
+Concurrent Chat/Weekly Reporter update on 2026-08-20: the shared Chat workspace
+now owns independent `chat` and `weekly-report` request lanes. Each lane permits
+one request, owns its own abort controller and UI state, and can be cancelled
+without affecting the other. Weekly Reporter remains visible as background
+work while the normal Chat composer stays available. This removes a frontend
+serialization bottleneck; the two requests may still compete for a shared
+inference endpoint, so deployment capacity and latency remain separate release
+concerns.
+
+Agent Server concurrency correction on 2026-08-20: the development image starts
+`langgraph dev` with `--n-jobs-per-worker 4`. The installed in-memory runtime's
+implicit single-job default serialized otherwise-independent graph runs, so a
+Chat run could not begin until the interactive Weekly Reporter run ended.
+Operator-facing Weekly Reporter callers now use graph `max_concurrency: 1` to
+avoid placing a four-report fan-out ahead of Chat at the shared model endpoint.
+The four Agent Server slots are run admission capacity, not four guaranteed LLM
+slots. Bulk workers remain a separate process boundary and require dedicated or
+explicitly reserved inference capacity before production activation.
+
+Repository validation for this correction passed the complete agent test suite
+(one environment-dependent skip), full Ruff checks, three-graph LangGraph
+validation, 97 frontend tests, the frontend production build, Tauri `cargo
+check`, npm audit with zero vulnerabilities, and root Compose configuration.
+The running stack was not replaced because the current account cannot access
+the host Docker socket; deployment and the live overlapping-run browser check
+remain explicit operator gates.
+
 Weekly Reporter detail integration update on 2026-08-14: the stable catalog
 route `/agents/1` now renders the live `ansimk_weekly_reporter` workbench
 directly. Operators can select a reporting Monday and timezone, observe
@@ -458,8 +528,9 @@ history and task writes are relied on for resumption and failure recovery.
   verified metrics into qualitative facts, request structured Korean prose,
   validate or replace it, and return finalized reports through reducers.
   Source selection accepts explicit ward IDs or an opaque validated cursor and
-  is capped at twenty-five; callers bound branch execution to four concurrent
-  tasks.
+  is capped at twenty-five. Operator-facing callers execute one branch at a
+  time to preserve interactive model capacity; isolated tests may raise that
+  bound, while the separate bulk worker owns high-throughput concurrency.
 
 ## 6. Gateway API
 

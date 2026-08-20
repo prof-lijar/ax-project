@@ -23,9 +23,7 @@ async def generate_narrative(model: Any, facts: FactPackage) -> tuple[
     last_reason = "model_narrative_unavailable"
     for _ in range(2):
         try:
-            response = await model.complete(
-                build_messages(facts, feedback), max_tokens=900, temperature=0.2
-            )
+            response, usage = await _complete(model, facts, feedback)
         except ModelRequestError as exc:
             last_reason = _safe_reason(exc)
             break
@@ -37,8 +35,11 @@ async def generate_narrative(model: Any, facts: FactPackage) -> tuple[
             continue
         return narrative, "llm", NarrativeGenerationMetadata(
             prompt_version=PROMPT_VERSION,
-            model=_model_name(model),
+            model=usage.get("model") or _model_name(model),
             validation_status="passed",
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            latency_ms=usage.get("latency_ms"),
         )
     fallback = build_fallback(facts)
     return fallback, "template_fallback", NarrativeGenerationMetadata(
@@ -47,6 +48,28 @@ async def generate_narrative(model: Any, facts: FactPackage) -> tuple[
         validation_status="fallback",
         fallback_reason=last_reason,
     )
+
+
+async def _complete(
+    model: Any, facts: FactPackage, feedback: str | None
+) -> tuple[str, dict[str, Any]]:
+    messages = build_messages(facts, feedback)
+    structured = getattr(model, "complete_structured", None)
+    if structured is None:
+        return await model.complete(messages, max_tokens=900, temperature=0.2), {}
+    result = await structured(
+        messages,
+        response_schema=WeeklyNarrative.model_json_schema(),
+        schema_name="weekly_narrative",
+        max_tokens=900,
+        temperature=0.2,
+    )
+    return result.text, {
+        "model": result.model,
+        "prompt_tokens": result.prompt_tokens,
+        "completion_tokens": result.completion_tokens,
+        "latency_ms": result.latency_ms,
+    }
 
 
 def _parse(response: str, facts: FactPackage) -> WeeklyNarrative:
@@ -106,7 +129,9 @@ def _correction_feedback(exc: Exception) -> str:
 
     message = str(exc)
     if "four to six sentences" in message:
-        return "analysis_text를 마침표로 구분된 네 문장부터 여섯 문장으로 다시 작성하세요."
+        return (
+            "analysis_text를 마침표로 구분된 네 문장부터 여섯 문장으로 다시 작성하세요."
+        )
     if "220 to 420 characters" in message:
         return "analysis_text를 이백이십 자부터 사백이십 자로 다시 작성하세요."
     if "must not contain digits" in message:

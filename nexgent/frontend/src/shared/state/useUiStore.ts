@@ -10,6 +10,7 @@ export type AppSection =
   | "agents"
   | "test-agent"
   | "activity"
+  | "rag"
   | "settings";
 
 interface UiState {
