@@ -9,7 +9,7 @@ from .policy import validate_narrative
 
 def build_fallback(facts: FactPackage) -> WeeklyNarrative:
     first_fact = facts.facts[0]
-    second_fact = facts.facts[1] if len(facts.facts) > 1 else "그 밖의 생활 흐름은 차분하게 이어졌습니다."
+    second_fact = _second_fact(facts)
     analysis = (
         f"이번 주 생활 흐름을 살펴보니 {first_fact} "
         f"함께 확인한 내용에서는 {second_fact} "
@@ -17,7 +17,7 @@ def build_fallback(facts: FactPackage) -> WeeklyNarrative:
         "확인된 내용은 지난주 흐름과 나란히 비교했고, 확인되지 않은 내용으로 해석을 넓히지 않았어요. "
         "크게 서두르기보다는 최근 안부와 생활 리듬을 편안하게 확인해 보시면 다음 흐름을 이해하는 데 도움이 될 수 있어요."
     )
-    observations = facts.facts[:3]
+    observations = _observations(facts)
     suggestions = [
         action.replace("하기", "해 보셔도 좋아요") for action in facts.suggested_actions[:3]
     ]
@@ -31,4 +31,40 @@ def build_fallback(facts: FactPackage) -> WeeklyNarrative:
             suggestions=suggestions,
         ),
         facts.allowed_topics,
+        facts.required_topics,
     )
+
+
+def _second_fact(facts: FactPackage) -> str:
+    if "실내 환경" in facts.required_topics:
+        environment = next(
+            (
+                fact
+                for fact in facts.facts
+                if any(marker in fact for marker in ("실내 환경", "온도", "습도"))
+            ),
+            None,
+        )
+        if environment is not None and environment != facts.facts[0]:
+            return environment
+    if len(facts.facts) > 1:
+        return facts.facts[1]
+    return "그 밖의 생활 흐름은 차분하게 이어졌습니다."
+
+
+def _observations(facts: FactPackage) -> list[str]:
+    observations = facts.facts[:3]
+    if "실내 환경" not in facts.required_topics:
+        return observations
+    if any(
+        marker in fact
+        for fact in observations
+        for marker in ("실내 환경", "온도", "습도")
+    ):
+        return observations
+    environment = next(
+        fact
+        for fact in facts.facts
+        if any(marker in fact for marker in ("실내 환경", "온도", "습도"))
+    )
+    return [*observations[:2], environment]

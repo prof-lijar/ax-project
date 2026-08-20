@@ -29,8 +29,9 @@
   FastAPI/raw-PostgreSQL metadata source, deterministic current/prior metrics,
   warm Korean narrative generation, validation, and fallback behavior.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
-  implemented FastAPI source boundary, calculation rules, LLM safety contract,
-  configuration, and verification gates.
+  implemented FastAPI source boundary, calculation rules, monthly indoor
+  environment policy, LLM safety contract, configuration, and verification
+  gates.
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   live `/agents/1` execution with an operator-selected 1–25 report batch,
   first-report selection, safe report review, and the full Compose runtime path.

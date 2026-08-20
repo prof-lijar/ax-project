@@ -11,6 +11,8 @@ from ax_contracts import (
     WeeklyNarrative,
 )
 
+from .environment_policy import EnvironmentAssessment, assess_environment
+
 _WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 
 
@@ -24,6 +26,7 @@ def render_report(
 
     current = metrics.current
     previous = metrics.previous
+    environment = assess_environment(metrics)
     report_end = metrics.week_end - timedelta(days=1)
     fallback_note = (
         "\n> 문구 생성이 어려워 검증된 안내 문구로 자동 대체됨\n"
@@ -92,20 +95,20 @@ def render_report(
 
 ## 3. 실내 환경
 
-- 상태: {_environment_status(metrics)}
-- 설명: 승인된 권장 범위 없이 측정값만 안내해요.
+- 상태: {_environment_status(environment)}
+- 설명: {_environment_description(environment)}
 
 ### 지표
 
 - 최고 / 최저 온도
   - 최고: {_number(current.temperature_max, "℃")}
   - 최저: {_number(current.temperature_min, "℃")}
-  - 권장 범위: 판정 기준 없음
+  - 적정 범위: {_range(environment.temperature_low, environment.temperature_high, "℃")}
 
 - 최고 / 최저 습도
   - 최고: {_number(current.humidity_max, "%")}
   - 최저: {_number(current.humidity_min, "%")}
-  - 권장 범위: 판정 기준 없음
+  - 적정 범위: {_range(environment.humidity_low, environment.humidity_high, "%")}
 
 ---
 
@@ -241,11 +244,49 @@ def _activity_description(metrics: WardWeeklyMetrics) -> str:
     return descriptions[status]
 
 
-def _environment_status(metrics: WardWeeklyMetrics) -> str:
-    current = metrics.current
-    if current.temperature_count == 0 and current.humidity_count == 0:
+def _range(low: float, high: float, suffix: str) -> str:
+    return f"{low:g}~{high:g}{suffix}"
+
+
+def _environment_status(assessment: EnvironmentAssessment) -> str:
+    if (
+        assessment.temperature_status == "unavailable"
+        and assessment.humidity_status == "unavailable"
+    ):
         return "자료 없음"
-    return "측정값 확인"
+    temperature = {
+        "unavailable": "자료 없음",
+        "normal": "적정",
+        "low": "낮음",
+        "high": "높음",
+        "variable": "낮고 높은 구간 있음",
+    }[assessment.temperature_status]
+    humidity = {
+        "unavailable": "자료 없음",
+        "normal": "적정",
+        "low": "건조",
+        "high": "습함",
+        "variable": "건조하고 습한 구간 있음",
+    }[assessment.humidity_status]
+    return f"온도 {temperature} · 습도 {humidity}"
+
+
+def _environment_description(assessment: EnvironmentAssessment) -> str:
+    temperature = {
+        "unavailable": "실내 온도 자료가 없어요.",
+        "normal": "실내 온도는 해당 월 적정 범위 안에서 확인됐어요.",
+        "low": "실내 온도에 해당 월 적정 범위보다 낮아 추운 구간이 있었어요.",
+        "high": "실내 온도에 해당 월 적정 범위보다 높아 더운 구간이 있었어요.",
+        "variable": "실내 온도에 적정 범위보다 낮고 높은 구간이 함께 있었어요.",
+    }[assessment.temperature_status]
+    humidity = {
+        "unavailable": "실내 습도 자료가 없어요.",
+        "normal": "실내 습도는 적정 범위 안에서 확인됐어요.",
+        "low": "실내 습도에 적정 범위보다 낮아 건조한 구간이 있었어요.",
+        "high": "실내 습도에 적정 범위보다 높아 습한 구간이 있었어요.",
+        "variable": "실내 습도에 적정 범위보다 낮고 높은 구간이 함께 있었어요.",
+    }[assessment.humidity_status]
+    return f"{temperature} {humidity}"
 
 
 def _reception_status(covered_days: int) -> str:

@@ -55,6 +55,7 @@ def _parse(response: str, facts: FactPackage) -> WeeklyNarrative:
     return validate_narrative(
         WeeklyNarrative.model_validate_json(_json_document(response)),
         facts.allowed_topics,
+        facts.required_topics,
     )
 
 
@@ -116,6 +117,8 @@ def _correction_feedback(exc: Exception) -> str:
         return "단정, 진단, 명령 표현을 제거하고 부드러운 관찰과 권유로 바꾸세요."
     if "unsupported topic" in message:
         return "제공된 allowed_topics에 포함된 주제만 언급하세요."
+    if "required topic" in message:
+        return "required_topics에 포함된 주제를 analysis_text에서 빠짐없이 언급하세요."
     if "must be unique" in message:
         return "observations와 suggestions에서 중복 문구를 제거하세요."
     return "제공된 출력 규칙을 모두 확인하여 JSON 객체를 다시 작성하세요."

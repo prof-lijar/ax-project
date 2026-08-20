@@ -31,7 +31,9 @@ TOPIC_MARKERS = {
 
 
 def validate_narrative(
-    narrative: WeeklyNarrative, allowed_topics: list[str] | None = None
+    narrative: WeeklyNarrative,
+    allowed_topics: list[str] | None = None,
+    required_topics: list[str] | None = None,
 ) -> WeeklyNarrative:
     values = [
         narrative.headline,
@@ -60,4 +62,9 @@ def validate_narrative(
         for topic, markers in TOPIC_MARKERS.items():
             if topic not in allowed_topics and any(marker in combined for marker in markers):
                 raise ValueError(f"narrative mentions unsupported topic: {topic}")
+    if required_topics:
+        for topic in required_topics:
+            markers = TOPIC_MARKERS.get(topic, (topic,))
+            if not any(marker in narrative.analysis_text for marker in markers):
+                raise ValueError(f"narrative omits required topic: {topic}")
     return narrative

@@ -19,6 +19,8 @@ numeric rules.
 - Keep model-authored prose digit-free. Show verified numbers only in the
   deterministic renderer.
 - Discuss only allowlisted qualitative topics supplied by Python.
+- When `실내 환경` is required, mention the supplied temperature or humidity
+  status in `analysis_text` without repeating numeric thresholds.
 
 ## Prohibited interpretations
 
@@ -29,8 +31,8 @@ numeric rules.
 - Do not amplify anxiety or use categorical wording such as “위험합니다.”
 - Do not assume the reason for a dispatch.
 - Do not treat missing device data as evidence of a health problem.
-- Do not invent score thresholds or classify raw environment readings as good
-  or bad without a separately approved backend rule.
+- Do not invent score thresholds or classify raw environment readings beyond
+  the separately approved versioned monthly temperature and humidity policy.
 
 Prioritize incomplete data disclosure, unresolved dispatch state, risk-event
 changes, activity, sleep, environment, then stable observations. The priority

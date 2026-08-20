@@ -244,6 +244,15 @@ events as validated progress while continuing to accept the terminal report
 only from the top-level `values` event. This prevents completed batches from
 displaying a stale zero-of-requested report count without weakening result parsing.
 
+Weekly Reporter environment-policy update on 2026-08-20: a product-approved,
+deterministic presentation rule now classifies weekly indoor extrema using the
+reporting week's starting month. Temperature ranges are 18–20℃ for
+January–March and November–December, 20–22℃ for April–May and October, and
+26–28℃ for June–September; humidity is 40–60% year-round. Python converts
+below/above-bound measurements into cold/hot or dry/humid qualitative facts.
+The reporter prompt requires those facts in `analysis_text`, and validation
+enforces the required topic without exposing numeric values to the model.
+
 Frontend launch integration update on 2026-08-14: the Agents catalog marks
 `ansimk_weekly_reporter` as the single live-data entry. Both of its **Run in
 Chat** actions create a one-shot run intent in UI state and navigate to Chat.
@@ -634,9 +643,10 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   validated warm Korean summaries. It remains manually triggered and does not
   schedule or persist rendered reports. An operator can explicitly deliver a
   completed batch to an approved Slack destination; delivery is not
-  an automatic graph side effect. Risk-score meaning and
-  business thresholds remain intentionally undefined; the model must not infer
-  them. The model-backed chat workflow remains a
+  an automatic graph side effect. Risk-score meaning remains intentionally
+  undefined. The approved indoor environment ranges are the only current
+  business thresholds, and the model receives only their deterministic
+  qualitative result. The model-backed chat workflow remains a
   one-turn path and does not yet compose the reusable web research tools. Chat
   attachments are transient and cannot be referenced by later turns;
   scanned-PDF OCR and durable or multi-host artifact storage remain outside the

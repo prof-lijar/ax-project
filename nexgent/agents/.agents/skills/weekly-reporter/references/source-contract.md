@@ -40,6 +40,24 @@ for this implementation.
 - Count dispatches by `created_at`; unresolved means current `is_resolved=false`.
 - Recompute both weeks from raw records.
 
+## Approved environment interpretation
+
+The product owner approved a versioned presentation rule on 2026-08-20. Use
+the reporting week's starting month to select the indoor temperature range:
+
+- January through March: 18–20℃;
+- April and May: 20–22℃;
+- June through September: 26–28℃;
+- October: 20–22℃;
+- November and December: 18–20℃.
+
+The approved humidity range is 40–60% in every month. Classify a weekly
+minimum below the lower bound as a cold or dry interval and a weekly maximum
+above the upper bound as a hot or humid interval. When both occur, disclose
+both. These are report guidance labels, not diagnoses or evidence of a health
+condition. The numeric rules remain in deterministic Python and the model sees
+only their qualitative result.
+
 ## API and security
 
 Use `POST /internal/v1/weekly-report/source` with `WeeklyReportRequest` and

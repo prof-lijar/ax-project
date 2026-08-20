@@ -31,10 +31,13 @@ The rendered Markdown follows the guardian-facing `주간 생활 리포트` layo
 basic information, a weekly summary, five numbered sections for sleep,
 activity, environment, data reception, and risk management, then up to three
 grounded action suggestions. The exclusive period end is displayed as the
-inclusive Sunday. Fields without approved source semantics, including a
-subscriber score, environmental recommendation thresholds, signal-loss
-counts, and management-note details, are marked unavailable rather than
-inferred.
+inclusive Sunday. The reporting week's starting month selects the approved
+temperature range: 18–20℃ in January–March and November–December, 20–22℃ in
+April–May and October, and 26–28℃ in June–September. Humidity uses 40–60%.
+Weekly extrema outside those ranges become deterministic qualitative facts and
+must appear in the generated weekly analysis. Fields without approved source
+semantics, including a subscriber score, signal-loss counts, and
+management-note details, are marked unavailable rather than inferred.
 
 ## Narrative boundary
 
@@ -48,9 +51,10 @@ failure uses a disclosed deterministic warm fallback. A single complete
 Markdown `json` code fence is normalized before strict validation because some
 OpenAI-compatible models wrap otherwise valid JSON; surrounding prose and
 malformed fences remain invalid.
-Prompt version `weekly-korean-warm-v2` also requires explicit sentence-ending
-punctuation and gives the one corrective retry a safe rule-specific message
-instead of an opaque validation code.
+Prompt version `weekly-korean-warm-v3` also requires explicit sentence-ending
+punctuation, requires supplied indoor-environment status in `analysis_text`,
+and gives the one corrective retry a safe rule-specific message instead of an
+opaque validation code.
 
 ## Input
 

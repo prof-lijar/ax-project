@@ -57,7 +57,7 @@ async def test_report_uses_guardian_facing_section_template() -> None:
 
 
 @pytest.mark.asyncio
-async def test_report_discloses_unapproved_scores_and_environment_ranges() -> None:
+async def test_report_renders_approved_monthly_environment_ranges() -> None:
     source = await MockWeeklyReportSourceRepository().load(
         WeeklyReportRequest(week_start=date(2026, 8, 3), ward_ids=[101])
     )
@@ -84,6 +84,7 @@ async def test_report_discloses_unapproved_scores_and_environment_ranges() -> No
     )
 
     assert "- 상태 범위: 판정 기준 없음" in report.markdown
-    assert report.markdown.count("- 권장 범위: 판정 기준 없음") == 2
+    assert "- 상태: 온도 낮음 · 습도 적정" in report.markdown
+    assert "- 적정 범위: 26~28℃" in report.markdown
+    assert "- 적정 범위: 40~60%" in report.markdown
     assert "86점" not in report.markdown
-    assert "18~24℃" not in report.markdown

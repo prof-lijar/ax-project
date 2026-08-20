@@ -103,9 +103,10 @@ or validation failures use a deterministic fallback and set
 `generation_mode=template_fallback` with a safe reason. One complete Markdown
 JSON code fence is normalized before validation; the reporter never extracts
 JSON from surrounding prose or relaxes the narrative schema.
-Prompt version `weekly-korean-warm-v2` asks the model to verify sentence and
-character counts and provides bounded rule-specific feedback on the single
-corrective retry.
+Prompt version `weekly-korean-warm-v3` asks the model to verify sentence and
+character counts, requires a supplied indoor-environment status in the weekly
+analysis, and provides bounded rule-specific feedback on the single corrective
+retry.
 
 Numbers are rendered only from `WardWeeklyMetrics`; generated prose is never
 parsed to create calculations.
@@ -122,10 +123,14 @@ The deterministic renderer uses the following order:
 
 The contract's exclusive Monday `week_end` is displayed as the inclusive
 Sunday reporting date. Activity and sleep status labels describe only verified
-week-over-week direction. Until product-owned rules are versioned, subscriber
-status scores and environmental recommendation ranges are explicitly shown as
-undefined. Signal-loss counts and risk-management notes are not present in the
-source contract; the report does not invent them or expose raw management text.
+week-over-week direction. Indoor temperature uses a product-approved range
+selected from the reporting week's starting month: 18–20℃ in January–March and
+November–December, 20–22℃ in April–May and October, and 26–28℃ in
+June–September. Humidity uses 40–60% throughout the year. Weekly extrema below
+or above those bounds produce cold/hot or dry/humid qualitative facts that the
+weekly analysis must mention. Subscriber status scores remain undefined.
+Signal-loss counts and risk-management notes are not present in the source
+contract; the report does not invent them or expose raw management text.
 
 ## Configuration and operation
 
