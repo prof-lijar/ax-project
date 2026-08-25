@@ -7,20 +7,16 @@ import {
 } from "./agentCatalogClient";
 
 describe("agentCatalogClient", () => {
-  it("returns six deterministic previews with route IDs separate from graph IDs", async () => {
+  it("returns only Weekly Reporter and the real RAG Agent", async () => {
     const first = await agentCatalogClient.listAgents();
     const second = await agentCatalogClient.listAgents();
 
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
-    expect(first).toHaveLength(6);
+    expect(first).toHaveLength(2);
     expect(first.map(({ id, graphId }) => ({ id, graphId }))).toEqual([
       { id: "1", graphId: "ansimk_weekly_reporter" },
-      { id: "2", graphId: "preview_data_analyst" },
-      { id: "3", graphId: "preview_report_qa" },
-      { id: "4", graphId: "preview_document_assistant" },
-      { id: "5", graphId: "preview_database_assistant" },
-      { id: "6", graphId: "preview_risk_monitoring_agent" }
+      { id: "7", graphId: "rag_chat" }
     ]);
     expect(first[0]).toMatchObject({
       id: "1",
@@ -30,6 +26,21 @@ describe("agentCatalogClient", () => {
     });
     expect(first[0].limitations).toContain(
       "Scheduling and delivery are not connected"
+    );
+    expect(first[1]).toMatchObject({
+      id: "7",
+      name: "RAG Agent",
+      graphId: "rag_chat",
+      description:
+        "Answers one-turn questions from the indexed RAG corpus using grounded retrieval and source provenance.",
+      readiness: null,
+      currentWork: null,
+      lastObservedAt: null,
+      observationMode: null,
+      recentRuns: []
+    });
+    expect(first[1].limitations).not.toContain(
+      "Agent Server-to-RAG runtime connectivity still needs live validation"
     );
   });
 

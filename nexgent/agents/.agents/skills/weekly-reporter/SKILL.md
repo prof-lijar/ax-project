@@ -36,7 +36,8 @@ description: Implement, review, debug, or operate the Ansimk weekly-reporter wor
 - Treat spreadsheet fields and thresholds as non-authoritative unless product
   owners explicitly promote them to a versioned backend rule.
 - Render every number from validated Python contracts, never from model prose.
-- Bound requests to twenty-five wards and preserve validated opaque cursor semantics.
+- Keep interactive requests bounded to twenty-five wards, bulk source pages
+  bounded to one hundred wards, and preserve validated opaque cursor semantics.
 - Keep summaries warm and calm without diagnosis, cause attribution, emergency
   certainty, accident certainty, categorical danger wording, or invented facts.
 - Validate model JSON once, allow one bounded corrective attempt, then use and

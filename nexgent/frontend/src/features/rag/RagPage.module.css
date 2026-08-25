@@ -86,6 +86,191 @@
   background: var(--color-surface);
 }
 
+.dataPanel {
+  display: grid;
+  gap: 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.dataPanelHeading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dataPanelHeading h2,
+.dataPanelHeading p,
+.dataStatus,
+.confirmationDialog h2,
+.confirmationDialog p {
+  margin: 0;
+}
+
+.dataPanelHeading h2 {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.dataPanelHeading p,
+.dataStatus {
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.emptyDataButton,
+.deleteDataButton,
+.dialogActions > button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 500;
+}
+
+.emptyDataButton {
+  border: 1px solid var(--color-red);
+  color: var(--color-red);
+  background: transparent;
+}
+
+.emptyDataButton:disabled,
+.deleteDataButton:disabled,
+.dialogActions > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dataCounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.dataCounts > div {
+  padding: 9px 11px;
+  border-left: 2px solid var(--color-border);
+}
+
+.dataCounts dt,
+.dataCounts dd {
+  margin: 0;
+}
+
+.dataCounts dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.dataCounts dd {
+  margin-top: 3px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.confirmationDialog {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 480px);
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 30%);
+}
+
+.warningIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--color-red);
+  background: var(--color-red-soft);
+}
+
+.confirmationDialog h2 {
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.confirmationDialog > p {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.confirmationDialog > .confirmationCounts {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.confirmationField {
+  display: grid;
+  gap: 7px;
+}
+
+.confirmationField > span {
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.confirmationField input {
+  width: 100%;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.confirmationField input:focus {
+  border-color: var(--color-red);
+  outline: none;
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.dialogActions > button {
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.dialogActions > .deleteDataButton {
+  border-color: var(--color-red);
+  color: #ffffff;
+  background: var(--color-red);
+}
+
 .panel {
   display: grid;
   gap: 24px;
@@ -99,9 +284,11 @@
 
 .form,
 .searchForm,
+.chunkTokenField,
 .queryField,
 .topKField,
-.results {
+.results,
+.chunkPreviewList {
   display: grid;
 }
 
@@ -110,17 +297,103 @@
   max-width: 620px;
 }
 
+.inputMode {
+  display: inline-flex;
+  justify-self: start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.inputMode button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  font: inherit;
+}
+
+.inputMode .inputModeActive {
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.inputMode button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.directTextFields,
+.directTextFields label {
+  display: grid;
+  gap: 7px;
+}
+
+.directTextFields {
+  gap: 14px;
+}
+
+.directTextFields label > span {
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.directTextFields input,
+.directTextFields textarea {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.directTextFields textarea {
+  min-height: 190px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.directTextFields input:focus,
+.directTextFields textarea:focus {
+  border-color: #458fff;
+  outline: none;
+}
+
 .searchForm {
   grid-template-columns: minmax(240px, 1fr) 140px auto;
-  gap: 14px;
+  column-gap: 14px;
+  row-gap: 7px;
   align-items: end;
 }
 
+.searchForm > .primaryButton {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.topKHelp {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+}
+
+.chunkTokenField,
 .queryField,
 .topKField {
   gap: 7px;
 }
 
+.chunkTokenField > span,
 .queryField > span,
 .topKField > span {
   color: var(--color-text);
@@ -128,6 +401,7 @@
   font-weight: 500;
 }
 
+.chunkTokenField input,
 .queryField input,
 .topKField input {
   width: 100%;
@@ -140,13 +414,19 @@
   font: inherit;
 }
 
+.chunkTokenField input {
+  max-width: 180px;
+}
+
+.chunkTokenField input:focus,
 .queryField input:focus,
 .topKField input:focus {
   border-color: #458fff;
   outline: none;
 }
 
-.topKField small,
+.chunkTokenField small,
+.topKHelp,
 .note {
   color: var(--color-text-soft);
   font-size: 11px;
@@ -261,6 +541,15 @@
   overflow-wrap: anywhere;
 }
 
+.provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  margin: 0 0 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 .empty {
   padding: 24px 0;
   color: var(--color-text-muted);
@@ -268,12 +557,142 @@
   text-align: center;
 }
 
+.embedResult {
+  display: grid;
+  gap: 18px;
+  padding-top: 22px;
+  border-top: 1px solid var(--color-border);
+}
+
+.resultSectionHeading,
+.previewHeading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.resultSectionHeading h3,
+.previewHeading h3,
+.previewHeading p {
+  margin: 0;
+}
+
+.resultSectionHeading h3,
+.previewHeading h3 {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.resultSectionHeading span,
+.previewHeading p {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.metricsGrid > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--color-border);
+}
+
+.metricsGrid dt,
+.metricsGrid dd {
+  margin: 0;
+}
+
+.metricsGrid dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.metricsGrid dd {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.chunkPreviewList {
+  gap: 10px;
+}
+
+.chunkPreview {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.chunkPreview header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.chunkPreview header strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.chunkPreview header span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.chunkPreview p {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.searchTiming {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-raised);
+  font-size: 12px;
+}
+
+.searchTiming strong {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
 @media (max-width: 860px) {
   .searchForm {
     grid-template-columns: 1fr;
   }
 
+  .searchForm > .primaryButton,
+  .topKHelp {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
   .panel {
     padding: 20px;
+  }
+
+  .dataPanel {
+    padding: 18px 20px;
   }
 }

@@ -57,7 +57,11 @@ class FileIngestionTests(unittest.TestCase):
             patch.object(
                 embedd, "embed_documents", return_value=[[0.1] * 1024]
             ) as embed,
-            patch.object(embedd, "insert_chunks", return_value=[20]) as insert,
+            patch.object(
+                embedd,
+                "insert_chunks",
+                return_value=embedd.PersistedDocument(10, [20]),
+            ) as insert,
             redirect_stdout(io.StringIO()),
         ):
             result = embedd.main([str(path)])
@@ -69,6 +73,11 @@ class FileIngestionTests(unittest.TestCase):
             fake_model, ["문서 제목\n\n첫 문단입니다.\n둘째 줄입니다."]
         )
         insert.assert_called_once()
+        source, chunking, vectors = insert.call_args.args
+        self.assertEqual(source.source_type, "file")
+        self.assertEqual(source.source_name, "one.txt")
+        self.assertEqual(chunking.chunks, [content.strip()])
+        self.assertEqual(len(vectors), 1)
 
     def test_reads_multiple_files_in_argument_order(self) -> None:
         first = self.write_text("first.txt", "첫 번째 문서")
@@ -156,7 +165,12 @@ class FileIngestionTests(unittest.TestCase):
         load_tokenizer = Mock(return_value=self.tokenizer)
         load = Mock(return_value=fake_model)
         embed = Mock(side_effect=[[[0.1] * 1024], [[0.2] * 1024]])
-        insert = Mock(side_effect=[[20], [21]])
+        insert = Mock(
+            side_effect=[
+                embedd.PersistedDocument(10, [20]),
+                embedd.PersistedDocument(11, [21]),
+            ]
+        )
 
         with (
             patch.object(embedd, "load_tokenizer", load_tokenizer),
@@ -173,6 +187,10 @@ class FileIngestionTests(unittest.TestCase):
         self.assertEqual(embed.call_count, 2)
         self.assertTrue(all(call.args[0] is fake_model for call in embed.call_args_list))
         self.assertEqual(insert.call_count, 2)
+        self.assertEqual(
+            [call.args[0].source_name for call in insert.call_args_list],
+            ["first.txt", "second.txt"],
+        )
 
 
 if __name__ == "__main__":

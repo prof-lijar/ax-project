@@ -34,11 +34,11 @@ export interface AgentDefinition {
   role: string;
   description: string;
   graphId: string;
-  readiness: AgentReadiness;
-  currentWork: string;
+  readiness: AgentReadiness | null;
+  currentWork: string | null;
   runtimeLabel: string;
   lastObservedAt: string | null;
-  observationMode: AgentObservationMode;
+  observationMode: AgentObservationMode | null;
   capabilities: string[];
   inputs: AgentInputField[];
   outputDescription: string;

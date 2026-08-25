@@ -2,7 +2,46 @@
 
 Date: 2026-08-19
 
-Update: 2026-08-20
+Update: 2026-08-24
+
+### Durable bulk generation
+
+The Weekly Reporter page now separates two execution modes:
+
+- **Quick preview** preserves the existing interactive LangGraph run and its
+  1–25 result limit.
+- **Bulk generation** submits one durable job for 1–10,000 reports. Internally,
+  the producer reads repeated source pages of at most one hundred, stages
+  content references in PostgreSQL, and bounded async consumers generate the
+  independent reports concurrently. The browser never holds the complete batch.
+
+The bulk dashboard displays configured worker concurrency, actual active
+consumers, discovered/queued/completed/fallback/failed counts, elapsed time,
+observed reports per second, projected finish, the three pipeline stages,
+recent durable runs, in-flight cancellation, and verified ZIP download.
+Cancel and **Stop & refresh** persist a cancellation request and wait for the
+control API response. Page refresh, navigation, and component unmount send the
+same request with browser keepalive. The worker cancels active model awaits,
+marks pending and leased items cancelled, and exports only reports completed
+before cancellation.
+
+Submission requires a checkbox acknowledging that this is a live model-backed
+run over allowlisted care-derived facts. A shared model endpoint can slow Chat,
+so the UI recommends testing 100–1,000 reports before 10,000. The displayed
+default concurrency of 32 is an application limit; the model server determines
+actual simultaneous inference capacity.
+
+The control plane is a separate FastAPI process with strict submit, list,
+status, cancel, runtime, readiness, and export routes. It shares the durable job
+database and private artifact volume with the worker, but it performs no report
+generation. It is not published on a host port. The current Dockerized Vite
+server reaches it through `/weekly-report-bulk-api`; an authenticated gateway is
+required before production exposure.
+
+This implementation makes a thousands-report run visible and operable, but it
+does not prove the 10,000-in-two-hours target. The remaining release check is a
+representative private-model run measuring at least 1.389 reports/second, with
+1.852 reports/second as the ninety-minute healthy target.
 
 Chat and live Weekly Reporter execution now use independent request lanes in
 the shared Chat workspace. One chat stream and one report run may remain active
@@ -41,6 +80,15 @@ Validation completed on 2026-08-20:
 - Tauri `cargo check` passed using the isolated target directory
   `/tmp/nexgent-cargo-agent-concurrency`; and
 - `npm audit --audit-level=moderate` reported zero vulnerabilities.
+
+Bulk UI/API validation added later on 2026-08-20 includes strict FastAPI
+contract tests for submission, recent jobs, validation, cancellation, missing
+jobs, and checksum-verified ZIP download; persistence tests for newest-first
+job discovery; the complete agent suite with one environment-dependent skip;
+full Ruff and three-graph LangGraph validation; a valid local Weekly Reporter
+skill; 112 frontend tests across 17 files; a successful TypeScript/Vite
+production build; successful Tauri `cargo check`; npm audit with zero
+vulnerabilities; and valid development and production Compose rendering.
 
 The full `docker compose up --build -d` deployment was attempted but could not
 connect to `/var/run/docker.sock` from the current account. The rebuilt runtime

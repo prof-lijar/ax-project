@@ -1,9 +1,14 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { desktopApi } from "./client";
 import { agentServerClient } from "./agentServerClient";
 import { agentCatalogClient } from "./agentCatalogClient";
-import { ragClient, type RagSearchInput } from "./ragClient";
+import {
+  ragClient,
+  type RagDataStats,
+  type RagEmbedInput,
+  type RagSearchInput
+} from "./ragClient";
 
 export const queryKeys = {
   health: ["system-health"] as const,
@@ -16,7 +21,8 @@ export const queryKeys = {
   nextcloudStatus: ["nextcloud-status"] as const,
   nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
   nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const,
-  nextcloudPreview: (path: string) => ["nextcloud-preview", path] as const
+  nextcloudPreview: (path: string) => ["nextcloud-preview", path] as const,
+  ragDataStats: ["rag-data-stats"] as const
 };
 
 export function useAgentServerHealth() {
@@ -112,8 +118,19 @@ export function useNextcloudDownloadFile() {
 }
 
 export function useRagEmbed() {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => ragClient.embedFile(file)
+    mutationFn: (input: RagEmbedInput) =>
+      input.mode === "file"
+        ? ragClient.embedFile(input.file, input.maxChunkTokens)
+        : ragClient.embedText(
+            input.text,
+            input.title,
+            input.maxChunkTokens
+          ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ragDataStats });
+    }
   });
 }
 
@@ -121,5 +138,32 @@ export function useRagSearch() {
   return useMutation({
     mutationFn: ({ query, topK }: RagSearchInput) =>
       ragClient.search(query, topK)
+  });
+}
+
+export function useRagDataStats(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.ragDataStats,
+    queryFn: ({ signal }) => ragClient.getDataStats({ signal }),
+    enabled,
+    retry: false
+  });
+}
+
+export function useRagDeleteData() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (confirmation: string) =>
+      ragClient.deleteAllData(confirmation),
+    onSuccess: () => {
+      const emptyStats: RagDataStats = {
+        embedding_rows: 0,
+        document_rows: 0,
+        legacy_embedding_rows: 0,
+        provenance_embedding_rows: 0
+      };
+      queryClient.setQueryData(queryKeys.ragDataStats, emptyStats);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ragDataStats });
+    }
   });
 }

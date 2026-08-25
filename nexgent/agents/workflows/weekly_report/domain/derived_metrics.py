@@ -79,43 +79,28 @@ def _environment_guidance(
     facts: list[str] = []
     actions: list[str] = []
 
-    temperature_facts = {
-        "normal": "실내 온도 측정값은 해당 월 적정 범위 안에서 확인되었습니다.",
-        "low": "실내 온도에 해당 월 적정 범위보다 낮아 추운 구간이 있었습니다.",
-        "high": "실내 온도에 해당 월 적정 범위보다 높아 더운 구간이 있었습니다.",
-        "variable": (
-            "실내 온도에 해당 월 적정 범위보다 낮은 구간과 높은 구간이 "
-            "함께 있었습니다."
-        ),
-    }
-    temperature_actions = {
-        "low": "실내 난방 상태를 가볍게 확인하기",
-        "high": "실내 냉방과 환기 상태를 가볍게 확인하기",
-        "variable": "실내 냉난방 상태를 함께 확인하기",
-    }
     if assessment.temperature_status != "unavailable":
-        facts.append(temperature_facts[assessment.temperature_status])
-        action = temperature_actions.get(assessment.temperature_status)
-        if action:
-            actions.append(action)
+        maximum = assessment.temperature_max
+        assert maximum is not None
+        if assessment.temperature_status == "good":
+            facts.append("이번 주 최고 실내 온도는 해당 월 권장 범위 안이었습니다.")
+        else:
+            direction = "낮았습니다" if maximum < assessment.temperature_low else "높았습니다"
+            degree = "크게 " if assessment.temperature_status == "risk" else ""
+            facts.append(
+                f"이번 주 최고 실내 온도는 해당 월 권장 범위보다 {degree}{direction}."
+            )
+            actions.append("실내 냉난방과 환기 상태를 가볍게 확인하기")
 
-    humidity_facts = {
-        "normal": "실내 습도 측정값은 적정 범위 안에서 확인되었습니다.",
-        "low": "실내 습도에 적정 범위보다 낮아 건조한 구간이 있었습니다.",
-        "high": "실내 습도에 적정 범위보다 높아 습한 구간이 있었습니다.",
-        "variable": (
-            "실내 습도에 적정 범위보다 낮은 구간과 높은 구간이 함께 있었습니다."
-        ),
-    }
-    humidity_actions = {
-        "low": "가습과 환기 상태를 가볍게 확인하기",
-        "high": "제습과 환기 상태를 가볍게 확인하기",
-        "variable": "가습과 제습 상태를 함께 확인하기",
-    }
     if assessment.humidity_status != "unavailable":
-        facts.append(humidity_facts[assessment.humidity_status])
-        action = humidity_actions.get(assessment.humidity_status)
-        if action:
-            actions.append(action)
+        maximum = assessment.humidity_max
+        assert maximum is not None
+        if assessment.humidity_status == "good":
+            facts.append("이번 주 최고 실내 습도는 적정 범위 안이었습니다.")
+        else:
+            direction = "낮았습니다" if maximum < assessment.humidity_low else "높았습니다"
+            degree = "크게 " if assessment.humidity_status == "risk" else ""
+            facts.append(f"이번 주 최고 실내 습도는 적정 범위보다 {degree}{direction}.")
+            actions.append("실내 가습·제습과 환기 상태를 가볍게 확인하기")
 
     return facts, actions

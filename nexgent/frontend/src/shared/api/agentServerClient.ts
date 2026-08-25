@@ -52,6 +52,10 @@ interface ChatRequestOptions extends RequestOptions {
   onResponse?: (response: string) => void;
 }
 
+interface RagChatRequestOptions extends RequestOptions {
+  onResponse?: (response: string) => void;
+}
+
 interface WeeklyReportRequestOptions extends RequestOptions {
   onProgress?: (event: WeeklyReportProgressEvent) => void;
 }
@@ -118,6 +122,41 @@ export const agentServerClient = {
         error,
         signal,
         "The Agent Server could not complete the request."
+      );
+    }
+  },
+
+  async streamRagChat(
+    question: string,
+    { signal, onResponse }: RagChatRequestOptions = {}
+  ): Promise<string> {
+    try {
+      const response = await fetch(backendUrl("/api/rag/chat/stream"), {
+        method: "POST",
+        headers: {
+          Accept: "text/event-stream",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ question }),
+        signal
+      });
+
+      if (!response.ok) {
+        throw await httpError(response, "RAG Chat request failed");
+      }
+      if (!response.body) {
+        throw new AgentServerError(
+          "malformed_stream",
+          "The RAG Chat service returned an empty response stream."
+        );
+      }
+
+      return await readFinalAssistantResponse(response.body, onResponse);
+    } catch (error) {
+      throw normalizeRequestError(
+        error,
+        signal,
+        "The RAG Chat service could not complete the request."
       );
     }
   },

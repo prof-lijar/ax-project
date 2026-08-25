@@ -5,6 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_BACKEND_URL?: string;
   readonly VITE_BACKEND_PORT?: string;
   readonly VITE_RAG_SERVER_BASE_URL?: string;
+  readonly VITE_WEEKLY_REPORT_BULK_API_BASE_URL?: string;
 }
 
 interface ImportMeta {

@@ -12,6 +12,11 @@ from ax_contracts import (
 )
 
 from .environment_policy import EnvironmentAssessment, assess_environment
+from .risk_score_policy import (
+    RiskScoreAssessment,
+    assess_risk_score,
+    risk_score_description,
+)
 
 _WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 
@@ -27,6 +32,7 @@ def render_report(
     current = metrics.current
     previous = metrics.previous
     environment = assess_environment(metrics)
+    risk_score = assess_risk_score(current.risk_score_avg)
     report_end = metrics.week_end - timedelta(days=1)
     fallback_note = (
         "\n> 문구 생성이 어려워 검증된 안내 문구로 자동 대체됨\n"
@@ -34,6 +40,13 @@ def render_report(
         else ""
     )
     suggestions = _render_suggestions(narrative)
+    summary_suggestion = _summary_suggestion(narrative)
+    include_sleep = _has_sleep_data(metrics)
+    sleep_section = _render_sleep_section(metrics) if include_sleep else ""
+    activity_number = 2 if include_sleep else 1
+    environment_number = activity_number + 1
+    reception_number = environment_number + 1
+    risk_number = reception_number + 1
 
     markdown = f"""# 주간 생활 리포트
 
@@ -42,41 +55,22 @@ def render_report(
 - 가입자: {metrics.display_name}
 - 주차: {_week_label(metrics.week_start)}
 - 기간: {_dated_weekday(metrics.week_start)} ~ {_dated_weekday(report_end)}
-- 가입자 상태 점수: 산정 기준 없음
-- 상태 범위: 판정 기준 없음
+- 가입자 상태 점수: {_risk_score(risk_score)}
+- 상태 안내: {risk_score_description(risk_score)}
 
-## 한 주 요약
+## 한주 총평
 
 {narrative.headline}
 
 {narrative.analysis_text}
 {fallback_note}
+{summary_suggestion}
+
 ---
 
 # 주요 내용
 
-## 1. 수면 패턴
-
-- 상태: {_sleep_status(metrics)}
-- 설명: {_sleep_description(metrics)}
-
-### 지표
-
-- 평균 취침 시간
-  - 이번 주: {_clock(current.sleep_time_avg)}
-  - 지난주: {_clock(previous.sleep_time_avg)}
-
-- 평균 기상 시간
-  - 이번 주: {_clock(current.wake_up_time_avg)}
-  - 지난주: {_clock(previous.wake_up_time_avg)}
-
-- 평균 새벽 각성
-  - 이번 주: {_number(current.night_awake_count_avg, "회")}
-  - 지난주: {_number(previous.night_awake_count_avg, "회")}
-
----
-
-## 2. 활동량
+{sleep_section}## {activity_number}. 활동량
 
 - 상태: {_activity_status(metrics)}
 - 설명: {_activity_description(metrics)}
@@ -93,7 +87,7 @@ def render_report(
 
 ---
 
-## 3. 실내 환경
+## {environment_number}. 실내 환경
 
 - 상태: {_environment_status(environment)}
 - 설명: {_environment_description(environment)}
@@ -112,7 +106,7 @@ def render_report(
 
 ---
 
-## 4. 기기 데이터 수신
+## {reception_number}. 기기 데이터 수신
 
 - 상태: {_reception_status(current.covered_days)}
 - 설명: {_reception_description(current.covered_days)}
@@ -129,7 +123,7 @@ def render_report(
 
 ---
 
-## 5. 위험 관리
+## {risk_number}. 위험 관리
 
 - 상태: {_risk_status(current.dispatch_request_count)}
 - 설명: {_risk_description(current.dispatch_request_count)}
@@ -181,12 +175,57 @@ def _number(value: float | None, suffix: str = "") -> str:
     return f"{rendered}{suffix}"
 
 
+def _risk_score(assessment: RiskScoreAssessment) -> str:
+    if assessment.score is None:
+        return "자료 없음"
+    return f"{assessment.score}점"
+
+
 def _clock(value: time | None) -> str:
     if value is None:
         return "자료 없음"
     period = "오전" if value.hour < 12 else "오후"
     hour = value.hour % 12 or 12
     return f"{period} {hour:02d}:{value.minute:02d}"
+
+
+def _has_sleep_data(metrics: WardWeeklyMetrics) -> bool:
+    current = metrics.current
+    return any(
+        value is not None
+        for value in (
+            current.sleep_time_avg,
+            current.wake_up_time_avg,
+            current.night_awake_count_avg,
+        )
+    )
+
+
+def _render_sleep_section(metrics: WardWeeklyMetrics) -> str:
+    current = metrics.current
+    previous = metrics.previous
+    return f"""## 1. 수면 패턴
+
+- 상태: {_sleep_status(metrics)}
+- 설명: {_sleep_description(metrics)}
+
+### 지표
+
+- 평균 취침 시간
+  - 이번 주: {_clock(current.sleep_time_avg)}
+  - 지난주: {_clock(previous.sleep_time_avg)}
+
+- 평균 기상 시간
+  - 이번 주: {_clock(current.wake_up_time_avg)}
+  - 지난주: {_clock(previous.wake_up_time_avg)}
+
+- 평균 새벽 각성
+  - 이번 주: {_number(current.night_awake_count_avg, "회")}
+  - 지난주: {_number(previous.night_awake_count_avg, "회")}
+
+---
+
+"""
 
 
 def _sleep_status(metrics: WardWeeklyMetrics) -> str:
@@ -249,44 +288,66 @@ def _range(low: float, high: float, suffix: str) -> str:
 
 
 def _environment_status(assessment: EnvironmentAssessment) -> str:
-    if (
-        assessment.temperature_status == "unavailable"
-        and assessment.humidity_status == "unavailable"
-    ):
-        return "자료 없음"
-    temperature = {
+    return {
         "unavailable": "자료 없음",
-        "normal": "적정",
-        "low": "낮음",
-        "high": "높음",
-        "variable": "낮고 높은 구간 있음",
-    }[assessment.temperature_status]
-    humidity = {
-        "unavailable": "자료 없음",
-        "normal": "적정",
-        "low": "건조",
-        "high": "습함",
-        "variable": "건조하고 습한 구간 있음",
-    }[assessment.humidity_status]
-    return f"온도 {temperature} · 습도 {humidity}"
+        "good": "양호",
+        "caution": "주의",
+        "risk": "위험",
+    }[assessment.overall_status]
 
 
 def _environment_description(assessment: EnvironmentAssessment) -> str:
-    temperature = {
-        "unavailable": "실내 온도 자료가 없어요.",
-        "normal": "실내 온도는 해당 월 적정 범위 안에서 확인됐어요.",
-        "low": "실내 온도에 해당 월 적정 범위보다 낮아 추운 구간이 있었어요.",
-        "high": "실내 온도에 해당 월 적정 범위보다 높아 더운 구간이 있었어요.",
-        "variable": "실내 온도에 적정 범위보다 낮고 높은 구간이 함께 있었어요.",
-    }[assessment.temperature_status]
-    humidity = {
-        "unavailable": "실내 습도 자료가 없어요.",
-        "normal": "실내 습도는 적정 범위 안에서 확인됐어요.",
-        "low": "실내 습도에 적정 범위보다 낮아 건조한 구간이 있었어요.",
-        "high": "실내 습도에 적정 범위보다 높아 습한 구간이 있었어요.",
-        "variable": "실내 습도에 적정 범위보다 낮고 높은 구간이 함께 있었어요.",
-    }[assessment.humidity_status]
-    return f"{temperature} {humidity}"
+    if assessment.overall_status == "unavailable":
+        return "이번 주 최고 온도와 최고 습도 자료가 없어요."
+    if assessment.temperature_status == "unavailable":
+        return _humidity_description(assessment, disclose_missing=True)
+    if assessment.humidity_status == "unavailable":
+        return _temperature_description(assessment, disclose_missing=True)
+    if assessment.overall_status == "good":
+        return "이번 주 최고 온도와 최고 습도는 생활하기 좋은 범위에 있었어요."
+    temperature_concern = assessment.temperature_status in {"caution", "risk"}
+    humidity_concern = assessment.humidity_status in {"caution", "risk"}
+    if temperature_concern and humidity_concern:
+        if assessment.overall_status == "caution":
+            return "이번 주 최고 온도와 최고 습도가 권장 범위를 벗어나 확인이 필요해요."
+        return "이번 주 최고 온도와 최고 습도가 크게 벗어나 냉난방·환기 상태 확인이 필요해요."
+    if assessment.temperature_status == assessment.overall_status:
+        return _temperature_description(assessment)
+    return _humidity_description(assessment)
+
+
+def _temperature_description(
+    assessment: EnvironmentAssessment,
+    *,
+    disclose_missing: bool = False,
+) -> str:
+    maximum = assessment.temperature_max
+    if maximum is None:
+        return "이번 주 최고 온도 자료가 없어요."
+    missing = " 최고 습도 자료는 없어요." if disclose_missing else ""
+    if assessment.temperature_status == "good":
+        return f"이번 주 최고 온도는 해당 월 권장 범위에 있었어요.{missing}"
+    direction = "낮아" if maximum < assessment.temperature_low else "높아"
+    if assessment.temperature_status == "caution":
+        return f"이번 주 최고 온도가 권장 범위보다 {direction} 생활하기 불편할 수 있어요.{missing}"
+    return f"이번 주 최고 온도가 권장 범위보다 크게 {direction} 냉난방 상태 확인이 필요해요.{missing}"
+
+
+def _humidity_description(
+    assessment: EnvironmentAssessment,
+    *,
+    disclose_missing: bool = False,
+) -> str:
+    maximum = assessment.humidity_max
+    if maximum is None:
+        return "이번 주 최고 습도 자료가 없어요."
+    missing = " 최고 온도 자료는 없어요." if disclose_missing else ""
+    if assessment.humidity_status == "good":
+        return f"이번 주 최고 습도는 적정 범위에 있었어요.{missing}"
+    if assessment.humidity_status == "caution":
+        return f"이번 주 최고 습도가 적정 범위를 벗어나 주의가 필요해요.{missing}"
+    condition = "건조한" if maximum < assessment.humidity_low else "습한"
+    return f"이번 주 최고 습도가 크게 벗어나 {condition} 실내 환경이 확인됐어요. 환기 상태를 살펴봐 주세요.{missing}"
 
 
 def _reception_status(covered_days: int) -> str:
@@ -329,3 +390,14 @@ def _render_suggestions(narrative: WeeklyNarrative) -> str:
             f"- 권장 행동: {suggestion}"
         )
     return "\n\n".join(sections)
+
+
+def _summary_suggestion(narrative: WeeklyNarrative) -> str:
+    suggestion = (
+        narrative.suggestions[0]
+        if narrative.suggestions
+        else "평소 생활 흐름과 함께 가볍게 살펴보셔도 좋아요."
+    )
+    if suggestion.startswith("이번 주"):
+        return suggestion
+    return f"이번 주에는 {suggestion}"

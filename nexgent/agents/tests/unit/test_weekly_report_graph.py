@@ -213,3 +213,9 @@ async def test_graph_rejects_invalid_requests(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         await graph.ainvoke(payload)
+
+
+@pytest.mark.asyncio
+async def test_graph_keeps_interactive_limit_bounded_to_twenty_five() -> None:
+    with pytest.raises(ValueError, match="must not exceed 25"):
+        await graph.ainvoke({"week_start": "2026-08-03", "limit": 100})

@@ -311,7 +311,7 @@ class WeeklyReportRequest(ContractModel):
     timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
     ward_ids: list[int] | None = Field(default=None, min_length=1, max_length=25)
     cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
-    limit: int = Field(default=25, ge=1, le=25)
+    limit: int = Field(default=25, ge=1, le=100)
 
     @field_validator("week_start")
     @classmethod
@@ -657,8 +657,8 @@ class WeeklyReportSourceResponse(ContractModel):
     week_start: date
     week_end: date
     timezone: str = Field(min_length=1, max_length=128)
-    items: list[WardWeeklyMetrics] = Field(default_factory=list, max_length=25)
-    skipped: list[SkippedWard] = Field(default_factory=list, max_length=25)
+    items: list[WardWeeklyMetrics] = Field(default_factory=list, max_length=100)
+    skipped: list[SkippedWard] = Field(default_factory=list, max_length=100)
     next_cursor: str | None = Field(default=None, max_length=2_000)
     warnings: list[str] = Field(default_factory=list, max_length=100)
 
@@ -750,6 +750,21 @@ class WeeklyReportBulkJobStatus(ContractModel):
         if self.fallback_count > self.completed_count:
             raise ValueError("fallback_count must not exceed completed_count")
         return self
+
+
+class WeeklyReportBulkJobList(ContractModel):
+    """Newest-first, content-free bulk jobs visible to an operator."""
+
+    jobs: list[WeeklyReportBulkJobStatus] = Field(default_factory=list, max_length=100)
+
+
+class WeeklyReportBulkRuntime(ContractModel):
+    """Safe runtime limits displayed before a bulk job is submitted."""
+
+    max_reports: Literal[10_000] = 10_000
+    source_page_size: Literal[100] = 100
+    worker_concurrency: int = Field(ge=1, le=512)
+    status_poll_seconds: float = Field(default=2.0, ge=0.5, le=30)
 
 
 class WeeklyReportBulkManifest(ContractModel):

@@ -1,6 +1,6 @@
 # AX Agents Architecture
 
-Date: 2026-08-20
+Date: 2026-08-25
 
 Status: **Authoritative implementation specification**
 
@@ -30,6 +30,8 @@ The baseline described here is implemented as of 2026-08-05:
   SSE events, and interrupt-resume route contracts;
 - self-hosted PostgreSQL/Redis/Agent Server Compose baseline;
 - pooled asynchronous OpenAI-compatible model adapter and one-turn chat graph;
+- dedicated one-turn `rag_chat` graph with read-only RAG Top-5 grounding,
+  deterministic empty-context handling, and code-owned source provenance;
 - transient document/image attachment references, secure local artifact reads,
   and opt-in multimodal chat content;
 - architecture governance in `AGENTS.md` and this document.
@@ -49,6 +51,47 @@ database, and business-specific write tools remain intentionally unimplemented.
 Compose image build, PostgreSQL/Redis integration tests, and a live model
 readiness check are the next deployment verification gates.
 
+## RAG Chat orchestration (2026-08-25)
+
+The Chat page now has a real `RAG Agent` execution path through the dedicated
+`POST /api/rag/chat/stream` backend endpoint. The backend reuses its existing
+Agent Server SSE relay but selects only the registered `rag_chat` graph for
+this route. Normal `/api/chat/stream`, preview agents, and Weekly Reporter
+routing are unchanged.
+
+`rag_chat` calls the existing read-only `GET /rag/v1/search` endpoint with the
+exact current question and fixed `top_k=5`. It preserves returned order and
+provenance, treats all retrieved text as untrusted evidence in one user
+message, and keeps its grounding policy in a separate system message. Zero
+results deterministically return an insufficient-context response and skip
+model generation. With results, the graph reuses the same pooled
+OpenAI-compatible `/v1/chat/completions` adapter, environment-driven model/base
+URL/auth path, retry policy, streaming, and safe errors as normal Chat. It then
+appends Markdown-escaped sources in code, including a null-provenance legacy
+fallback.
+
+The graph remains a one-turn, text-only Phase 1 workflow. Attachments are
+disabled in the RAG Agent UI and rejected by the strict JSON API contract.
+Production search remains vector-only; the lexical/RRF experiment was not
+enabled and the RAG retrieval implementation, schema, chunking, embeddings,
+OCR, and DOCX paths were not changed.
+
+`RAG_SERVER_BASE_URL` configures the server-side read-only RAG origin and must
+be reachable from the Agent Server runtime without embedded credentials. The
+live Agent Server reaches the systemd-managed host RAG API through
+`http://host.docker.internal:8765`; a narrowly scoped host network policy allows
+TCP 8765 for that runtime. The host service is enabled through
+`multi-user.target`; its PostgreSQL container lifecycle remains separate. The
+registered `rag_chat` graph, deterministic
+empty-corpus branch, populated retrieval/generation path, backend SSE relay,
+and browser rendering were live-validated on 2026-08-25. The pre-empty
+test-data backup was deliberately not restored; one synthetic Direct Text
+source was added only for the populated-path validation. Phase 1 remains
+one-turn and text-only, with no Chat attachment ingestion, conversation memory,
+Nextcloud link, deduplication/versioning, or production Hybrid retrieval. See
+[RAG Chat Agent](rag-chat-agent.md) for the endpoint, prompt, sources, evidence,
+and deployment details.
+
 ## Weekly-report bulk execution (2026-08-20)
 
 The manual `ansimk_weekly_reporter` LangGraph remains the compatibility path
@@ -59,7 +102,7 @@ thousands of reports in LangGraph state.
 
 An operator submits an idempotent job for at most 10,000 reports. One leased
 producer consumes the existing private source API in ordered pages of at most
-twenty-five and stages each validated metric snapshot exactly once. Bounded
+one hundred and stages each validated metric snapshot exactly once. Bounded
 asynchronous consumers claim independent wards from PostgreSQL with
 `FOR UPDATE SKIP LOCKED`, call the existing reporter specialist, and atomically
 write report artifacts. Producer, item, and finalizer leases can be reclaimed
@@ -91,6 +134,42 @@ source saturation, then add private inference replicas. vLLM prefix caching,
 continuous batching, and structured output may be enabled at the inference
 deployment, but replica count is derived from the observed benchmark rather
 than fixed in application code.
+
+Bulk operator API and UI update on 2026-08-20: the existing durable worker is
+now reachable from the Weekly Reporter page through a separate private
+`apps/weekly_report_bulk_api` control process. Its strict endpoints submit an
+idempotent job, list and inspect content-free progress, request cooperative
+cancellation, and stream only checksum-verified terminal ZIPs. Recent-job
+listing was added to the generic bulk store so browser refresh does not lose
+operator visibility. The control API and worker share the job database and
+private artifact volume but remain separate deployment and ownership
+boundaries; the API never executes model calls.
+
+The default development Compose topology starts the bulk PostgreSQL queue,
+worker, and control API. The control API has no host port and is reachable in
+the browser only through the existing Vite development proxy. The `/agents/1`
+workbench now separates **Quick preview** (one interactive LangGraph run,
+1–25 reports) from **Bulk generation** (one durable job, up to 10,000 reports).
+The bulk view displays source discovery in 100-item pages, active consumer count,
+queued/completed/fallback/failed counts, observed throughput, projected finish,
+recent jobs, cancellation, and ZIP download. Submission requires explicit
+acknowledgement that allowlisted care-derived facts will reach the configured
+private model and that a shared model endpoint may slow Chat.
+
+This is an observable execution path, not evidence that the two-hour SLA has
+been achieved. A real PostgreSQL-backed run and representative 10,000-report
+private-model benchmark remain release gates. Production exposure also requires
+an authenticated gateway; the Vite proxy is trusted-development plumbing only.
+
+Bulk cancellation and paging update on 2026-08-24: durable bulk source pages
+now contain at most one hundred wards, while the interactive compatibility
+graph remains capped at twenty-five. A persisted cancellation request is
+watched during execution; the worker cancels in-flight async model calls,
+marks pending and leased items cancelled, and exports only reports that had
+already completed. The operator UI sends the same cancellation request for
+Cancel, stop-and-refresh, page refresh, navigation, and unmount. Browser
+keepalive delivery is best-effort, while the explicit Cancel response remains
+the confirmed control path.
 
 Architecture update on 2026-08-05: workflow modules moved from `graphs/` to
 `workflows/`; `apps/workers`, `packages/persistence`, and
@@ -295,6 +374,32 @@ January–March and November–December, 20–22℃ for April–May and October,
 below/above-bound measurements into cold/hot or dry/humid qualitative facts.
 The reporter prompt requires those facts in `analysis_text`, and validation
 enforces the required topic without exposing numeric values to the model.
+
+Weekly Reporter environment-feedback correction on 2026-08-24: environment
+status now compares only the current week's maximum temperature and maximum
+humidity with the approved ranges. A maximum inside the recommended monthly
+temperature range or 40–60% humidity is good; an out-of-range maximum within
+15–30℃ or 30–70% is caution; values beyond those outer bounds are risk. The
+more severe available result becomes the rendered status, with specific calm
+feedback for the contributing measurement. The snapshot does not expose daily
+range-departure counts, so neither deterministic nor model-authored text may
+claim repetition or multi-day duration.
+
+Weekly Reporter risk-score presentation update on 2026-08-24: the deterministic
+renderer now exposes the already-calculated current-week average `risk_score`.
+Python rounds the average to a whole point using half-up rounding and classifies
+it with the product-approved bands `76–100 양호`, `26–75 주의`, and `0–25 위험`.
+The report shows the grounded score and a calm Korean band description; missing
+or invalid source scores remain explicitly unavailable. The score and
+classification stay outside model-authored prose.
+
+Weekly Reporter template refinement on 2026-08-24: the weekly narrative heading
+is now `한주 총평`, and its closing sentence repeats the first validated,
+highest-priority guardian suggestion to keep the assessment warm and actionable.
+The separate detailed action section remains. The score-band legend is no longer
+rendered. When every current-week sleep metric is unavailable, the renderer
+omits the complete sleep section and deterministically renumbers the remaining
+sections; evaluation checks mirror that conditional structure.
 
 Frontend launch integration update on 2026-08-14: the Agents catalog marks
 `ansimk_weekly_reporter` as the single live-data entry. Both of its **Run in
@@ -714,10 +819,10 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   validated warm Korean summaries. It remains manually triggered and does not
   schedule or persist rendered reports. An operator can explicitly deliver a
   completed batch to an approved Slack destination; delivery is not
-  an automatic graph side effect. Risk-score meaning remains intentionally
-  undefined. The approved indoor environment ranges are the only current
-  business thresholds, and the model receives only their deterministic
-  qualitative result. The model-backed chat workflow remains a
+  an automatic graph side effect. Weekly-average risk-score bands and indoor
+  environment ranges are product-approved deterministic presentation rules;
+  the model receives neither score numbers nor score classifications and sees
+  only the approved qualitative environment result. The model-backed chat workflow remains a
   one-turn path and does not yet compose the reusable web research tools. Chat
   attachments are transient and cannot be referenced by later turns;
   scanned-PDF OCR and durable or multi-host artifact storage remain outside the

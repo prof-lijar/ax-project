@@ -84,7 +84,7 @@ def _snapshot(ward_id: int, *, current: bool) -> WardWeeklyMetricSnapshot:
         night_awake_count_avg=1.0,
         risk_detected_count=danger_days,
         risk_resolved_count=1 if danger_days else 0,
-        risk_score_avg=0.25 + (0.05 * shift if current else 0),
+        risk_score_avg=80.0 + (6.0 * shift if current else 0),
         danger_days=danger_days,
         dispatch_request_count=1 if ward_id == 103 and current else 0,
         unresolved_dispatch_count=1 if ward_id == 103 and current else 0,

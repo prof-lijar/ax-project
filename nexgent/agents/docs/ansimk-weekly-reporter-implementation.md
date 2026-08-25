@@ -1,8 +1,8 @@
 # Ansimk weekly reporter implementation
 
-Date: 2026-08-18
+Date: 2026-08-24
 
-Status: **Implemented manual reporting path**
+Status: **Implemented interactive and durable bulk reporting paths**
 
 ## Outcome
 
@@ -29,6 +29,11 @@ PostgreSQL raw tables
 
 - `apps/weekly_report_api` owns the private HTTP process, health endpoints,
   database lifecycle, and safe error mapping.
+- `apps/weekly_report_bulk_api` owns the private operator control plane for
+  job submission, recent-job discovery, progress, cancellation, and verified
+  ZIP download. It does not execute reports itself.
+- `apps/workers/weekly_report.py` owns the independently scalable producer,
+  consumer, and finalizer process.
 - `packages/integrations` owns the reusable read-only PostgreSQL pool.
 - `workflows/weekly_report/source` owns source SQL and exact calculations.
 - `workflows/weekly_report/tools` owns the workflow-specific source client.
@@ -60,7 +65,7 @@ raw data. It implements the verified server semantics:
 - risk-event count for `DANGER` evaluations;
 - distinct local danger dates for compatibility;
 - `DANGER` to `STABLE` resolution transitions seeded from the last prior event;
-- average non-null risk score without interpreting its direction;
+- average non-null risk score, rendered through the approved score policy;
 - dispatches created in the period and their current resolution flag.
 
 Management notes, evaluation notes, dispatch descriptions, admin history, and
@@ -115,20 +120,36 @@ parsed to create calculations.
 
 The deterministic renderer uses the following order:
 
-1. `주간 생활 리포트` basic information and weekly summary;
-2. sleep pattern, activity, indoor environment, device-data reception, and
-   risk-management sections with current/prior metrics;
+1. `주간 생활 리포트` basic information and `한주 총평`, which closes with the
+   highest-priority validated guardian suggestion;
+2. sleep pattern when at least one current sleep metric exists, followed by
+   activity, indoor environment, device-data reception, and risk-management
+   sections with current/prior metrics and contiguous numbering;
 3. up to three guardian action suggestions, each paired with a validated
    observation as its basis.
+
+The basic information shows the grounded weekly-average status score and its
+calm classification but omits the full score-band legend. When all current
+sleep values are unavailable, the report omits the entire sleep section instead
+of displaying rows whose status and values are all `자료 없음`.
 
 The contract's exclusive Monday `week_end` is displayed as the inclusive
 Sunday reporting date. Activity and sleep status labels describe only verified
 week-over-week direction. Indoor temperature uses a product-approved range
 selected from the reporting week's starting month: 18–20℃ in January–March and
 November–December, 20–22℃ in April–May and October, and 26–28℃ in
-June–September. Humidity uses 40–60% throughout the year. Weekly extrema below
-or above those bounds produce cold/hot or dry/humid qualitative facts that the
-weekly analysis must mention. Subscriber status scores remain undefined.
+June–September. Humidity uses 40–60% throughout the year. The current week's
+maximum temperature and maximum humidity drive the environment result. Values
+outside the recommended range but within 15–30℃ or 30–70% are `CAUTION`; values
+beyond those outer bounds are `RISK`; otherwise they are `GOOD`. The renderer
+uses the more severe available result and explains which maximum contributed.
+It does not claim repetition or multi-day duration because the snapshot does
+not contain daily range-departure counts. The current week's average `risk_score` is rounded
+to the nearest whole point using half-up rounding and rendered with the
+product-approved `76–100 양호`, `26–75 주의`, and `0–25 위험` bands. The score,
+calm band description, and classification come only from deterministic Python;
+the full legend is omitted, and missing or invalid values are marked unavailable
+without delegating interpretation to the model.
 Signal-loss counts and risk-management notes are not present in the source
 contract; the report does not invent them or expose raw management text.
 
@@ -183,8 +204,11 @@ when necessary.
 ## Bulk jobs: operation and recovery
 
 The bulk path targets 10,000 LLM-first reports in two hours, with a healthy
-target of ninety minutes. It reuses the source API's opaque cursor and maximum
-page size of twenty-five. PostgreSQL coordinates idempotent jobs, producer and
+target of ninety minutes. It reuses the source API's opaque cursor and a bulk
+page size of one hundred. The interactive compatibility graph remains capped
+at twenty-five; one durable job repeatedly advances the cursor until it reaches
+its configured maximum or the source has no more eligible wards. PostgreSQL
+coordinates idempotent jobs, producer and
 finalizer leases, and per-ward `SKIP LOCKED` leases. Report payloads never enter
 PostgreSQL or LangGraph state. The private artifact volume holds validated
 input snapshots, report JSON, and a terminal ZIP containing:
@@ -194,11 +218,39 @@ input snapshots, report JSON, and a terminal ZIP containing:
 - `reports.jsonl`, one validated report contract per line;
 - `reports/<ward_id>.md`, one guardian-facing Markdown report per ward.
 
-Start the development dependencies and worker with:
+The default development Compose stack now starts the job database, worker, and
+private control API. The API is not published on a host port; the current Vite
+development server proxies `/weekly-report-bulk-api` from the Weekly Reporter
+UI. This is a trusted-development path, not a production authentication
+boundary.
+
+Control API endpoints:
+
+- `GET /health/live` and `GET /health/ready`;
+- `GET /v1/weekly-report/bulk/runtime`;
+- `POST /v1/weekly-report/bulk/jobs`;
+- `GET /v1/weekly-report/bulk/jobs` and
+  `GET /v1/weekly-report/bulk/jobs/{job_id}`;
+- `POST /v1/weekly-report/bulk/jobs/{job_id}/cancel`; and
+- `GET /v1/weekly-report/bulk/jobs/{job_id}/export`.
+
+Start the complete development stack with:
 
 ```bash
-docker compose --profile bulk up -d weekly-report-jobs-db weekly-report-api weekly-report-worker
+cd /home/nextor-ai-02/nextor_ai/ax-project/nexgent
+sudo docker compose up --build -d
+sudo docker compose logs -f weekly-report-worker weekly-report-bulk-api
 ```
+
+Open `/agents/1`, choose **Bulk generation**, approve the live private-model
+run, and start with 100–1,000 reports before attempting 10,000. The UI polls
+content-free status, shows discovered/queued/running/completed/fallback/failed
+counts, observed reports per second, projected finish, recent durable jobs,
+in-flight cancellation, and the terminal ZIP download. Cancel and stop-and-refresh
+persist a cancellation request; page refresh and navigation send the same
+request with browser keepalive. The worker cancels active model awaits and
+marks every pending or leased item cancelled, while preserving reports that
+completed before the stop request.
 
 The same CLI can run on an operator host configured with
 `WEEKLY_REPORT_JOB_DATABASE_DSN`, `WEEKLY_REPORT_ARTIFACT_ROOT`, source, and
@@ -232,12 +284,22 @@ load-balanced endpoint; do not compensate with unbounded tasks or Python
 threads. Keep vLLM structured output and prefix caching enabled only after the
 deployed model/version passes the narrative quality evaluation.
 
+The configured worker concurrency (32 by default) is an application-side upper
+bound, not a guarantee of 32 simultaneous GPU sequences. The inference server
+still owns continuous batching and admission. When bulk and Chat share one
+model endpoint, a load run can increase Chat latency; production must reserve
+interactive inference capacity or use a separate bulk endpoint. The UI requires
+explicit confirmation and displays this limitation before submission.
+
 ## Verification gates
 
 - Contract tests cover strict request/response validation and FastAPI behavior.
-- Unit tests cover weighted and linear averages, prior deltas, fact priority,
-  opaque cursors, model retry, forbidden language, fallback, and progress-event
-  redaction. Slack unit tests cover destination authorization, thread replies,
+- Unit tests cover weighted and linear averages, maximum-based environment
+  boundaries and feedback, risk-score rounding and band boundaries, conditional
+  sleep omission and section numbering, warm summary suggestions, prior deltas,
+  fact priority, opaque cursors, model retry,
+  forbidden language, fallback, and progress-event redaction. Slack unit tests
+  cover destination authorization, thread replies,
   blocks, rate limits, timeout, provider failures, redaction, and the weekly
   delivery approval gate without contacting Slack.
 - Evaluations require sorted batches, Korean Markdown structure, identity,
@@ -245,8 +307,9 @@ deployed model/version passes the narrative quality evaluation.
   two-hour/ninety-minute capacity projections.
 - Bulk unit and contract tests cover idempotent submission, leased claims,
   atomic private artifacts, manifest/JSONL/Markdown export, safe partial
-  failure, cancellation, and lease recovery. A PostgreSQL-backed integration
-  run and a representative 10,000-report model benchmark remain deployment
-  release gates.
+  failure, cancellation, recent-job ordering, private control API validation,
+  checksum-verified download, and lease recovery. A PostgreSQL-backed
+  integration run and a representative 10,000-report model benchmark remain
+  deployment release gates.
 - Deployment checks require Ruff, pytest, LangGraph validation, Compose config,
   and a live readiness check with operator-supplied secrets.

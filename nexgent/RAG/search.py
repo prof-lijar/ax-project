@@ -28,9 +28,18 @@ WITH query_embedding AS (
 SELECT
     embeddings.id,
     embeddings.context,
-    1 - (embeddings.vector <=> query_embedding.vector) AS similarity
+    1 - (embeddings.vector <=> query_embedding.vector) AS similarity,
+    embeddings.document_id,
+    documents.source_type,
+    documents.source_name,
+    embeddings.chunk_index,
+    embeddings.source_start_character,
+    embeddings.source_end_character,
+    embeddings.token_count
 FROM rag.embeddings AS embeddings
 CROSS JOIN query_embedding
+LEFT JOIN rag.documents AS documents
+    ON documents.id = embeddings.document_id
 ORDER BY embeddings.vector <=> query_embedding.vector
 LIMIT %s;
 """
@@ -158,9 +167,28 @@ def print_results(rows: list[tuple[Any, ...]]) -> None:
     if not rows:
         print("No matching contexts found.")
         return
-    for rank, (row_id, context, similarity) in enumerate(rows, start=1):
+    for rank, row in enumerate(rows, start=1):
+        (
+            row_id,
+            context,
+            similarity,
+            document_id,
+            source_type,
+            source_name,
+            chunk_index,
+            _,
+            _,
+            _,
+        ) = row
+        provenance = (
+            f"source={source_name} type={source_type} "
+            f"document_id={document_id} chunk={chunk_index}"
+            if document_id is not None
+            else "source=unavailable (legacy row)"
+        )
         print(
-            f"[{rank}] id={row_id} similarity={float(similarity):.6f}\n"
+            f"[{rank}] id={row_id} similarity={float(similarity):.6f} "
+            f"{provenance}\n"
             f"{context}"
         )
 

@@ -19,6 +19,9 @@
 - [Chat attachments](chat-attachments.md): transient reference contract,
   secure file reader, document/image provider payloads, safe errors, and
   runtime limits.
+- [RAG Chat Agent](rag-chat-agent.md): dedicated streamed RAG orchestration API,
+  vector Top-5 grounding, deterministic no-context and source behavior,
+  configuration, offline/live validation, and Phase 1 capability boundaries.
 - [Reusable web research tools](web-research-tools.md): provider-neutral
   `web_search`/`web_fetch` contracts, private SearXNG deployment, reuse, source
   evidence, SSRF controls, and retrieval limits.
@@ -29,14 +32,15 @@
   FastAPI/raw-PostgreSQL metadata source, deterministic current/prior metrics,
   warm Korean narrative generation, validation, and fallback behavior.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
-  implemented FastAPI source boundary, calculation rules, monthly indoor
-  environment policy, LLM safety contract, bulk worker operation, capacity
-  targets, configuration, and verification gates.
+  implemented FastAPI source boundary, calculation rules, maximum-based monthly
+  indoor-environment feedback, weekly-average risk-score presentation,
+  conditional report sections, warm guardian guidance, LLM safety contract,
+  100-ward bulk paging, in-flight cancellation, capacity targets,
+  configuration, and verification gates.
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
-  live `/agents/1` execution with an operator-selected 1–25 report batch,
-  first-report selection, safe report review, concurrent background Chat, and
-  the four-slot Agent Server development runtime, shared-model capacity
-  reservation, and the full Compose runtime path.
+  live `/agents/1` execution with quick 1–25 report preview, durable 1–10,000
+  report job control and throughput monitoring, safe report review, concurrent
+  background Chat, and the full Compose runtime path.
 - [Outbound Slack messaging](slack-outbound-messaging.md): approved-channel
   configuration, reusable async delivery, safe failures, Slack app setup, and
   human-approved weekly-report verification.

@@ -28,7 +28,11 @@ class TokenChunkingTests(unittest.TestCase):
             sentences.append(sentence)
         return " ".join(sentences)
 
-    def assert_lossless_result(self, result: embedd.ChunkingResult) -> None:
+    def assert_lossless_result(
+        self,
+        result: embedd.ChunkingResult,
+        max_chunk_tokens: int = embedd.MAX_CHUNK_TOKENS,
+    ) -> None:
         if not result.chunks:
             self.assertEqual(result.source_text, "")
             self.assertEqual(result.source_token_count, 0)
@@ -51,7 +55,7 @@ class TokenChunkingTests(unittest.TestCase):
             self.assertEqual(chunk, result.source_text[start:end])
             self.assertTrue(chunk.strip())
             self.assertEqual(tokens, embedd.count_tokens(self.tokenizer, chunk))
-            self.assertLessEqual(tokens, embedd.MAX_CHUNK_TOKENS)
+            self.assertLessEqual(tokens, max_chunk_tokens)
             if index:
                 previous_end = result.chunk_spans[index - 1][1]
                 overlap = result.source_text[start:previous_end]
@@ -97,7 +101,7 @@ class TokenChunkingTests(unittest.TestCase):
 
         self.assertGreater(len(result.chunks), 2)
         for tokens in result.chunk_token_counts[:-1]:
-            self.assertGreaterEqual(tokens, embedd.MIN_CHUNK_TOKENS)
+            self.assertGreaterEqual(tokens, embedd.PREFERRED_MIN_CHUNK_TOKENS)
         self.assert_lossless_result(result)
 
     def test_paragraph_boundary_has_highest_priority(self) -> None:
@@ -134,6 +138,59 @@ class TokenChunkingTests(unittest.TestCase):
         self.assertEqual(result.chunk_token_counts[0], embedd.MAX_CHUNK_TOKENS)
         self.assert_lossless_result(result)
 
+    def test_custom_maximum_is_request_local_and_preserves_default(self) -> None:
+        document = "가나다라마바사아자차카타파하" * 300
+
+        minimum = embedd.chunk_document(
+            document,
+            self.tokenizer,
+            max_chunk_tokens=100,
+        )
+        maximum = embedd.chunk_document(
+            document,
+            self.tokenizer,
+            max_chunk_tokens=1000,
+        )
+        default = embedd.chunk_document(document, self.tokenizer)
+
+        self.assertEqual(minimum.chunk_token_counts[0], 100)
+        self.assertEqual(maximum.chunk_token_counts[0], 1000)
+        self.assertEqual(default.chunk_token_counts[0], embedd.MAX_CHUNK_TOKENS)
+        self.assertEqual(embedd.MAX_CHUNK_TOKENS, 500)
+        self.assert_lossless_result(minimum, max_chunk_tokens=100)
+        self.assert_lossless_result(maximum, max_chunk_tokens=1000)
+        self.assert_lossless_result(default)
+
+    def test_below_original_preferred_minimum_uses_natural_boundary(self) -> None:
+        first = self.text_with_at_least_tokens(
+            "작은청크문단경계검증", 90
+        )
+        self.assertLessEqual(embedd.count_tokens(self.tokenizer, first), 120)
+        second = "가나다라마바사아자차카타파하" * 30
+        document = f"{first}\n\n{second}"
+
+        result = embedd.chunk_document(
+            document,
+            self.tokenizer,
+            max_chunk_tokens=120,
+        )
+
+        self.assertEqual(result.chunk_spans[0][1], len(first))
+        self.assert_lossless_result(result, max_chunk_tokens=120)
+
+    def test_custom_maximum_rejects_values_outside_configurable_range(self) -> None:
+        for value in (99, 1001, 100.5, True):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "max_chunk_tokens must be an integer between 100 and 1000",
+                ):
+                    embedd.chunk_document(
+                        "검증 문서",
+                        self.tokenizer,
+                        max_chunk_tokens=value,  # type: ignore[arg-type]
+                    )
+
     def test_every_chunk_adds_new_source_content(self) -> None:
         document = self.text_with_at_least_tokens(
             "반복 실행에서도 무한 루프 없이 새로운 내용을 포함합니다.", 1800
@@ -150,7 +207,12 @@ class TokenChunkingTests(unittest.TestCase):
         load_tokenizer = Mock(return_value=self.tokenizer)
         load_model = Mock(return_value=fake_model)
         embed = Mock(side_effect=[[[0.1] * 1024], [[0.2] * 1024]])
-        insert = Mock(side_effect=[[30], [31]])
+        insert = Mock(
+            side_effect=[
+                embedd.PersistedDocument(10, [30]),
+                embedd.PersistedDocument(11, [31]),
+            ]
+        )
 
         with (
             patch.object(
@@ -177,6 +239,12 @@ class TokenChunkingTests(unittest.TestCase):
             all(call.args[0] is fake_model for call in embed.call_args_list)
         )
         self.assertEqual(insert.call_count, 2)
+        first_source = insert.call_args_list[0].args[0]
+        second_source = insert.call_args_list[1].args[0]
+        self.assertEqual(first_source.source_type, "text")
+        self.assertEqual(second_source.source_type, "text")
+        self.assertTrue(first_source.source_name.startswith("Direct text: "))
+        self.assertTrue(second_source.source_name.startswith("Direct text: "))
 
 
 if __name__ == "__main__":

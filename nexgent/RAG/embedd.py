@@ -7,10 +7,12 @@ import json
 import os
 import re
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -21,15 +23,31 @@ MODEL_CACHE = BASE_DIR / ".cache" / "huggingface"
 DEVICE = "cuda:0"
 EMBEDDING_DIMENSION = 1024
 NORM_TOLERANCE = 0.01
-MIN_CHUNK_TOKENS = 300
+PREFERRED_MIN_CHUNK_TOKENS = 300
 MAX_CHUNK_TOKENS = 500
+MIN_CONFIGURABLE_MAX_CHUNK_TOKENS = 100
+MAX_CONFIGURABLE_MAX_CHUNK_TOKENS = 1000
 MIN_OVERLAP_TOKENS = 40
 TARGET_OVERLAP_TOKENS = 60
 MAX_OVERLAP_TOKENS = 80
 EXIT_COMMANDS = {".exit", ".quit"}
-INSERT_SQL = """
-INSERT INTO rag.embeddings (context, vector)
-VALUES (%s, %s::vector)
+TEXT_SOURCE_NAME_PREVIEW_CHARACTERS = 80
+INSERT_DOCUMENT_SQL = """
+INSERT INTO rag.documents (source_type, source_name)
+VALUES (%s, %s)
+RETURNING id;
+"""
+INSERT_CHUNK_SQL = """
+INSERT INTO rag.embeddings (
+    document_id,
+    chunk_index,
+    source_start_character,
+    source_end_character,
+    token_count,
+    context,
+    vector
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s::vector)
 RETURNING id;
 """
 
@@ -70,6 +88,60 @@ class ChunkingResult:
     chunk_token_counts: list[int]
     chunk_spans: list[tuple[int, int]]
     overlap_token_counts: list[int]
+
+
+@dataclass(frozen=True)
+class SourceDocument:
+    """One source entering the shared provenance-aware ingestion pipeline."""
+
+    source_type: Literal["file", "text"]
+    source_name: str
+    text: str
+
+
+@dataclass(frozen=True)
+class PersistedDocument:
+    """Database identities created atomically for one source document."""
+
+    document_id: int
+    inserted_ids: list[int]
+
+
+@dataclass(frozen=True)
+class IngestionResult:
+    """Chunking, persistence, and timing results for one source document."""
+
+    source: SourceDocument
+    chunking: ChunkingResult
+    persisted: PersistedDocument
+    chunking_ms: float
+    embedding_ms: float
+
+
+def generated_text_source_name(text: str) -> str:
+    """Build a short display label without inventing a filename."""
+    first_line = next(
+        (line.strip() for line in text.splitlines() if line.strip()),
+        "",
+    )
+    normalized = re.sub(r"\s+", " ", first_line)
+    if len(normalized) > TEXT_SOURCE_NAME_PREVIEW_CHARACTERS:
+        normalized = (
+            normalized[: TEXT_SOURCE_NAME_PREVIEW_CHARACTERS - 1].rstrip() + "…"
+        )
+    return f"Direct text: {normalized}"
+
+
+def normalize_source_document(source: SourceDocument) -> SourceDocument:
+    """Validate source metadata while preserving the submitted source text."""
+    if source.source_type not in {"file", "text"}:
+        raise ValueError("source_type must be 'file' or 'text'")
+    source_name = source.source_name.strip()
+    if not source_name:
+        raise ValueError("source_name must be a non-empty string")
+    if not source.text.strip():
+        raise ValueError("source text must be a non-empty string")
+    return SourceDocument(source.source_type, source_name, source.text)
 
 
 def read_document(input_fn: Callable[[str], str] = input) -> tuple[str, bool]:
@@ -221,16 +293,17 @@ def _max_end_within_token_limit(
     start: int,
     tokenizer: PreTrainedTokenizerBase,
     span_token_count: Callable[[int, int], int],
+    max_chunk_tokens: int,
 ) -> int:
     """Find an exact source end whose re-tokenized span fits the maximum."""
     offsets = _token_offsets(tokenizer, text[start:])
-    if len(offsets) <= MAX_CHUNK_TOKENS:
+    if len(offsets) <= max_chunk_tokens:
         return len(text)
 
-    token_index = min(MAX_CHUNK_TOKENS, len(offsets)) - 1
+    token_index = min(max_chunk_tokens, len(offsets)) - 1
     while token_index >= 0:
         end = start + offsets[token_index][1]
-        if end > start and span_token_count(start, end) <= MAX_CHUNK_TOKENS:
+        if end > start and span_token_count(start, end) <= max_chunk_tokens:
             return end
         token_index -= 1
     raise RuntimeError("Token-level hard split could not make forward progress")
@@ -244,16 +317,26 @@ def _choose_chunk_end(
     span_token_count: Callable[[int, int], int],
     end_groups: tuple[list[int], ...],
     protected_ranges: list[tuple[int, int]],
+    max_chunk_tokens: int,
 ) -> int:
     """Choose a natural boundary using re-tokenized span sizes."""
     hard_end = _max_end_within_token_limit(
-        text, start, tokenizer, span_token_count
+        text, start, tokenizer, span_token_count, max_chunk_tokens
     )
     if hard_end <= previous_end:
         raise RuntimeError("Chunking cannot add new source content")
 
-    fallback_minimum = max(MIN_CHUNK_TOKENS // 2, MAX_OVERLAP_TOKENS + 1)
-    for minimum_tokens in (MIN_CHUNK_TOKENS, fallback_minimum):
+    effective_preferred_minimum = min(
+        PREFERRED_MIN_CHUNK_TOKENS,
+        max_chunk_tokens,
+    )
+    fallback_minimum = min(
+        max(effective_preferred_minimum // 2, MAX_OVERLAP_TOKENS + 1),
+        max_chunk_tokens,
+    )
+    for minimum_tokens in dict.fromkeys(
+        (effective_preferred_minimum, fallback_minimum)
+    ):
         for positions in end_groups:
             for position in reversed(positions):
                 if position <= max(start, previous_end) or position > hard_end:
@@ -261,7 +344,7 @@ def _choose_chunk_end(
                 if _is_protected_boundary(position, protected_ranges):
                     continue
                 tokens = span_token_count(start, position)
-                if minimum_tokens <= tokens <= MAX_CHUNK_TOKENS:
+                if minimum_tokens <= tokens <= max_chunk_tokens:
                     return position
 
     return hard_end
@@ -319,9 +402,24 @@ def _choose_overlap_start(
 
 
 def chunk_document(
-    document: str, tokenizer: PreTrainedTokenizerBase
+    document: str,
+    tokenizer: PreTrainedTokenizerBase,
+    max_chunk_tokens: int = MAX_CHUNK_TOKENS,
 ) -> ChunkingResult:
-    """Split a document using Qwen token counts and exact source spans."""
+    """Split a document using a request-local token limit and exact spans."""
+    if (
+        isinstance(max_chunk_tokens, bool)
+        or not isinstance(max_chunk_tokens, int)
+        or not MIN_CONFIGURABLE_MAX_CHUNK_TOKENS
+        <= max_chunk_tokens
+        <= MAX_CONFIGURABLE_MAX_CHUNK_TOKENS
+    ):
+        raise ValueError(
+            f"max_chunk_tokens must be an integer between "
+            f"{MIN_CONFIGURABLE_MAX_CHUNK_TOKENS} and "
+            f"{MAX_CONFIGURABLE_MAX_CHUNK_TOKENS}"
+        )
+
     text = document.strip()
     if not text:
         return ChunkingResult("", 0, [], [], [], [])
@@ -341,7 +439,7 @@ def chunk_document(
 
     while start < len(text):
         previous_end = chunk_spans[-1][1] if chunk_spans else 0
-        if span_token_count(start, len(text)) <= MAX_CHUNK_TOKENS:
+        if span_token_count(start, len(text)) <= max_chunk_tokens:
             end = len(text)
         else:
             end = _choose_chunk_end(
@@ -352,6 +450,7 @@ def chunk_document(
                 span_token_count,
                 end_groups,
                 protected_ranges,
+                max_chunk_tokens,
             )
 
         if end <= start:
@@ -363,9 +462,9 @@ def chunk_document(
         if not chunk.strip():
             raise RuntimeError("Chunking produced an empty chunk")
         chunk_tokens = span_token_count(start, end)
-        if chunk_tokens > MAX_CHUNK_TOKENS:
+        if chunk_tokens > max_chunk_tokens:
             raise RuntimeError(
-                f"Chunk exceeds {MAX_CHUNK_TOKENS} tokens: {chunk_tokens}"
+                f"Chunk exceeds {max_chunk_tokens} tokens: {chunk_tokens}"
             )
 
         if chunk_spans:
@@ -512,45 +611,97 @@ def embed_documents(
     return embeddings.cpu().tolist()
 
 
-def insert_chunks(chunks: list[str], vectors: list[list[float]]) -> list[int]:
-    """Insert chunks and vectors atomically, returning generated identity IDs."""
+def insert_chunks(
+    source: SourceDocument,
+    chunking: ChunkingResult,
+    vectors: list[list[float]],
+) -> PersistedDocument:
+    """Insert one document and all provenance-bearing chunks atomically."""
+    source = normalize_source_document(source)
     inserted_ids: list[int] = []
     with psycopg.connect(**database_config()) as connection:
         with connection.cursor() as cursor:
-            for context, vector in zip(chunks, vectors, strict=True):
+            cursor.execute(
+                INSERT_DOCUMENT_SQL,
+                (source.source_type, source.source_name),
+            )
+            document_row = cursor.fetchone()
+            if document_row is None:
+                raise RuntimeError("Document INSERT ... RETURNING id produced no row")
+            document_id = int(document_row[0])
+
+            for chunk_index, (context, token_count, span, vector) in enumerate(
+                zip(
+                    chunking.chunks,
+                    chunking.chunk_token_counts,
+                    chunking.chunk_spans,
+                    vectors,
+                    strict=True,
+                ),
+                start=1,
+            ):
                 vector_literal = json.dumps(vector, separators=(",", ":"))
-                cursor.execute(INSERT_SQL, (context, vector_literal))
+                cursor.execute(
+                    INSERT_CHUNK_SQL,
+                    (
+                        document_id,
+                        chunk_index,
+                        span[0],
+                        span[1],
+                        token_count,
+                        context,
+                        vector_literal,
+                    ),
+                )
                 row = cursor.fetchone()
                 if row is None:
                     raise RuntimeError("INSERT ... RETURNING id produced no row")
                 inserted_ids.append(int(row[0]))
-    return inserted_ids
+    return PersistedDocument(document_id=document_id, inserted_ids=inserted_ids)
 
 
 def ingest_document(
-    document: str,
+    source: SourceDocument,
     tokenizer: PreTrainedTokenizerBase | None,
     model: SentenceTransformer | None,
-) -> tuple[PreTrainedTokenizerBase, SentenceTransformer, list[int]]:
+    max_chunk_tokens: int = MAX_CHUNK_TOKENS,
+) -> tuple[PreTrainedTokenizerBase, SentenceTransformer, IngestionResult]:
     """Chunk, embed, and atomically insert one non-empty source document."""
+    source = normalize_source_document(source)
     if tokenizer is None:
         tokenizer = load_tokenizer()
-    result = chunk_document(document, tokenizer)
-    token_lengths = ", ".join(str(value) for value in result.chunk_token_counts)
-    character_lengths = ", ".join(str(len(chunk)) for chunk in result.chunks)
-    overlap_lengths = ", ".join(str(value) for value in result.overlap_token_counts)
-    print(f"Source characters: {len(result.source_text)}")
-    print(f"Source tokens: {result.source_token_count}")
-    print(f"Generated chunks: {len(result.chunks)}")
+
+    chunking_started = time.perf_counter()
+    chunking = chunk_document(
+        source.text,
+        tokenizer,
+        max_chunk_tokens=max_chunk_tokens,
+    )
+    chunking_ms = (time.perf_counter() - chunking_started) * 1000
+    token_lengths = ", ".join(str(value) for value in chunking.chunk_token_counts)
+    character_lengths = ", ".join(str(len(chunk)) for chunk in chunking.chunks)
+    overlap_lengths = ", ".join(str(value) for value in chunking.overlap_token_counts)
+    print(f"Source characters: {len(chunking.source_text)}")
+    print(f"Source tokens: {chunking.source_token_count}")
+    print(f"Generated chunks: {len(chunking.chunks)}")
     print(f"Chunk token lengths: [{token_lengths}]")
     print(f"Chunk character lengths: [{character_lengths}]")
     print(f"Overlap token lengths: [{overlap_lengths}]")
 
     if model is None:
         model = load_model()
-    vectors = embed_documents(model, result.chunks)
-    inserted_ids = insert_chunks(result.chunks, vectors)
-    return tokenizer, model, inserted_ids
+    embedding_started = time.perf_counter()
+    vectors = embed_documents(model, chunking.chunks)
+    embedding_ms = (time.perf_counter() - embedding_started) * 1000
+    persisted = insert_chunks(source, chunking, vectors)
+    result = IngestionResult(
+        source=source,
+        chunking=chunking,
+        persisted=persisted,
+        chunking_ms=chunking_ms,
+        embedding_ms=embedding_ms,
+    )
+    return tokenizer, model, result
 
 
 def run_interactive_mode() -> int:
@@ -568,13 +719,20 @@ def run_interactive_mode() -> int:
             print("No source document entered; start another or exit.")
             continue
 
-        tokenizer, model, inserted_ids = ingest_document(
-            document, tokenizer, model
+        source = SourceDocument(
+            source_type="text",
+            source_name=generated_text_source_name(document),
+            text=document,
+        )
+        tokenizer, model, result = ingest_document(
+            source, tokenizer, model
         )
         document_number += 1
         print(
-            f"Inserted document {document_number}: "
-            f"{len(inserted_ids)} chunk(s); ids={inserted_ids}"
+            f"Inserted document {document_number}: document_id="
+            f"{result.persisted.document_id}; "
+            f"{len(result.persisted.inserted_ids)} chunk(s); "
+            f"ids={result.persisted.inserted_ids}"
         )
 
         if exit_after_document:
@@ -595,13 +753,19 @@ def run_file_mode(path_values: list[str]) -> int:
             continue
 
         print(f"Source file: {path}")
-        tokenizer, model, inserted_ids = ingest_document(
-            document, tokenizer, model
+        source = SourceDocument(
+            source_type="file",
+            source_name=path.name,
+            text=document,
+        )
+        tokenizer, model, result = ingest_document(
+            source, tokenizer, model
         )
         inserted_documents += 1
         print(
-            f"Inserted file {path}: "
-            f"{len(inserted_ids)} chunk(s); ids={inserted_ids}"
+            f"Inserted file {path}: document_id={result.persisted.document_id}; "
+            f"{len(result.persisted.inserted_ids)} chunk(s); "
+            f"ids={result.persisted.inserted_ids}"
         )
 
     print(

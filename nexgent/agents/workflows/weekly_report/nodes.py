@@ -20,15 +20,7 @@ from .tools import get_weekly_report_source_repository
 
 
 async def validate_request(state: WeeklyReportState) -> dict[str, Any]:
-    request = WeeklyReportRequest.model_validate(
-        {
-            "week_start": state.get("week_start"),
-            "timezone": state.get("timezone", "Asia/Seoul"),
-            "ward_ids": state.get("ward_ids"),
-            "cursor": state.get("cursor"),
-            "limit": state.get("limit", 25),
-        }
-    )
+    request = _interactive_request(state)
     get_stream_writer()(
         {"event": "batch_started", "week_start": request.week_start.isoformat()}
     )
@@ -36,15 +28,7 @@ async def validate_request(state: WeeklyReportState) -> dict[str, Any]:
 
 
 async def load_source_data(state: WeeklyReportState) -> dict[str, Any]:
-    request = WeeklyReportRequest.model_validate(
-        {
-            "week_start": state["week_start"],
-            "timezone": state["timezone"],
-            "ward_ids": state.get("ward_ids"),
-            "cursor": state.get("cursor"),
-            "limit": state.get("limit", 25),
-        }
-    )
+    request = _interactive_request(state)
     source = WeeklyReportSourceResponse.model_validate(
         await get_weekly_report_source_repository().load(request)
     )
@@ -66,6 +50,21 @@ async def load_source_data(state: WeeklyReportState) -> dict[str, Any]:
         "skipped": [item.model_dump(mode="json") for item in source.skipped],
         "next_cursor": source.next_cursor,
     }
+
+
+def _interactive_request(state: WeeklyReportState) -> WeeklyReportRequest:
+    request = WeeklyReportRequest.model_validate(
+        {
+            "week_start": state.get("week_start"),
+            "timezone": state.get("timezone", "Asia/Seoul"),
+            "ward_ids": state.get("ward_ids"),
+            "cursor": state.get("cursor"),
+            "limit": state.get("limit", 25),
+        }
+    )
+    if request.limit > 25:
+        raise ValueError("interactive weekly-report limit must not exceed 25")
+    return request
 
 
 async def fan_out_wards(state: WeeklyReportState) -> str | list[Send]:

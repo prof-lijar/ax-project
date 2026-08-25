@@ -1,10 +1,11 @@
+import asyncio
 import hashlib
 import json
 import zipfile
 from datetime import date
 
 import pytest
-from ax_contracts import WeeklyReportBulkJobRequest
+from ax_contracts import WeeklyReportBulkJobRequest, WeeklyReportSourceResponse
 from ax_persistence import (
     BulkItemRecord,
     BulkStoreError,
@@ -42,6 +43,38 @@ class FakeModel:
                 "suggestions": ["최근 안부를 편안하게 확인해 보셔도 좋아요."],
             },
             ensure_ascii=False,
+        )
+
+
+class BlockingModel:
+    def __init__(self, expected_calls: int) -> None:
+        self.expected_calls = expected_calls
+        self.started_calls = 0
+        self.cancelled_calls = 0
+        self.all_started = asyncio.Event()
+
+    async def complete(self, *args: object, **kwargs: object) -> str:
+        self.started_calls += 1
+        if self.started_calls == self.expected_calls:
+            self.all_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled_calls += 1
+            raise
+        raise AssertionError("unreachable")
+
+
+class EmptyRecordingSource:
+    def __init__(self) -> None:
+        self.limits: list[int] = []
+
+    async def load(self, request):
+        self.limits.append(request.limit)
+        return WeeklyReportSourceResponse(
+            week_start=request.week_start,
+            week_end=request.week_end,
+            timezone=request.timezone,
         )
 
 
@@ -120,6 +153,61 @@ async def test_bulk_job_submission_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_bulk_runner_requests_one_hundred_wards_per_source_page(
+    tmp_path,
+) -> None:
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3),
+        max_reports=100,
+        idempotency_key="weekly-page-size-100",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND,
+        request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    source = EmptyRecordingSource()
+
+    status = await WeeklyReportBulkRunner(
+        store,
+        artifacts,
+        source,
+        FakeModel(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+
+    assert status.status == "completed"
+    assert source.limits == [100]
+
+
+@pytest.mark.asyncio
+async def test_recent_bulk_jobs_are_newest_first_and_bounded() -> None:
+    store = InMemoryBulkJobStore()
+    requests = [
+        WeeklyReportBulkJobRequest(
+            week_start=date(2026, 8, 3), idempotency_key=f"weekly-job-{index}"
+        )
+        for index in range(3)
+    ]
+    jobs = [
+        await store.create_job(
+            WEEKLY_REPORT_BULK_JOB_KIND,
+            request.idempotency_key,
+            request.model_dump(mode="json"),
+        )
+        for request in requests
+    ]
+
+    recent = await store.list_jobs(WEEKLY_REPORT_BULK_JOB_KIND, limit=2)
+
+    assert [job.job_id for job in recent] == [jobs[2].job_id, jobs[1].job_id]
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        await store.list_jobs(WEEKLY_REPORT_BULK_JOB_KIND, limit=101)
+
+
+@pytest.mark.asyncio
 async def test_cancelled_items_are_terminal() -> None:
     store = InMemoryBulkJobStore()
     request = WeeklyReportBulkJobRequest(
@@ -134,6 +222,42 @@ async def test_cancelled_items_are_terminal() -> None:
     await store.cancel_pending_items(job.job_id)
 
     assert (await store.get_job(job.job_id)).status == "cancelling"
+
+
+@pytest.mark.asyncio
+async def test_bulk_runner_cancels_in_flight_report_generation(tmp_path) -> None:
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3),
+        max_reports=3,
+        idempotency_key="cancel-running-weekly-job",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND,
+        request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    model = BlockingModel(expected_calls=3)
+    running = asyncio.create_task(
+        WeeklyReportBulkRunner(
+            store,
+            artifacts,
+            MockWeeklyReportSourceRepository(),
+            model,
+            poll_seconds=0.001,
+        ).run(job.job_id, concurrency=3)
+    )
+
+    await asyncio.wait_for(model.all_started.wait(), timeout=1)
+    await store.request_cancel(job.job_id)
+    status = await asyncio.wait_for(running, timeout=5)
+
+    assert status.status == "cancelled"
+    assert status.completed_count == 0
+    assert status.failed_count == 3
+    assert model.cancelled_calls == 3
+    assert not (tmp_path / str(job.job_id) / "reports").exists()
 
 
 @pytest.mark.asyncio

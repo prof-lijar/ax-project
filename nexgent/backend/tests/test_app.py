@@ -23,6 +23,7 @@ def test_app_imports_with_routes(monkeypatch):
 
     assert "/health" in paths
     assert "/api/chat/stream" in paths
+    assert "/api/rag/chat/stream" in paths
     assert "/api/nextcloud/files" in paths
     assert "/api/nextcloud/files/content" in paths
     assert "/api/nextcloud/files/preview" in paths

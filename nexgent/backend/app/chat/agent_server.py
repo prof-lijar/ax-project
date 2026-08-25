@@ -22,6 +22,7 @@ async def open_agent_stream(
     attachments: tuple[ChatAttachmentRef, ...],
     settings: ChatSettings,
     *,
+    assistant_id: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> AgentServerStream:
     timeout = httpx.Timeout(
@@ -41,7 +42,7 @@ async def open_agent_stream(
         f"{settings.agent_server_url}/runs/stream",
         headers={"Accept": "text/event-stream"},
         json={
-            "assistant_id": settings.assistant_id,
+            "assistant_id": assistant_id or settings.assistant_id,
             "input": graph_input,
             "stream_mode": ["custom"] if attachments else ["custom", "values"],
             "on_disconnect": "cancel",

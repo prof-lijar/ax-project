@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from io import BytesIO
 import unittest
+from unittest.mock import Mock, patch
+from zipfile import ZIP_DEFLATED, ZipFile
+
+from docx import Document
+from docx.document import Document as DocumentObject
+from PIL import Image
 
 import file_extraction
 
@@ -74,7 +81,152 @@ def build_text_pdf(pages: list[list[str]]) -> bytes:
     return bytes(output)
 
 
+def build_docx(configure=None) -> bytes:
+    """Build one deterministic in-memory DOCX fixture."""
+    document = Document()
+    if configure is not None:
+        configure(document)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
+def build_zip(entries: dict[str, bytes]) -> bytes:
+    """Build a small arbitrary ZIP for DOCX preflight tests."""
+    output = BytesIO()
+    with ZipFile(output, "w", ZIP_DEFLATED) as archive:
+        for name, content in entries.items():
+            archive.writestr(name, content)
+    return output.getvalue()
+
+
+def mark_first_central_zip_member_encrypted(content: bytes) -> bytes:
+    """Set the encrypted flag in the first central-directory entry."""
+    value = bytearray(content)
+    offset = value.find(b"PK\x01\x02")
+    if offset < 0:
+        raise AssertionError("Fixture has no central-directory entry")
+    flags_offset = offset + 8
+    flags = int.from_bytes(value[flags_offset : flags_offset + 2], "little")
+    value[flags_offset : flags_offset + 2] = (flags | 0x1).to_bytes(2, "little")
+    return bytes(value)
+
+
 class FileExtractionTests(unittest.TestCase):
+    def test_docx_paragraphs_preserve_korean_and_mixed_language_text(self) -> None:
+        def configure(document: DocumentObject) -> None:
+            document.add_paragraph("첫 번째 한국어 문단입니다.")
+            document.add_paragraph("Nextor AI와 RAG Server를 함께 사용합니다.")
+
+        content = build_docx(configure)
+
+        extracted = file_extraction.extract_document("source.DOCX", content)
+
+        self.assertEqual(
+            extracted,
+            "첫 번째 한국어 문단입니다.\n\n"
+            "Nextor AI와 RAG Server를 함께 사용합니다.",
+        )
+
+    def test_docx_heading_table_and_paragraph_keep_top_level_order(self) -> None:
+        def configure(document: DocumentObject) -> None:
+            document.add_heading("관측 결과", level=1)
+            table = document.add_table(rows=3, cols=2)
+            values = (("Name", "Value"), ("Temperature", "24"), ("Humidity", "55"))
+            for row, row_values in zip(table.rows, values, strict=True):
+                for cell, value in zip(row.cells, row_values, strict=True):
+                    cell.text = value
+            document.add_paragraph("표 다음 문단입니다.")
+
+        extracted = file_extraction.extract_docx_text(build_docx(configure))
+
+        self.assertEqual(
+            extracted,
+            "관측 결과\n\n"
+            "Name\tValue\nTemperature\t24\nHumidity\t55\n\n"
+            "표 다음 문단입니다.",
+        )
+
+    def test_whitespace_only_docx_is_rejected(self) -> None:
+        content = build_docx(lambda document: document.add_paragraph(" \t "))
+
+        with self.assertRaisesRegex(
+            file_extraction.EmptyDocumentError,
+            "contains no extractable text",
+        ):
+            file_extraction.extract_document("blank.docx", content)
+
+    def test_image_only_docx_is_rejected_without_embedded_image_ocr(self) -> None:
+        def configure(document: DocumentObject) -> None:
+            image = BytesIO()
+            Image.new("RGB", (2, 2), "white").save(image, format="PNG")
+            image.seek(0)
+            document.add_picture(image)
+
+        with self.assertRaisesRegex(
+            file_extraction.EmptyDocumentError,
+            "OCR for images embedded in DOCX is not supported",
+        ):
+            file_extraction.extract_document("image-only.docx", build_docx(configure))
+
+    def test_malformed_and_arbitrary_zip_docx_are_sanitized(self) -> None:
+        fixtures = (b"not a ZIP", build_zip({"notes.txt": b"not a DOCX"}))
+
+        for content in fixtures:
+            with self.subTest(content=content[:12]), self.assertRaisesRegex(
+                file_extraction.InvalidDocxError,
+                "Uploaded DOCX could not be read",
+            ) as raised:
+                file_extraction.extract_document("broken.docx", content)
+            self.assertNotIn("notes.txt", str(raised.exception))
+
+    def test_encrypted_docx_member_is_rejected_without_internal_details(self) -> None:
+        encrypted = mark_first_central_zip_member_encrypted(
+            build_docx(lambda document: document.add_paragraph("secret"))
+        )
+
+        with self.assertRaisesRegex(
+            file_extraction.InvalidDocxError,
+            "Uploaded DOCX could not be read",
+        ):
+            file_extraction.extract_document("protected.docx", encrypted)
+
+    def test_docx_member_count_limit_is_enforced(self) -> None:
+        content = build_zip({"one": b"1", "two": b"2", "three": b"3"})
+
+        with (
+            patch.object(file_extraction, "MAX_DOCX_MEMBERS", 2),
+            self.assertRaisesRegex(
+                file_extraction.DocxResourceLimitError,
+                "exceeds supported processing limits",
+            ),
+        ):
+            file_extraction.validate_docx_archive(content)
+
+    def test_docx_total_uncompressed_limit_is_enforced(self) -> None:
+        content = build_docx(lambda document: document.add_paragraph("content"))
+
+        with (
+            patch.object(file_extraction, "MAX_DOCX_UNCOMPRESSED_BYTES", 10),
+            self.assertRaisesRegex(
+                file_extraction.DocxResourceLimitError,
+                "exceeds supported processing limits",
+            ),
+        ):
+            file_extraction.validate_docx_archive(content)
+
+    def test_docx_single_member_limit_is_enforced(self) -> None:
+        content = build_docx(lambda document: document.add_paragraph("content"))
+
+        with (
+            patch.object(file_extraction, "MAX_DOCX_MEMBER_BYTES", 10),
+            self.assertRaisesRegex(
+                file_extraction.DocxResourceLimitError,
+                "exceeds supported processing limits",
+            ),
+        ):
+            file_extraction.validate_docx_archive(content)
+
     def test_valid_utf8_txt_preserves_multiline_content(self) -> None:
         source = "첫 문단입니다.\n\n둘째 문단입니다.\n마지막 줄입니다."
 
@@ -124,12 +276,70 @@ class FileExtractionTests(unittest.TestCase):
             ]
         )
 
-        document = file_extraction.extract_document("report.PDF", content)
+        with patch.object(file_extraction.pdf_ocr, "PdfOcrSession") as session:
+            document = file_extraction.extract_document("report.PDF", content)
 
         self.assertEqual(
             document,
             "First page line one\nFirst page line two\n\nSecond page text",
         )
+        session.assert_not_called()
+
+    def test_scanned_pdf_uses_ocr_for_its_empty_native_page(self) -> None:
+        content = build_text_pdf([[]])
+        session = Mock()
+        session.extract_page_text.return_value = "스캔 페이지 OCR 텍스트"
+
+        with patch.object(
+            file_extraction.pdf_ocr,
+            "PdfOcrSession",
+            return_value=session,
+        ):
+            document = file_extraction.extract_document("scan.pdf", content)
+
+        self.assertEqual(document, "스캔 페이지 OCR 텍스트")
+        session.extract_page_text.assert_called_once_with(0)
+        session.close.assert_called_once_with()
+
+    def test_mixed_pdf_preserves_page_order_without_native_ocr_duplication(
+        self,
+    ) -> None:
+        content = build_text_pdf(
+            [["First native page"], [], ["Third native page"]]
+        )
+        session = Mock()
+        session.extract_page_text.return_value = "둘째 스캔 페이지"
+
+        with patch.object(
+            file_extraction.pdf_ocr,
+            "PdfOcrSession",
+            return_value=session,
+        ):
+            document = file_extraction.extract_document("mixed.pdf", content)
+
+        self.assertEqual(
+            document,
+            "First native page\n\n둘째 스캔 페이지\n\nThird native page",
+        )
+        self.assertEqual(document.count("First native page"), 1)
+        self.assertEqual(document.count("둘째 스캔 페이지"), 1)
+        self.assertEqual(document.count("Third native page"), 1)
+        session.extract_page_text.assert_called_once_with(1)
+
+    def test_blank_ocr_pages_are_skipped_when_another_page_has_text(self) -> None:
+        content = build_text_pdf([[], ["Native page"]])
+        session = Mock()
+        session.extract_page_text.return_value = " \n\t "
+
+        with patch.object(
+            file_extraction.pdf_ocr,
+            "PdfOcrSession",
+            return_value=session,
+        ):
+            document = file_extraction.extract_document("mixed.pdf", content)
+
+        self.assertEqual(document, "Native page")
+        session.extract_page_text.assert_called_once_with(0)
 
     def test_empty_txt_is_rejected(self) -> None:
         with self.assertRaisesRegex(
@@ -149,21 +359,39 @@ class FileExtractionTests(unittest.TestCase):
         ):
             file_extraction.extract_document("invalid.txt", b"\xff\xfe")
 
-    def test_pdf_without_extractable_text_is_rejected_without_ocr(self) -> None:
+    def test_pdf_without_native_or_ocr_text_is_rejected(self) -> None:
         blank_pdf = build_text_pdf([[]])
+        session = Mock()
+        session.extract_page_text.return_value = " \n\t "
 
-        with self.assertRaisesRegex(
-            file_extraction.EmptyDocumentError,
-            "scanned/image-only PDFs are not supported",
+        with (
+            patch.object(
+                file_extraction.pdf_ocr,
+                "PdfOcrSession",
+                return_value=session,
+            ),
+            self.assertRaisesRegex(
+                file_extraction.EmptyDocumentError,
+                "no extractable or OCR-recognizable text",
+            ),
         ):
             file_extraction.extract_document("scan.pdf", blank_pdf)
 
-    def test_unsupported_extension_is_rejected(self) -> None:
+    def test_invalid_pdf_is_rejected_without_internal_parser_details(self) -> None:
+        with self.assertRaisesRegex(
+            file_extraction.InvalidPdfError,
+            "Uploaded PDF could not be read",
+        ) as raised:
+            file_extraction.extract_document("broken.pdf", b"not a PDF")
+
+        self.assertNotIn("EOF", str(raised.exception))
+
+    def test_legacy_doc_extension_is_rejected(self) -> None:
         with self.assertRaisesRegex(
             file_extraction.UnsupportedFileTypeError,
-            "Only UTF-8 .txt/.md and text-based .pdf files are supported",
+            "legacy .doc is not supported",
         ):
-            file_extraction.extract_document("document.docx", b"content")
+            file_extraction.extract_document("document.doc", b"content")
 
 
 if __name__ == "__main__":

@@ -40,6 +40,9 @@ export function AgentsPageView({
 }: AgentsPageViewProps) {
   const selectedAgent = useUiStore((state) => state.selectedAgent);
   const visibleAgents = filterAgents(agents, search);
+  const hasPreviewAgents = agents.some(
+    (agent) => agent.observationMode === "preview"
+  );
 
   function openAgentDetail(
     event: MouseEvent<HTMLElement>,
@@ -74,16 +77,18 @@ export function AgentsPageView({
           <h1>Agents</h1>
           <p>Monitor the LangGraph workflows that work alongside your team.</p>
         </div>
-        <Badge tone="amber">Preview data</Badge>
+        {hasPreviewAgents && <Badge tone="amber">Preview data</Badge>}
       </header>
 
-      <div className={styles.previewNotice} role="note">
-        <CircleAlert size={17} aria-hidden />
-        <span>
-          Status and run history are samples. Live Agent Server monitoring will
-          be connected with the first agent integration.
-        </span>
-      </div>
+      {hasPreviewAgents && (
+        <div className={styles.previewNotice} role="note">
+          <CircleAlert size={17} aria-hidden />
+          <span>
+            Status and run history are samples. Live Agent Server monitoring
+            will be connected with the first agent integration.
+          </span>
+        </div>
+      )}
 
       <section className={styles.catalog} aria-labelledby="agent-catalog-title">
         <header className={styles.catalogHeader}>
@@ -111,7 +116,9 @@ export function AgentsPageView({
         {visibleAgents.length > 0 && (
           <div className={styles.agentList} role="list" aria-label="Agents">
             {visibleAgents.map((agent) => {
-              const readiness = getReadinessPresentation(agent.readiness);
+              const readiness = agent.readiness
+                ? getReadinessPresentation(agent.readiness)
+                : null;
               const isSelectedForChat = agent.id === selectedAgent?.id;
 
               return (
@@ -139,21 +146,27 @@ export function AgentsPageView({
                           <small>{agent.role}</small>
                         </span>
                       </span>
-                      <Badge tone={readiness.tone}>{readiness.label}</Badge>
+                      {readiness && (
+                        <Badge tone={readiness.tone}>{readiness.label}</Badge>
+                      )}
                     </span>
                     <span className={styles.cardDescription}>
                       {agent.description}
                     </span>
-                    <span className={styles.currentWork}>
-                      <small>Current work</small>
-                      <span>{agent.currentWork}</span>
-                    </span>
+                    {agent.currentWork && (
+                      <span className={styles.currentWork}>
+                        <small>Current work</small>
+                        <span>{agent.currentWork}</span>
+                      </span>
+                    )}
                   </a>
 
                   <footer className={styles.cardFooter}>
                     <span className={styles.cardMetadata}>
                       <Badge>{agent.runtimeLabel}</Badge>
-                      <span>{agent.recentRuns.length} runs</span>
+                      {agent.observationMode !== null && (
+                        <span>{agent.recentRuns.length} runs</span>
+                      )}
                     </span>
                     <button
                       className={styles.runInChatButton}
@@ -196,7 +209,7 @@ export function filterAgents(agents: AgentDefinition[], search: string) {
       agent.role,
       agent.description,
       agent.graphId,
-      agent.currentWork,
+      agent.currentWork ?? "",
       ...agent.capabilities
     ]
       .join(" ")

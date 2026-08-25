@@ -43,6 +43,24 @@ const runningRun: MockAgentRun = {
   status: "running"
 };
 
+const ragAgent: AgentDefinition = {
+  ...agent,
+  id: "7",
+  name: "RAG Agent",
+  role: "Grounded knowledge assistant",
+  description:
+    "Answers one-turn questions from the indexed RAG corpus using grounded retrieval and source provenance.",
+  graphId: "rag_chat",
+  readiness: null,
+  currentWork: null,
+  observationMode: null,
+  capabilities: ["Context-grounded answer generation"],
+  inputs: [],
+  configuration: [],
+  limitations: ["Does not accept attachments"],
+  recentRuns: []
+};
+
 describe("AgentDetailPage", () => {
   it("renders the simplified agent header and a minimal empty run state", () => {
     const markup = renderToStaticMarkup(
@@ -77,6 +95,21 @@ describe("AgentDetailPage", () => {
     expect(markup).not.toContain("Recent runs");
     expect(markup).not.toContain("Sample history");
     expect(markup).not.toContain("ansimk_weekly_reporter");
+  });
+
+  it("omits fake runtime status and mock-run panels for RAG Agent", () => {
+    const markup = renderToStaticMarkup(
+      <AgentDetailPageView agent={ragAgent} />
+    );
+
+    expect(markup).toContain("RAG Agent");
+    expect(markup).toContain("Run in Chat");
+    expect(markup).not.toContain("Live data");
+    expect(markup).not.toContain("Preview data");
+    expect(markup).not.toContain("Needs attention");
+    expect(markup).not.toContain("Current run");
+    expect(markup).not.toContain("Latest run");
+    expect(markup).not.toContain("mock run");
   });
 
   it("renders only a running mock record as the current run", () => {

@@ -8,3 +8,4 @@ def test_bulk_schema_has_idempotency_and_recoverable_leases() -> None:
     assert "FOR UPDATE SKIP LOCKED" in getsource(AsyncpgBulkJobStore.claim_items)
     assert "producer_lease_expires_at" in SCHEMA_SQL
     assert "finalizer_lease_expires_at" in SCHEMA_SQL
+    assert "ORDER BY created_at DESC" in getsource(AsyncpgBulkJobStore.list_jobs)

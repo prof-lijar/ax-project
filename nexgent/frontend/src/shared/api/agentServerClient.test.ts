@@ -167,6 +167,34 @@ describe("agentServerClient", () => {
     expect(body.getAll("files")).toEqual(files);
   });
 
+  it("sends text-only questions to the dedicated RAG Chat API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        textStream([
+          'event: custom\ndata: {"response_delta":"grounded"}\n\n',
+          'event: values\ndata: {"response":"grounded answer"}\n\n'
+        ])
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      agentServerClient.streamRagChat("original question")
+    ).resolves.toBe("grounded answer");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://127.0.0.1:8000/api/rag/chat/stream");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        Accept: "text/event-stream",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ question: "original question" })
+    });
+    expect(init.body).not.toBeInstanceOf(FormData);
+  });
+
   it("runs the weekly reporter with the selected reporting period", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(textStream([weeklyReportStream()]))

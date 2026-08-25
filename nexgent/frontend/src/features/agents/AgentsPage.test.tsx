@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useUiStore } from "../../shared/state/useUiStore";
+import { agentCatalogClient } from "../../shared/api/agentCatalogClient";
 import type { AgentDefinition } from "../../shared/types/agents";
 import {
   AgentsPageView,
@@ -61,6 +62,26 @@ describe("AgentsPage", () => {
     expect(markup).not.toContain("sample runs");
     expect(markup).not.toContain("No sample runs yet.");
     expect(markup).not.toContain("Graph ID");
+  });
+
+  it("renders only the real shared catalog without fake RAG runtime state", async () => {
+    const agents = await agentCatalogClient.listAgents();
+    const markup = renderToStaticMarkup(
+      <AgentsPageView agents={agents} search="" />
+    );
+
+    expect(markup).toContain("Weekly Reporter");
+    expect(markup).toContain("RAG Agent");
+    expect(markup).not.toContain("Data Analyst");
+    expect(markup).not.toContain("Report QA");
+    expect(markup).not.toContain("Document Assistant");
+    expect(markup).not.toContain("Database Assistant");
+    expect(markup).not.toContain("Risk Monitoring Agent");
+    expect(markup).not.toContain("Preview data");
+    expect(markup).not.toContain("Awaiting live Agent Server-to-RAG");
+    expect(markup).not.toContain("Needs attention");
+    expect(markup).not.toContain("0 runs");
+    expect(markup).toContain("2 runs");
   });
 
   it("prepares Chat with the selected agent without a pending run intent", () => {

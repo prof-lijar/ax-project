@@ -7,18 +7,20 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const agentServerTarget =
     env.VITE_AGENT_SERVER_BASE_URL?.trim() || "http://192.168.0.18:2024";
-  const ragServerTarget =
-    env.VITE_RAG_SERVER_BASE_URL?.trim() || "http://127.0.0.1:8765";
+  const weeklyReportBulkApiTarget =
+    env.VITE_WEEKLY_REPORT_BULK_API_BASE_URL?.trim() ||
+    "http://127.0.0.1:8090";
   const serviceProxy = {
     "/agent-server": {
       target: agentServerTarget,
       changeOrigin: true,
       rewrite: (path: string) => path.replace(/^\/agent-server/, "")
     },
-    "/rag-server": {
-      target: ragServerTarget,
+    "/weekly-report-bulk-api": {
+      target: weeklyReportBulkApiTarget,
       changeOrigin: true,
-      rewrite: (path: string) => path.replace(/^\/rag-server/, "")
+      rewrite: (path: string) =>
+        path.replace(/^\/weekly-report-bulk-api/, "")
     }
   };
 

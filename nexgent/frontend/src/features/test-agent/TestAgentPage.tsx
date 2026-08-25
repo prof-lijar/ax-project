@@ -9,6 +9,7 @@ import {
   Clock3,
   Files,
   FlaskConical,
+  Layers3,
   Play,
   RefreshCw,
   Sparkles,
@@ -35,6 +36,7 @@ import type {
   WeeklyReportRequest
 } from "../../shared/types/weeklyReport";
 import { ChatMarkdown } from "../chat/ChatMarkdown";
+import { BulkWeeklyReportPanel } from "./BulkWeeklyReportPanel";
 import styles from "./TestAgentPage.module.css";
 
 const TIMEZONES = ["Asia/Seoul", "UTC", "America/New_York", "Europe/London"];
@@ -52,6 +54,7 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
   const [reportLimitInput, setReportLimitInput] = useState(
     String(DEFAULT_REPORT_LIMIT)
   );
+  const [runMode, setRunMode] = useState<"preview" | "bulk">("preview");
   const [result, setResult] = useState<WeeklyReportBatchResult | null>(null);
   const [selectedWardId, setSelectedWardId] = useState<number | null>(null);
   const [progress, setProgress] = useState<WeeklyReportProgressEvent[]>([]);
@@ -165,7 +168,9 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
             <div>
               <h1>{isAgentPage ? "Weekly Reporter" : "Weekly Reporter test"}</h1>
               <p>
-                {isAgentPage
+                {runMode === "bulk"
+                  ? "Start a durable concurrent run, watch live throughput, and download the verified export."
+                  : isAgentPage
                   ? "Choose a batch size, generate live weekly summaries, and review one subscriber at a time."
                   : "Run a reporting week and inspect every generated ward report."}
               </p>
@@ -180,6 +185,30 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
         </header>
       </div>
 
+      <div className={styles.modeSwitch} aria-label="Weekly Reporter run mode">
+        <button
+          className={runMode === "preview" ? styles.modeActive : undefined}
+          type="button"
+          onClick={() => setRunMode("preview")}
+        >
+          <FlaskConical size={15} />
+          Quick preview
+          <small>1–25 reports</small>
+        </button>
+        <button
+          className={runMode === "bulk" ? styles.modeActive : undefined}
+          type="button"
+          onClick={() => setRunMode("bulk")}
+        >
+          <Layers3 size={15} />
+          Bulk generation
+          <small>up to 10,000</small>
+        </button>
+      </div>
+
+      {runMode === "bulk" ? (
+        <BulkWeeklyReportPanel />
+      ) : (
       <div className={styles.workbench}>
         <aside className={styles.runPanel} aria-label="Run configuration">
           <div className={styles.agentIdentity}>
@@ -320,6 +349,7 @@ export function TestAgentPage({ mode = "test" }: TestAgentPageProps) {
           )}
         </main>
       </div>
+      )}
     </section>
   );
 }

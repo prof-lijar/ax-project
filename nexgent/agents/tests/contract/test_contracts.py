@@ -99,6 +99,7 @@ def test_weekly_report_request_validates_period_and_timezone() -> None:
     request = WeeklyReportRequest(week_start="2026-08-03")
     assert request.week_end.isoformat() == "2026-08-10"
     assert request.timezone == "Asia/Seoul"
+    assert WeeklyReportRequest(week_start="2026-08-03", limit=100).limit == 100
 
     with pytest.raises(ValidationError, match="Monday"):
         WeeklyReportRequest(week_start="2026-08-04")
@@ -110,6 +111,8 @@ def test_weekly_report_request_validates_period_and_timezone() -> None:
         WeeklyReportRequest(week_start="2026-08-03", ward_ids=[1], cursor="opaque")
     with pytest.raises(ValidationError, match="unique"):
         WeeklyReportRequest(week_start="2026-08-03", ward_ids=[1, 1])
+    with pytest.raises(ValidationError):
+        WeeklyReportRequest(week_start="2026-08-03", limit=101)
 
 
 def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:

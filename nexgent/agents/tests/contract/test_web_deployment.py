@@ -54,3 +54,17 @@ def test_development_agent_server_accepts_concurrent_graph_runs() -> None:
     )
 
     assert '"--n-jobs-per-worker", "4"' in dockerfile
+
+
+def test_development_stacks_include_private_bulk_control_and_worker() -> None:
+    for path in [ROOT / "compose.yaml", ROOT.parent / "compose.yaml"]:
+        services = yaml.safe_load(path.read_text(encoding="utf-8"))["services"]
+
+        assert "weekly-report-jobs-db" in services
+        assert "weekly-report-worker" in services
+        assert "weekly-report-bulk-api" in services
+        assert "profiles" not in services["weekly-report-worker"]
+        assert "ports" not in services["weekly-report-bulk-api"]
+        assert services["weekly-report-bulk-api"]["depends_on"][
+            "weekly-report-jobs-db"
+        ]["condition"] == "service_healthy"

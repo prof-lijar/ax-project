@@ -1,13 +1,18 @@
 # RAG Documentation
 
-This directory contains implementation and operational documentation for the
-RAG project.
+This directory contains the current implementation and operational references
+for the RAG service. Dated retrieval measurements remain in the evaluation
+document; Git history carries superseded implementation detail.
 
 ## Document map
 
-- [RAG vector search implementation](rag-vector-search.md) — Running record of
-  PostgreSQL and pgvector setup, data design, embedding and retrieval choices,
-  implementation, and Korean-language validation.
-- [RAG server implementation](rag-server.md) — Running record of the minimal
-  FastAPI ingestion/search API, lifecycle decisions, validation, and remaining
-  integration work.
+- [RAG server](rag-server.md) — Canonical API, extraction, schema, provenance,
+  data-administration, configuration, systemd operation, and service limits.
+- [RAG vector search](rag-vector-search.md) — Chunking, embedding, persistence,
+  exact cosine retrieval, and search-quality research status.
+- [RAG UI integration](rag-ui-integration.md) — `/rag` workspace behavior,
+  direct browser routing, database controls, and Chat-page RAG Agent UX.
+- [RAG retrieval evaluation](rag-retrieval-evaluation.md) — Immutable 20-question
+  definition, vector baselines, and experimental lexical/RRF evidence.
+- [RAG Chat Agent](../../agents/docs/rag-chat-agent.md) — Dedicated grounded-chat
+  endpoint, graph, prompt, sources, streaming, and Phase 1 limits.

@@ -6,6 +6,7 @@ from ax_evals import evaluate_weekly_report_batch, weekly_report_release_ready
 
 from tests.unit.test_weekly_report_graph import VALID_NARRATIVE
 from workflows.weekly_report import graph
+from workflows.weekly_report.domain.rendering import render_report
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
 )
@@ -76,3 +77,54 @@ async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch)
     grounding = next(item for item in evaluations if item.criterion == "numeric_grounding")
     assert grounding.status == "failed"
     assert not weekly_report_release_ready(evaluations)
+
+
+@pytest.mark.asyncio
+async def test_structure_evaluation_accepts_omitted_empty_sleep_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EvaluatedModel:
+        async def complete(self, *args: object, **kwargs: object) -> str:
+            return VALID_NARRATIVE
+
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_default_chat_model",
+        lambda: EvaluatedModel(),
+    )
+    batch = WardWeeklyReportBatchResult.model_validate(
+        await graph.ainvoke({"week_start": "2026-08-03"})
+    )
+    original = batch.reports[0]
+    metrics = original.metrics.model_copy(
+        update={
+            "current": original.metrics.current.model_copy(
+                update={
+                    "sleep_time_avg": None,
+                    "wake_up_time_avg": None,
+                    "night_awake_count_avg": None,
+                }
+            ),
+            "delta": original.metrics.delta.model_copy(
+                update={
+                    "sleep_time_minutes": None,
+                    "wake_up_time_minutes": None,
+                    "night_awake_count_avg": None,
+                }
+            ),
+        }
+    )
+    report = render_report(
+        metrics,
+        original.narrative,
+        original.generation_mode,
+        original.generation,
+    )
+    batch = batch.model_copy(update={"reports": [report, *batch.reports[1:]]})
+
+    evaluations = evaluate_weekly_report_batch(batch)
+    structure = next(
+        item for item in evaluations if item.criterion == "korean_markdown_structure"
+    )
+    assert structure.status == "passed"
+    assert "수면 패턴" not in report.markdown
+    assert "## 1. 활동량" in report.markdown

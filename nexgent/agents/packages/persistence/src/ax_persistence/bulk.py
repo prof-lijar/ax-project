@@ -65,6 +65,7 @@ class BulkJobStore(Protocol):
         self, job_kind: str, idempotency_key: str, request: Mapping[str, Any]
     ) -> BulkJobRecord: ...
     async def get_job(self, job_id: UUID) -> BulkJobRecord: ...
+    async def list_jobs(self, job_kind: str, limit: int = 20) -> list[BulkJobRecord]: ...
     async def next_job(self, job_kind: str) -> BulkJobRecord | None: ...
     async def set_job_status(self, job_id: UUID, status: str) -> None: ...
     async def claim_producer(
@@ -243,6 +244,26 @@ class AsyncpgBulkJobStore:
         if row is None:
             raise BulkStoreError("bulk job was not found")
         return _job(row)
+
+    async def list_jobs(
+        self, job_kind: str, limit: int = 20
+    ) -> list[BulkJobRecord]:
+        if not 1 <= limit <= 100:
+            raise ValueError("bulk job list limit must be between 1 and 100")
+        try:
+            rows = await self._required_pool().fetch(
+                """
+                SELECT * FROM ax_bulk_jobs
+                WHERE job_kind=$1
+                ORDER BY created_at DESC
+                LIMIT $2
+                """,
+                job_kind,
+                limit,
+            )
+        except asyncpg.PostgresError as exc:
+            raise BulkStoreError("bulk jobs could not be loaded") from exc
+        return [_job(row) for row in rows]
 
     async def next_job(self, job_kind: str) -> BulkJobRecord | None:
         try:
@@ -568,6 +589,14 @@ class InMemoryBulkJobStore:
             return self.jobs[job_id]
         except KeyError as exc:
             raise BulkStoreError("bulk job was not found") from exc
+
+    async def list_jobs(
+        self, job_kind: str, limit: int = 20
+    ) -> list[BulkJobRecord]:
+        if not 1 <= limit <= 100:
+            raise ValueError("bulk job list limit must be between 1 and 100")
+        jobs = [job for job in self.jobs.values() if job.job_kind == job_kind]
+        return sorted(jobs, key=lambda job: job.created_at, reverse=True)[:limit]
 
     async def next_job(self, job_kind: str) -> BulkJobRecord | None:
         jobs = [

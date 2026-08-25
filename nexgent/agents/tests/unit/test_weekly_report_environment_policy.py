@@ -70,30 +70,70 @@ def test_temperature_policy_uses_reporting_week_start_month(
     )
 
     assert (assessment.temperature_low, assessment.temperature_high) == expected
-    assert assessment.temperature_status == "normal"
-    assert assessment.humidity_status == "normal"
+    assert assessment.temperature_status == "good"
+    assert assessment.humidity_status == "good"
+    assert assessment.overall_status == "good"
 
 
-def test_environment_policy_classifies_weekly_extrema() -> None:
+@pytest.mark.parametrize(
+    ("maximum", "expected"),
+    [
+        (14.9, "risk"),
+        (15, "caution"),
+        (17.9, "caution"),
+        (18, "good"),
+        (20, "good"),
+        (20.1, "caution"),
+        (30, "caution"),
+        (30.1, "risk"),
+    ],
+)
+def test_environment_policy_classifies_weekly_maximum_temperature(
+    maximum: float,
+    expected: str,
+) -> None:
+    assessment = assess_environment(
+        _metrics(month=1, temperature_min=-10, temperature_max=maximum)
+    )
+
+    assert assessment.temperature_status == expected
+
+
+@pytest.mark.parametrize(
+    ("maximum", "expected"),
+    [
+        (29.9, "risk"),
+        (30, "caution"),
+        (39.9, "caution"),
+        (40, "good"),
+        (60, "good"),
+        (60.1, "caution"),
+        (70, "caution"),
+        (70.1, "risk"),
+    ],
+)
+def test_environment_policy_classifies_weekly_maximum_humidity(
+    maximum: float,
+    expected: str,
+) -> None:
     assessment = assess_environment(
         _metrics(
             month=8,
-            temperature_min=25,
-            temperature_max=29,
-            humidity_min=39,
-            humidity_max=61,
+            temperature_min=0,
+            temperature_max=28,
+            humidity_min=0,
+            humidity_max=maximum,
         )
     )
 
-    assert assessment.temperature_status == "variable"
-    assert assessment.humidity_status == "variable"
+    assert assessment.humidity_status == expected
 
 
-def test_environment_policy_requires_both_extrema() -> None:
+def test_environment_policy_uses_maximum_without_requiring_minimum() -> None:
     assessment = assess_environment(
         _metrics(
             month=8,
-            temperature_min=26,
+            temperature_min=-10,
             temperature_max=28,
         ).model_copy(
             update={
@@ -104,23 +144,23 @@ def test_environment_policy_requires_both_extrema() -> None:
         )
     )
 
-    assert assessment.temperature_status == "unavailable"
+    assert assessment.temperature_status == "good"
 
 
 def test_environment_facts_are_required_in_weekly_analysis() -> None:
     facts = build_fact_package(
         _metrics(
             month=8,
-            temperature_min=25,
-            temperature_max=28,
-            humidity_min=39,
-            humidity_max=60,
+            temperature_min=0,
+            temperature_max=25,
+            humidity_min=0,
+            humidity_max=39,
         )
     )
 
     assert facts.required_topics == ["실내 환경"]
-    assert any("추운 구간" in fact for fact in facts.facts)
-    assert any("건조한 구간" in fact for fact in facts.facts)
+    assert any("최고 실내 온도" in fact and "낮았습니다" in fact for fact in facts.facts)
+    assert any("최고 실내 습도" in fact and "낮았습니다" in fact for fact in facts.facts)
     assert "온도" in build_fallback(facts).analysis_text
 
     messages = build_messages(facts)
@@ -136,8 +176,8 @@ async def test_reporter_rejects_analysis_that_omits_required_environment() -> No
     facts = build_fact_package(
         _metrics(
             month=8,
-            temperature_min=25,
-            temperature_max=28,
+            temperature_min=0,
+            temperature_max=25,
         )
     )
     fallback = build_fallback(facts)

@@ -6,12 +6,8 @@ from ax_contracts import EvaluationResult, WardWeeklyReport, WardWeeklyReportBat
 
 REQUIRED_HEADINGS = (
     "## 기본 정보",
-    "## 한 주 요약",
-    "## 1. 수면 패턴",
-    "## 2. 활동량",
-    "## 3. 실내 환경",
-    "## 4. 기기 데이터 수신",
-    "## 5. 위험 관리",
+    "## 한주 총평",
+    "# 주요 내용",
     "# 보호자 행동 제안",
 )
 FORBIDDEN_PHRASES = (
@@ -70,7 +66,7 @@ def evaluate_weekly_report_batch(
         _criterion(
             "korean_markdown_structure",
             all(
-                all(heading in report.markdown for heading in REQUIRED_HEADINGS)
+                _has_required_headings(report)
                 and re.search(r"[가-힣]", report.markdown) is not None
                 for report in result.reports
             ),
@@ -148,6 +144,26 @@ def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
         f"{metrics.previous.risk_resolved_count}회"
     )
     return expected in report.markdown
+
+
+def _has_required_headings(report: WardWeeklyReport) -> bool:
+    if not all(heading in report.markdown for heading in REQUIRED_HEADINGS):
+        return False
+    current = report.metrics.current
+    include_sleep = any(
+        value is not None
+        for value in (
+            current.sleep_time_avg,
+            current.wake_up_time_avg,
+            current.night_awake_count_avg,
+        )
+    )
+    section_names = ["수면 패턴"] if include_sleep else []
+    section_names.extend(["활동량", "실내 환경", "기기 데이터 수신", "위험 관리"])
+    return all(
+        f"## {number}. {name}" in report.markdown
+        for number, name in enumerate(section_names, start=1)
+    )
 
 
 def _narrative_has_digits(report: WardWeeklyReport) -> bool:

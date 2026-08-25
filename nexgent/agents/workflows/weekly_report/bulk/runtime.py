@@ -97,25 +97,46 @@ class WeeklyReportBulkRunner:
             )
             for index in range(concurrency)
         ]
-        producer_result = (await asyncio.gather(producer, return_exceptions=True))[0]
-        if isinstance(producer_result, BaseException):
-            for consumer in consumers:
-                consumer.cancel()
-            await asyncio.gather(*consumers, return_exceptions=True)
-            if isinstance(producer_result, (ValidationError, ValueError)):
-                await self.store.set_job_status(job_id, "failed")
-            raise WeeklyReportBulkExecutionError(
-                "weekly report bulk producer failed"
-            ) from producer_result
-        consumer_results = await asyncio.gather(*consumers, return_exceptions=True)
-        failures = [
-            result for result in consumer_results if isinstance(result, BaseException)
-        ]
-        if failures:
-            raise WeeklyReportBulkExecutionError(
-                "weekly report bulk consumer failed"
-            ) from failures[0]
-        await self._finalize(job_id)
+        cancellation = asyncio.create_task(
+            self._cancel_consumers_when_requested(job_id, consumers),
+            name=f"cancellation-{job_id}",
+        )
+        try:
+            producer_result = (
+                await asyncio.gather(producer, return_exceptions=True)
+            )[0]
+            if isinstance(producer_result, BaseException):
+                for consumer in consumers:
+                    consumer.cancel()
+                await asyncio.gather(*consumers, return_exceptions=True)
+                if isinstance(producer_result, (ValidationError, ValueError)):
+                    await self.store.set_job_status(job_id, "failed")
+                raise WeeklyReportBulkExecutionError(
+                    "weekly report bulk producer failed"
+                ) from producer_result
+            consumer_results = await asyncio.gather(
+                *consumers, return_exceptions=True
+            )
+            job = await self.store.get_job(job_id)
+            if job.cancel_requested:
+                await self.store.cancel_pending_items(job_id)
+            failures = [
+                result
+                for result in consumer_results
+                if isinstance(result, BaseException)
+                and not (
+                    job.cancel_requested
+                    and isinstance(result, asyncio.CancelledError)
+                )
+            ]
+            if failures:
+                raise WeeklyReportBulkExecutionError(
+                    "weekly report bulk consumer failed"
+                ) from failures[0]
+            await self._finalize(job_id)
+        finally:
+            cancellation.cancel()
+            await asyncio.gather(cancellation, return_exceptions=True)
         status = await bulk_job_status(self.store, job_id)
         _LOG.info(
             "bulk job finished",
@@ -160,12 +181,23 @@ class WeeklyReportBulkRunner:
                 week_start=request.week_start,
                 timezone=request.timezone,
                 cursor=cursor,
-                limit=min(25, request.max_reports - discovered),
+                limit=min(100, request.max_reports - discovered),
             )
             source = WeeklyReportSourceResponse.model_validate(
                 await self.source.load(page_request)
             )
             self._validate_source(page_request, source)
+            refreshed_job = await self.store.get_job(job_id)
+            if refreshed_job.cancel_requested:
+                await self.store.cancel_pending_items(job_id)
+                await self.store.finish_producer(
+                    job_id,
+                    next_cursor=cursor,
+                    selection_truncated=cursor is not None,
+                    warnings=sorted(set(warnings))[:100],
+                )
+                await self.store.request_cancel(job_id)
+                return
             staged: list[BulkItemRecord] = []
             for metrics in source.items:
                 item_key = f"{metrics.ward_id:020d}"
@@ -235,6 +267,22 @@ class WeeklyReportBulkRunner:
             if job.status in _TERMINAL_STATES:
                 return
             await asyncio.sleep(self.poll_seconds)
+
+    async def _cancel_consumers_when_requested(
+        self, job_id: UUID, consumers: list[asyncio.Task[None]]
+    ) -> None:
+        cancellation_applied = False
+        while True:
+            job = await self.store.get_job(job_id)
+            if job.cancel_requested and not cancellation_applied:
+                for consumer in consumers:
+                    consumer.cancel()
+                await asyncio.gather(*consumers, return_exceptions=True)
+                await self.store.cancel_pending_items(job_id)
+                cancellation_applied = True
+            if job.status in _TERMINAL_STATES:
+                return
+            await asyncio.sleep(min(self.poll_seconds, 0.1))
 
     async def _process_item(self, item: BulkItemRecord, owner: str) -> None:
         try:

@@ -10,6 +10,7 @@ from app.chat.config import get_chat_settings
 from app.chat.errors import ChatRequestError
 from app.chat.router import router as chat_router
 from app.nextcloud.router import router as nextcloud_router
+from app.rag_chat.router import router as rag_chat_router
 
 DEFAULT_DEV_ORIGINS = [
     "http://127.0.0.1:5173",
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
         include_in_schema=False,
     )
     app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+    app.include_router(rag_chat_router, prefix="/api/rag/chat", tags=["rag-chat"])
     app.include_router(nextcloud_router, prefix="/api/nextcloud", tags=["nextcloud"])
     return app
 

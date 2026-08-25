@@ -162,8 +162,11 @@ function AgentDetails({
   onRunInChat?: (agent: AgentDefinition) => void;
   onStopRun?: () => void;
 }) {
-  const readiness = getReadinessPresentation(agent.readiness);
+  const readiness = agent.readiness
+    ? getReadinessPresentation(agent.readiness)
+    : null;
   const currentRun = run?.status === "running" ? run : null;
+  const showsRunMetadata = agent.observationMode !== null;
 
   return (
     <article className={styles.details} aria-label={`${agent.name} details`}>
@@ -173,12 +176,18 @@ function AgentDetails({
         </span>
         <div className={styles.detailsTitleRow}>
           <h1>{agent.name}</h1>
-          <Badge tone={agent.observationMode === "live" ? "green" : "amber"}>
-            {agent.observationMode === "live" ? "Live data" : "Preview data"}
-          </Badge>
+          {agent.observationMode && (
+            <Badge
+              tone={agent.observationMode === "live" ? "green" : "amber"}
+            >
+              {agent.observationMode === "live" ? "Live data" : "Preview data"}
+            </Badge>
+          )}
         </div>
         <div className={styles.headerStatus}>
-          <Badge tone={readiness.tone}>{readiness.label}</Badge>
+          {readiness && (
+            <Badge tone={readiness.tone}>{readiness.label}</Badge>
+          )}
         </div>
         <p className={styles.detailsSubtitle}>{agent.role}</p>
         <p className={styles.description}>{agent.description}</p>
@@ -192,12 +201,16 @@ function AgentDetails({
         </button>
       </header>
 
-      <CurrentRun run={currentRun} onStopRun={onStopRun} />
-      <LatestRun
-        agent={agent}
-        run={latestRun}
-        onRunInChat={onRunInChat}
-      />
+      {showsRunMetadata && (
+        <>
+          <CurrentRun run={currentRun} onStopRun={onStopRun} />
+          <LatestRun
+            agent={agent}
+            run={latestRun}
+            onRunInChat={onRunInChat}
+          />
+        </>
+      )}
     </article>
   );
 }

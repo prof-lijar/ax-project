@@ -28,16 +28,23 @@ existing linear averaging behavior. Both periods are half-open Monday ranges
 in the requested IANA timezone.
 
 The rendered Markdown follows the guardian-facing `주간 생활 리포트` layout:
-basic information, a weekly summary, five numbered sections for sleep,
-activity, environment, data reception, and risk management, then up to three
-grounded action suggestions. The exclusive period end is displayed as the
+basic information, a warm `한주 총평` ending with the highest-priority grounded
+guardian suggestion, numbered metric sections, then up to three detailed action
+suggestions. If every current sleep metric is unavailable, the complete sleep
+section is omitted and later sections are renumbered. The basic information
+omits the score-band legend. The exclusive period end is displayed as the
 inclusive Sunday. The reporting week's starting month selects the approved
 temperature range: 18–20℃ in January–March and November–December, 20–22℃ in
 April–May and October, and 26–28℃ in June–September. Humidity uses 40–60%.
-Weekly extrema outside those ranges become deterministic qualitative facts and
-must appear in the generated weekly analysis. Fields without approved source
-semantics, including a subscriber score, signal-loss counts, and
-management-note details, are marked unavailable rather than inferred.
+The weekly maximum temperature and maximum humidity are classified as good
+inside those ranges, caution outside them but within 15–30℃ or 30–70%, and risk
+beyond those outer bounds. The more severe result produces specific grounded
+feedback. No repetition or affected-day count is inferred from a maximum. The
+deterministic renderer also shows the rounded current-week average risk score and applies the approved
+`76–100 양호`, `26–75 주의`, and `0–25 위험` bands. The score and band stay
+outside model-authored prose. Fields without approved source semantics,
+including signal-loss counts and management-note details, are marked
+unavailable rather than inferred.
 
 ## Narrative boundary
 
@@ -80,11 +87,14 @@ and rendered-report persistence remain outside this workflow.
 The compatibility graph above remains capped at twenty-five. For up to 10,000
 reports, `workflows.weekly_report.bulk` uses the same source contracts,
 calculation rules, reporter specialist, and renderer behind a durable worker.
-A leased producer pages the source at twenty-five wards per request; bounded
+A leased producer pages the source at one hundred wards per request; bounded
 async consumers claim wards from PostgreSQL and write private atomic artifacts.
 The final export is a seven-day ZIP with a manifest, JSONL records, and one
 Markdown file per completed ward. Failed wards are recorded with safe error
 codes and up to three attempts; one bad ward does not discard successful work.
+Cancel requests are persisted and watched during execution. The worker cancels
+in-flight model awaits, marks pending and leased items cancelled, and packages
+only reports that completed before cancellation.
 
 This is intentionally not modeled as thousands of LangGraph subgraphs or
 process-local agents. Independent work is distributed through durable leases,

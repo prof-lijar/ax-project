@@ -22,10 +22,13 @@ This documentation set defines the product architecture before implementation be
 - [Dashboard Content Scrolling](08-implementation/dashboard-content-scrolling.md): app-shell sizing fix that keeps left-navigation section content scrollable within the desktop window.
 - [Frontend Section Routing](08-implementation/frontend-section-routing.md): stable URL paths, direct-load behavior, and browser-history synchronization for sidebar sections.
 - [Agent Server Chat](08-implementation/agent-server-chat.md): Workspace replacement, streamed AX chatbot client, session transcript, networking, and validation.
+- [RAG Chat Agent](../agents/docs/rag-chat-agent.md): dedicated Chat-page agent,
+  read-only Top-5 grounding, streamed OpenAI-compatible generation,
+  deterministic sources, completed Phase 1 live validation, and current limits.
 - [Chat File Attachments](08-implementation/chat-file-attachments.md): transient multi-file upload, document extraction, multimodal model input, security boundaries, and validation.
 - [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
-- [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): live `/agents/1` configurable 1–25 report runner, first-report selection, private source runtime path, contract validation, and operator UX.
-- [RAG UI Integration](rag-ui-integration.md): sidebar and `/rag` page integration, file embedding and exact-search UI contracts, same-origin Vite proxy routing, validation, and deferred deployment topology.
+- [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): live `/agents/1` quick 1–25 report preview plus durable 1–10,000 report job submission, throughput monitoring, cancellation, export, private runtime path, and operator UX.
+- [RAG UI Integration](../RAG/docs/rag-ui-integration.md): sidebar and `/rag` page integration, direct browser-to-RAG API routing, RAG Chat validation, and the systemd-managed host RAG lifecycle.
 
 ## Stage-One Definition
 

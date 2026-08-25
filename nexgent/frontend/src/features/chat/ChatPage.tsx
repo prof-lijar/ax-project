@@ -24,6 +24,7 @@ import {
   AgentServerError,
   agentServerClient
 } from "../../shared/api/agentServerClient";
+import { RAG_CHAT_GRAPH_ID } from "../../shared/api/agentCatalogClient";
 import {
   useAgentCatalog,
   useAgentServerHealth
@@ -127,6 +128,7 @@ export function ChatPage() {
   const [weeklyReportNotice, setWeeklyReportNotice] = useState<string | null>(
     null
   );
+  const isRagAgentSelected = usesRagChat(selectedAgent?.graphId ?? null);
   const [liveExecution, setLiveExecution] =
     useState<LiveExecutionProgress | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
@@ -170,6 +172,16 @@ export function ChatPage() {
           command.slice(1).startsWith(slashQuery)
         );
   const slashMenuIsOpen = slashQuery !== null && !slashMenuDismissed;
+
+  useEffect(() => {
+    if (!isRagAgentSelected || selectedFiles.length === 0) {
+      return;
+    }
+    setSelectedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [isRagAgentSelected, selectedFiles.length]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({
@@ -339,7 +351,7 @@ export function ChatPage() {
     setErrorMessage(null);
     setNotice(null);
     setDraft("");
-    const files = selectedFiles;
+    const files = isRagAgentSelected ? [] : selectedFiles;
     setSelectedFiles([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -354,7 +366,9 @@ export function ChatPage() {
     const assistantMessageId = createMessageId();
 
     const mockRun =
-      selectedAgent?.graphId !== WEEKLY_REPORTER_GRAPH_ID && selectedAgent
+      selectedAgent?.graphId !== WEEKLY_REPORTER_GRAPH_ID &&
+      selectedAgent?.graphId !== RAG_CHAT_GRAPH_ID &&
+      selectedAgent
         ? {
             agentId: selectedAgent.id,
             runId: startMockRun({
@@ -370,10 +384,9 @@ export function ChatPage() {
     let assistantMessageStarted = false;
 
     try {
-      const response = await agentServerClient.streamChat(message, {
-        files,
+      const streamOptions = {
         signal: controller.signal,
-        onResponse: (partialResponse) => {
+        onResponse: (partialResponse: string) => {
           if (!assistantMessageStarted) {
             if (!partialResponse) {
               return;
@@ -389,7 +402,13 @@ export function ChatPage() {
           }
           updateMessage(assistantMessageId, partialResponse);
         }
-      });
+      };
+      const response = isRagAgentSelected
+        ? await agentServerClient.streamRagChat(message, streamOptions)
+        : await agentServerClient.streamChat(message, {
+            ...streamOptions,
+            files
+          });
       if (!assistantMessageStarted) {
         appendMessage({
           id: assistantMessageId,
@@ -871,6 +890,7 @@ export function ChatPage() {
             type="file"
             accept={ATTACHMENT_ACCEPT}
             multiple
+            disabled={isRagAgentSelected}
             onChange={handleFileChange}
           />
 
@@ -897,7 +917,12 @@ export function ChatPage() {
             className={styles.attachButton}
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach file"
+            aria-label={
+              isRagAgentSelected
+                ? "Attachments are unavailable for RAG Agent"
+                : "Attach file"
+            }
+            disabled={isRagAgentSelected}
           >
             <Paperclip size={18} />
           </button>
@@ -944,10 +969,18 @@ export function ChatPage() {
             </button>
           )}
         </form>
-        <small>Enter to send · Shift+Enter for a new line · Up to 5 files / 25 MB</small>
+        <small>
+          {isRagAgentSelected
+            ? "Enter to send · Shift+Enter for a new line · RAG Agent is text-only"
+            : "Enter to send · Shift+Enter for a new line · Up to 5 files / 25 MB"}
+        </small>
       </footer>
     </div>
   );
+}
+
+export function usesRagChat(graphId: string | null): boolean {
+  return graphId === RAG_CHAT_GRAPH_ID;
 }
 
 function MockExecutionTrace({

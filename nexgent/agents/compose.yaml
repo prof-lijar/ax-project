@@ -88,7 +88,6 @@ services:
 
   weekly-report-jobs-db:
     image: postgres:16
-    profiles: ["bulk"]
     environment:
       POSTGRES_DB: ${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
       POSTGRES_USER: ${WEEKLY_REPORT_JOB_USER:-ax_bulk}
@@ -109,7 +108,6 @@ services:
       context: .
       dockerfile: apps/workers/Dockerfile
     image: ax-weekly-report-worker-dev:local
-    profiles: ["bulk"]
     environment:
       WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
       WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
@@ -130,6 +128,38 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
+
+  weekly-report-bulk-api:
+    build:
+      context: .
+      dockerfile: apps/weekly_report_bulk_api/Dockerfile
+    image: ax-weekly-report-bulk-api-dev:local
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: ${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}
+      WEEKLY_REPORT_WORKER_CONCURRENCY: ${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}
+      WEEKLY_REPORT_STATUS_POLL_SECONDS: ${WEEKLY_REPORT_STATUS_POLL_SECONDS:-2}
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    expose:
+      - "8090"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      weekly-report-jobs-db:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5s
 
 volumes:
   weekly-report-job-data:

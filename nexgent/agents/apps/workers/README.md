@@ -6,6 +6,9 @@ paged producer, bounded asynchronous consumers, and a recoverable finalizer.
 Workers can be replicated on hosts that share the job database and private
 artifact volume.
 
-The worker is operator-only. It does not expose an HTTP port, schedule jobs, or
-send Slack messages. See the weekly-report implementation specification for
-submission, status, cancellation, export, cleanup, and capacity commands.
+The worker does not expose an HTTP port, schedule jobs, or send Slack messages.
+`apps/weekly_report_bulk_api` is the separate private operator control plane for
+submission, content-free status, cancellation, and verified export download.
+The default development UI reaches that API through the Vite proxy. See the
+weekly-report implementation specification for UI and CLI operation, cleanup,
+capacity evaluation, and remaining benchmark gates.
