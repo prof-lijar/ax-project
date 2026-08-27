@@ -37,6 +37,13 @@ async def test_private_source_api_returns_versioned_metrics() -> None:
     assert payload["schema_version"] == "1"
     assert payload["week_start"] == date(2026, 8, 3).isoformat()
     assert payload["items"][0]["current"]["danger_days"] >= 0
+    assert payload["items"][0]["current"]["movement_count_total"] >= 0
+    assert payload["items"][0]["current"]["remote_control_count_total"] >= 0
+    assert payload["items"][0]["current"]["environment_observed_days"] == 7
+    assert payload["items"][0]["current"]["environment_out_of_range_days"] == 0
+    assert payload["items"][0]["current"]["device_good_count"] == 7
+    assert payload["items"][0]["current"]["device_power_count"] == 0
+    assert payload["items"][0]["current"]["device_position_count"] == 0
 
 
 @pytest.mark.asyncio

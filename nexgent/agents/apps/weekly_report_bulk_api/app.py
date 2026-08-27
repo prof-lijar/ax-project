@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from ax_contracts import (
@@ -17,7 +19,7 @@ from ax_persistence import (
     BulkStoreError,
 )
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
 from .dependencies import build_default_service
 from .service import WeeklyReportBulkControlService
@@ -119,12 +121,12 @@ def create_app(*, service: WeeklyReportBulkControlService | None = None) -> Fast
             raise _store_error(exc) from exc
 
     @app.get("/v1/weekly-report/bulk/jobs/{job_id}/export")
-    async def download(job_id: UUID) -> FileResponse:
+    async def download(job_id: UUID) -> Response:
         try:
             path = await required_service().export_path(job_id)
         except (ArtifactStoreError, BulkStoreError) as exc:
             raise _store_error(exc) from exc
-        return FileResponse(
+        return AsyncChunkedFileResponse(
             path,
             media_type="application/zip",
             filename=f"weekly-reports-{job_id}.zip",
@@ -140,3 +142,46 @@ def _store_error(error: Exception) -> HTTPException:
 
 
 app = create_app()
+
+
+class AsyncChunkedFileResponse(Response):
+    """Send a verified local export in bounded chunks without full buffering."""
+
+    def __init__(self, path: Path, *, media_type: str, filename: str) -> None:
+        content_length = path.stat().st_size
+        super().__init__(
+            content=b"",
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(content_length),
+            },
+        )
+        self.path = path
+
+    async def __call__(
+        self,
+        scope: dict[str, Any],
+        receive: Any,
+        send: Any,
+    ) -> None:
+        del scope, receive
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self.raw_headers,
+            }
+        )
+        with self.path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": True,
+                    }
+                )
+        await send(
+            {"type": "http.response.body", "body": b"", "more_body": False}
+        )

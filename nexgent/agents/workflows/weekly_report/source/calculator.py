@@ -36,10 +36,14 @@ def calculate_metrics(
     output = []
     for ward_id in sorted(ward_names):
         previous = _snapshot(
-            by_period[(ward_id, 0)], risk.get((ward_id, 0)), dispatch.get((ward_id, 0))
+            by_period[(ward_id, 0)],
+            risk.get((ward_id, 0)),
+            dispatch.get((ward_id, 0)),
         )
         current = _snapshot(
-            by_period[(ward_id, 1)], risk.get((ward_id, 1)), dispatch.get((ward_id, 1))
+            by_period[(ward_id, 1)],
+            risk.get((ward_id, 1)),
+            dispatch.get((ward_id, 1)),
         )
         output.append(
             WardWeeklyMetrics(
@@ -62,6 +66,8 @@ def _snapshot(
 ) -> WardWeeklyMetricSnapshot:
     risk = risk or {}
     dispatch = dispatch or {}
+    environment = _environment_day_counts(rows)
+    reception = _device_reception_counts(rows)
     return WardWeeklyMetricSnapshot(
         covered_days=len({row["date"] for row in rows}),
         daily_summary_count=len(rows),
@@ -74,6 +80,7 @@ def _snapshot(
         humidity_min=_minimum(rows, "min_humidity"),
         humidity_max=_maximum(rows, "max_humidity"),
         humidity_count=_sum(rows, "humidity_count"),
+        **environment,
         light_avg=_weighted_average(rows, "light", "light_count"),
         light_min=_minimum(rows, "min_light"),
         light_max=_maximum(rows, "max_light"),
@@ -81,6 +88,9 @@ def _snapshot(
         light_on_time_minutes_avg=_average(rows, "light_on_time_minutes"),
         movement_count_avg=_average(rows, "movement_count"),
         remote_control_count_avg=_average(rows, "remote_control_count"),
+        movement_count_total=_total(rows, "movement_count"),
+        remote_control_count_total=_total(rows, "remote_control_count"),
+        **reception,
         wake_up_time_avg=_average_time(rows, "wake_up_time"),
         sleep_time_avg=_average_time(rows, "sleep_time"),
         night_awake_count_avg=_average(rows, "night_awake_count"),
@@ -150,6 +160,11 @@ def _average(rows: list[dict[str, Any]], field: str) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def _total(rows: list[dict[str, Any]], field: str) -> float | None:
+    values = [float(row[field]) for row in rows if row[field] is not None]
+    return sum(values) if values else None
+
+
 def _average_time(rows: list[dict[str, Any]], field: str) -> time | None:
     values = [row[field] for row in rows if row[field] is not None]
     if not values:
@@ -173,6 +188,121 @@ def _minimum(rows: list[dict[str, Any]], field: str) -> float | None:
 def _maximum(rows: list[dict[str, Any]], field: str) -> float | None:
     values = [float(row[field]) for row in rows if row[field] is not None]
     return max(values) if values else None
+
+
+def _environment_day_counts(rows: list[dict[str, Any]]) -> dict[str, int | None]:
+    from workflows.weekly_report.domain.environment_policy import (
+        HUMIDITY_RANGE,
+        RISK_HIGH_HUMIDITY_MAX,
+        RISK_HIGH_TEMPERATURE_MAX,
+        RISK_LOW_HUMIDITY_MAX,
+        RISK_LOW_TEMPERATURE_MAX,
+        TEMPERATURE_RANGE,
+    )
+
+    temperature_low, temperature_high = TEMPERATURE_RANGE
+    humidity_low, humidity_high = HUMIDITY_RANGE
+    by_date: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_date[row["date"]].append(row)
+
+    counts = {
+        "environment_observed_days": 0,
+        "temperature_out_of_range_days": 0,
+        "humidity_out_of_range_days": 0,
+        "environment_out_of_range_days": 0,
+        "low_temperature_days": 0,
+        "high_temperature_days": 0,
+        "low_humidity_days": 0,
+        "high_humidity_days": 0,
+    }
+    for day_rows in by_date.values():
+        extrema = {
+            "temperature_min": _minimum(day_rows, "min_temperature"),
+            "temperature_max": _maximum(day_rows, "max_temperature"),
+            "humidity_min": _minimum(day_rows, "min_humidity"),
+            "humidity_max": _maximum(day_rows, "max_humidity"),
+        }
+        if any(value is None for value in extrema.values()):
+            continue
+
+        counts["environment_observed_days"] += 1
+        low_temperature = extrema["temperature_min"] <= temperature_low
+        high_temperature = extrema["temperature_max"] >= temperature_high
+        low_humidity = extrema["humidity_min"] <= humidity_low
+        high_humidity = extrema["humidity_max"] >= humidity_high
+        temperature_departure = low_temperature or high_temperature
+        humidity_departure = low_humidity or high_humidity
+        counts["temperature_out_of_range_days"] += int(temperature_departure)
+        counts["humidity_out_of_range_days"] += int(humidity_departure)
+        counts["environment_out_of_range_days"] += int(
+            temperature_departure or humidity_departure
+        )
+        counts["low_temperature_days"] += int(
+            extrema["temperature_max"] < RISK_LOW_TEMPERATURE_MAX
+        )
+        counts["high_temperature_days"] += int(
+            extrema["temperature_max"] > RISK_HIGH_TEMPERATURE_MAX
+        )
+        counts["low_humidity_days"] += int(
+            extrema["humidity_max"] < RISK_LOW_HUMIDITY_MAX
+        )
+        counts["high_humidity_days"] += int(
+            extrema["humidity_max"] > RISK_HIGH_HUMIDITY_MAX
+        )
+
+    if counts["environment_observed_days"] == 0:
+        return {field: None for field in counts}
+    return counts
+
+
+def _device_reception_counts(rows: list[dict[str, Any]]) -> dict[str, int | None]:
+    if not rows:
+        return {
+            "device_good_count": None,
+            "device_power_count": None,
+            "device_position_count": None,
+        }
+
+    good_count = 0
+    power_count = 0
+    position_count = 0
+    fields = (
+        "temperature_count",
+        "humidity_count",
+        "light_count",
+        "remote_control_count",
+        "movement_count",
+    )
+    for row in rows:
+        values = tuple(row[field] for field in fields)
+        is_good = all(value is not None and float(value) != 0 for value in values)
+        is_power = (
+            not is_good
+            and values[0] is None
+            and values[1] is None
+            and values[2] is None
+            and _is_zero(values[3])
+            and _is_zero(values[4])
+        )
+        good_count += int(is_good)
+        power_count += int(is_power)
+        position_count += int(
+            not is_good
+            and not is_power
+            and sum(value is not None and 0 <= float(value) <= 10 for value in values)
+            >= 2
+        )
+
+    return {
+        "device_good_count": good_count,
+        "device_power_count": power_count,
+        "device_position_count": position_count,
+    }
+
+
+def _is_zero(value: Any) -> bool:
+    return value is not None and float(value) == 0
 
 
 def _difference(current: float | None, previous: float | None) -> float | None:

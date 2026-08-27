@@ -86,20 +86,22 @@ def evaluate_weekly_report_batch(
         _criterion(
             "numeric_grounding",
             all(_has_grounded_kpi_row(report) for report in result.reports)
-            and all(not _narrative_has_digits(report) for report in result.reports),
-            "risk-event rows match calculated metrics and narrative has no digits",
-            "render numbers only from validated metrics and reject numeric model prose",
+            and all(
+                _narrative_numbers_are_grounded(report) for report in result.reports
+            ),
+            "risk-event rows and significant narrative counts match calculated metrics",
+            "render only allowlisted significant values from validated metrics",
         ),
         _criterion(
             "narrative_safety",
             all(
-                not _narrative_has_digits(report)
+                _narrative_numbers_are_grounded(report)
                 and not any(
                     phrase in _narrative_text(report) for phrase in FORBIDDEN_PHRASES
                 )
                 for report in result.reports
             ),
-            "model-authored narrative is digit-free and avoids categorical language",
+            "narrative uses only grounded significant counts and avoids categorical language",
             "regenerate unsafe narrative or use the deterministic fallback",
         ),
         _criterion(
@@ -140,7 +142,7 @@ def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
     expected = (
         f"  - 위험 감지: {metrics.current.risk_detected_count}회\n"
         f"  - 정상 해제: {metrics.current.risk_resolved_count}회\n"
-        f"  - 지난주: {metrics.previous.risk_detected_count}회 / "
+        f"  - 2주 전: {metrics.previous.risk_detected_count}회 / "
         f"{metrics.previous.risk_resolved_count}회"
     )
     return expected in report.markdown
@@ -149,25 +151,28 @@ def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
 def _has_required_headings(report: WardWeeklyReport) -> bool:
     if not all(heading in report.markdown for heading in REQUIRED_HEADINGS):
         return False
-    current = report.metrics.current
-    include_sleep = any(
-        value is not None
-        for value in (
-            current.sleep_time_avg,
-            current.wake_up_time_avg,
-            current.night_awake_count_avg,
-        )
-    )
-    section_names = ["수면 패턴"] if include_sleep else []
-    section_names.extend(["활동량", "실내 환경", "기기 데이터 수신", "위험 관리"])
+    section_names = ["활동량", "실내 환경", "기기 데이터 수신", "위험 관리"]
     return all(
         f"## {number}. {name}" in report.markdown
         for number, name in enumerate(section_names, start=1)
     )
 
 
-def _narrative_has_digits(report: WardWeeklyReport) -> bool:
-    return re.search(r"\d", _narrative_text(report)) is not None
+def _narrative_numbers_are_grounded(report: WardWeeklyReport) -> bool:
+    narrative = _narrative_text(report).replace("2주 전", "")
+    numbers = re.findall(r"\d+(?:\.\d+)?", narrative)
+    if not numbers:
+        return True
+
+    current = report.metrics.current
+    allowed = set(re.findall(r"\d+(?:\.\d+)?", report.display_name))
+    if current.covered_days < 4:
+        allowed.add(str(current.covered_days))
+    if (current.device_power_count or 0) >= 2:
+        allowed.add(str(current.device_power_count))
+    if (current.device_position_count or 0) >= 2:
+        allowed.add(str(current.device_position_count))
+    return all(number in allowed for number in numbers)
 
 
 def _narrative_text(report: WardWeeklyReport) -> str:

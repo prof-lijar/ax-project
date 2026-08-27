@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 from ax_contracts import (
     ArtifactRef,
+    NarrativeGenerationMetadata,
     WardWeeklyMetrics,
     WardWeeklyReport,
     WeeklyReportBulkFailure,
@@ -23,7 +24,6 @@ from ax_contracts import (
     WeeklyReportSourceResponse,
 )
 from ax_persistence import (
-    ArtifactStoreError,
     BulkItemRecord,
     BulkJobStore,
     LocalBulkArtifactStore,
@@ -31,6 +31,7 @@ from ax_persistence import (
 from pydantic import ValidationError
 
 from workflows.weekly_report.agents.reporter import generate_narrative
+from workflows.weekly_report.agents.reporter.fallback import build_fallback
 from workflows.weekly_report.agents.reporter.prompt import PROMPT_VERSION
 from workflows.weekly_report.domain import build_fact_package, render_report
 from workflows.weekly_report.tools.source_repository import WeeklyReportSourceRepository
@@ -59,10 +60,13 @@ class WeeklyReportBulkRunner:
         claim_size: int = 1,
         poll_seconds: float = 0.1,
         retention_days: int = 7,
+        item_timeout_seconds: float = 60.0,
         owner_prefix: str | None = None,
     ) -> None:
         if lease_seconds < 30 or not 1 <= max_attempts <= 3 or claim_size < 1:
             raise ValueError("bulk runner limits are invalid")
+        if item_timeout_seconds <= 0:
+            raise ValueError("bulk item timeout must be positive")
         self.store = store
         self.artifacts = artifacts
         self.source = source
@@ -72,6 +76,7 @@ class WeeklyReportBulkRunner:
         self.claim_size = claim_size
         self.poll_seconds = poll_seconds
         self.retention_days = retention_days
+        self.item_timeout_seconds = item_timeout_seconds
         base_owner = owner_prefix or socket.gethostname()
         self.owner_prefix = f"{base_owner}:{uuid4().hex[:8]}"
 
@@ -109,31 +114,30 @@ class WeeklyReportBulkRunner:
                 for consumer in consumers:
                     consumer.cancel()
                 await asyncio.gather(*consumers, return_exceptions=True)
-                if isinstance(producer_result, (ValidationError, ValueError)):
-                    await self.store.set_job_status(job_id, "failed")
-                raise WeeklyReportBulkExecutionError(
-                    "weekly report bulk producer failed"
-                ) from producer_result
-            consumer_results = await asyncio.gather(
-                *consumers, return_exceptions=True
-            )
-            job = await self.store.get_job(job_id)
-            if job.cancel_requested:
-                await self.store.cancel_pending_items(job_id)
-            failures = [
-                result
-                for result in consumer_results
-                if isinstance(result, BaseException)
-                and not (
-                    job.cancel_requested
-                    and isinstance(result, asyncio.CancelledError)
+                await self._fail_job(job_id, producer_result, "producer")
+            else:
+                consumer_results = await asyncio.gather(
+                    *consumers, return_exceptions=True
                 )
-            ]
-            if failures:
-                raise WeeklyReportBulkExecutionError(
-                    "weekly report bulk consumer failed"
-                ) from failures[0]
-            await self._finalize(job_id)
+                job = await self.store.get_job(job_id)
+                if job.cancel_requested:
+                    await self.store.cancel_pending_items(job_id)
+                failures = [
+                    result
+                    for result in consumer_results
+                    if isinstance(result, BaseException)
+                    and not (
+                        job.cancel_requested
+                        and isinstance(result, asyncio.CancelledError)
+                    )
+                ]
+                if failures:
+                    await self._fail_job(job_id, failures[0], "consumer")
+                else:
+                    try:
+                        await self._finalize(job_id)
+                    except Exception as exc:  # noqa: BLE001 - terminal job boundary
+                        await self._fail_job(job_id, exc, "finalizer")
         finally:
             cancellation.cancel()
             await asyncio.gather(cancellation, return_exceptions=True)
@@ -293,9 +297,21 @@ class WeeklyReportBulkRunner:
                     item.payload_checksum,
                 )
             )
-            narrative, generation_mode, generation = await generate_narrative(
-                self.model, build_fact_package(metrics)
-            )
+            facts = build_fact_package(metrics)
+            try:
+                narrative, generation_mode, generation = await asyncio.wait_for(
+                    generate_narrative(self.model, facts),
+                    timeout=self.item_timeout_seconds,
+                )
+            except TimeoutError:
+                narrative = build_fallback(facts)
+                generation_mode = "template_fallback"
+                generation = NarrativeGenerationMetadata(
+                    prompt_version=PROMPT_VERSION,
+                    model=_model_name(self.model),
+                    validation_status="fallback",
+                    fallback_reason="bulk_item_timeout",
+                )
             report = render_report(metrics, narrative, generation_mode, generation)
             artifact = await asyncio.to_thread(
                 self.artifacts.write_json,
@@ -311,13 +327,7 @@ class WeeklyReportBulkRunner:
                 output_checksum=artifact.sha256,
                 generation_mode=generation_mode,
             )
-        except (
-            ArtifactStoreError,
-            OSError,
-            TypeError,
-            ValidationError,
-            ValueError,
-        ) as exc:
+        except Exception as exc:  # noqa: BLE001 - isolate one untrusted item
             _LOG.warning(
                 "bulk item failed",
                 extra={"job_id": str(item.job_id), "error_code": _error_code(exc)},
@@ -329,6 +339,28 @@ class WeeklyReportBulkRunner:
                 _error_code(exc),
                 self.max_attempts,
             )
+
+    async def _fail_job(
+        self,
+        job_id: UUID,
+        error: BaseException,
+        stage: str,
+    ) -> None:
+        _LOG.error(
+            "weekly report bulk stage failed",
+            extra={
+                "job_id": str(job_id),
+                "stage": stage,
+                "error_code": _error_code(error),
+            },
+        )
+        try:
+            await self.store.cancel_pending_items(job_id)
+            await self.store.set_job_status(job_id, "failed")
+        except Exception as exc:
+            raise WeeklyReportBulkExecutionError(
+                "weekly report bulk failure could not be persisted"
+            ) from exc
 
     async def _finalize(self, job_id: UUID) -> None:
         owner = f"{self.owner_prefix}:finalizer"
@@ -473,7 +505,7 @@ async def bulk_job_status(
     )
 
 
-def _error_code(exc: Exception) -> str:
+def _error_code(exc: BaseException) -> str:
     if isinstance(exc, ValidationError):
         return "invalid_contract"
     if isinstance(exc, (OSError, ValueError, json.JSONDecodeError)):

@@ -114,4 +114,7 @@ async def test_bulk_api_downloads_only_verified_terminal_export(tmp_path) -> Non
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
+    assert response.headers["content-length"] == str(len(response.content))
+    assert response.headers["content-length"] != "0"
+    assert "attachment;" in response.headers["content-disposition"]
     assert response.content.startswith(b"PK")

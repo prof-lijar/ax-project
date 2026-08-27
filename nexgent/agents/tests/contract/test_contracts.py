@@ -138,6 +138,35 @@ def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:
             blockers_resolved=0,
         )
 
+    with pytest.raises(ValidationError):
+        WardWeeklyMetricSnapshot(environment_out_of_range_days=8)
+
+    with pytest.raises(ValidationError, match="provided together"):
+        WardWeeklyMetricSnapshot(environment_observed_days=7)
+
+    with pytest.raises(ValidationError, match="component days"):
+        WardWeeklyMetricSnapshot(
+            environment_observed_days=7,
+            temperature_out_of_range_days=1,
+            humidity_out_of_range_days=1,
+            environment_out_of_range_days=3,
+            low_temperature_days=0,
+            high_temperature_days=0,
+            low_humidity_days=0,
+            high_humidity_days=0,
+        )
+
+    with pytest.raises(ValidationError, match="provided together"):
+        WardWeeklyMetricSnapshot(daily_summary_count=7, device_good_count=7)
+
+    with pytest.raises(ValidationError, match="source rows"):
+        WardWeeklyMetricSnapshot(
+            daily_summary_count=1,
+            device_good_count=2,
+            device_power_count=0,
+            device_position_count=0,
+        )
+
 
 def test_ward_weekly_metrics_reject_inconsistent_delta() -> None:
     with pytest.raises(ValidationError, match="delta must match"):
@@ -150,3 +179,11 @@ def test_ward_weekly_metrics_reject_inconsistent_delta() -> None:
             previous=WardWeeklyMetricSnapshot(danger_days=1),
             delta=WardWeeklyMetricDelta(danger_days=0),
         )
+
+
+def test_ward_weekly_snapshot_rejects_negative_activity_totals() -> None:
+    with pytest.raises(ValidationError):
+        WardWeeklyMetricSnapshot(movement_count_total=-1)
+
+    with pytest.raises(ValidationError):
+        WardWeeklyMetricSnapshot(remote_control_count_total=-1)

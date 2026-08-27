@@ -63,12 +63,12 @@ async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch)
     expected = (
         f"  - 위험 감지: {metrics['current']['risk_detected_count']}회\n"
         f"  - 정상 해제: {metrics['current']['risk_resolved_count']}회\n"
-        f"  - 지난주: {metrics['previous']['risk_detected_count']}회 / "
+        f"  - 2주 전: {metrics['previous']['risk_detected_count']}회 / "
         f"{metrics['previous']['risk_resolved_count']}회"
     )
     tampered["reports"][0]["markdown"] = tampered["reports"][0]["markdown"].replace(
         expected,
-        "  - 위험 감지: 7회\n  - 정상 해제: 7회\n  - 지난주: 7회 / 7회",
+        "  - 위험 감지: 7회\n  - 정상 해제: 7회\n  - 2주 전: 7회 / 7회",
         1,
     )
     evaluations = evaluate_weekly_report_batch(
@@ -79,9 +79,11 @@ async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch)
     assert not weekly_report_release_ready(evaluations)
 
 
+@pytest.mark.parametrize("night_awake_count", [None, 0.0])
 @pytest.mark.asyncio
 async def test_structure_evaluation_accepts_omitted_empty_sleep_section(
     monkeypatch: pytest.MonkeyPatch,
+    night_awake_count: float | None,
 ) -> None:
     class EvaluatedModel:
         async def complete(self, *args: object, **kwargs: object) -> str:
@@ -101,14 +103,23 @@ async def test_structure_evaluation_accepts_omitted_empty_sleep_section(
                 update={
                     "sleep_time_avg": None,
                     "wake_up_time_avg": None,
-                    "night_awake_count_avg": None,
+                    "night_awake_count_avg": night_awake_count,
+                }
+            ),
+            "previous": original.metrics.previous.model_copy(
+                update={
+                    "sleep_time_avg": None,
+                    "wake_up_time_avg": None,
+                    "night_awake_count_avg": night_awake_count,
                 }
             ),
             "delta": original.metrics.delta.model_copy(
                 update={
                     "sleep_time_minutes": None,
                     "wake_up_time_minutes": None,
-                    "night_awake_count_avg": None,
+                    "night_awake_count_avg": (
+                        None if night_awake_count is None else 0.0
+                    ),
                 }
             ),
         }

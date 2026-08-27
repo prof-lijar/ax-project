@@ -72,8 +72,10 @@ model availability does not affect deterministic runtime checks.
 The `workflows/weekly_report` graph is the first business-specific workflow.
 It loads bounded current/prior metadata from the private weekly-report FastAPI
 source, fans out per ward, converts validated metrics to qualitative facts,
-limits the model to grounded digit-free Korean narrative, and merges Markdown
-reports deterministically. Model or narrative validation failures use a
+limits the model to a grounded Korean outline covering activity, indoor
+environment, and device reception with only allowlisted significant numeric
+tokens, and merges Markdown reports deterministically.
+Model or narrative validation failures use a
 disclosed warm template fallback. Scheduling, persistence, delivery, and
 risk-score interpretation remain outside the generation graph. A separate
 workflow-local Slack delivery module accepts only completed validated batches,

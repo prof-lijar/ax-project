@@ -3,25 +3,31 @@ from collections.abc import Sequence
 from typing import Any
 
 import pytest
-from ax_contracts import WeeklyReportSourceResponse
+from ax_contracts import (
+    WardWeeklyMetricDelta,
+    WardWeeklyMetricSnapshot,
+    WeeklyReportSourceResponse,
+)
 from ax_integrations import ChatMessage, ModelRequestError
 from pydantic import ValidationError
 
 from workflows.weekly_report import graph
+from workflows.weekly_report.agents.reporter.fallback import build_fallback
+from workflows.weekly_report.domain.models import FactPackage
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
 )
 
 ANALYSIS = (
-    "이번 주 생활 흐름은 전반적으로 차분하게 이어졌어요. "
-    "확인된 자료에서는 지난주와 다른 부분도 있었지만, 측정된 변화만으로 이유를 단정하지 않았어요. "
+    "지난 한 주 생활 흐름은 전반적으로 차분하게 이어졌어요. "
+    "확인된 자료에서는 2주 전과 다른 부분도 있었지만, 측정된 변화만으로 이유를 단정하지 않았어요. "
     "활동과 휴식 흐름, 실내 온도와 습도 상태는 평소 모습과 함께 살펴보면 더 자연스럽게 이해할 수 있어요. "
     "자료가 충분한 부분은 나란히 비교했고 부족한 부분은 해석을 넓히지 않았어요. "
     "크게 서두르기보다 최근 안부와 생활 리듬을 편안하게 확인해 보시면 다음 흐름을 살피는 데 도움이 될 수 있어요."
 )
 VALID_NARRATIVE = json.dumps(
     {
-        "headline": "이번 주 생활 흐름을 차분히 살펴봤어요.",
+        "headline": "지난 한 주 생활 흐름을 차분히 살펴봤어요.",
         "analysis_text": ANALYSIS,
         "observations": ["생활 흐름에 일부 변화가 보였어요."],
         "suggestions": ["최근 안부를 편안하게 확인해 보셔도 좋아요."],
@@ -47,10 +53,12 @@ class FakeNarrativeModel:
         temperature: float = 0.7,
     ) -> str:
         assert messages[0]["role"] == "system"
-        assert "숫자를 쓰지 마세요" in messages[0]["content"]
+        assert "의미 있는 값만 그대로 사용할 수 있습니다" in messages[0]["content"]
         assert max_tokens == 900
         assert temperature == 0.2
-        return VALID_NARRATIVE
+        payload = json.loads(messages[-1]["content"].split(":\n", 1)[1])
+        narrative = build_fallback(FactPackage.model_validate(payload))
+        return json.dumps(narrative.model_dump(mode="json"), ensure_ascii=False)
 
 
 class FixedResponseModel:
@@ -83,8 +91,14 @@ async def test_graph_returns_ordered_grounded_warm_reports(
         report["markdown"].startswith("# 주간 생활 리포트")
         for report in result["reports"]
     )
-    assert all("## 5. 위험 관리" in report["markdown"] for report in result["reports"])
-    assert all(report["narrative"]["analysis_text"] == ANALYSIS for report in result["reports"])
+    assert all("## 4. 위험 관리" in report["markdown"] for report in result["reports"])
+    assert all("수면" not in report["markdown"] for report in result["reports"])
+    assert all("출동" not in report["markdown"] for report in result["reports"])
+    assert all(report["narrative"]["analysis_text"] for report in result["reports"])
+    assert all(
+        "생활 요약 안내드립니다" not in report["narrative"]["headline"]
+        for report in result["reports"]
+    )
 
 
 @pytest.mark.asyncio
@@ -121,6 +135,101 @@ async def test_failed_model_retries_then_uses_fallback(
     )
     assert all("자동 대체됨" in report["markdown"] for report in result["reports"])
     assert len(result["warnings"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_zero_only_sleep_data_still_reaches_terminal_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ZeroOnlySleepRepository:
+        async def load(self, request):
+            source = await MockWeeklyReportSourceRepository().load(request)
+            metrics = source.items[0]
+            metrics = metrics.model_copy(
+                update={
+                    "current": metrics.current.model_copy(
+                        update={
+                            "sleep_time_avg": None,
+                            "wake_up_time_avg": None,
+                            "night_awake_count_avg": 0.0,
+                        }
+                    ),
+                    "previous": metrics.previous.model_copy(
+                        update={
+                            "sleep_time_avg": None,
+                            "wake_up_time_avg": None,
+                            "night_awake_count_avg": 0.0,
+                        }
+                    ),
+                    "delta": metrics.delta.model_copy(
+                        update={
+                            "sleep_time_minutes": None,
+                            "wake_up_time_minutes": None,
+                            "night_awake_count_avg": 0.0,
+                        }
+                    ),
+                }
+            )
+            return source.model_copy(update={"items": [metrics], "next_cursor": None})
+
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_weekly_report_source_repository",
+        lambda: ZeroOnlySleepRepository(),
+    )
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_default_chat_model",
+        lambda: FixedResponseModel(""),
+    )
+
+    result = await graph.ainvoke({"week_start": "2026-08-03", "ward_ids": [101]})
+
+    assert result["status"] == "completed"
+    assert len(result["reports"]) == 1
+    assert result["reports"][0]["generation_mode"] == "template_fallback"
+    assert "수면 패턴" not in result["reports"][0]["markdown"]
+
+
+@pytest.mark.asyncio
+async def test_no_evaluatable_report_blocks_still_return_terminal_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EmptyReportTopicRepository:
+        async def load(self, request):
+            source = await MockWeeklyReportSourceRepository().load(request)
+            metrics = source.items[0].model_copy(
+                update={
+                    "current": WardWeeklyMetricSnapshot(),
+                    "previous": WardWeeklyMetricSnapshot(),
+                    "delta": WardWeeklyMetricDelta(danger_days=0),
+                }
+            )
+            return source.model_copy(update={"items": [metrics], "next_cursor": None})
+
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_weekly_report_source_repository",
+        lambda: EmptyReportTopicRepository(),
+    )
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_default_chat_model",
+        lambda: FixedResponseModel(""),
+    )
+
+    result = await graph.ainvoke({"week_start": "2026-08-03", "ward_ids": [101]})
+
+    assert result["status"] == "completed"
+    assert len(result["reports"]) == 1
+    report = result["reports"][0]
+    assert report["generation_mode"] == "template_fallback"
+    assert report["narrative"]["analysis_text"] == (
+        "구체적으로 움직임과 리모컨 사용량은 2주 전과 비교할 자료가 부족합니다. "
+        "이와 함께 실내 온도와 습도 상태를 판단할 자료가 부족합니다. "
+        "또한 기기 데이터 수신이 확인되지 않아 전원 연결 상태를 확인할 필요가 있습니다."
+    )
+    assert len(report["narrative"]["observations"]) == 3
+    assert "## 1. 기기 전원이 연결되어 있는지 확인해 주세요" in report[
+        "markdown"
+    ]
+    assert "지난 한 주에는 안부를 확인하며" not in report["markdown"]
 
 
 @pytest.mark.asyncio

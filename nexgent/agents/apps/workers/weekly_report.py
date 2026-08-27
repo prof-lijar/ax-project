@@ -33,6 +33,7 @@ class WorkerSettings:
     artifact_min_free_bytes: int
     concurrency: int
     poll_seconds: float
+    item_timeout_seconds: float
 
     @classmethod
     def from_env(cls) -> WorkerSettings:
@@ -47,6 +48,13 @@ class WorkerSettings:
             raise ValueError(
                 "WEEKLY_REPORT_WORKER_CONCURRENCY must be between 1 and 512"
             )
+        item_timeout_seconds = float(
+            os.environ.get("WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS", "60")
+        )
+        if not 1 <= item_timeout_seconds <= 600:
+            raise ValueError(
+                "WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS must be between 1 and 600"
+            )
         return cls(
             database_dsn=dsn,
             artifact_root=root,
@@ -59,6 +67,7 @@ class WorkerSettings:
             poll_seconds=float(
                 os.environ.get("WEEKLY_REPORT_WORKER_POLL_SECONDS", "1")
             ),
+            item_timeout_seconds=item_timeout_seconds,
         )
 
 
@@ -143,6 +152,7 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             get_weekly_report_source_repository(),
             model,
             poll_seconds=settings.poll_seconds,
+            item_timeout_seconds=settings.item_timeout_seconds,
         )
         if args.command == "run":
             status = await runner.run(
@@ -155,7 +165,14 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             if job is None:
                 await asyncio.sleep(settings.poll_seconds)
                 continue
-            await runner.run(job.job_id, concurrency=settings.concurrency)
+            try:
+                await runner.run(job.job_id, concurrency=settings.concurrency)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "weekly report bulk job loop recovered",
+                    extra={"job_id": str(job.job_id)},
+                )
+                await asyncio.sleep(settings.poll_seconds)
     finally:
         await store.close()
 

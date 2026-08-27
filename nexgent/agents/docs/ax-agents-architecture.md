@@ -1,6 +1,6 @@
 # AX Agents Architecture
 
-Date: 2026-08-25
+Date: 2026-08-26
 
 Status: **Authoritative implementation specification**
 
@@ -171,6 +171,18 @@ Cancel, stop-and-refresh, page refresh, navigation, and unmount. Browser
 keepalive delivery is best-effort, while the explicit Cancel response remains
 the confirmed control path.
 
+Weekly Reporter bulk recovery update on 2026-08-26: production-like history
+showed normal forty-report jobs completing in roughly 27–47 seconds, but one
+oldest active job remained non-terminal for about 31 minutes and queued later
+jobs behind it. The runner now converts producer, consumer, and finalizer
+exceptions into persisted terminal job failures, cancels unfinished items,
+and lets the durable worker continue polling. Each narrative generation has a
+configurable 60-second default deadline and degrades to the deterministic
+grounded fallback on timeout. Verified ZIP responses are sent in bounded
+chunks with the verified artifact byte size advertised as `Content-Length`.
+Regression tests cover producer failure, an indefinitely slow model item, and
+the non-zero ZIP response length so these failure modes cannot silently return.
+
 Architecture update on 2026-08-05: workflow modules moved from `graphs/` to
 `workflows/`; `apps/workers`, `packages/persistence`, and
 `packages/observability` were added as explicit scaling boundaries; shared
@@ -250,7 +262,9 @@ business-specific graph. A manually triggered coordinator loads a stable
 three-user mock work-activity window and uses bounded LangGraph fan-out into an
 isolated per-user calculation, Korean narrative, and Markdown composition
 subgraph. Python owns every numeric calculation; the OpenAI-compatible model
-may produce only validated, digit-free prose. Model configuration, request,
+may produce only validated, grounded prose. The initial narrative contract was
+digit-free; the later structured-summary policy allowlists only meaningful
+verified values. Model configuration, request,
 empty-output, and narrative-validation failures yield disclosed deterministic
 fallback reports without failing the batch. Strict weekly-report contracts and
 deterministic evaluator gates cover ordering, Korean structure,
@@ -366,40 +380,155 @@ events as validated progress while continuing to accept the terminal report
 only from the top-level `values` event. This prevents completed batches from
 displaying a stale zero-of-requested report count without weakening result parsing.
 
-Weekly Reporter environment-policy update on 2026-08-20: a product-approved,
-deterministic presentation rule now classifies weekly indoor extrema using the
-reporting week's starting month. Temperature ranges are 18–20℃ for
-January–March and November–December, 20–22℃ for April–May and October, and
-26–28℃ for June–September; humidity is 40–60% year-round. Python converts
+Weekly Reporter environment-policy update on 2026-08-26: a product-approved,
+deterministic presentation rule classifies weekly indoor extrema using strict
+year-round recommended ranges: `15℃ < temperature < 31℃` and
+`30% < humidity < 70%`. Exact boundary values are departures. Python converts
 below/above-bound measurements into cold/hot or dry/humid qualitative facts.
-The reporter prompt requires those facts in `analysis_text`, and validation
-enforces the required topic without exposing numeric values to the model.
+The reporter receives only qualitative evidence, and validation enforces every
+material environment issue without exposing numeric thresholds to the model.
 
-Weekly Reporter environment-feedback correction on 2026-08-24: environment
-status now compares only the current week's maximum temperature and maximum
-humidity with the approved ranges. A maximum inside the recommended monthly
-temperature range or 40–60% humidity is good; an out-of-range maximum within
-15–30℃ or 30–70% is caution; values beyond those outer bounds are risk. The
-more severe available result becomes the rendered status, with specific calm
-feedback for the contributing measurement. The snapshot does not expose daily
-range-departure counts, so neither deterministic nor model-authored text may
-claim repetition or multi-day duration.
+Weekly Reporter grounded-summary correction on 2026-08-25: `한주 총평` now
+scales from one to six sentences according to the available qualitative facts,
+with no minimum character count. Available observations take precedence over
+coverage metadata. Prompt validation rejects missing-data apologies,
+unsupported health reassurance, future-report promises, and guardian
+pleasantries, while the deterministic fallback concatenates only verified
+facts and may return a single short observation.
 
-Weekly Reporter risk-score presentation update on 2026-08-24: the deterministic
+Weekly Reporter insight-summary refinement on 2026-08-25: the versioned prompt
+now asks for a formal, guardian-facing weekly insight rather than a flat fact
+list. Normal device reception may establish observation reliability, related
+movement and remote-control facts are synthesized into the overall activity
+flow, and material exceptions follow with a natural contrast. Headline and
+analysis validation requires warm `합니다체`; the deterministic fallback mirrors
+the same ordering, synthesis, and formal register without adding unverified
+interpretation.
+
+Weekly Reporter evaluatable-area summary policy on 2026-08-25: workflow-owned Python
+now derives `valid_days` from current covered dates and derives data quality
+from valid-day coverage plus approved device power/position status. It selects
+`ALL_GOOD`, `MIXED`, `RISK`, `LOW_DATA`, or `PARTIAL_DEVICE` before the model
+call and produces a semantic INTRO/LIFE/ENV/SAFE/CLOSE outline. All evaluatable
+activity, environment, and device items are provided as evidence; the later
+valuable-insight policy makes only material issue topics mandatory and allows
+low-value GOOD facts to be omitted. Unavailable items are omitted entirely
+rather than rendered as insufficient-data or cannot-compare filler. The LLM may
+only synthesize the supplied grounded evidence; the renderer owns the integrated
+CLOSE action.
+Narrative validation admits only significant numeric tokens already present in
+the outline and rejects invented counts. This policy supersedes the earlier sparse single-observation layout for
+production fact packages; direct compatibility packages without an outline
+retain the shorter fallback behavior.
+
+Weekly Reporter topic-removal update on 2026-08-25: sleep and dispatch are no
+longer report topics. They are excluded from the semantic outline, model fact
+package, generated headline and analysis, observations, suggestions, and all
+rendered Markdown sections. The summary now covers only evaluatable activity,
+indoor environment, and device reception. The numbered details begin with
+activity and retain risk-event detection/resolution under risk management
+without rendering dispatch data. Private source-contract compatibility fields
+remain temporarily available upstream but cannot cross the reporting boundary.
+When all three report topics are unavailable, an empty available-item list is
+preserved as empty rather than expanded to default topics. The narrative uses
+the grounded coverage headline with empty analysis and observations, and the
+renderer completes the report without indexing nonexistent evidence. This
+zero-block path is an explicit terminal fallback state rather than a failed
+Agent Server stream.
+
+Weekly Reporter environment RISK correction on 2026-08-25: directional RISK
+classification now uses daily maximum extrema and requires the same extreme on
+four or more dates. The strict thresholds are maximum humidity below 30% or
+above 70%, and maximum temperature below 15℃ or above 31℃. Exact boundary
+values do not count as extreme days. Recommended-range temperature and humidity
+departures still drive GOOD and CAUTION, while combined departure on four or
+more dates selects RISK 5. Python owns all daily aggregation, boundary checks,
+counts, precedence, and rendered status; the model receives qualitative copy
+only.
+
+Weekly Reporter valuable-insight summary update on 2026-08-26: the model no
+longer follows a fixed LIFE/ENV/SAFE order or emits one sentence for every
+available report area. Python still supplies the complete allowlisted
+qualitative evidence and owns all calculations, statuses, issue detection, and
+suggested actions. The narrative must cover every material CAUTION or RISK
+topic, but may omit low-value GOOD facts and combine related evidence into one
+to four connected weekly insights. Unavailable items remain fully excluded;
+sleep and dispatch remain excluded from the entire report. Validation retains
+topic allowlisting, material-issue coverage, numeric grounding, formal Korean,
+safety filters, and the terminal zero-evaluable-item path.
+
+Weekly Reporter risk-score presentation update on 2026-08-25: the deterministic
 renderer now exposes the already-calculated current-week average `risk_score`.
 Python rounds the average to a whole point using half-up rounding and classifies
-it with the product-approved bands `76–100 양호`, `26–75 주의`, and `0–25 위험`.
-The report shows the grounded score and a calm Korean band description; missing
-or invalid source scores remain explicitly unavailable. The score and
-classification stay outside model-authored prose.
+it with the product-approved statuses `76–100 GOOD`, `26–75 CAUTION`, and
+`0–25 RISK`. The report shows the grounded score, uppercase status, and exact
+Korean guidance; missing or invalid source scores remain explicitly
+unavailable. The score and classification stay outside model-authored prose.
+
+Weekly Reporter activity presentation update on 2026-08-25: the source
+contract now carries weekly totals calculated directly from non-null
+`movement_count` and `remote_control_count` rows. Workflow-owned Python compares
+each current total with its previous-week total, assigns the product-approved
+`GOOD`, `CAUTION`, or `RISK` status, and renders the exact Korean guidance and
+short summary. Missing totals and zero previous totals fail closed as an
+unavailable comparison. Only the qualitative guidance may enter the reporter
+prompt; totals, percentages, and thresholds remain deterministic report data.
+
+Weekly Reporter environment day-count update on 2026-08-25: the source service
+now collapses device summaries by date and deterministically counts departures
+from the approved monthly temperature range and year-round humidity range using
+all four stored daily extrema. The validated snapshot carries observed,
+temperature, humidity, combined, and directional day counts. Workflow policy
+assigns the approved uppercase status, exact Korean description, and short
+summary with explicit precedence. The unspecified `반복` boundary is normalized
+to four days, matching the explicit combined RISK duration; duplicated GOOD
+copy maps to zero-day and one-day variants. The model receives only the chosen
+qualitative description, while Python owns counts, status, ranges, and output.
+
+Weekly Reporter device-reception update on 2026-08-25: the source service now
+classifies each raw device-daily-summary row from the five approved count
+columns and carries validated good, power, and weak-position occurrence counts
+in the snapshot. Row classification is mutually exclusive in good, power, then
+position order; workflow policy uses the approved two-occurrence threshold and
+power-first weekly precedence to select uppercase `GOOD` or `CAUTION`, exact
+Korean description, and short summary. Unmatched partial data fails closed as
+unavailable. Python owns all raw comparisons, counts, precedence, status, and
+rendering; only qualitative section assessments may reach the model.
+
+Weekly Reporter zero-reception guidance update on 2026-08-26: a current period
+with no device-daily-summary rows remains internally unavailable and does not
+create a synthetic power occurrence, but its deterministic device-section
+description asks the guardian to verify that device power is connected. Since
+the status remains unavailable, the absence stays out of model-authored
+insights and is not interpreted as a health or safety event.
+
+Weekly Reporter guardian-guide update on 2026-08-26: workflow-owned Python maps
+validated activity RISK, environment RISK, and device CAUTION results to a
+product-approved internal condition, displayed title, and analysis sentence.
+The renderer hides the internal condition and displays the title plus analysis,
+orders movement, remote control, environment, then device, caps output at three,
+places deterministic guides before model suggestions, and closes `한주 총평`
+with the first deterministic title. Hot and cold environment guides map by
+semantic condition rather than internal variant number. The model may receive
+approved titles as qualitative suggestions and fill remaining slots, but it
+does not select, reorder, or rewrite deterministic guide content.
+
+Weekly Reporter personalization and sensor-evidence update on 2026-08-26: the
+Python-owned summary outline now creates the personalized first sentence from
+the validated ward display name, and the renderer uses that headline directly.
+The model prompt identifies the 안심지키미 expert-report role and receives
+qualitative assessments for movement, remote control, temperature, humidity,
+and device reception together with exact deterministic guardian candidates;
+raw sensor rows, totals, and thresholds remain outside model state. Device-row
+reception classification is mutually exclusive in good, power, then position
+order, while weekly power and position CAUTION still require two occurrences.
 
 Weekly Reporter template refinement on 2026-08-24: the weekly narrative heading
 is now `한주 총평`, and its closing sentence repeats the first validated,
 highest-priority guardian suggestion to keep the assessment warm and actionable.
 The separate detailed action section remains. The score-band legend is no longer
-rendered. When every current-week sleep metric is unavailable, the renderer
-omits the complete sleep section and deterministically renumbers the remaining
-sections; evaluation checks mirror that conditional structure.
+rendered. The later topic-removal policy supersedes the original conditional
+sleep-section behavior and excludes sleep from every report.
 
 Frontend launch integration update on 2026-08-14: the Agents catalog marks
 `ansimk_weekly_reporter` as the single live-data entry. Both of its **Run in

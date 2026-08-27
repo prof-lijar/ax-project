@@ -1,106 +1,171 @@
-"""Convert verified numbers into a small allowlisted qualitative fact package."""
+"""Convert verified metrics into a structured qualitative summary package."""
 
 from ax_contracts import WardWeeklyMetrics
 
-from .environment_policy import EnvironmentAssessment, assess_environment
-from .models import FactPackage
+from .activity_policy import activity_description, assess_activity
+from .device_reception_policy import (
+    assess_device_reception,
+    device_reception_description,
+)
+from .guardian_guidance_policy import build_guardian_guides
+from .models import FactPackage, SectionAssessment, SectionStatus
+from .summary_policy import build_weekly_summary_outline
+
+_RISK_REPEAT_DAYS = 4
+_CAUTION_MIN_DAYS = 2
 
 
 def build_fact_package(metrics: WardWeeklyMetrics) -> FactPackage:
+    """Build the report outline while keeping all arithmetic outside the LLM."""
+
     current = metrics.current
-    delta = metrics.delta
     coverage = (
-        "absent" if current.covered_days == 0 else "complete" if current.covered_days == 7 else "incomplete"
+        "absent"
+        if current.covered_days == 0
+        else "complete"
+        if current.covered_days == 7
+        else "incomplete"
     )
-    facts: list[str] = []
-    topics: list[str] = []
-    required_topics: list[str] = []
-    actions: list[str] = []
-
-    if coverage != "complete":
-        facts.append("자료가 충분하지 않아 이번 주 흐름은 제한적으로 살펴봐야 합니다.")
-        topics.append("자료 상태")
-        actions.append("장치와 자료 수집 상태를 가볍게 확인하기")
-    if current.unresolved_dispatch_count:
-        facts.append("아직 마무리되지 않은 출동 요청이 있습니다.")
-        topics.append("출동 요청")
-        actions.append("출동 요청의 처리 상태를 확인하기")
-    if current.danger_days:
-        direction = _direction(delta.danger_days)
-        facts.append(f"위험 감지 흐름이 지난주보다 {direction}.")
-        topics.append("위험 감지")
-        actions.append("최근 안부와 감지 기록을 함께 확인하기")
-
-    environment = assess_environment(metrics)
-    environment_facts, environment_actions = _environment_guidance(environment)
-    if environment_facts:
-        facts.extend(environment_facts)
-        topics.append("실내 환경")
-        required_topics.append("실내 환경")
-        actions.extend(environment_actions)
-
-    activity_direction = _direction(delta.movement_count_avg)
-    if activity_direction != "비교하기 어렵습니다":
-        facts.append(f"움직임 흐름이 지난주보다 {activity_direction}.")
-        topics.append("활동")
-
-    sleep_change = _direction(delta.night_awake_count_avg)
-    if sleep_change not in {"비슷하게 이어졌습니다", "비교하기 어렵습니다"}:
-        facts.append(f"밤중 깨어남 흐름이 지난주보다 {sleep_change}.")
-        topics.append("수면")
-
-    if not facts:
-        facts.append("이번 주 생활 흐름은 지난주와 전반적으로 비슷하게 이어졌습니다.")
-        topics.append("전반적인 생활 흐름")
-    elif len(facts) == 1 and coverage == "complete":
-        facts.append("그 밖의 생활 흐름은 전반적으로 차분하게 이어졌습니다.")
-        topics.append("전반적인 생활 흐름")
-
+    outline = build_weekly_summary_outline(metrics)
+    outline_facts = [
+        outline.headline,
+        *(
+            block
+            for block in (outline.life, outline.environment, outline.safety)
+            if block
+        ),
+    ]
+    available_items = set(outline.available_item_list)
+    allowed_topics = [
+        topic
+        for topic, included in (
+            ("활동", bool({"움직임", "리모컨"} & available_items)),
+            ("실내 환경", "실내 환경" in available_items),
+            ("기기 데이터 수신", "기기 데이터 수신" in available_items),
+        )
+        if included
+    ]
+    issue_topic_names = {
+        "활동": "활동",
+        "환경": "실내 환경",
+        "기기": "기기 데이터 수신",
+    }
+    required_topics = [
+        issue_topic_names[topic]
+        for topic in outline.issue_topic_list
+        if issue_topic_names[topic] in allowed_topics
+    ]
+    if outline.data_quality_code != "VALID":
+        allowed_topics.insert(0, "자료 상태")
+    guides = build_guardian_guides(metrics)
+    guide_actions = [guide.title for guide in guides]
     return FactPackage(
         coverage=coverage,
-        facts=facts[:6],
-        allowed_topics=list(dict.fromkeys(topics))[:6],
-        required_topics=list(dict.fromkeys(required_topics))[:6],
-        suggested_actions=list(dict.fromkeys(actions))[:3],
+        facts=outline_facts,
+        allowed_topics=allowed_topics,
+        required_topics=required_topics,
+        suggested_actions=list(dict.fromkeys(guide_actions))[:3],
+        section_assessments=_section_assessments(metrics),
+        guardian_action_candidates=[
+            {
+                "source": guide.source,
+                "status": guide.status,
+                "condition": guide.condition_label,
+                "title": guide.title,
+                "analysis": guide.analysis,
+            }
+            for guide in guides
+        ],
+        summary_outline=outline,
     )
 
 
-def _direction(value: float | None) -> str:
-    if value is None:
-        return "비교하기 어렵습니다"
-    if abs(value) < 0.000001:
-        return "비슷하게 이어졌습니다"
-    return "늘었습니다" if value > 0 else "줄었습니다"
-
-
-def _environment_guidance(
-    assessment: EnvironmentAssessment,
-) -> tuple[list[str], list[str]]:
-    facts: list[str] = []
-    actions: list[str] = []
-
-    if assessment.temperature_status != "unavailable":
-        maximum = assessment.temperature_max
-        assert maximum is not None
-        if assessment.temperature_status == "good":
-            facts.append("이번 주 최고 실내 온도는 해당 월 권장 범위 안이었습니다.")
-        else:
-            direction = "낮았습니다" if maximum < assessment.temperature_low else "높았습니다"
-            degree = "크게 " if assessment.temperature_status == "risk" else ""
-            facts.append(
-                f"이번 주 최고 실내 온도는 해당 월 권장 범위보다 {degree}{direction}."
+def _section_assessments(metrics: WardWeeklyMetrics) -> list[SectionAssessment]:
+    activity = assess_activity(metrics)
+    assessments: list[SectionAssessment] = []
+    if activity.movement.status != "UNAVAILABLE":
+        assessments.append(
+            SectionAssessment(
+                source="movement_count",
+                status=activity.movement.status,
+                finding=activity_description("movement", activity.movement),
             )
-            actions.append("실내 냉난방과 환기 상태를 가볍게 확인하기")
+        )
+    if activity.remote_control.status != "UNAVAILABLE":
+        assessments.append(
+            SectionAssessment(
+                source="remote_control_count",
+                status=activity.remote_control.status,
+                finding=activity_description("remote_control", activity.remote_control),
+            )
+        )
 
-    if assessment.humidity_status != "unavailable":
-        maximum = assessment.humidity_max
-        assert maximum is not None
-        if assessment.humidity_status == "good":
-            facts.append("이번 주 최고 실내 습도는 적정 범위 안이었습니다.")
-        else:
-            direction = "낮았습니다" if maximum < assessment.humidity_low else "높았습니다"
-            degree = "크게 " if assessment.humidity_status == "risk" else ""
-            facts.append(f"이번 주 최고 실내 습도는 적정 범위보다 {degree}{direction}.")
-            actions.append("실내 가습·제습과 환기 상태를 가볍게 확인하기")
+    current = metrics.current
+    for source, departures, low_days, high_days in (
+        (
+            "temperature",
+            current.temperature_out_of_range_days,
+            current.low_temperature_days,
+            current.high_temperature_days,
+        ),
+        (
+            "humidity",
+            current.humidity_out_of_range_days,
+            current.low_humidity_days,
+            current.high_humidity_days,
+        ),
+    ):
+        status = _dimension_status(departures, low_days, high_days)
+        if status is not None:
+            assessments.append(
+                SectionAssessment(
+                    source=source,
+                    status=status,
+                    finding=_dimension_finding(source, status, low_days, high_days),
+                )
+            )
 
-    return facts, actions
+    reception = assess_device_reception(current)
+    if reception.status != "UNAVAILABLE":
+        assessments.append(
+            SectionAssessment(
+                source="device_data",
+                status=reception.status,
+                finding=device_reception_description(reception),
+            )
+        )
+    return assessments
+
+
+def _dimension_status(
+    departures: int | None,
+    low_days: int | None,
+    high_days: int | None,
+) -> SectionStatus | None:
+    if departures is None or low_days is None or high_days is None:
+        return None
+    if low_days >= _RISK_REPEAT_DAYS or high_days >= _RISK_REPEAT_DAYS:
+        return "RISK"
+    if departures >= _CAUTION_MIN_DAYS:
+        return "CAUTION"
+    return "GOOD"
+
+
+def _dimension_finding(
+    source: str,
+    status: SectionStatus,
+    low_days: int | None,
+    high_days: int | None,
+) -> str:
+    label = "온도" if source == "temperature" else "습도"
+    if status == "GOOD":
+        return f"실내 {label}가 대체로 권장 범위에 있었어요."
+    if status == "CAUTION":
+        return f"실내 {label}의 권장 범위 이탈이 반복됐어요."
+    if (low_days or 0) >= _RISK_REPEAT_DAYS:
+        direction = "낮은"
+    elif (high_days or 0) >= _RISK_REPEAT_DAYS:
+        direction = "높은"
+    else:
+        direction = "권장 범위를 벗어난"
+    return f"{direction} 실내 {label}가 반복됐어요."

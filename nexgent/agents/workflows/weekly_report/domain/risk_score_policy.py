@@ -7,7 +7,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from math import isfinite
 from typing import Literal
 
-RiskScoreStatus = Literal["unavailable", "danger", "caution", "good"]
+RiskScoreStatus = Literal["UNAVAILABLE", "RISK", "CAUTION", "GOOD"]
+
 
 @dataclass(frozen=True)
 class RiskScoreAssessment:
@@ -19,24 +20,34 @@ def assess_risk_score(value: float | None) -> RiskScoreAssessment:
     """Round a weekly average to one point and apply approved score bands."""
 
     if value is None or not isfinite(value) or value < 0 or value > 100:
-        return RiskScoreAssessment(score=None, status="unavailable")
+        return RiskScoreAssessment(score=None, status="UNAVAILABLE")
 
     score = int(Decimal(str(value)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     if score <= 25:
-        status: RiskScoreStatus = "danger"
+        status: RiskScoreStatus = "RISK"
     elif score <= 75:
-        status = "caution"
+        status = "CAUTION"
     else:
-        status = "good"
+        status = "GOOD"
     return RiskScoreAssessment(score=score, status=status)
 
 
-def risk_score_description(assessment: RiskScoreAssessment) -> str:
-    """Return calm guardian-facing wording for a validated score band."""
+def risk_score_status_label(assessment: RiskScoreAssessment) -> str:
+    """Return the report-facing status code or the unavailable disclosure."""
+
+    if assessment.status == "UNAVAILABLE":
+        return "자료 없음"
+    return assessment.status
+
+
+def risk_score_description(
+    assessment: RiskScoreAssessment,
+) -> str:
+    """Return approved guardian-facing wording for a validated score band."""
 
     return {
-        "unavailable": "이번 주 가입자 상태 점수를 계산할 자료가 없어요.",
-        "danger": "이번 주 가입자 상태 점수는 위험 범위였어요.",
-        "caution": "이번 주 가입자 상태 점수는 주의 범위였어요.",
-        "good": "이번 주 가입자 상태 점수는 양호 범위였어요.",
+        "UNAVAILABLE": "지난 한 주 상태 점수를 계산할 자료가 없어요.",
+        "RISK": "지난 한 주는 즉시 확인이 필요한 위험 신호가 확인됐어요.",
+        "CAUTION": "지난 한 주는 평소와 다른 흐름이 일부 확인됐어요.",
+        "GOOD": "지난 한 주는 대체로 안정적인 상태가 유지됐어요.",
     }[assessment.status]

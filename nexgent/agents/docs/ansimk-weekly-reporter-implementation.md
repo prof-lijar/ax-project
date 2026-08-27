@@ -60,7 +60,10 @@ raw data. It implements the verified server semantics:
 
 - weighted environment averages using measurement counts;
 - minima and maxima over stored daily extrema;
+- per-date environment departure counts after collapsing multiple device rows;
 - arithmetic activity and sleep averages over non-null rows;
+- weekly movement and remote-control totals over non-null rows;
+- per-row good, power, and weak-position device-reception occurrence counts;
 - linear clock-time averages;
 - risk-event count for `DANGER` evaluations;
 - distinct local danger dates for compatibility;
@@ -94,24 +97,56 @@ The model receives Korean qualitative facts only. It returns:
 ```json
 {
   "headline": "따뜻한 한 문장",
-  "analysis_text": "네 문장부터 여섯 문장의 주간 설명",
+  "analysis_text": "평가 가능한 사실 중 가치 있는 주간 통찰만 자연스럽게 요약",
   "observations": ["검증된 관찰"],
   "suggestions": ["부드러운 제안"]
 }
 ```
 
-The analysis must be 220–420 characters. All prose must contain Korean and no
-digits. The validator rejects diagnosis, emergency certainty, accident
-certainty, commands, excessive certainty, duplicate items, and malformed
-JSON. Invalid output receives one bounded correction attempt. Remaining model
-or validation failures use a deterministic fallback and set
+Production summaries review all available qualitative facts but do not require
+one sentence per report area or a fixed area order. Every material CAUTION or
+RISK topic is required; stable GOOD facts are optional context and may be
+omitted when they do not add insight. The headline, one-to-four selected insight
+sentences, and deterministic closing action produce a concise `한주 총평`.
+Direct compatibility packages without an outline retain the one-to-six-sentence
+fallback. All prose must contain Korean. Digits are accepted only when the same
+significant token is present in the Python-owned outline. The validator rejects
+invented numbers, diagnosis, emergency certainty, accident certainty, commands,
+excessive certainty, unrelated missing-data filler, duplicate items, and
+malformed JSON. Invalid output receives one bounded
+correction attempt. Remaining model or validation failures use a deterministic
+fallback made only from supplied facts and set
 `generation_mode=template_fallback` with a safe reason. One complete Markdown
 JSON code fence is normalized before validation; the reporter never extracts
 JSON from surrounding prose or relaxes the narrative schema.
-Prompt version `weekly-korean-warm-v3` asks the model to verify sentence and
-character counts, requires a supplied indoor-environment status in the weekly
-analysis, and provides bounded rule-specific feedback on the single corrective
-retry.
+Prompt version `weekly-korean-valuable-insights-v14` assigns the model the role
+of a Korean customer-support and guardian-communication expert and consumes a deterministic
+`summary_outline`. Python derives valid days and data quality, selects
+`ALL_GOOD`, `MIXED`, `RISK`, `LOW_DATA`, or `PARTIAL_DEVICE`, and supplies
+allowlisted qualitative activity, environment, device, and closing-action
+evidence. The outline headline is personalized with the validated subscriber
+name and rendered as the first summary sentence. The LLM receives qualitative
+movement, remote-control, temperature, humidity, and device assessments plus
+exact guardian candidates, then synthesizes only the most useful grounded
+insights instead of copying every block. Python-supplied data-availability
+findings are valid summary evidence: when sensor values are unavailable, the
+summary connects the activity, indoor-environment, and device-reception state
+without inferring the subscriber's condition. The personalized headline alone
+starts with and contains `지난 한 주`; analysis begins with a connector and
+does not repeat that period phrase or the headline's core wording. The renderer
+owns CLOSE, whose current-action line begins with `이번 주`. Low and partial modes constrain claims to the observable range.
+For absent reception, CLOSE is exactly
+`이번 주에는 기기 전원 연결 상태를 확인해 주시고, 생활환경을 함께 살펴봐 주세요.`
+Numeric validation admits only
+significant valid-day and device-issue counts already supplied by Python. Sleep
+and dispatch are excluded from the fact package, narrative, observations,
+suggestions, and rendered Markdown.
+Every analysis sentence must naturally connect to the preceding summary text.
+Urgent terms such as `빠른`, `즉시`, `위급`, and `긴급` are rejected. If
+device reception is unavailable, Python adds the deterministic guardian guide
+`기기 전원이 연결되어 있는지 확인해 주세요`; the summary CLOSE is never added
+to model suggestions, and the renderer drops an invented time-scoped CLOSE, so
+it cannot become a generic numbered action.
 
 Numbers are rendered only from `WardWeeklyMetrics`; generated prose is never
 parsed to create calculations.
@@ -120,36 +155,74 @@ parsed to create calculations.
 
 The deterministic renderer uses the following order:
 
-1. `주간 생활 리포트` basic information and `한주 총평`, which closes with the
-   highest-priority validated guardian suggestion;
-2. sleep pattern when at least one current sleep metric exists, followed by
-   activity, indoor environment, device-data reception, and risk-management
+1. `주간 생활 리포트` basic information and `한주 총평`, which closes with a
+   mode-aware deterministic action combining at most two priority checks;
+2. activity, indoor environment, device-data reception, and risk-management
    sections with current/prior metrics and contiguous numbering;
 3. up to three guardian action suggestions, each paired with a validated
    observation as its basis.
 
+For approved activity RISK, environment RISK, and device CAUTION results, the
+third stage uses code-owned guardian guides instead of model-authored mappings.
+Each guide includes an exact internal condition, displayed title, and analysis
+sentence. The condition is not rendered; the title is the card heading and the
+analysis is its body. An unavailable-reception power check comes first;
+otherwise guides are ordered movement, remote control, environment, then
+device and capped at three. They occupy the first slots, while validated
+model suggestions fill only unused slots. A separate summary policy owns the
+integrated closing action for `한주 총평`. Environment hot and cold guides map
+by semantic condition rather than internal environment variant number. The
+source typo `롹인` is normalized to `확인`.
+
 The basic information shows the grounded weekly-average status score and its
-calm classification but omits the full score-band legend. When all current
-sleep values are unavailable, the report omits the entire sleep section instead
-of displaying rows whose status and values are all `자료 없음`.
+calm classification but omits the full score-band legend. Sleep and dispatch
+are not report topics and are never rendered.
 
 The contract's exclusive Monday `week_end` is displayed as the inclusive
-Sunday reporting date. Activity and sleep status labels describe only verified
-week-over-week direction. Indoor temperature uses a product-approved range
-selected from the reporting week's starting month: 18–20℃ in January–March and
-November–December, 20–22℃ in April–May and October, and 26–28℃ in
-June–September. Humidity uses 40–60% throughout the year. The current week's
-maximum temperature and maximum humidity drive the environment result. Values
-outside the recommended range but within 15–30℃ or 30–70% are `CAUTION`; values
-beyond those outer bounds are `RISK`; otherwise they are `GOOD`. The renderer
-uses the more severe available result and explains which maximum contributed.
-It does not claim repetition or multi-day duration because the snapshot does
-not contain daily range-departure counts. The current week's average `risk_score` is rounded
-to the nearest whole point using half-up rounding and rendered with the
-product-approved `76–100 양호`, `26–75 주의`, and `0–25 위험` bands. The score,
-calm band description, and classification come only from deterministic Python;
+Sunday reporting date. The activity section compares current and previous
+weekly totals independently for movement and remote-control use. Each signal
+shows its total ratio, uppercase status, exact guidance, and short summary:
+`GOOD` for 70–150%, `CAUTION` for 40–70% or 150–250%, and `RISK` below 40% or
+above 250%. Exactly 250% is `CAUTION`; missing totals or a zero previous total
+are disclosed as unavailable. The resulting qualitative guidance may enter the
+model fact package, but totals, percentages, and thresholds do not. Indoor
+temperature and humidity use strict year-round product-approved ranges:
+`15℃ < temperature < 31℃` and `30% < humidity < 70%`. Exact boundary values
+are treated as departures. All device rows are collapsed by date, then stored
+minimum and maximum temperature and humidity are
+used to count range departures. Zero and one combined departure day select the
+two approved `GOOD` variants. Two or three combined departure days select the
+combined `CAUTION` variant; two or more single-dimension departure days remain
+the applicable `CAUTION` variant unless a RISK rule applies. Directional `RISK`
+uses
+the daily maximum: humidity below 30% or above 70%, and temperature below 15℃
+or above 31℃, repeated on four or more dates. Exactly 30%, 70%, 15℃, and 31℃
+do not satisfy these strict extreme boundaries. Combined recommended-range
+temperature-and-humidity departure on four or more dates selects `RISK 5`.
+The renderer exposes exact approved copy, summary, counts, and extrema, while
+the model receives only the qualitative description. Numeric ranges are
+internal evaluation rules and are not rendered. The current week's average
+`risk_score` is rounded to the nearest whole point using half-up rounding and
+rendered with the product-approved `76–100 GOOD`, `26–75 CAUTION`, and
+`0–25 RISK` statuses and their exact Korean guidance. The score, uppercase
+status, guidance, and classification come only from deterministic Python;
 the full legend is omitted, and missing or invalid values are marked unavailable
 without delegating interpretation to the model.
+
+The device-data reception section evaluates `temperature_count`,
+`humidity_count`, `light_count`, `remote_control_count`, and `movement_count`
+on each raw row. All five non-null/non-zero values form a good occurrence. Three
+null measurement counts plus two zero activity counts form a power occurrence.
+After good and power rows are excluded, any row with at least two values from 0
+through 10 forms a position occurrence. The categories are mutually exclusive.
+Two repeated occurrences produce `CAUTION`, with power taking weekly
+precedence; `GOOD` requires every available row to be good. Unmatched partial
+combinations and zero source rows remain unavailable. For a zero-source week,
+the deterministic detail section displays
+`기기 전원이 연결되어 있는지 확인해 주세요.` while leaving occurrence counts
+unavailable rather than inventing a power event. Python renders status, exact
+copy, summary, and counts; the model sees only qualitative section assessments
+and exact deterministic guardian candidates.
 Signal-loss counts and risk-management notes are not present in the source
 contract; the report does not invent them or expose raw management text.
 
@@ -271,6 +344,15 @@ uv run python -m apps.workers.weekly_report capacity \
 Multiple `serve` containers may share one PostgreSQL database and artifact
 volume. They all select the oldest active job, so later jobs remain queued in
 the first release. Expired producer, item, and finalizer leases are reclaimed.
+The runner also terminalizes producer, consumer, and finalizer exceptions so a
+failed oldest job cannot remain active and block every later job. Individual
+model calls use `WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS` (default 60 seconds); a
+timeout produces the normal grounded template fallback for that ward while the
+batch continues. The worker catches terminal job failures and returns to its
+poll loop. Export responses send the verified ZIP in bounded chunks.
+The response advertises the verified artifact's actual byte size; initializing
+the stream with an empty response must never leave `Content-Length: 0`, because
+browsers may then save a zero-byte download even when the streamed body exists.
 Completed items are immutable and idempotent; a process restart continues from
 the last committed source cursor. Cancellation stops discovery, marks unstarted
 or leased items cancelled, and still produces a manifest for completed work.
@@ -294,9 +376,11 @@ explicit confirmation and displays this limitation before submission.
 ## Verification gates
 
 - Contract tests cover strict request/response validation and FastAPI behavior.
-- Unit tests cover weighted and linear averages, maximum-based environment
-  boundaries and feedback, risk-score rounding and band boundaries, conditional
-  sleep omission and section numbering, warm summary suggestions, prior deltas,
+- Unit tests cover weighted and linear averages, daily-extrema environment
+  counts, classification precedence, and exact feedback; risk-score rounding
+  and band boundaries; device-reception overlap, precedence, and exact copy; conditional
+  deterministic guardian-guide copy, semantic mapping, priority, cap, and rendering;
+  report-topic exclusion and section numbering, warm summary suggestions, prior deltas,
   fact priority, opaque cursors, model retry,
   forbidden language, fallback, and progress-event redaction. Slack unit tests
   cover destination authorization, thread replies,
@@ -308,7 +392,7 @@ explicit confirmation and displays this limitation before submission.
 - Bulk unit and contract tests cover idempotent submission, leased claims,
   atomic private artifacts, manifest/JSONL/Markdown export, safe partial
   failure, cancellation, recent-job ordering, private control API validation,
-  checksum-verified download, and lease recovery. A PostgreSQL-backed
+  checksum-verified download, non-zero response length, and lease recovery. A PostgreSQL-backed
   integration run and a representative 10,000-report model benchmark remain
   deployment release gates.
 - Deployment checks require Ruff, pytest, LangGraph validation, Compose config,

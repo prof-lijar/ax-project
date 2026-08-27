@@ -461,6 +461,14 @@ class WardWeeklyMetricSnapshot(ContractModel):
     humidity_min: float | None = None
     humidity_max: float | None = None
     humidity_count: int = Field(default=0, ge=0)
+    environment_observed_days: int | None = Field(default=None, ge=0, le=7)
+    temperature_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    humidity_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    environment_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    low_temperature_days: int | None = Field(default=None, ge=0, le=7)
+    high_temperature_days: int | None = Field(default=None, ge=0, le=7)
+    low_humidity_days: int | None = Field(default=None, ge=0, le=7)
+    high_humidity_days: int | None = Field(default=None, ge=0, le=7)
     light_avg: float | None = None
     light_min: float | None = None
     light_max: float | None = None
@@ -468,6 +476,11 @@ class WardWeeklyMetricSnapshot(ContractModel):
     light_on_time_minutes_avg: float | None = None
     movement_count_avg: float | None = None
     remote_control_count_avg: float | None = None
+    movement_count_total: float | None = Field(default=None, ge=0)
+    remote_control_count_total: float | None = Field(default=None, ge=0)
+    device_good_count: int | None = Field(default=None, ge=0)
+    device_power_count: int | None = Field(default=None, ge=0)
+    device_position_count: int | None = Field(default=None, ge=0)
     wake_up_time_avg: time | None = None
     sleep_time_avg: time | None = None
     night_awake_count_avg: float | None = None
@@ -477,6 +490,71 @@ class WardWeeklyMetricSnapshot(ContractModel):
     danger_days: int = Field(default=0, ge=0, le=7)
     dispatch_request_count: int = Field(default=0, ge=0)
     unresolved_dispatch_count: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_environment_day_counts(self) -> "WardWeeklyMetricSnapshot":
+        count_fields = (
+            "environment_observed_days",
+            "temperature_out_of_range_days",
+            "humidity_out_of_range_days",
+            "environment_out_of_range_days",
+            "low_temperature_days",
+            "high_temperature_days",
+            "low_humidity_days",
+            "high_humidity_days",
+        )
+        values = {field: getattr(self, field) for field in count_fields}
+        if all(value is None for value in values.values()):
+            return self
+        if any(value is None for value in values.values()):
+            raise ValueError("environment day counts must be provided together")
+
+        observed = self.environment_observed_days
+        temperature = self.temperature_out_of_range_days
+        humidity = self.humidity_out_of_range_days
+        environment = self.environment_out_of_range_days
+        assert observed is not None
+        assert temperature is not None
+        assert humidity is not None
+        assert environment is not None
+        if observed == 0:
+            raise ValueError("available environment day counts require observed days")
+        if any(value > observed for value in values.values() if value is not None):
+            raise ValueError("environment day counts must not exceed observed days")
+        if not max(temperature, humidity) <= environment <= temperature + humidity:
+            raise ValueError(
+                "combined environment departures must match component days"
+            )
+        if any(
+            value is not None and value > temperature
+            for value in (self.low_temperature_days, self.high_temperature_days)
+        ):
+            raise ValueError("temperature direction days must be departure days")
+        if any(
+            value is not None and value > humidity
+            for value in (self.low_humidity_days, self.high_humidity_days)
+        ):
+            raise ValueError("humidity direction days must be departure days")
+        return self
+
+    @model_validator(mode="after")
+    def validate_device_reception_counts(self) -> "WardWeeklyMetricSnapshot":
+        values = (
+            self.device_good_count,
+            self.device_power_count,
+            self.device_position_count,
+        )
+        if all(value is None for value in values):
+            return self
+        if any(value is None for value in values):
+            raise ValueError("device reception counts must be provided together")
+        if self.daily_summary_count == 0:
+            raise ValueError("device reception counts require daily summary rows")
+        if any(
+            value is not None and value > self.daily_summary_count for value in values
+        ):
+            raise ValueError("device reception counts must not exceed source rows")
+        return self
 
 
 class WardWeeklyMetricDelta(ContractModel):
@@ -586,8 +664,8 @@ class WeeklyNarrative(ContractModel):
     """Validated human-facing Korean prose generated from allowlisted facts."""
 
     headline: str = Field(min_length=1, max_length=160)
-    analysis_text: str = Field(min_length=80, max_length=500)
-    observations: list[str] = Field(min_length=1, max_length=3)
+    analysis_text: str = Field(default="", max_length=500)
+    observations: list[str] = Field(default_factory=list, max_length=3)
     suggestions: list[str] = Field(default_factory=list, max_length=3)
 
 

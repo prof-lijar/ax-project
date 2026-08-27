@@ -30,12 +30,24 @@
   adapters, risk classification, and the configured read-only database MCP.
 - [Ansimk weekly reporter](../workflows/weekly_report/README.md): private
   FastAPI/raw-PostgreSQL metadata source, deterministic current/prior metrics,
-  warm Korean narrative generation, validation, and fallback behavior.
+  formal Korean insight generation, a selective evaluatable-only `한주 총평`
+  that covers material issues without mechanically listing every GOOD fact and
+  excludes sleep and dispatch from the complete report, validation,
+  and terminal grounded fallback behavior even when no report block is
+  evaluatable.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
-  implemented FastAPI source boundary, calculation rules, maximum-based monthly
-  indoor-environment feedback, weekly-average risk-score presentation,
-  conditional report sections, warm guardian guidance, LLM safety contract,
-  100-ward bulk paging, in-flight cancellation, capacity targets,
+  implemented FastAPI source boundary, calculation rules, strict year-round
+  indoor-environment recommended ranges and maximum-based RISK thresholds,
+  weekly-total activity and device-reception status,
+  actionable power-check copy for zero-reception weeks without synthetic event
+  counts,
+  weekly-average risk-score presentation, personalized deterministic summary
+  openings, qualitative sensor evidence, deterministic guardian action guides
+  with internal conditions and title-plus-analysis cards,
+  connected sparse-data insights, non-urgent summary wording, deterministic
+  device-power guardian guidance, fixed report-topic exclusions, LLM safety contract,
+  100-ward bulk paging, in-flight cancellation, terminal queue-failure
+  recovery, a bounded per-report model deadline, capacity targets,
   configuration, and verification gates.
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   live `/agents/1` execution with quick 1–25 report preview, durable 1–10,000

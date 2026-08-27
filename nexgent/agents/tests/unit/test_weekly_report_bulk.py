@@ -13,17 +13,19 @@ from ax_persistence import (
     LocalBulkArtifactStore,
 )
 
+from workflows.weekly_report.agents.reporter.fallback import build_fallback
 from workflows.weekly_report.bulk import (
     WEEKLY_REPORT_BULK_JOB_KIND,
     WeeklyReportBulkRunner,
 )
+from workflows.weekly_report.domain.models import FactPackage
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
 )
 
 ANALYSIS = (
-    "이번 주 생활 흐름은 전반적으로 차분하게 이어졌어요. "
-    "확인된 자료에서는 지난주와 다른 부분도 있었지만, 측정된 변화만으로 이유를 단정하지 않았어요. "
+    "지난 한 주 생활 흐름은 전반적으로 차분하게 이어졌어요. "
+    "확인된 자료에서는 2주 전과 다른 부분도 있었지만, 측정된 변화만으로 이유를 단정하지 않았어요. "
     "활동과 휴식 흐름, 실내 온도와 습도 상태는 평소 모습과 함께 살펴보면 더 자연스럽게 이해할 수 있어요. "
     "자료가 충분한 부분은 나란히 비교했고 부족한 부분은 해석을 넓히지 않았어요. "
     "크게 서두르기보다 최근 안부와 생활 리듬을 편안하게 확인해 보시면 다음 흐름을 살피는 데 도움이 될 수 있어요."
@@ -33,15 +35,12 @@ ANALYSIS = (
 class FakeModel:
     calls = 0
 
-    async def complete(self, *args: object, **kwargs: object) -> str:
+    async def complete(self, messages: list[dict[str, str]], **kwargs: object) -> str:
         self.calls += 1
+        payload = json.loads(messages[-1]["content"].split(":\n", 1)[1])
+        narrative = build_fallback(FactPackage.model_validate(payload))
         return json.dumps(
-            {
-                "headline": "이번 주 생활 흐름을 차분히 살펴봤어요.",
-                "analysis_text": ANALYSIS,
-                "observations": ["생활 흐름에 일부 변화가 보였어요."],
-                "suggestions": ["최근 안부를 편안하게 확인해 보셔도 좋아요."],
-            },
+            narrative.model_dump(mode="json"),
             ensure_ascii=False,
         )
 
@@ -76,6 +75,11 @@ class EmptyRecordingSource:
             week_end=request.week_end,
             timezone=request.timezone,
         )
+
+
+class FailingSource:
+    async def load(self, request):
+        raise RuntimeError("source unavailable")
 
 
 @pytest.mark.asyncio
@@ -180,6 +184,65 @@ async def test_bulk_runner_requests_one_hundred_wards_per_source_page(
 
     assert status.status == "completed"
     assert source.limits == [100]
+
+
+@pytest.mark.asyncio
+async def test_bulk_runner_marks_producer_failure_terminal(tmp_path) -> None:
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3),
+        max_reports=1,
+        idempotency_key="producer-failure-is-terminal",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND,
+        request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+
+    status = await WeeklyReportBulkRunner(
+        store,
+        artifacts,
+        FailingSource(),
+        FakeModel(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+
+    assert status.status == "failed"
+    assert status.running_count == 0
+    assert status.pending_count == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_runner_falls_back_when_one_model_item_times_out(tmp_path) -> None:
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3),
+        max_reports=1,
+        idempotency_key="model-item-timeout-fallback",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND,
+        request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    model = BlockingModel(expected_calls=1)
+
+    status = await WeeklyReportBulkRunner(
+        store,
+        artifacts,
+        MockWeeklyReportSourceRepository(),
+        model,
+        poll_seconds=0.001,
+        item_timeout_seconds=0.01,
+    ).run(job.job_id, concurrency=1)
+
+    assert status.status == "completed"
+    assert status.completed_count == 1
+    assert status.fallback_count == 1
+    assert model.cancelled_calls == 1
 
 
 @pytest.mark.asyncio
