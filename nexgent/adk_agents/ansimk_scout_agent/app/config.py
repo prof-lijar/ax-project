@@ -19,8 +19,10 @@ class ScoutSettings:
     api_key: str | None = None
     model: str | None = None
     output_root: Path = PROJECT_ROOT / "var"
+    search_call_limit: int = 3
     search_result_limit: int = 6
     fetch_page_limit: int = 3
+    max_agent_llm_calls: int = 8
     request_timeout_seconds: float = 12.0
     max_redirects: int = 3
     max_response_bytes: int = 1_048_576

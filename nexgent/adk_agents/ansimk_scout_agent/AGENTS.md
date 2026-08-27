@@ -10,9 +10,13 @@ layout. It intentionally does not expose the generated raw ADK or A2A routes.
   Compose, shared model configuration, scheduling code, or Slack code.
 - Keep model access behind ADK `LiteLlm` and the project-owned environment
   variables documented in `.env.example`.
-- Both ADK LLM stages must remain tool-free. Deterministic application services
-  own DDGS search, HTTPX fetch, Trafilatura extraction, report persistence, and
-  execution logging.
+- Keep exactly one ADK research Agent, `ansimk_scout_agent`, with only the
+  bounded `web_search` and `web_fetch_and_extract` Function Tools.
+- The Agent chooses when to search and which searched URLs to fetch. Per-run
+  Python tool state owns budgets, searched-URL eligibility, fetch safety,
+  successfully fetched URL tracking, and safe execution events.
+- Deterministic application services own report validation, report persistence,
+  and execution logging. Persistence must never become an Agent tool.
 - Do not add Docker, browser automation, recursive crawling, scheduling, or
   notifications in this POC.
 

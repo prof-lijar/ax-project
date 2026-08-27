@@ -5,9 +5,10 @@ from pathlib import Path
 import httpx
 
 from app.fast_api_app import create_app
-from app.models import FetchedPage, ScoutRunRequest, ScoutRunResponse, SearchPlan, SearchResult
+from app.models import FetchedPage, ScoutRunRequest, ScoutRunResponse, SearchResult
 from app.services.persistence import ArtifactStore
-from app.services.run_service import ScoutRunService
+from app.services.run_service import AgentExecution, ScoutRunService
+from app.tools.scout import ScoutWebToolset
 
 
 class StubRunService:
@@ -31,24 +32,18 @@ class StubRunService:
         )
 
 
-class MockStages:
-    async def create_search_plan(
+class MockAgentExecutor:
+    async def execute(
         self,
         request: ScoutRunRequest,
         run_id: str,
-    ) -> SearchPlan:
-        del request, run_id
-        return SearchPlan(queries=["mock query"])
-
-    async def create_summary(
-        self,
-        request: ScoutRunRequest,
-        run_id: str,
-        evidence: list[FetchedPage],
-    ) -> str:
+        toolset: ScoutWebToolset,
+    ) -> AgentExecution:
         del run_id
-        source = evidence[0].url
-        return f"""# Scout Report
+        search = await toolset.web_search("mock query")
+        source = search["results"][0]["url"]
+        await toolset.web_fetch_and_extract(source)
+        report = f"""# Scout Report
 
 ## Topic
 
@@ -66,6 +61,10 @@ Mocked evidence summary.
 
 - [Fetched evidence]({source})
 """
+        return AgentExecution(
+            report=report,
+            tool_calls=("web_search", "web_fetch_and_extract"),
+        )
 
 
 class MockSearchProvider:
@@ -148,15 +147,25 @@ async def test_run_request_validation_and_success_contract() -> None:
     assert payload["log_artifact"].endswith("/execution.jsonl")
 
 
-async def test_post_runs_deterministic_web_between_mocked_llm_stages(tmp_path: Path) -> None:
+async def test_post_runs_single_agent_tool_call_contract(tmp_path: Path) -> None:
     provider = MockSearchProvider()
+    artifact_store = ArtifactStore(tmp_path)
+
+    def create_toolset(run_id: str) -> ScoutWebToolset:
+        return ScoutWebToolset(
+            run_id=run_id,
+            event_logger=artifact_store,
+            search_provider=provider,
+            fetcher=MockFetcher(),
+            max_search_calls=3,
+            search_result_limit=6,
+            max_fetch_calls=3,
+        )
+
     service = ScoutRunService(
-        artifact_store=ArtifactStore(tmp_path),
-        stages=MockStages(),
-        search_provider=provider,
-        fetcher=MockFetcher(),
-        search_result_limit=6,
-        fetch_page_limit=3,
+        artifact_store=artifact_store,
+        agent_executor=MockAgentExecutor(),
+        toolset_factory=create_toolset,
     )
     app = create_app(run_service=service)
 

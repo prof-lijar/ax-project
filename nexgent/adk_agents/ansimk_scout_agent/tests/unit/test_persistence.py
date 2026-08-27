@@ -42,6 +42,7 @@ def test_report_persistence_and_append_only_execution_log(tmp_path: Path) -> Non
     report_path = tmp_path / artifact.report_artifact
     log_path = tmp_path / artifact.log_artifact
     assert report_path.read_text(encoding="utf-8") == VALID_REPORT
+    assert not (report_path.parent / ".report.md.tmp").exists()
     records = [json.loads(line) for line in log_path.read_text().splitlines()]
     assert [record["phase"] for record in records] == [
         "run_started",

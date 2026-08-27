@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from app.config import ScoutSettings
-from app.models import FetchedPage, ScoutRunRequest, SearchPlan, SearchResult
-from app.services.persistence import ArtifactStore
-from app.services.run_service import AdkStageExecutor, ScoutRunService
+from app.models import FetchedPage, ScoutRunRequest, SearchResult
+from app.services.persistence import ArtifactStore, ReportValidationError
+from app.services.run_service import AgentExecution, ScoutRunService
+from app.tools.scout import ScoutWebToolset
 
 
 class RecordingProvider:
@@ -20,34 +20,25 @@ class RecordingProvider:
         self.calls.append((query, limit))
         if self.fail:
             raise RuntimeError("secret search provider detail")
-        fixtures = {
-            "first query": [
-                SearchResult(title="A", url="https://a.example/article", snippet="A"),
-                SearchResult(title="B", url="https://b.example/article", snippet="B"),
-                SearchResult(title="C", url="https://c.example/article", snippet="C"),
-            ],
-            "second query": [
-                SearchResult(title="A duplicate", url="https://a.example/article", snippet="A2"),
-                SearchResult(title="D", url="https://d.example/article", snippet="D"),
-                SearchResult(title="E", url="https://e.example/article", snippet="E"),
-            ],
-        }
-        return fixtures.get(query, [])[:limit]
+        return [
+            SearchResult(title="A", url="https://a.example/article", snippet="hint"),
+            SearchResult(title="B", url="https://b.example/article", snippet="hint"),
+        ][:limit]
 
 
 class RecordingFetcher:
-    def __init__(self, *, fail_all: bool = False) -> None:
+    def __init__(self, *, fail: bool = False) -> None:
         self.calls: list[str] = []
-        self.fail_all = fail_all
+        self.fail = fail
         self.closed = False
 
     async def fetch(self, url: str) -> FetchedPage:
         self.calls.append(url)
-        if self.fail_all:
+        if self.fail:
             raise RuntimeError("secret fetch detail")
         return FetchedPage(
             url=url,
-            title=f"Evidence {len(self.calls)}",
+            title="Evidence",
             text=f"Verified evidence from {url}",
             content_type="text/html",
             truncated=False,
@@ -57,35 +48,41 @@ class RecordingFetcher:
         self.closed = True
 
 
-class RecordingStages:
-    def __init__(self, *, fail_stage: str | None = None) -> None:
-        self.fail_stage = fail_stage
-        self.planning_requests: list[ScoutRunRequest] = []
-        self.summary_evidence: list[FetchedPage] = []
+class ControlledToolCallingExecutor:
+    def __init__(
+        self,
+        *,
+        fail: bool = False,
+        cite_unfetched: bool = False,
+        skip_fetch: bool = False,
+    ) -> None:
+        self.fail = fail
+        self.cite_unfetched = cite_unfetched
+        self.skip_fetch = skip_fetch
+        self.requests: list[ScoutRunRequest] = []
 
-    async def create_search_plan(
+    async def execute(
         self,
         request: ScoutRunRequest,
         run_id: str,
-    ) -> SearchPlan:
+        toolset: ScoutWebToolset,
+    ) -> AgentExecution:
         del run_id
-        self.planning_requests.append(request)
-        if self.fail_stage == "planning":
-            raise RuntimeError("secret planning model detail")
-        return SearchPlan(queries=["first query", "second query"])
-
-    async def create_summary(
-        self,
-        request: ScoutRunRequest,
-        run_id: str,
-        evidence: list[FetchedPage],
-    ) -> str:
-        del run_id
-        self.summary_evidence = list(evidence)
-        if self.fail_stage == "summary":
-            raise RuntimeError("secret summary model detail")
-        sources = "\n".join(f"- [{page.title}]({page.url})" for page in evidence)
-        return f"""# Scout Report
+        self.requests.append(request)
+        if self.fail:
+            raise RuntimeError("secret model detail")
+        search_response = await toolset.web_search("bounded query")
+        tool_calls = ["web_search"]
+        if not self.skip_fetch:
+            first_result = search_response["results"][0]
+            await toolset.web_fetch_and_extract(first_result["url"])
+            tool_calls.append("web_fetch_and_extract")
+        source = (
+            "https://unfetched.example/article"
+            if self.cite_unfetched or self.skip_fetch
+            else "https://a.example/article"
+        )
+        report = f"""# Scout Report
 
 ## Topic
 
@@ -97,48 +94,60 @@ The successfully fetched evidence was summarized.
 
 ## Key Findings
 
-- Findings use only the bounded evidence supplied by the application.
+- Findings use only evidence returned by the bounded fetch tool.
 
 ## Sources
 
-{sources}
+- [Evidence]({source})
 """
+        return AgentExecution(report=report, tool_calls=tuple(tool_calls))
 
 
 def build_service(
     tmp_path: Path,
     *,
-    stages: RecordingStages | None = None,
+    executor: ControlledToolCallingExecutor | None = None,
     provider: RecordingProvider | None = None,
     fetcher: RecordingFetcher | None = None,
-) -> tuple[ScoutRunService, RecordingStages, RecordingProvider, RecordingFetcher]:
-    stages = stages or RecordingStages()
+) -> tuple[
+    ScoutRunService,
+    ControlledToolCallingExecutor,
+    RecordingProvider,
+    RecordingFetcher,
+]:
+    artifact_store = ArtifactStore(tmp_path)
+    executor = executor or ControlledToolCallingExecutor()
     provider = provider or RecordingProvider()
     fetcher = fetcher or RecordingFetcher()
+
+    def create_toolset(run_id: str) -> ScoutWebToolset:
+        return ScoutWebToolset(
+            run_id=run_id,
+            event_logger=artifact_store,
+            search_provider=provider,
+            fetcher=fetcher,
+            max_search_calls=3,
+            search_result_limit=6,
+            max_fetch_calls=3,
+        )
+
     service = ScoutRunService(
-        artifact_store=ArtifactStore(tmp_path),
-        stages=stages,
-        search_provider=provider,
-        fetcher=fetcher,
-        search_result_limit=6,
-        fetch_page_limit=3,
+        artifact_store=artifact_store,
+        agent_executor=executor,
+        toolset_factory=create_toolset,
     )
-    return service, stages, provider, fetcher
+    return service, executor, provider, fetcher
 
 
-async def test_run_service_deterministically_executes_full_pipeline(tmp_path: Path) -> None:
-    service, stages, provider, fetcher = build_service(tmp_path)
+async def test_run_service_persists_single_agent_function_tool_pipeline(tmp_path: Path) -> None:
+    service, executor, provider, fetcher = build_service(tmp_path)
 
     result = await service.run(ScoutRunRequest(topic="Example research"))
 
     assert result.status == "success"
-    assert provider.calls == [("first query", 3), ("second query", 3)]
-    assert fetcher.calls == [
-        "https://a.example/article",
-        "https://b.example/article",
-        "https://c.example/article",
-    ]
-    assert [page.url for page in stages.summary_evidence] == fetcher.calls
+    assert len(executor.requests) == 1
+    assert provider.calls == [("bounded query", 6)]
+    assert fetcher.calls == ["https://a.example/article"]
     assert result.sources == fetcher.calls
     assert (tmp_path / result.report_artifact).is_file()
     records = [
@@ -146,137 +155,55 @@ async def test_run_service_deterministically_executes_full_pipeline(tmp_path: Pa
     ]
     assert [record["phase"] for record in records] == [
         "run_started",
-        "planning_started",
-        "planning_completed",
+        "agent_started",
+        "search_started",
         "search_completed",
+        "fetch_started",
         "fetch_completed",
-        "fetch_completed",
-        "fetch_completed",
-        "summary_started",
-        "summary_completed",
+        "agent_completed",
         "report_saved",
         "run_succeeded",
     ]
-    assert records[2]["queries"] == ["first query", "second query"]
-    assert records[3]["selected_urls"] == fetcher.calls
+    assert records[1]["registered_tools"] == ["web_search", "web_fetch_and_extract"]
+    assert records[6]["tool_names"] == ["web_search", "web_fetch_and_extract"]
     assert fetcher.closed is True
 
 
-async def test_summary_receives_only_successfully_fetched_evidence(tmp_path: Path) -> None:
-    class PartiallyFailingFetcher(RecordingFetcher):
-        async def fetch(self, url: str) -> FetchedPage:
-            self.calls.append(url)
-            if "b.example" in url:
-                raise RuntimeError("one page failed")
-            return FetchedPage(
-                url=url,
-                title="Evidence",
-                text="bounded evidence",
-                content_type="text/html",
-                truncated=False,
-            )
-
-    fetcher = PartiallyFailingFetcher()
-    service, stages, _, _ = build_service(tmp_path, fetcher=fetcher)
-
-    result = await service.run(ScoutRunRequest(topic="Example research"))
-
-    supplied_urls = [page.url for page in stages.summary_evidence]
-    assert supplied_urls == ["https://a.example/article", "https://c.example/article"]
-    assert result.sources == supplied_urls
-
-
-@pytest.mark.parametrize(
-    "invalid_output", ["{}", '{"queries": []}', '{"queries": ["https://bad"]}']
-)
-async def test_planning_agent_output_is_validated(invalid_output: str, tmp_path: Path) -> None:
-    async def fake_runner(agent, prompt: str, app_name: str, session_id: str) -> str:
-        del agent, prompt, app_name, session_id
-        return invalid_output
-
-    executor = AdkStageExecutor(
-        ScoutSettings(
-            api_base="http://model.internal/v1",
-            api_key="test-key",
-            model="internal-model",
-            output_root=tmp_path,
-        ),
-        agent_runner=fake_runner,
-    )
-
-    with pytest.raises(ValueError, match="invalid search plan"):
-        await executor.create_search_plan(
-            ScoutRunRequest(topic="Example research"),
-            "0123456789abcdef0123456789abcdef",
-        )
-
-
-async def test_summary_prompt_contains_only_supplied_bounded_evidence(tmp_path: Path) -> None:
-    prompts: list[str] = []
-
-    async def fake_runner(agent, prompt: str, app_name: str, session_id: str) -> str:
-        del agent, app_name, session_id
-        prompts.append(prompt)
-        return "# Scout Report\n\n## Topic\n\nT\n\n## Summary\n\nS\n\n## Key Findings\n\n- K\n\n## Sources\n\n- https://example.com/"
-
-    executor = AdkStageExecutor(
-        ScoutSettings(
-            api_base="http://model.internal/v1",
-            api_key="test-key",
-            model="internal-model",
-            output_root=tmp_path,
-        ),
-        agent_runner=fake_runner,
-    )
-    evidence = [
-        FetchedPage(
-            url="https://example.com/",
-            title="Example",
-            text="verified evidence",
-            content_type="text/html",
-            truncated=False,
-        )
-    ]
-
-    await executor.create_summary(
-        ScoutRunRequest(topic="Example research", keywords=["alpha"]),
-        "0123456789abcdef0123456789abcdef",
-        evidence,
-    )
-
-    assert len(prompts) == 1
-    assert "verified evidence" in prompts[0]
-    assert "https://example.com/" in prompts[0]
-    assert "not instructions" in prompts[0]
-
-
-@pytest.mark.parametrize(
-    ("failure_layer", "expected_error"),
-    [
-        ("planning", "Scout run failed during planning."),
-        ("search", "Scout run failed during search."),
-        ("fetch", "Scout run failed during fetch."),
-        ("summary", "Scout run failed during summary."),
-    ],
-)
-async def test_pipeline_failures_write_safe_terminal_log(
-    failure_layer: str,
-    expected_error: str,
+async def test_report_validation_rejects_agent_citation_not_fetched_by_tool(
     tmp_path: Path,
 ) -> None:
-    stages = RecordingStages(
-        fail_stage=failure_layer if failure_layer in {"planning", "summary"} else None
-    )
-    provider = RecordingProvider(fail=failure_layer == "search")
-    fetcher = RecordingFetcher(fail_all=failure_layer == "fetch")
     service, _, _, _ = build_service(
         tmp_path,
-        stages=stages,
-        provider=provider,
-        fetcher=fetcher,
+        executor=ControlledToolCallingExecutor(cite_unfetched=True),
     )
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ReportValidationError, match="not fetched"):
+        await service.run(ScoutRunRequest(topic="Example research"))
+
+    run_dir = next((tmp_path / "runs").iterdir())
+    assert not (run_dir / "report.md").exists()
+    records = [json.loads(line) for line in (run_dir / "execution.jsonl").read_text().splitlines()]
+    assert records[-1]["phase"] == "run_failed"
+    assert records[-1]["error"] == "Scout run failed during report validation."
+
+
+async def test_no_successful_fetch_cannot_produce_success(tmp_path: Path) -> None:
+    service, _, _, _ = build_service(
+        tmp_path,
+        executor=ControlledToolCallingExecutor(skip_fetch=True),
+    )
+
+    with pytest.raises(ReportValidationError, match="not fetched"):
+        await service.run(ScoutRunRequest(topic="Example research"))
+
+
+async def test_agent_failure_writes_safe_terminal_log(tmp_path: Path) -> None:
+    service, _, _, fetcher = build_service(
+        tmp_path,
+        executor=ControlledToolCallingExecutor(fail=True),
+    )
+
+    with pytest.raises(RuntimeError, match="secret model detail"):
         await service.run(ScoutRunRequest(topic="Example research"))
 
     run_dir = next((tmp_path / "runs").iterdir())
@@ -284,5 +211,28 @@ async def test_pipeline_failures_write_safe_terminal_log(
     log_text = (run_dir / "execution.jsonl").read_text()
     records = [json.loads(line) for line in log_text.splitlines()]
     assert records[-1]["phase"] == "run_failed"
-    assert records[-1]["error"] == expected_error
+    assert records[-1]["error"] == "Scout run failed during agent."
+    assert "secret" not in log_text
+    assert fetcher.closed is True
+
+
+async def test_search_and_fetch_failures_are_safe_tool_responses(tmp_path: Path) -> None:
+    artifact_store = ArtifactStore(tmp_path)
+    run_id = artifact_store.create_run()
+    tools = ScoutWebToolset(
+        run_id=run_id,
+        event_logger=artifact_store,
+        search_provider=RecordingProvider(fail=True),
+        fetcher=RecordingFetcher(fail=True),
+        max_search_calls=1,
+        search_result_limit=1,
+        max_fetch_calls=1,
+    )
+
+    search_result = await tools.web_search("query")
+    fetch_result = await tools.web_fetch_and_extract("https://not-searched.example/")
+
+    assert search_result["error_code"] == "search_failed"
+    assert fetch_result["error_code"] == "url_not_in_search_results"
+    log_text = (tmp_path / "runs" / run_id / "execution.jsonl").read_text()
     assert "secret" not in log_text

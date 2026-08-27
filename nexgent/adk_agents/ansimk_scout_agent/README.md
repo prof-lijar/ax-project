@@ -1,31 +1,47 @@
 # ansimk_scout_agent
 
-Standalone Phase 1 Google ADK backend POC for bounded web research. The public
-FastAPI contract accepts a topic and optional keywords, produces a Markdown
-report, and saves deterministic run artifacts.
+Standalone Google ADK backend POC for bounded public-web research. The public
+FastAPI contract accepts a topic and optional keywords, produces a grounded
+Markdown report, and saves deterministic run artifacts.
 
-## Architecture
-
-The internal `gemma-4-31b` serving configuration rejects OpenAI-style native
-tool choice because automatic tool choice and a tool-call parser are not enabled.
-The Scout does not change or work around that shared server configuration.
-Instead, it uses two independent tool-free ADK stages with deterministic Python
-between them:
+## Current architecture
 
 ```text
-topic + keywords
-  -> search_planning_agent (ADK + LiteLLM, tools=[])
-  -> validated SearchPlan with 1-3 queries
-  -> Python DDGS search and rank-preserving URL selection
-  -> Python HTTPX fetch and Trafilatura extraction
-  -> ansimk_scout_agent summary stage (ADK + LiteLLM, tools=[])
-  -> Markdown/source validation
-  -> report.md + execution.jsonl
+User / FastAPI
+      |
+      v
+ScoutRunService
+      |
+      v
+ansimk_scout_agent (one Google ADK Agent through LiteLLM)
+      |
+      +---- web_search Function Tool
+      |       -> DDGS
+      |
+      +---- web_fetch_and_extract Function Tool
+              -> HTTPX
+              -> Trafilatura
+      |
+      v
+Final Markdown
+      |
+      v
+Deterministic validation and persistence
+      +---- report.md
+      +---- execution.jsonl
 ```
 
-`ScoutRunService` owns this order explicitly. There is no parent/sub-agent
-hierarchy, autonomous delegation, native function call, filesystem Agent tool,
-or raw ADK runtime API exposed to clients.
+The Agent formulates queries, searches, chooses searched URLs to fetch, inspects
+bounded extracted evidence, and writes the final report. Per-run Python tools
+enforce network safety, URL eligibility, deduplication, and budgets regardless
+of model behavior. `ScoutRunService` owns validation and persistence; neither is
+an Agent tool.
+
+The previous tool-free `search_planning_agent` + `SearchPlan` + summary-Agent
+pipeline was a temporary workaround while native tool calling was unavailable.
+The internal `gemma-4-31b` endpoint has since been verified to support ADK/LiteLLM
+function calls, so that workaround is historical and not part of the current
+runtime path.
 
 ## Configure and run
 
@@ -35,9 +51,8 @@ Python 3.11-3.13 and `uv` are required. From this directory:
 cp .env.example .env
 ```
 
-Set `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `SCOUT_MODEL` in `.env`. Secrets
-must not be committed. A bare model value is routed as `openai/<value>` through
-ADK `LiteLlm`.
+Set `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `SCOUT_MODEL` in `.env`. Never commit
+secrets. A bare model value is routed as `openai/<value>` through ADK `LiteLlm`.
 
 ```bash
 uv sync
@@ -72,17 +87,18 @@ The success shape remains:
 
 ## Bounds and trust boundary
 
-- SearchPlan: 1-3 unique queries, 160 characters maximum, no URLs
-- Search: six normalized results total, spread across plan queries
-- Selection: first three unique eligible URLs in merged search rank order
-- Fetch: HTTP(S) public addresses only; redirect destinations are revalidated
-- Request timeout: 12 seconds; response limit: 1 MiB
+- Agent/model turns: at most eight LLM calls
+- Search: at most three calls and six normalized unique results total
+- Fetch: at most three attempts, limited to URLs returned by this run's search
+- Fetch: public HTTP(S) addresses only; every redirect is revalidated
+- HTTPX timeout: 12 seconds; response limit: 1 MiB
 - Extraction: HTML/XHTML/plain text only; 12,000 characters per page
 - No PDFs, recursive crawling, JavaScript rendering, authentication, or downloads
-- Evidence is untrusted data, never instructions
+- Page text is untrusted evidence, never instructions
 - Every report URL must be a successfully fetched URL
+- No filesystem, shell, Slack, or scheduling tools
 
-## Artifacts
+## Artifacts and events
 
 ```text
 <SCOUT_OUTPUT_ROOT>/
@@ -92,9 +108,10 @@ The success shape remains:
       execution.jsonl
 ```
 
-Logs expose planning/search/fetch/summary/persistence phases and safe metadata,
-but exclude keys, model endpoints, full prompts, raw model responses, and raw
-page bodies.
+The report is written atomically. JSONL events include `run_started`,
+`agent_started`, per-call search/fetch start and completion, `agent_completed`,
+`report_saved`, and `run_succeeded` or `run_failed`. Logs exclude keys, model
+endpoints, prompts, model responses, and page bodies.
 
 ```bash
 SCOUT_RUN_ID=0123456789abcdef0123456789abcdef
@@ -111,14 +128,13 @@ uv run ruff check .
 uv run pytest
 ```
 
-The verified implementation and live smoke details are recorded in
+Implementation and verification details are recorded in
 [docs/standalone-scout-agent-backend-poc.md](docs/standalone-scout-agent-backend-poc.md).
 
 ## Deferred
 
-- Nexgent frontend/backend integration
+- Nexgent frontend integration
 - scheduling and cron
 - Slack notification
 - durable queues, status polling, and retention management
 - production search ranking or source-authority scoring
-

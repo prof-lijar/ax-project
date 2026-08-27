@@ -3,39 +3,28 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.models import SearchPlan
+from app.models import ScoutRunRequest
+
+
+def test_scout_request_normalizes_topic_keywords_and_duplicates() -> None:
+    request = ScoutRunRequest(
+        topic="  Example research  ",
+        keywords=[" alpha ", "ALPHA", "beta"],
+    )
+
+    assert request.topic == "Example research"
+    assert request.keywords == ["alpha", "beta"]
 
 
 @pytest.mark.parametrize(
-    "queries",
+    "payload",
     [
-        ["고독사 예방 AI IoT 서비스"],
-        ["AI 돌봄 독거노인 모니터링", "IoT 고독사 예방 최근 동향"],
-        ["one", "two", "three"],
+        {"topic": "  "},
+        {"topic": "ok", "keywords": [""]},
+        {"topic": "valid topic", "keywords": ["x"] * 11},
+        {"topic": "valid topic", "unknown": True},
     ],
 )
-def test_search_plan_accepts_one_to_three_concise_queries(queries: list[str]) -> None:
-    plan = SearchPlan(queries=queries)
-
-    assert plan.queries == queries
-
-
-@pytest.mark.parametrize(
-    "queries",
-    [
-        [],
-        ["   "],
-        ["one", "two", "three", "four"],
-        ["https://example.com/search"],
-        ["x" * 161],
-    ],
-)
-def test_search_plan_rejects_invalid_queries(queries: list[str]) -> None:
+def test_scout_request_rejects_invalid_input(payload: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        SearchPlan(queries=queries)
-
-
-def test_search_plan_normalizes_and_deduplicates_queries() -> None:
-    plan = SearchPlan(queries=["  AI 돌봄  ", "ai 돌봄", "IoT 모니터링"])
-
-    assert plan.queries == ["AI 돌봄", "IoT 모니터링"]
+        ScoutRunRequest.model_validate(payload)

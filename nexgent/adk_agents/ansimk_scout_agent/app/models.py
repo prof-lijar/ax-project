@@ -5,35 +5,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class SearchPlan(BaseModel):
-    """Validated, URL-free queries produced by the planning LLM stage."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    queries: list[str] = Field(min_length=1, max_length=3)
-
-    @field_validator("queries")
-    @classmethod
-    def normalize_queries(cls, values: list[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for raw_value in values:
-            value = " ".join(raw_value.split())
-            if not value:
-                raise ValueError("search queries must not be blank")
-            if len(value) > 160:
-                raise ValueError("search queries must contain at most 160 characters")
-            lowered = value.casefold()
-            if "http://" in lowered or "https://" in lowered or "www." in lowered:
-                raise ValueError("search plans must contain queries, not URLs")
-            if lowered not in seen:
-                seen.add(lowered)
-                normalized.append(value)
-        if not normalized:
-            raise ValueError("search plan must contain at least one unique query")
-        return normalized
-
-
 class ScoutRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
