@@ -122,13 +122,17 @@ Only the qualitative description may enter the model fact package.
 ## Approved device-reception interpretation
 
 The product owner approved a versioned device-reception presentation rule on
-2026-08-25. For every `analysis_devicedailysummary` row, inspect
+2026-08-25 and revised its GOOD and power inputs on 2026-08-27. For every
+`analysis_devicedailysummary` row, inspect
 `temperature_count`, `humidity_count`, `light_count`, `remote_control_count`,
 and `movement_count` together:
 
-- `device_good`: all five values are non-null and non-zero;
-- `device_power`: the three measurement-count values are null and both remote
-  control and movement are zero;
+- `device_good`: `temperature_count`, `humidity_count`, `light_count`, and
+  `movement_count` are all non-null and non-zero; `remote_control_count` does
+  not participate in GOOD classification;
+- `device_power`: `temperature_count`, `humidity_count`, and `light_count` are
+  all null; remote-control and movement values do not participate in power
+  classification;
 - `device_position`: after excluding both `device_good` and `device_power`, at
   least two of the five values are numeric and inside 0–10 inclusive.
 
@@ -136,21 +140,24 @@ Classify each row through the mutually exclusive `device_good`, `device_power`,
 then `device_position` if/else-if order and count occurrences across the current
 week. At weekly status selection, at least two power occurrences select
 `CAUTION/device_power`; otherwise at least two position occurrences select
-`CAUTION/device_position`. Select `GOOD/device_good` only when at least one
-source row exists and every source row is good. A partial combination that
-matches neither weekly rule remains unavailable rather than claiming that all
-data was normal. Zero source rows remain unavailable; absence of rows is not
-converted into a power or position event. The deterministic detail description
-for a zero-source week is `기기 전원이 연결되어 있는지 확인해 주세요.`; its
-occurrence counts remain unavailable and it does not enter model-authored
-insights as a verified power event.
+`CAUTION/device_position`; otherwise at least one good occurrence selects
+`GOOD/device_good`. Good occurrences do not need to equal every source row.
+Rows matching none of the three row rules are shown as a neutral derived
+`기타 수신 패턴` count and do not override a matched weekly status. If source
+rows exist but no weekly rule matches, label the result `판정 불가` without
+claiming no reception or recommending a power check. Zero source rows remain
+unavailable; absence of rows is not converted into a power or position event.
+The deterministic detail description for a zero-source week is
+`기기 전원이 연결되어 있는지 확인해 주세요.`; its occurrence counts remain
+unavailable and it does not enter model-authored insights as a verified power
+event.
 
 Render the uppercase status, exact approved Korean description, short summary,
-and the three occurrence counts in deterministic Python. Raw row values and
-thresholds must not enter the model fact package. A selected weekly power or
-position occurrence count may enter the Python-owned summary outline as a
-significant value; narrative validation permits only numeric tokens already
-present in that outline.
+the three classified occurrence counts, and the derived other-pattern count in
+deterministic Python. Raw row values and thresholds must not enter the model
+fact package. A selected weekly power or position occurrence count may enter
+the Python-owned summary outline as a significant value; narrative validation
+permits only numeric tokens already present in that outline.
 
 ## Approved risk-score interpretation
 
@@ -193,7 +200,7 @@ statuses:
 - device `CAUTION/position`: `기기위치변경 주의` /
   `기기 위치 확인이 필요해요` /
   `움직임·리모컨 사용이 적게 확인됐어요.`;
-- device reception unavailable: `센서 자료 부족` /
+- zero-source device reception: `센서 자료 부족` /
   `기기 전원이 연결되어 있는지 확인해 주세요` /
   `지난 한 주 기기 데이터 수신이 확인되지 않았어요.`;
 - all activity, environment, device-reception, and weekly score statuses `GOOD`
@@ -201,7 +208,7 @@ statuses:
   `꾸준히 안부를 확인해 주세요` /
   `지난 한 주는 큰 이상 없이 안정적인 흐름을 보였어요.`.
 
-Render an unavailable-reception power check first when applicable; otherwise
+Render a zero-source reception power check first when applicable; otherwise
 use movement, remote control, environment, then device order, with at most
 three guides. When none applies, use the stable GOOD guide only if
 every status above is explicitly GOOD and no risk event was detected;

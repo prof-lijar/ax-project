@@ -67,14 +67,19 @@ the current-to-previous total percentage. It renders `GOOD` for 70–150%,
 approved boundary inclusivity and Korean guidance. Exactly 250% is `CAUTION`;
 missing totals or a zero previous total produce an unavailable comparison.
 
-The device-data reception section evaluates the five approved count columns on
-each raw device-day row. Rows with all non-null, non-zero values are good; the
-all-null measurement-count plus zero activity pattern is a power occurrence;
-and, after excluding good and power, at least two values in 0–10 is a position
-occurrence. These row categories are mutually exclusive. Two repeated power or
+The device-data reception section evaluates the approved count columns on each
+raw device-day row. Rows whose temperature, humidity, light, and movement
+counts are all non-null and non-zero are good; remote-control count does not
+participate in GOOD classification. A row whose temperature, humidity, and
+light counts are all null is a power occurrence regardless of its activity
+values. After excluding good and power, at least two of all five values in
+0–10 is a position occurrence. These row categories are mutually exclusive. Two repeated power or
 position occurrences produce the matching `CAUTION` result with power-first
-weekly precedence. `GOOD` requires every available row to be good; unmatched
-partial data and zero source rows remain unavailable. A zero-source week uses
+weekly precedence. Otherwise one or more good occurrences produce `GOOD`; good
+occurrences do not need to equal every source row. Rows matching none of the
+three row rules appear as the neutral `기타 수신 패턴` count and do not override
+a matched weekly status. If rows exist but no weekly rule matches, the status
+is `판정 불가` and no power-check guide is created. A zero-source week alone uses
 the actionable description `기기 전원이 연결되어 있는지 확인해 주세요.` without
 inventing a power-pattern count. Status, exact Korean copy, summary, and counts
 are Python-owned.
@@ -130,7 +135,7 @@ Python selects product-approved guardian guides from activity `RISK`, indoor
 environment `RISK`, and device-reception `CAUTION` results. Each guide owns an
 internal condition, a displayed title, and an analysis sentence. The condition
 is used only for deterministic selection; the card renders the title and
-analysis. Unavailable reception takes priority because it affects report
+analysis. Zero-source reception takes priority because it affects report
 reliability; otherwise movement, remote control, environment, then device is
 the deterministic order. At most three guides are rendered. Approved guides take
 the first action slots. A separate summary policy combines at most two priority
@@ -142,7 +147,7 @@ When all activity, environment, device-reception, and weekly score statuses are
 explicitly `GOOD` and no risk event was detected, the section instead renders
 the deterministic `꾸준히 안부를 확인해 주세요` guide with the approved stable-week
 analysis. Unavailable data does not qualify for this GOOD fallback.
-Unavailable device reception instead produces the deterministic
+Zero-source device reception instead produces the deterministic
 `기기 전원이 연결되어 있는지 확인해 주세요` guide. The summary CLOSE is not
 passed into model suggestions, so it cannot reappear as a generic numbered
 guardian action; the renderer also drops any invented time-scoped summary CLOSE

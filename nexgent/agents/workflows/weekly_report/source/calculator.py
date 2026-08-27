@@ -267,23 +267,30 @@ def _device_reception_counts(rows: list[dict[str, Any]]) -> dict[str, int | None
     good_count = 0
     power_count = 0
     position_count = 0
-    fields = (
+    position_fields = (
         "temperature_count",
         "humidity_count",
         "light_count",
         "remote_control_count",
         "movement_count",
     )
+    good_fields = (
+        "temperature_count",
+        "humidity_count",
+        "light_count",
+        "movement_count",
+    )
     for row in rows:
-        values = tuple(row[field] for field in fields)
-        is_good = all(value is not None and float(value) != 0 for value in values)
+        values = tuple(row[field] for field in position_fields)
+        good_values = tuple(row[field] for field in good_fields)
+        is_good = all(
+            value is not None and float(value) != 0 for value in good_values
+        )
         is_power = (
             not is_good
             and values[0] is None
             and values[1] is None
             and values[2] is None
-            and _is_zero(values[3])
-            and _is_zero(values[4])
         )
         good_count += int(is_good)
         power_count += int(is_power)
@@ -299,12 +306,6 @@ def _device_reception_counts(rows: list[dict[str, Any]]) -> dict[str, int | None
         "device_power_count": power_count,
         "device_position_count": position_count,
     }
-
-
-def _is_zero(value: Any) -> bool:
-    return value is not None and float(value) == 0
-
-
 def _difference(current: float | None, previous: float | None) -> float | None:
     return current - previous if current is not None and previous is not None else None
 

@@ -209,8 +209,8 @@ def test_device_reception_calculation_excludes_power_from_position() -> None:
                 "temperature_count": None,
                 "humidity_count": None,
                 "light_count": None,
-                "remote_control_count": 0,
-                "movement_count": 0,
+                "remote_control_count": 25,
+                "movement_count": 40,
             },
             {
                 "temperature_count": None,
@@ -232,6 +232,53 @@ def test_device_reception_calculation_excludes_power_from_position() -> None:
     assert counts == {
         "device_good_count": 2,
         "device_power_count": 2,
+        "device_position_count": 0,
+    }
+
+
+def test_device_good_ignores_remote_control_but_requires_temperature() -> None:
+    counts = _device_reception_counts(
+        [
+            {
+                "temperature_count": 20,
+                "humidity_count": 20,
+                "light_count": 20,
+                "remote_control_count": 0,
+                "movement_count": 20,
+            },
+            {
+                "temperature_count": 0,
+                "humidity_count": 20,
+                "light_count": 20,
+                "remote_control_count": 20,
+                "movement_count": 20,
+            },
+        ]
+    )
+
+    assert counts == {
+        "device_good_count": 1,
+        "device_power_count": 0,
+        "device_position_count": 0,
+    }
+
+
+def test_device_power_depends_only_on_three_measurement_counts() -> None:
+    counts = _device_reception_counts(
+        [
+            {
+                "temperature_count": None,
+                "humidity_count": None,
+                "light_count": None,
+                "remote_control_count": 25,
+                "movement_count": 40,
+            }
+        ]
+    )
+
+    assert counts == {
+        "device_good_count": 0,
+        "device_power_count": 1,
         "device_position_count": 0,
     }
 

@@ -29,7 +29,7 @@ def test_device_power_has_precedence_and_uses_exact_approved_copy() -> None:
         update={
             "device_good_count": 3,
             "device_power_count": 2,
-            "device_position_count": 3,
+            "device_position_count": 2,
         }
     )
 
@@ -46,7 +46,7 @@ def test_device_power_has_precedence_and_uses_exact_approved_copy() -> None:
 def test_device_position_uses_exact_approved_copy() -> None:
     snapshot = _snapshot(101, current=True).model_copy(
         update={
-            "device_good_count": 7,
+            "device_good_count": 5,
             "device_power_count": 0,
             "device_position_count": 2,
         }
@@ -62,20 +62,25 @@ def test_device_position_uses_exact_approved_copy() -> None:
     assert device_reception_summary(assessment) == "기기 위치 확인 필요"
 
 
-def test_unmatched_partial_reception_data_is_not_labeled_good() -> None:
+def test_any_good_reception_is_good_when_no_caution_rule_matches() -> None:
     snapshot = _snapshot(101, current=True).model_copy(
         update={
             "device_good_count": 6,
-            "device_power_count": 1,
-            "device_position_count": 1,
+            "device_power_count": 0,
+            "device_position_count": 0,
         }
     )
 
     assessment = assess_device_reception(snapshot)
 
-    assert assessment.status == "UNAVAILABLE"
-    assert device_reception_status_label(assessment) == "자료 없음"
-    assert device_reception_summary(assessment) == "수신상태 확인 필요"
+    assert assessment.status == "GOOD"
+    assert assessment.kind == "device_good"
+    assert assessment.other_count == 1
+    assert device_reception_status_label(assessment) == "GOOD"
+    assert device_reception_description(assessment) == (
+        "모든 데이터가 정상적으로 수집되었어요."
+    )
+    assert device_reception_summary(assessment) == "수신상태 양호"
 
 
 def test_zero_source_rows_request_a_device_power_check() -> None:
@@ -94,11 +99,30 @@ def test_zero_source_rows_request_a_device_power_check() -> None:
 
     assert assessment.status == "UNAVAILABLE"
     assert assessment.kind == "device_no_data"
+    assert assessment.other_count is None
     assert device_reception_status_label(assessment) == "자료 없음"
     assert device_reception_description(assessment) == (
         "기기 전원이 연결되어 있는지 확인해 주세요."
     )
     assert device_reception_summary(assessment) == "수신상태 확인 필요"
+
+
+def test_rows_without_any_weekly_match_are_not_called_missing_or_power_loss() -> None:
+    snapshot = _snapshot(101, current=True).model_copy(
+        update={
+            "device_good_count": 0,
+            "device_power_count": 1,
+            "device_position_count": 1,
+        }
+    )
+
+    assessment = assess_device_reception(snapshot)
+
+    assert assessment.status == "UNAVAILABLE"
+    assert assessment.kind == "unavailable"
+    assert assessment.other_count == 5
+    assert device_reception_status_label(assessment) == "판정 불가"
+    assert "자료가 충분하지" in device_reception_description(assessment)
 
 
 def test_device_reception_fact_package_includes_significant_power_count() -> None:

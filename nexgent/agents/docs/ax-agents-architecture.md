@@ -1,6 +1,6 @@
 # AX Agents Architecture
 
-Date: 2026-08-26
+Date: 2026-08-27
 
 Status: **Authoritative implementation specification**
 
@@ -485,15 +485,21 @@ to four days, matching the explicit combined RISK duration; duplicated GOOD
 copy maps to zero-day and one-day variants. The model receives only the chosen
 qualitative description, while Python owns counts, status, ranges, and output.
 
-Weekly Reporter device-reception update on 2026-08-25: the source service now
-classifies each raw device-daily-summary row from the five approved count
-columns and carries validated good, power, and weak-position occurrence counts
-in the snapshot. Row classification is mutually exclusive in good, power, then
-position order; workflow policy uses the approved two-occurrence threshold and
-power-first weekly precedence to select uppercase `GOOD` or `CAUTION`, exact
-Korean description, and short summary. Unmatched partial data fails closed as
-unavailable. Python owns all raw comparisons, counts, precedence, status, and
-rendering; only qualitative section assessments may reach the model.
+Weekly Reporter device-reception update on 2026-08-27: the source service now
+classifies each raw device-daily-summary row into validated good, power, and
+weak-position occurrence counts. GOOD requires non-null/non-zero temperature,
+humidity, light, and movement counts but ignores remote-control usage. Power
+requires null temperature, humidity, and light counts regardless of activity
+values. Position continues to inspect all five count fields after good and
+power are excluded. Row classification is mutually exclusive in good, power,
+then position order; workflow policy uses the approved two-occurrence threshold and
+power-first weekly precedence to select `CAUTION`, then selects `GOOD` when at
+least one good occurrence remains. Good occurrences do not need to equal every
+source row. Unmatched rows are shown as a neutral `기타 수신 패턴` count and do
+not override a matched weekly status. Received rows matching no weekly rule are
+`판정 불가` and never create a false missing-data or power-check claim. Python
+owns all raw comparisons, counts, precedence, status, and rendering; only
+qualitative section assessments may reach the model.
 
 Weekly Reporter zero-reception guidance update on 2026-08-26: a current period
 with no device-daily-summary rows remains internally unavailable and does not

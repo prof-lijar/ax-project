@@ -239,6 +239,47 @@ def test_partial_device_mode_explains_cause_and_significant_count(
     assert "출동" not in outline.safety
 
 
+def test_available_good_reception_is_grounded_as_received_data_not_absence() -> None:
+    facts = build_fact_package(
+        _metrics(
+            current_updates={
+                "device_good_count": 6,
+                "device_power_count": 0,
+                "device_position_count": 0,
+            }
+        )
+    )
+    outline = facts.summary_outline
+
+    assert outline is not None
+    assert outline.mode == "ALL_GOOD"
+    assert outline.data_quality_code == "VALID"
+    assert outline.good_topic_list == ["활동", "환경", "기기"]
+    assert outline.issue_topic_list == []
+    assert "정상적으로 수집" in outline.safety
+    assert "수신되지" not in outline.safety
+    assert facts.required_topics == []
+    assert "기기 전원이 연결되어 있는지 확인해 주세요" not in facts.suggested_actions
+
+
+def test_unmatched_rows_do_not_create_a_false_power_check() -> None:
+    facts = build_fact_package(
+        _metrics(
+            current_updates={
+                "device_good_count": 0,
+                "device_power_count": 1,
+                "device_position_count": 1,
+            }
+        )
+    )
+    outline = facts.summary_outline
+
+    assert outline is not None
+    assert "기기 데이터는 수신되었지만" in outline.safety
+    assert "전원 연결" not in outline.safety
+    assert "기기 전원이 연결되어 있는지 확인해 주세요" not in facts.suggested_actions
+
+
 def test_mixed_and_risk_modes_follow_verified_area_statuses() -> None:
     mixed = build_weekly_summary_outline(
         _metrics(

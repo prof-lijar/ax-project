@@ -554,6 +554,8 @@ class WardWeeklyMetricSnapshot(ContractModel):
             value is not None and value > self.daily_summary_count for value in values
         ):
             raise ValueError("device reception counts must not exceed source rows")
+        if sum(value or 0 for value in values) > self.daily_summary_count:
+            raise ValueError("device reception counts must be mutually exclusive")
         return self
 
 

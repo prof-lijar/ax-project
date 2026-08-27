@@ -149,6 +149,7 @@ def render_report(
 ### 지표
 
 - 정상 수신: {_count(reception.good_count)}
+- 기타 수신 패턴: {_count(reception.other_count)}
 - 전원 확인 패턴: {_count(reception.power_count)}
 - 기기 위치 확인 패턴: {_count(reception.position_count)}
 

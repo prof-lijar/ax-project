@@ -41,6 +41,7 @@ async def test_weekly_report_meets_deterministic_release_criteria(
         "korean_markdown_structure",
         "personalization",
         "numeric_grounding",
+        "device_reception_consistency",
         "narrative_safety",
         "fallback_disclosure",
     }
@@ -76,6 +77,45 @@ async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch)
     )
     grounding = next(item for item in evaluations if item.criterion == "numeric_grounding")
     assert grounding.status == "failed"
+    assert not weekly_report_release_ready(evaluations)
+
+
+@pytest.mark.asyncio
+async def test_false_device_missing_data_copy_prevents_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EvaluatedModel:
+        async def complete(self, *args: object, **kwargs: object) -> str:
+            return VALID_NARRATIVE
+
+    monkeypatch.setattr(
+        "workflows.weekly_report.nodes.get_default_chat_model",
+        lambda: EvaluatedModel(),
+    )
+    output = await graph.ainvoke({"week_start": "2026-08-03"})
+    tampered = deepcopy(output)
+    markdown = tampered["reports"][0]["markdown"]
+    markdown = markdown.replace(
+        "## 3. 기기 데이터 수신\n\n- 상태: GOOD",
+        "## 3. 기기 데이터 수신\n\n- 상태: 자료 없음",
+        1,
+    )
+    tampered["reports"][0]["markdown"] = markdown.replace(
+        "# 보호자 행동 제안",
+        "# 보호자 행동 제안\n\n## 1. 기기 전원이 연결되어 있는지 확인해 주세요\n\n"
+        "- 분석: 지난 한 주 기기 데이터 수신이 확인되지 않았어요.",
+        1,
+    )
+
+    evaluations = evaluate_weekly_report_batch(
+        WardWeeklyReportBatchResult.model_validate(tampered)
+    )
+    device = next(
+        item
+        for item in evaluations
+        if item.criterion == "device_reception_consistency"
+    )
+    assert device.status == "failed"
     assert not weekly_report_release_ready(evaluations)
 
 

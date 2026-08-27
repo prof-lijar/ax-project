@@ -142,9 +142,10 @@ significant valid-day and device-issue counts already supplied by Python. Sleep
 and dispatch are excluded from the fact package, narrative, observations,
 suggestions, and rendered Markdown.
 Every analysis sentence must naturally connect to the preceding summary text.
-Urgent terms such as `빠른`, `즉시`, `위급`, and `긴급` are rejected. If
-device reception is unavailable, Python adds the deterministic guardian guide
-`기기 전원이 연결되어 있는지 확인해 주세요`; the summary CLOSE is never added
+Urgent terms such as `빠른`, `즉시`, `위급`, and `긴급` are rejected. If device
+reception has zero source rows, Python adds the deterministic guardian guide
+`기기 전원이 연결되어 있는지 확인해 주세요`; an unmatched row combination
+with received data never creates that guide. The summary CLOSE is never added
 to model suggestions, and the renderer drops an invented time-scoped CLOSE, so
 it cannot become a generic numbered action.
 
@@ -211,13 +212,18 @@ without delegating interpretation to the model.
 
 The device-data reception section evaluates `temperature_count`,
 `humidity_count`, `light_count`, `remote_control_count`, and `movement_count`
-on each raw row. All five non-null/non-zero values form a good occurrence. Three
-null measurement counts plus two zero activity counts form a power occurrence.
-After good and power rows are excluded, any row with at least two values from 0
-through 10 forms a position occurrence. The categories are mutually exclusive.
+on each raw row. Non-null/non-zero temperature, humidity, light, and movement
+values form a good occurrence; remote-control count does not participate in
+GOOD classification. Null temperature, humidity, and light counts form a power
+occurrence regardless of activity values. After good and power rows are
+excluded, any row with at least two of all five values from 0 through 10 forms
+a position occurrence. The categories are mutually exclusive.
 Two repeated occurrences produce `CAUTION`, with power taking weekly
-precedence; `GOOD` requires every available row to be good. Unmatched partial
-combinations and zero source rows remain unavailable. For a zero-source week,
+precedence; otherwise one or more good occurrences produce `GOOD`. Good
+occurrences do not need to equal every source row. Unmatched rows are rendered
+as `기타 수신 패턴` and do not override a matched weekly status. If source rows
+exist but no weekly rule matches, the section says `판정 불가` without a power
+claim. For a zero-source week,
 the deterministic detail section displays
 `기기 전원이 연결되어 있는지 확인해 주세요.` while leaving occurrence counts
 unavailable rather than inventing a power event. Python renders status, exact

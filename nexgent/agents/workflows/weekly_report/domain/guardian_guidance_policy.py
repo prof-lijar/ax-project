@@ -39,7 +39,7 @@ def build_guardian_guides(metrics: WardWeeklyMetrics) -> list[GuardianGuide]:
 
     guides: list[GuardianGuide] = []
     reception = assess_device_reception(metrics.current)
-    if reception.status == "UNAVAILABLE":
+    if reception.kind == "device_no_data":
         guides.append(_GUIDES[("guide_device_no_data", "device_data", 1)])
 
     activity = assess_activity(metrics)

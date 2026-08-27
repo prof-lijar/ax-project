@@ -93,6 +93,12 @@ def evaluate_weekly_report_batch(
             "render only allowlisted significant values from validated metrics",
         ),
         _criterion(
+            "device_reception_consistency",
+            all(_has_consistent_device_reception(report) for report in result.reports),
+            "device status, unmatched-row count, and guardian copy match source-row evidence",
+            "apply power/position precedence, then GOOD for any good occurrence, and reserve missing-data power guidance for zero source rows",
+        ),
+        _criterion(
             "narrative_safety",
             all(
                 _narrative_numbers_are_grounded(report)
@@ -156,6 +162,37 @@ def _has_required_headings(report: WardWeeklyReport) -> bool:
         f"## {number}. {name}" in report.markdown
         for number, name in enumerate(section_names, start=1)
     )
+
+
+def _has_consistent_device_reception(report: WardWeeklyReport) -> bool:
+    current = report.metrics.current
+    counts = (
+        current.device_good_count,
+        current.device_power_count,
+        current.device_position_count,
+    )
+    if current.daily_summary_count == 0:
+        return "## 3. 기기 데이터 수신\n\n- 상태: 자료 없음" in report.markdown
+    if any(value is None for value in counts):
+        return False
+
+    other_count = current.daily_summary_count - sum(value or 0 for value in counts)
+    if f"- 기타 수신 패턴: {other_count}회" not in report.markdown:
+        return False
+    if "지난 한 주 기기 데이터 수신이 확인되지 않았어요." in report.markdown:
+        return False
+
+    if (current.device_power_count or 0) >= 2 or (
+        current.device_position_count or 0
+    ) >= 2:
+        expected_status = "CAUTION"
+    elif (current.device_good_count or 0) >= 1:
+        expected_status = "GOOD"
+        if "기기 전원이 연결되어 있는지 확인해 주세요" in report.markdown:
+            return False
+    else:
+        expected_status = "판정 불가"
+    return f"## 3. 기기 데이터 수신\n\n- 상태: {expected_status}" in report.markdown
 
 
 def _narrative_numbers_are_grounded(report: WardWeeklyReport) -> bool:

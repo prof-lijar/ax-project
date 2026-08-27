@@ -85,6 +85,7 @@ async def test_report_uses_guardian_facing_section_template() -> None:
     assert "- 설명: 모든 데이터가 정상적으로 수집되었어요." in report.markdown
     assert "- 요약: 수신상태 양호" in report.markdown
     assert "- 정상 수신: 7회" in report.markdown
+    assert "- 기타 수신 패턴: 0회" in report.markdown
     assert "- 전원 확인 패턴: 0회" in report.markdown
     assert "- 기기 위치 확인 패턴: 0회" in report.markdown
     assert "### 위험 관리 기록" in report.markdown
@@ -133,6 +134,47 @@ async def test_report_requests_power_check_when_device_rows_are_missing() -> Non
     assert "## 3. 기기 데이터 수신\n\n- 상태: 자료 없음" in report.markdown
     assert "- 설명: 기기 전원이 연결되어 있는지 확인해 주세요." in report.markdown
     assert "- 정상 수신: 자료 없음" in report.markdown
+    assert "- 기타 수신 패턴: 자료 없음" in report.markdown
+
+
+@pytest.mark.asyncio
+async def test_report_labels_available_device_rows_without_claiming_no_data() -> None:
+    source = await MockWeeklyReportSourceRepository().load(
+        WeeklyReportRequest(week_start=date(2026, 8, 3), ward_ids=[101])
+    )
+    metrics = source.items[0]
+    metrics = metrics.model_copy(
+        update={
+            "current": metrics.current.model_copy(
+                update={
+                    "device_good_count": 6,
+                    "device_power_count": 0,
+                    "device_position_count": 0,
+                }
+            )
+        }
+    )
+    narrative = WeeklyNarrative(
+        headline="지난 한 주 기기 수신 상태는 안정적으로 유지되었습니다.",
+        analysis_text=(
+            "구체적으로 확인된 기기 데이터는 정상적으로 수집되었습니다."
+        ),
+    )
+
+    report = render_report(
+        metrics,
+        narrative,
+        "llm",
+        NarrativeGenerationMetadata(prompt_version="test", validation_status="passed"),
+    )
+
+    assert "## 3. 기기 데이터 수신\n\n- 상태: GOOD" in report.markdown
+    assert "- 설명: 모든 데이터가 정상적으로 수집되었어요." in report.markdown
+    assert "- 요약: 수신상태 양호" in report.markdown
+    assert "- 정상 수신: 6회" in report.markdown
+    assert "- 기타 수신 패턴: 1회" in report.markdown
+    assert "지난 한 주 기기 데이터 수신이 확인되지 않았어요." not in report.markdown
+    assert "기기 전원이 연결되어 있는지 확인해 주세요" not in report.markdown
 
 
 @pytest.mark.parametrize("night_awake_count", [None, 0.0])

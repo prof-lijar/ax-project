@@ -51,6 +51,7 @@ def build_weekly_summary_outline(metrics: WardWeeklyMetrics) -> SummaryOutline:
         reception.kind,
         reception.power_count,
         reception.position_count,
+        reception.source_count,
         connected=life is not None or environment_text is not None,
     )
     available_items = _summary_items(life, environment_text, safety)
@@ -226,6 +227,7 @@ def _safety_sentence(
     reception_kind: str,
     power_count: int | None,
     position_count: int | None,
+    source_count: int,
     *,
     connected: bool,
 ) -> str | None:
@@ -237,6 +239,8 @@ def _safety_sentence(
         device = f"기기 전원 분리 패턴이 {power_count or 0}회 확인되어 일부 데이터가 끊겼을 수 있습니다."
     elif reception_kind == "device_position":
         device = f"기기 위치 확인이 필요한 패턴이 {position_count or 0}회 나타나 일부 데이터가 불완전할 수 있습니다."
+    elif reception_kind == "unavailable" and source_count > 0:
+        device = "기기 데이터는 수신되었지만 주간 수신 상태 판정 기준을 충족한 기록이 없습니다."
     else:
         device = (
             "기기 데이터 수신이 확인되지 않아 전원 연결 상태를 "

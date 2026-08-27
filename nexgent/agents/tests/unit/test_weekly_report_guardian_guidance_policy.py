@@ -193,7 +193,7 @@ def _metrics(
         ),
         (
             {
-                "device_good_count": 7,
+                "device_good_count": 5,
                 "device_power_count": 0,
                 "device_position_count": 2,
             },
@@ -417,6 +417,8 @@ def test_no_sensor_data_gets_power_check_guide_without_generic_action() -> None:
             "temperature_out_of_range_days": None,
             "humidity_out_of_range_days": None,
             "environment_out_of_range_days": None,
+            "daily_summary_count": 0,
+            "device_count": 0,
             "device_good_count": None,
             "device_power_count": None,
             "device_position_count": None,

@@ -38,9 +38,10 @@
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
   implemented FastAPI source boundary, calculation rules, strict year-round
   indoor-environment recommended ranges and maximum-based RISK thresholds,
-  weekly-total activity and device-reception status,
-  actionable power-check copy for zero-reception weeks without synthetic event
-  counts,
+  weekly-total activity and device-reception status with transparent
+  unmatched-row counts,
+  actionable power-check copy only for zero-reception weeks without synthetic
+  event counts or false missing-data claims,
   weekly-average risk-score presentation, personalized deterministic summary
   openings, qualitative sensor evidence, deterministic guardian action guides
   with internal conditions and title-plus-analysis cards,

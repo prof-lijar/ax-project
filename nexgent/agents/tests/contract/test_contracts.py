@@ -167,6 +167,14 @@ def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:
             device_position_count=0,
         )
 
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        WardWeeklyMetricSnapshot(
+            daily_summary_count=7,
+            device_good_count=6,
+            device_power_count=1,
+            device_position_count=1,
+        )
+
 
 def test_ward_weekly_metrics_reject_inconsistent_delta() -> None:
     with pytest.raises(ValidationError, match="delta must match"):
