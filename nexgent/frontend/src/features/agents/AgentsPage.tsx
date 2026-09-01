@@ -75,7 +75,7 @@ export function AgentsPageView({
       <header className={styles.pageHeader}>
         <div>
           <h1>Agents</h1>
-          <p>Monitor the LangGraph workflows that work alongside your team.</p>
+          <p>Open and monitor the agents that work alongside your team.</p>
         </div>
         {hasPreviewAgents && <Badge tone="amber">Preview data</Badge>}
       </header>
@@ -168,14 +168,16 @@ export function AgentsPageView({
                         <span>{agent.recentRuns.length} runs</span>
                       )}
                     </span>
-                    <button
-                      className={styles.runInChatButton}
-                      type="button"
-                      onClick={(event) => openAgentInChat(event, agent)}
-                    >
-                      <MessageSquare size={15} aria-hidden />
-                      Chat
-                    </button>
+                    {agent.canRunInChat && (
+                      <button
+                        className={styles.runInChatButton}
+                        type="button"
+                        onClick={(event) => openAgentInChat(event, agent)}
+                      >
+                        <MessageSquare size={15} aria-hidden />
+                        Chat
+                      </button>
+                    )}
                   </footer>
                 </article>
               );

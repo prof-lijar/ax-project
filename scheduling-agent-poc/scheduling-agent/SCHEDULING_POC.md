@@ -1,7 +1,8 @@
 # Scheduling Agent POC
 
-This document records the implementation and verification state as of
-2026-08-27. It describes current code and observed tests, not intended future
+This document records the implementation and verification state through
+2026-08-28, with a clearly dated Scout systemd supervision update from
+2026-08-31. It describes current code and observed tests, not intended future
 features.
 
 ## 1. Objective
@@ -45,6 +46,10 @@ scheduling-agent-poc/
     │   ├── __init__.py
     │   ├── agent.py
     │   ├── scheduler_service.py
+    │   ├── scout_schedule_models.py
+    │   ├── scout_schedule_repository.py
+    │   ├── scout_api_client.py
+    │   ├── scout_schedule_service.py
     │   ├── worker_agent.py
     │   ├── fast_api_app.py
     │   └── app_utils/
@@ -120,8 +125,9 @@ and Worker Agent. Cron scheduling is not implemented.
 The ADK project resolves APScheduler 3.11.3 in `uv.lock`; `pyproject.toml`
 requires `apscheduler>=3.11.3`.
 
-`app/scheduler_service.py` creates a module-level `BackgroundScheduler` and
-starts it at import time. `schedule_interval_task(task_name, seconds)`:
+`app/scheduler_service.py` creates a module-level `BackgroundScheduler` without
+starting it at import time. FastAPI lifespan starts and stops that legacy
+scheduler. `schedule_interval_task(task_name, seconds)`:
 
 - accepts Task A, B, or C;
 - requires an interval greater than zero;
@@ -578,10 +584,13 @@ scheduler process to remain alive; neither demonstrates restart persistence.
 
 ### NOT IMPLEMENTED / REMAINING LIMITATIONS
 
-- APScheduler and its jobs remain process-local and in memory.
-- The scheduler process must remain alive until a scheduled firing.
-- Schedules are lost on process or server restart.
-- No persistent job store or restart recovery.
+- Legacy calculator and Worker Agent APScheduler jobs remain process-local and
+  in memory.
+- The API process must remain alive for both legacy and Scout jobs to fire;
+  persistent Scout jobs reload after a process restart, while legacy jobs do
+  not.
+- No persistent job store or restart recovery for legacy calculator/Worker
+  schedules. The Scout scheduling API has both.
 - No cron scheduling.
 - No job listing, cancellation, or update API.
 - No multi-process scheduler coordination or duplicate-scheduler prevention.
@@ -683,8 +692,9 @@ APScheduler callback independently invokes calculator_worker_agent later
 [NOT IMPLEMENTED] Nexgent AX Chat -> Scheduling Agent POC
 [NOT IMPLEMENTED] Weekly Reporter -> Scheduling Agent POC
 [NOT IMPLEMENTED] Natural-language cron scheduling
-[NOT IMPLEMENTED] Persistent scheduled jobs
-[NOT IMPLEMENTED] Restart recovery / production scheduler lifecycle
+[NOT IMPLEMENTED] Persistent legacy calculator/Worker scheduled jobs
+[IMPLEMENTED] Persistent Scout jobs and conservative restart recovery
+[IMPLEMENTED] Single-worker systemd supervision for the Scout Scheduling API
 ```
 
 The POC has verified recurring interval scheduling with multiple independent
@@ -695,4 +705,192 @@ parent/sub-agent graph: `scheduling_agent` finishes registration, and
 APScheduler's deterministic callback invokes `calculator_worker_agent` later.
 Native tool calling remains bypassed. tmux can keep the owning process alive
 but is not Agent architecture or persistence. AX Chat, Weekly Reporter, cron
-scheduling, restart recovery, and production durability remain unimplemented.
+scheduling, legacy-schedule restart recovery, and production durability for
+the legacy calculator/Worker path remain unimplemented.
+
+## 12. Phase 2 — Persistent Scout Scheduling API (Current)
+
+Date: 2026-08-28
+
+### Architecture
+
+```text
+Client
+  -> POST /v1/scout/schedules
+  -> ScoutScheduleService
+       -> SQLite Scout schedule repository
+       -> persistent APScheduler DateTrigger (job ID = schedule UUID)
+  -> at requested Asia/Seoul local time
+       -> atomic pending -> running claim
+       -> ScoutApiClient
+       -> POST /v1/scout/runs on the existing Scout service
+       -> copy Scout result/timing metadata unchanged
+       -> SQLite succeeded/failed audit history
+```
+
+This path is application-owned and contains no ADK agent delegation. It never
+invokes the calculator workflow or `calculator_worker_agent`. Scout remains the
+only research implementation and remains authoritative for `run_id`, status,
+`started_at`, `completed_at`, `duration_seconds`, `source_count`, sources, and
+artifact references. The scheduler does not derive replacement Scout timing
+from HTTP dispatch duration.
+
+`app/fast_api_app.py` owns lifecycle for both schedulers. The legacy in-memory
+scheduler and persistent Scout scheduling service start during FastAPI lifespan
+startup and stop during teardown. Importing `app.scheduler_service` no longer
+starts threads. Teardown checks whether each scheduler was actually started,
+and a Scout startup failure still shuts down any legacy scheduler started by
+that lifespan. Legacy job definitions and calculator/Worker semantics are
+unchanged.
+
+### API contract
+
+`POST /v1/scout/schedules` accepts:
+
+```json
+{
+  "topic": "고독사 예방 AI IoT 서비스 최근 동향",
+  "keywords": ["고독사 예방", "AI 돌봄", "IoT 모니터링"],
+  "run_at": "2026-08-29T09:00:00",
+  "timezone": "Asia/Seoul"
+}
+```
+
+`run_at` is a timezone-naive ISO local wall-clock value. Offsets, `Z`, malformed
+values, past times, and timezones other than `Asia/Seoul` are rejected. Topic
+and keyword bounds match the Scout request contract. Every accepted schedule
+receives a UUID. An identical still-pending payload is rejected as an accidental
+duplicate; independent payloads coexist.
+
+`GET /v1/scout/schedules` returns `{ "schedules": [...] }`, including terminal
+audit records. `DELETE /v1/scout/schedules/{schedule_id}` changes only a pending
+record to `cancelled` and removes its pending APScheduler job. Running,
+succeeded, failed, cancelled, or missed records cannot be cancelled and are
+never deleted.
+
+### Persistence, recovery, and concurrency
+
+The default database is `var/scout_schedules.sqlite3`. The repository table and
+APScheduler SQLAlchemy job store coexist in that SQLite file. Persisted states
+are `pending`, `running`, `succeeded`, `failed`, `cancelled`, and `missed`.
+
+Startup reconciles database records and jobs:
+
+- stale `running` records become safely `failed` with
+  `stale_running_recovery`; they are not retried because a previous Scout HTTP
+  request may have completed externally;
+- future pending records are registered exactly once by UUID;
+- pending records no more than 300 seconds late execute under the configured
+  misfire grace;
+- older pending records become `missed` without invoking Scout; and
+- orphan or terminal persistent jobs are removed.
+
+The default APScheduler executor has one worker, enforcing a global Scout
+callback concurrency limit of one while safely queueing simultaneous due jobs.
+The limit is configurable, but this phase assumes exactly one scheduling API
+process owns the database and scheduler. Multi-process leader election is not
+implemented.
+
+### Scout callback and failures
+
+The synchronous Scout request timeout defaults to 180 seconds. A successful
+Scout response, including its report and authoritative terminal metadata, is
+validated and stored. A Scout HTTP 502 containing safe failed-run metadata is
+stored unchanged and the schedule becomes `failed`. Preflight errors,
+unreachable Scout, timeouts, malformed responses, and unexpected callback
+failures store only bounded scheduling error codes/messages; they do not
+fabricate a Scout run ID or Scout timing.
+
+### Configuration
+
+```text
+SCOUT_API_BASE_URL=http://127.0.0.1:8091
+SCOUT_API_TIMEOUT_SECONDS=180
+SCOUT_SCHEDULE_DB_PATH=var/scout_schedules.sqlite3
+SCOUT_SCHEDULER_CONCURRENCY=1
+SCOUT_SCHEDULER_MISFIRE_GRACE_SECONDS=300
+SCHEDULING_API_HOST=0.0.0.0
+SCHEDULING_API_PORT=8092
+```
+
+Run and verify locally:
+
+```bash
+uv run uvicorn app.fast_api_app:app --host 0.0.0.0 --port 8092
+uv lock --check
+uv run --extra lint ruff format --check app/fast_api_app.py app/scout_*.py \
+  tests/unit/test_scout_*.py tests/integration/test_scout_schedule_api.py
+uv run --extra lint ruff check app/fast_api_app.py app/scout_*.py \
+  tests/unit/test_scout_*.py tests/integration/test_scout_schedule_api.py
+uv run pytest tests/unit tests/integration
+```
+
+Verification performed on 2026-08-28:
+
+- the focused Scout scheduling suite passed `43` tests;
+- the unchanged legacy scheduler regression file passed `26` tests;
+- focused Ruff format and lint checks passed for every Phase 2 Python file;
+- `uv lock --check` resolved the locked `291` packages without changes; and
+- an alternate-port live server verification returned HTTP 200 for the A2A
+  agent card, 57 `/run_sse` events, and a completed five-chunk A2A stream.
+
+The combined `tests/unit tests/integration` run reached `70` passing tests, but
+its three existing `test_server_e2e.py` cases could not bind their hard-coded
+port 8000 because another process already owned that port. No existing process
+was stopped. The same unchanged server surfaces passed on temporary port 18092.
+A bare repository-root `pytest` also collects the historical
+`overnight_test.py`, whose import-time script assumes the legacy scheduler was
+already started; that unrelated historical script remains unchanged.
+
+### Recurring Scout schedules — 2026-08-31
+
+The Scout Scheduling API now accepts `recurrence` values `once`, `daily`,
+`weekly`, and `monthly`. Omitting the field preserves the original one-time
+contract and its `DateTrigger`. Recurring rules use an APScheduler
+`CronTrigger` with `Asia/Seoul` as the trigger timezone:
+
+- Daily requires `schedule_time`.
+- Weekly requires `schedule_time` and a lowercase English `day_of_week`.
+- Monthly requires `schedule_time` and `day_of_month` from 1 through 31.
+
+The repository performs an idempotent additive SQLite migration for recurrence
+columns. Existing rows receive the database default `once`, keeping their
+stored local and UTC trigger values. A recurring row stores its next local and
+UTC occurrence in the existing `run_at_local` and `trigger_at_utc` columns.
+
+After a recurring callback succeeds or fails, its state returns to `pending`
+and the next occurrence advances. The existing `scout_run_json` field retains
+the latest available Scout run, and safe error fields describe the latest
+failed or missed occurrence; this small change does not introduce a separate
+per-occurrence history table. Cancellation still uses the existing pending to
+cancelled transition and preserves the latest result metadata.
+
+On restart, a stale recurring callback is not retried. It records
+`stale_running_recovery` and advances to the first future occurrence. A missed
+recurring occurrence also advances instead of terminating the schedule.
+Monthly cron rules skip months that do not contain the selected day. The same
+single FastAPI process remains the only scheduler owner; deployment and systemd
+configuration are unchanged.
+
+Validation performed on 2026-08-31:
+
+- focused recurrence model, repository, service, and API tests passed (`68`);
+- focused Ruff formatting and lint checks passed; and
+- all non-live backend unit/integration tests passed (`95`), excluding the
+  existing live ADK/model and hard-coded-port server files; and
+- the full frontend suite (`205` tests) and production build passed.
+
+### Current limitations and follow-up
+
+Systemd status update (2026-08-31):
+
+- The single-worker unit in
+  `deploy/systemd/nexgent-scout-scheduler.service` is installed, enabled, and
+  functionally verified on the host as `nexgent-scout-scheduler.service`.
+- Only one scheduler process owner is supported.
+- There is no update/reschedule endpoint, retry policy, per-occurrence history
+  table, or idempotency-key subsystem.
+- Slack notification remains future work and is not connected to scheduled
+  Scout completion.
+- A live future-time call to the real Scout service is not part of the
+  deterministic automated suite.

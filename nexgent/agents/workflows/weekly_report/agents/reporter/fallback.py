@@ -4,34 +4,14 @@ import re
 
 from ax_contracts import WeeklyNarrative
 
-from workflows.weekly_report.domain.models import FactPackage, SummaryOutline
+from workflows.weekly_report.domain.models import FactPackage
 
-from .policy import validate_narrative
+from .policy import validate_narrative, validate_summary_text
 
 
 def build_fallback(facts: FactPackage) -> WeeklyNarrative:
-    if facts.summary_outline is not None:
-        outline = facts.summary_outline
-        selected_blocks = _valuable_outline_blocks(outline)
-        narrative = WeeklyNarrative(
-            headline=outline.headline,
-            analysis_text=" ".join(selected_blocks),
-            observations=selected_blocks[:3],
-            suggestions=[_suggestion(action) for action in facts.suggested_actions[:3]],
-        )
-        return validate_narrative(
-            narrative,
-            facts.allowed_topics,
-            facts.required_topics,
-            set(
-                re.findall(
-                    r"\d+(?:[.,]\d+)?",
-                    " ".join(facts.facts).replace("2주 전", ""),
-                )
-            ),
-            True,
-            outline.available_item_list,
-        )
+    if facts.weekly_report_data is not None:
+        return _build_free_summary_fallback(facts)
     selected_facts = facts.facts[:6]
     return validate_narrative(
         WeeklyNarrative(
@@ -47,52 +27,50 @@ def build_fallback(facts: FactPackage) -> WeeklyNarrative:
     )
 
 
+def _build_free_summary_fallback(facts: FactPackage) -> WeeklyNarrative:
+    data = facts.weekly_report_data
+    assert data is not None
+    name = data.subscriber if data.subscriber.endswith("님") else f"{data.subscriber}님"
+    overall = data.overall.description.removeprefix("지난 한 주 ")
+    sentences = [f"지난 한 주 {name}은 {overall}"]
+
+    activity = data.living_activity.description
+    pattern = data.living_pattern.description
+    if "자료가 부족" not in activity and "자료가 부족" not in pattern:
+        sentences.extend((activity, pattern))
+    elif "자료가 부족" not in activity:
+        sentences.append(activity)
+    elif "자료가 부족" not in pattern:
+        sentences.append(pattern)
+
+    environment = data.indoor_environment.description
+    device = data.device_status.description
+    if "자료가 부족" not in device:
+        sentences.append(device)
+    if "자료가 부족" not in environment:
+        sentences.append(environment)
+
+    summary = " ".join(_clean_free_summary_sentence(value) for value in sentences[:5])
+    summary = validate_summary_text(summary, facts)
+    parts = re.split(r"(?<=[.!?])\s+", summary)
+    return WeeklyNarrative(
+        headline=parts[0],
+        analysis_text=" ".join(parts[1:]),
+        observations=[],
+        suggestions=[],
+    )
+
+
+def _clean_free_summary_sentence(value: str) -> str:
+    sentence = re.sub(r"\d+(?:[.,]\d+)?(?:주 전)?", "", value)
+    sentence = sentence.replace("움직임", "생활 활동").replace("리모컨", "TV")
+    sentence = re.sub(r"\s+", " ", sentence).strip()
+    return sentence if sentence.endswith((".", "!", "?")) else f"{sentence}."
+
+
 def _sentence(value: str) -> str:
     stripped = _formalize(value).strip()
     return stripped if stripped.endswith((".", "!", "?")) else f"{stripped}."
-
-
-def _valuable_outline_blocks(outline: SummaryOutline) -> list[str]:
-    candidates = [
-        ("활동", outline.life),
-        ("환경", outline.environment),
-        ("기기", outline.safety),
-    ]
-    available = [(topic, block) for topic, block in candidates if block]
-    issue_topics = set(outline.issue_topic_list)
-    selected = (
-        [
-            block
-            for topic, block in available
-            if topic in issue_topics or _is_data_availability_insight(block)
-        ]
-        if issue_topics
-        else [block for _, block in available]
-    )
-    normalized = [_without_leading_connector(block) for block in selected]
-    connectors = ("구체적으로 ", "이와 함께 ", "또한 ")
-    return [
-        f"{connectors[index]}{block}"
-        for index, block in enumerate(normalized)
-    ]
-
-
-def _without_leading_connector(value: str) -> str:
-    for connector in (
-        "구체적으로 ",
-        "특히 ",
-        "이와 함께 ",
-        "또한 ",
-        "한편 ",
-        "다만 ",
-    ):
-        if value.startswith(connector):
-            return value[len(connector) :]
-    return value
-
-
-def _is_data_availability_insight(value: str) -> bool:
-    return "자료가 부족" in value or "데이터 수신이 확인되지" in value
 
 
 def _headline(facts: list[str]) -> str:
@@ -145,7 +123,7 @@ def _both_activity_facts_are_stable(facts: list[str]) -> bool:
 
 
 def _is_good_reception(fact: str) -> bool:
-    return "데이터가 정상적으로 수집" in fact
+    return "데이터가 정상적으로 수집" in fact or "생활 정보가 빠짐없이 잘 들어" in fact
 
 
 def _needs_attention(fact: str) -> bool:
@@ -169,6 +147,7 @@ def _needs_attention(fact: str) -> bool:
 def _formalize(value: str) -> str:
     replacements = (
         ("수집되었어요", "수집되었습니다"),
+        ("들어왔어요", "들어왔습니다"),
         ("유지됐어요", "유지되었습니다"),
         ("비슷했어요", "비슷하게 유지되었습니다"),
         ("확인됐어요", "확인되었습니다"),

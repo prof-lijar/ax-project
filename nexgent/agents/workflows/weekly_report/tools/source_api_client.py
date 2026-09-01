@@ -63,7 +63,9 @@ class WeeklyReportSourceApiClient:
             response.raise_for_status()
             return WeeklyReportSourceResponse.model_validate(response.json())
         except (httpx.HTTPError, ValueError, ValidationError) as exc:
-            raise WeeklyReportSourceError("weekly-report source API is unavailable") from exc
+            raise WeeklyReportSourceError(
+                "weekly-report source API is unavailable"
+            ) from exc
 
     async def aclose(self) -> None:
         if self._owns_client:

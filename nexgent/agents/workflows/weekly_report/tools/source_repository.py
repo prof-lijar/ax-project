@@ -18,12 +18,16 @@ from .source_api_client import SourceApiSettings, WeeklyReportSourceApiClient
 
 
 class WeeklyReportSourceRepository(Protocol):
-    async def load(self, request: WeeklyReportRequest) -> WeeklyReportSourceResponse: ...
+    async def load(
+        self, request: WeeklyReportRequest
+    ) -> WeeklyReportSourceResponse: ...
 
 
 class HttpWeeklyReportSourceRepository:
     def __init__(self, client: WeeklyReportSourceApiClient | None = None) -> None:
-        self.client = client or WeeklyReportSourceApiClient(SourceApiSettings.from_env())
+        self.client = client or WeeklyReportSourceApiClient(
+            SourceApiSettings.from_env()
+        )
 
     async def load(self, request: WeeklyReportRequest) -> WeeklyReportSourceResponse:
         return await self.client.load(request)
@@ -77,9 +81,11 @@ def _snapshot(ward_id: int, *, current: bool) -> WardWeeklyMetricSnapshot:
         humidity_out_of_range_days=0,
         environment_out_of_range_days=0,
         low_temperature_days=0,
+        cool_temperature_days=0,
         high_temperature_days=0,
         low_humidity_days=0,
         high_humidity_days=0,
+        humidity_at_or_above_70_days=0,
         light_avg=110.0,
         light_min=5.0,
         light_max=500.0,

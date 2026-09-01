@@ -11,6 +11,7 @@ const agent: AgentDefinition = {
   role: "Ward risk reporting collaborator",
   description: "Prepares Korean weekly reports.",
   graphId: "ansimk_weekly_reporter",
+  canRunInChat: true,
   readiness: "ready",
   currentWork: "Ready for a report",
   runtimeLabel: "LangGraph",

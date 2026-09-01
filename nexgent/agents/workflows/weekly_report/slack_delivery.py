@@ -97,7 +97,9 @@ async def deliver_weekly_report_batch(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="weekly-report-slack-delivery")
-    parser.add_argument("--week-start", required=True, help="reporting Monday, YYYY-MM-DD")
+    parser.add_argument(
+        "--week-start", required=True, help="reporting Monday, YYYY-MM-DD"
+    )
     parser.add_argument("--timezone", default="Asia/Seoul")
     parser.add_argument("--ward-id", action="append", type=int, dest="ward_ids")
     parser.add_argument("--limit", type=int, default=25)

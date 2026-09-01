@@ -9,7 +9,7 @@ from google.adk.tools import FunctionTool
 from google.genai import types
 from pydantic import Field
 
-from app.agent import app, create_scout_agent
+from app.agent import SCOUT_INSTRUCTION, app, create_scout_agent
 from app.config import ScoutSettings
 from app.models import FetchedPage, SearchResult
 from app.services.run_service import run_agent_once
@@ -122,6 +122,7 @@ def test_single_adk_agent_registers_only_bounded_web_function_tools(tmp_path) ->
     assert agent.sub_agents == []
     assert all(isinstance(tool, FunctionTool) for tool in agent.tools)
     assert [tool.name for tool in agent.tools] == ["web_search", "web_fetch_and_extract"]
+    assert agent.instruction == SCOUT_INSTRUCTION
     assert "untrusted evidence" in agent.instruction
     assert "filesystem" in agent.instruction
     assert app.name == "app"

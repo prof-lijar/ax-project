@@ -5,7 +5,10 @@ layout. It intentionally does not expose the generated raw ADK or A2A routes.
 
 ## Boundaries
 
-- Keep all project files and runtime configuration inside this directory.
+- Keep Scout application and source files inside this directory. Host
+  deployment/runtime configuration, such as systemd `EnvironmentFile` files
+  under `/etc/nexgent/`, may live outside this directory but must remain
+  untracked and secret-safe.
 - Do not import from or modify Nexgent `agents/`, `backend/`, `frontend/`, RAG,
   Compose, shared model configuration, scheduling code, or Slack code.
 - Keep model access behind ADK `LiteLlm` and the project-owned environment
@@ -18,7 +21,9 @@ layout. It intentionally does not expose the generated raw ADK or A2A routes.
 - Deterministic application services own report validation, report persistence,
   and execution logging. Persistence must never become an Agent tool.
 - Do not add Docker, browser automation, recursive crawling, scheduling, or
-  notifications in this POC.
+  notifications in this POC. The standalone Scheduling API remains a separate
+  component; it is not a Scout Agent tool or an internal Scout scheduling
+  implementation.
 
 ## Validation
 

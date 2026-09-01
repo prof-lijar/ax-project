@@ -157,11 +157,14 @@ def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
 def _has_required_headings(report: WardWeeklyReport) -> bool:
     if not all(heading in report.markdown for heading in REQUIRED_HEADINGS):
         return False
-    section_names = ["활동량", "실내 환경", "기기 데이터 수신", "위험 관리"]
-    return all(
-        f"## {number}. {name}" in report.markdown
-        for number, name in enumerate(section_names, start=1)
+    detail_headings = (
+        "## 생활 활동",
+        "## 생활 패턴",
+        "## 실내 환경",
+        "## 기기 상태",
+        "## 위험 관리",
     )
+    return all(heading in report.markdown for heading in detail_headings)
 
 
 def _has_consistent_device_reception(report: WardWeeklyReport) -> bool:
@@ -172,7 +175,7 @@ def _has_consistent_device_reception(report: WardWeeklyReport) -> bool:
         current.device_position_count,
     )
     if current.daily_summary_count == 0:
-        return "## 3. 기기 데이터 수신\n\n- 상태: 자료 없음" in report.markdown
+        return "## 기기 상태\n\n- 상태: 자료 없음" in report.markdown
     if any(value is None for value in counts):
         return False
 
@@ -192,7 +195,7 @@ def _has_consistent_device_reception(report: WardWeeklyReport) -> bool:
             return False
     else:
         expected_status = "판정 불가"
-    return f"## 3. 기기 데이터 수신\n\n- 상태: {expected_status}" in report.markdown
+    return f"## 기기 상태\n\n- 상태: {expected_status}" in report.markdown
 
 
 def _narrative_numbers_are_grounded(report: WardWeeklyReport) -> bool:

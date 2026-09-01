@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { ActivityPage } from "../features/activity/ActivityPage";
 import { AgentDetailPage } from "../features/agents/AgentDetailPage";
 import { AgentsPage } from "../features/agents/AgentsPage";
+import { ScoutWorkbenchPage } from "../features/agents/ScoutWorkbenchPage";
 import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
 import { ChatPage } from "../features/chat/ChatPage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
@@ -10,6 +11,7 @@ import { RagPage } from "../features/rag/RagPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { TasksPage } from "../features/tasks/TasksPage";
 import { TestAgentPage } from "../features/test-agent/TestAgentPage";
+import { SCOUT_AGENT_ID } from "../shared/api/agentCatalogClient";
 import {
   getAgentIdFromPath,
   syncSectionFromLocation
@@ -20,6 +22,9 @@ import { AppShell } from "./shell/AppShell";
 export function getAgentsRoute(agentId: string | null) {
   if (agentId === "1") {
     return { kind: "weekly-reporter" } as const;
+  }
+  if (agentId === SCOUT_AGENT_ID) {
+    return { kind: "scout" } as const;
   }
   return agentId
     ? ({ kind: "detail", agentId } as const)
@@ -48,6 +53,8 @@ export function App() {
       {activeSection === "agents" &&
         (agentsRoute.kind === "weekly-reporter" ? (
           <TestAgentPage mode="agent" />
+        ) : agentsRoute.kind === "scout" ? (
+          <ScoutWorkbenchPage />
         ) : agentsRoute.kind === "detail" ? (
           <AgentDetailPage agentId={agentsRoute.agentId} />
         ) : (

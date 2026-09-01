@@ -1,6 +1,6 @@
 # AX Agents Architecture
 
-Date: 2026-08-27
+Date: 2026-08-31
 
 Status: **Authoritative implementation specification**
 
@@ -120,11 +120,12 @@ scheduling, frontend controls, and bulk Slack delivery are deliberately out of
 scope. Slack remains a separate human-approved side-effect boundary.
 
 The model path is LLM-first for every report. OpenAI-compatible servers receive
-JSON-schema constrained, non-streaming requests and return token/latency
-metadata; the existing single correction and disclosed deterministic fallback
-policy is unchanged. The model still sees qualitative facts only. Python owns
-all metrics and rendering. Worker concurrency is async and bounded—Python
-threads and process-local sub-agent fan-out are not the scaling boundary.
+the dedicated weekly-summary system prompt plus validated report-facing data
+and return one plain-text Korean paragraph; the existing single correction and
+disclosed deterministic fallback policy is unchanged. Python owns all metrics,
+section statuses, and rendering. Worker concurrency is async and
+bounded—Python threads and process-local sub-agent fan-out are not the scaling
+boundary.
 
 Release capacity is measured end to end against a representative private-model
 deployment. The hard gate is 10,000 reports in at most two hours (at least
@@ -380,11 +381,12 @@ events as validated progress while continuing to accept the terminal report
 only from the top-level `values` event. This prevents completed batches from
 displaying a stale zero-of-requested report count without weakening result parsing.
 
-Weekly Reporter environment-policy update on 2026-08-26: a product-approved,
-deterministic presentation rule classifies weekly indoor extrema using strict
-year-round recommended ranges: `15℃ < temperature < 31℃` and
-`30% < humidity < 70%`. Exact boundary values are departures. Python converts
-below/above-bound measurements into cold/hot or dry/humid qualitative facts.
+Weekly Reporter environment-policy update on 2026-08-26, superseded by the
+2026-08-27 spreadsheet-template policy below: a product-approved,
+deterministic presentation rule classifies daily indoor maxima using inclusive
+year-round recommended ranges: `15℃ ≤ temperature ≤ 31℃` and
+`30% ≤ humidity ≤ 70%`. Python converts below/above-bound measurements into
+cold/hot or dry/humid qualitative facts.
 The reporter receives only qualitative evidence, and validation enforces every
 material environment issue without exposing numeric thresholds to the model.
 
@@ -425,8 +427,8 @@ Weekly Reporter topic-removal update on 2026-08-25: sleep and dispatch are no
 longer report topics. They are excluded from the semantic outline, model fact
 package, generated headline and analysis, observations, suggestions, and all
 rendered Markdown sections. The summary now covers only evaluatable activity,
-indoor environment, and device reception. The numbered details begin with
-activity and retain risk-event detection/resolution under risk management
+indoor environment, and device reception. The detail sections retain
+risk-event detection/resolution under risk management
 without rendering dispatch data. Private source-contract compatibility fields
 remain temporarily available upstream but cannot cross the reporting boundary.
 When all three report topics are unavailable, an empty available-item list is
@@ -457,6 +459,18 @@ sleep and dispatch remain excluded from the entire report. Validation retains
 topic allowlisting, material-issue coverage, numeric grounding, formal Korean,
 safety filters, and the terminal zero-evaluable-item path.
 
+Weekly Reporter spreadsheet-template policy update on 2026-08-27: the product
+owner promoted spreadsheet `1tOuquKA_QrsWfWI6JlVTQ2z_pS2C5O9j5r8u6ZEo6QM`,
+sheet `1395281680`, as the versioned classification, copy, and guardian-guide
+policy. Prompt version `weekly-korean-sheet-template-v16` follows the approved
+all-GOOD sequence: activity, indoor environment, and device reception, joined
+by `구체적으로`, `이와 함께`, and `또한`. A byte-for-byte golden test locks the
+full Markdown example, while deterministic Python continues to own arithmetic,
+statuses, copy selection, guide priority, and rendering. The promoted rules
+also make 150% activity `CAUTION`, include exact environment range boundaries,
+use daily maxima for environment classification, and prioritize device issues
+before activity, environment, and the general check-in.
+
 Weekly Reporter risk-score presentation update on 2026-08-25: the deterministic
 renderer now exposes the already-calculated current-week average `risk_score`.
 Python rounds the average to a whole point using half-up rounding and classifies
@@ -474,10 +488,118 @@ short summary. Missing totals and zero previous totals fail closed as an
 unavailable comparison. Only the qualitative guidance may enter the reporter
 prompt; totals, percentages, and thresholds remain deterministic report data.
 
-Weekly Reporter environment day-count update on 2026-08-25: the source service
-now collapses device summaries by date and deterministically counts departures
-from the approved monthly temperature range and year-round humidity range using
-all four stored daily extrema. The validated snapshot carries observed,
+Weekly Reporter activity layout update on 2026-08-31: the shared numbered
+`활동량` wrapper was removed. Movement now renders as the sibling `생활 활동`
+section and remote-control use as `생활 패턴`; each owns a flat `지표` list for
+the current total, comparison total, and percentage. Calculation and copy
+selection remain deterministic and unchanged.
+
+Weekly Reporter risk-management layout update on 2026-08-31: the renderer no
+longer emits the empty `위험 관리 기록` subsection or its unavailable-detail
+placeholder. The section retains only the verified risk detection and normal
+resolution counts; no source or calculation contract changed.
+
+Weekly Reporter section-heading update on 2026-08-31: all main headings below
+`주요 내용` are unnumbered. This applies to `생활 활동`, `생활 패턴`,
+`실내 환경`, `기기 데이터 수신`, and `위험 관리`; guardian action-card list
+numbering remains separate and unchanged.
+
+Weekly Reporter living-activity copy update on 2026-08-31: the existing
+movement ratio bands remain unchanged, while deterministic description and
+summary copy now uses the approved `평소 수준`, `조금 감소`, `조금 증가`,
+`많이 감소`, and `많이 증가` language.
+
+Weekly Reporter living-pattern copy update on 2026-08-31: the same existing
+ratio bands now map remote-control use to approved `TV 이용 등 일상적인 생활
+패턴` descriptions and the summaries `평소 수준`, `조금 감소`, `조금 증가`,
+`많이 감소`, and `많이 증가`. The living-activity copy is unchanged.
+
+Weekly Reporter combined activity-summary update on 2026-08-31: Python now
+maps the nine approved movement-plus-remote combinations to exact warm Korean
+copy for the opening activity block in `한주 총평`. Prompt version
+`weekly-korean-sheet-template-v16` requires the model to place that block first
+after one connector without paraphrasing; validation enforces the same
+contract and permits 해요체 only inside this Python-owned block. The block may
+contain two sentences. Relevant indoor-environment and device findings remain
+connected afterward, and the renderer still owns the separate closing action,
+so the summary is not collapsed into a single activity sentence.
+
+Weekly Reporter indoor-environment copy and boundary update on 2026-08-31:
+all seventeen GOOD, CAUTION, and RISK variants now render the revised exact
+guardian-facing description and short summary. Combined classification matches
+the stated directional counters directly instead of inferring a direction
+from aggregate departure days. The private source snapshot adds optional daily
+maximum counters for temperature below 18℃ and humidity at or above 70%, used
+only by cool-humid CAUTION and cold-humid RISK respectively. Older snapshots
+without those fields fall back to the ordinary below-15℃ and above-70%
+directional counters; raw source calculation and current fixtures provide the
+new counters explicitly.
+
+Weekly Reporter device-status copy update on 2026-08-31: the rendered
+`기기 데이터 수신` heading is now `기기 상태`. Existing deterministic row
+classification remains good, power, then position, with power-first weekly
+precedence and two-occurrence CAUTION thresholds. GOOD, power-check, and
+position-check results now render the newly approved exact descriptions and
+summaries. Prompt version `weekly-korean-sheet-template-v17` uses `기기 상태`
+as the model-visible topic label so generated summaries do not reintroduce the
+retired section name.
+
+Weekly Reporter guardian-action metadata update on 2026-08-31: deterministic
+guardian guides now own an approved description, tag, and optional template
+ID in addition to condition, status, and title. The increase actions apply to
+movement and remote-control `CAUTION`; increase `RISK` no longer reuses them.
+Rendered action cards contain only deterministic guides because model-authored
+suggestions cannot supply an approved tag or template ID. Device issues remain
+first, output remains capped at three cards, and the stable GOOD card requires
+a GOOD weekly risk score with no CAUTION/RISK area state or detected risk
+event. Prompt version `weekly-korean-sheet-template-v18` carries the expanded
+candidate metadata but leaves selection and rendering in Python.
+
+Weekly Reporter human-summary refinement on 2026-08-31: prompt version
+`weekly-korean-sheet-template-v19` treats `한주 총평` as the primary guardian
+customer explanation. The exact Python-selected movement-plus-TV block remains
+first and byte-for-byte unchanged. When indoor-environment or device evidence
+is available, validation now requires at least one supporting insight after
+that block. The model prioritizes material changes, cross-area relationships,
+observation reliability, and useful stable context, may combine related facts,
+and is explicitly prevented from using numbered recitals or process-oriented
+report filler. The deterministic fallback follows the same multi-insight rule.
+
+Weekly Reporter natural-support summary update on 2026-08-31: prompt version
+`weekly-korean-sheet-template-v20` adopts warm 해요체 for the entire structured
+headline and analysis and rejects stiff administrative 합니다체. The exact
+Python-owned activity block now begins the analysis directly without a forced
+connector; the opposing CAUTION decrease/increase pair uses the approved
+`활동은 조금 줄어든 모습이었지만...` wording. For valid data, the
+personalized opening follows the deterministic weekly risk-score status, with
+GOOD rendered as `전반적으로 평소와 비슷한 생활 흐름을 이어가셨어요`.
+Normal device reception may establish observation reliability before a
+material environment finding and its practical check. The renderer no longer
+adds a separate generic CLOSE paragraph because guidance now stays beside the
+finding that supports it. Deterministic fallback and validation mirror this
+same structure without changing numeric calculations or status rules.
+
+Weekly Reporter free-summary composition update on 2026-08-31: prompt version
+`weekly-korean-free-summary-v21` replaces the normal-path Python summary mode,
+headline, and exact activity-combination block with one LLM-authored paragraph.
+The model receives only subscriber identity and deterministic report-facing
+results for overall state, living activity, living pattern, indoor environment,
+device status, risk management, and approved actions. It receives no raw rows,
+totals, ratios, thresholds, dates, measurements, sleep/dispatch fields,
+`summary_outline`, or prewritten summary sentence. The plain-text response must
+be one body-only paragraph in warm 해요체 and is rejected if it contains digits,
+`움직임`, `리모컨`, English status values, Markdown, formal administrative
+endings, excluded topics, unsupported claims, or an omitted material issue.
+Python splits the validated first sentence only to satisfy the existing
+`WeeklyNarrative` contract, then the renderer rejoins it unchanged. Detail
+sections and guardian actions remain deterministic; one correction and the
+disclosed validated fallback remain reliability boundaries.
+
+Weekly Reporter environment day-count update on 2026-08-25, superseded by the
+2026-08-27 spreadsheet-template policy above: the source service collapses
+device summaries by date and deterministically counts departures from the
+approved year-round temperature and humidity ranges using each date's maximum
+values. The validated snapshot carries observed,
 temperature, humidity, combined, and directional day counts. Workflow policy
 assigns the approved uppercase status, exact Korean description, and short
 summary with explicit precedence. The unspecified `반복` boundary is normalized
@@ -508,11 +630,14 @@ description asks the guardian to verify that device power is connected. Since
 the status remains unavailable, the absence stays out of model-authored
 insights and is not interpreted as a health or safety event.
 
-Weekly Reporter guardian-guide update on 2026-08-26: workflow-owned Python maps
-validated activity RISK, environment RISK, and device CAUTION results to a
+Weekly Reporter guardian-guide update on 2026-08-26, superseded by the
+2026-08-27 spreadsheet-template policy above: workflow-owned Python maps
+validated activity changes, promoted environment conditions, and device
+CAUTION results to a
 product-approved internal condition, displayed title, and analysis sentence.
 The renderer hides the internal condition and displays the title plus analysis,
-orders movement, remote control, environment, then device, caps output at three,
+orders device problems, activity changes, environment, then the general
+check-in, caps output at three,
 places deterministic guides before model suggestions, and closes `한주 총평`
 with the first deterministic title. Hot and cold environment guides map by
 semantic condition rather than internal variant number. The model may receive
@@ -765,7 +890,8 @@ history and task writes are relied on for resumption and failure recovery.
 - `ansimk_weekly_reporter` uses a coordinator plus isolated per-ward subgraph.
   The coordinator calls only its private-network source API and `Send`
   fans out after source and reporting-window validation. Branches transform
-  verified metrics into qualitative facts, request structured Korean prose,
+  verified metrics into report-facing section results, request one Korean
+  summary paragraph,
   validate or replace it, and return finalized reports through reducers.
   Source selection accepts explicit ward IDs or an opaque validated cursor and
   is capped at twenty-five. Operator-facing callers execute one branch at a
@@ -956,8 +1082,9 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   completed batch to an approved Slack destination; delivery is not
   an automatic graph side effect. Weekly-average risk-score bands and indoor
   environment ranges are product-approved deterministic presentation rules;
-  the model receives neither score numbers nor score classifications and sees
-  only the approved qualitative environment result. The model-backed chat workflow remains a
+  the weekly-summary model receives no numeric score but does receive the
+  report-facing overall status and approved qualitative explanation. The
+  model-backed chat workflow remains a
   one-turn path and does not yet compose the reusable web research tools. Chat
   attachments are transient and cannot be referenced by later turns;
   scanned-PDF OCR and durable or multi-host artifact storage remain outside the

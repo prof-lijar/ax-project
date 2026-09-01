@@ -466,9 +466,11 @@ class WardWeeklyMetricSnapshot(ContractModel):
     humidity_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
     environment_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
     low_temperature_days: int | None = Field(default=None, ge=0, le=7)
+    cool_temperature_days: int | None = Field(default=None, ge=0, le=7)
     high_temperature_days: int | None = Field(default=None, ge=0, le=7)
     low_humidity_days: int | None = Field(default=None, ge=0, le=7)
     high_humidity_days: int | None = Field(default=None, ge=0, le=7)
+    humidity_at_or_above_70_days: int | None = Field(default=None, ge=0, le=7)
     light_avg: float | None = None
     light_min: float | None = None
     light_max: float | None = None
@@ -504,7 +506,15 @@ class WardWeeklyMetricSnapshot(ContractModel):
             "high_humidity_days",
         )
         values = {field: getattr(self, field) for field in count_fields}
+        supplemental = (
+            self.cool_temperature_days,
+            self.humidity_at_or_above_70_days,
+        )
         if all(value is None for value in values.values()):
+            if any(value is not None for value in supplemental):
+                raise ValueError(
+                    "supplemental environment counts require base day counts"
+                )
             return self
         if any(value is None for value in values.values()):
             raise ValueError("environment day counts must be provided together")
@@ -535,6 +545,16 @@ class WardWeeklyMetricSnapshot(ContractModel):
             for value in (self.low_humidity_days, self.high_humidity_days)
         ):
             raise ValueError("humidity direction days must be departure days")
+        if any(value is None for value in supplemental) and any(
+            value is not None for value in supplemental
+        ):
+            raise ValueError(
+                "supplemental environment day counts must be provided together"
+            )
+        if any(value is not None and value > observed for value in supplemental):
+            raise ValueError(
+                "supplemental environment day counts must not exceed observed days"
+            )
         return self
 
     @model_validator(mode="after")
@@ -608,7 +628,9 @@ class WardWeeklyMetrics(ContractModel):
                 self.previous, field_name
             )
             if getattr(self.delta, field_name) != expected:
-                raise ValueError(f"{field_name} delta must match current minus previous")
+                raise ValueError(
+                    f"{field_name} delta must match current minus previous"
+                )
         float_fields = (
             "temperature_avg",
             "humidity_avg",

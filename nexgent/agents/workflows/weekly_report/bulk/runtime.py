@@ -107,9 +107,9 @@ class WeeklyReportBulkRunner:
             name=f"cancellation-{job_id}",
         )
         try:
-            producer_result = (
-                await asyncio.gather(producer, return_exceptions=True)
-            )[0]
+            producer_result = (await asyncio.gather(producer, return_exceptions=True))[
+                0
+            ]
             if isinstance(producer_result, BaseException):
                 for consumer in consumers:
                     consumer.cancel()

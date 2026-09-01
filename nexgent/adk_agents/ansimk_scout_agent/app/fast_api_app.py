@@ -5,12 +5,20 @@ import os
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import ScoutSettings
-from app.models import ScoutRunRequest, ScoutRunResponse
-from app.services.run_service import ScoutRunService, build_default_run_service
+from app.models import ScoutRunErrorResponse, ScoutRunRequest, ScoutRunResponse
+from app.services.run_service import (
+    ScoutRunFailedError,
+    ScoutRunService,
+    build_default_run_service,
+)
 
 LOGGER = logging.getLogger(__name__)
+FRONTEND_ORIGIN = "http://192.168.0.18:5173"
 
 
 def create_app(run_service: ScoutRunService | None = None) -> FastAPI:
@@ -19,6 +27,13 @@ def create_app(run_service: ScoutRunService | None = None) -> FastAPI:
         title="ansimk Scout Agent API",
         version="0.1.0",
         description="Standalone bounded Google ADK web-research POC.",
+    )
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=[FRONTEND_ORIGIN],
+        allow_credentials=False,
+        allow_methods=["POST"],
+        allow_headers=["Accept", "Content-Type"],
     )
 
     @api.get("/health/live")
@@ -31,12 +46,26 @@ def create_app(run_service: ScoutRunService | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Scout service is not configured.")
         return {"status": "ready"}
 
-    @api.post("/v1/scout/runs", response_model=ScoutRunResponse)
-    async def create_run(request: ScoutRunRequest) -> ScoutRunResponse:
+    @api.post(
+        "/v1/scout/runs",
+        response_model=ScoutRunResponse,
+        responses={502: {"model": ScoutRunErrorResponse}},
+    )
+    async def create_run(request: ScoutRunRequest) -> ScoutRunResponse | JSONResponse:
         if not service.is_ready():
             raise HTTPException(status_code=503, detail="Scout service is not configured.")
         try:
             return await service.run(request)
+        except ScoutRunFailedError as exc:
+            LOGGER.warning("Scout run failed", extra={"run_id": exc.run.run_id})
+            error_response = ScoutRunErrorResponse(
+                detail="Scout run failed.",
+                run=exc.run,
+            )
+            return JSONResponse(
+                status_code=502,
+                content=jsonable_encoder(error_response),
+            )
         except Exception as exc:
             LOGGER.warning("Scout run failed", extra={"error_type": type(exc).__name__})
             raise HTTPException(status_code=502, detail="Scout run failed.") from None

@@ -34,6 +34,7 @@ export interface AgentDefinition {
   role: string;
   description: string;
   graphId: string;
+  canRunInChat: boolean;
   readiness: AgentReadiness | null;
   currentWork: string | null;
   runtimeLabel: string;

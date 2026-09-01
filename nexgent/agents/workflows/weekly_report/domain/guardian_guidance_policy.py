@@ -31,7 +31,9 @@ class GuardianGuide:
     variant: int
     condition_label: str
     title: str
-    analysis: str
+    description: str
+    tag: str
+    template_id: str | None
 
 
 def build_guardian_guides(metrics: WardWeeklyMetrics) -> list[GuardianGuide]:
@@ -41,35 +43,50 @@ def build_guardian_guides(metrics: WardWeeklyMetrics) -> list[GuardianGuide]:
     reception = assess_device_reception(metrics.current)
     if reception.kind == "device_no_data":
         guides.append(_GUIDES[("guide_device_no_data", "device_data", 1)])
-
-    activity = assess_activity(metrics)
-    if activity.movement.status == "RISK":
-        variant = 1 if activity.movement.trend == "decrease" else 2
-        guides.append(_GUIDES[("guide_activity", "movement_count", variant)])
-    if activity.remote_control.status == "RISK":
-        variant = 3 if activity.remote_control.trend == "decrease" else 4
-        guides.append(_GUIDES[("guide_activity", "remote_control_count", variant)])
-
-    environment = assess_environment(metrics)
-    if environment.status == "RISK" and environment.variant is not None:
-        semantic_variant = {1: 1, 2: 2, 3: 4, 4: 3, 5: 5}[environment.variant]
-        guides.append(_GUIDES[("guide_env", "environment", semantic_variant)])
-
-    if reception.status == "CAUTION" and reception.kind == "device_power":
+    elif reception.status == "CAUTION" and reception.kind == "device_power":
         guides.append(_GUIDES[("guide_device_power", "device_data", 1)])
     elif reception.status == "CAUTION" and reception.kind == "device_position":
         guides.append(_GUIDES[("guide_device_pos", "device_data", 1)])
 
-    report_statuses = (
+    activity = assess_activity(metrics)
+    if activity.movement.status == "RISK" and activity.movement.trend == "decrease":
+        variant = 1
+        guides.append(_GUIDES[("guide_activity", "movement_count", variant)])
+    elif (
+        activity.movement.status == "CAUTION" and activity.movement.trend == "increase"
+    ):
+        guides.append(_GUIDES[("guide_activity", "movement_count", 2)])
+    if (
+        activity.remote_control.status == "RISK"
+        and activity.remote_control.trend == "decrease"
+    ):
+        guides.append(_GUIDES[("guide_activity", "remote_control_count", 4)])
+    elif (
+        activity.remote_control.status == "CAUTION"
+        and activity.remote_control.trend == "increase"
+    ):
+        guides.append(_GUIDES[("guide_activity", "remote_control_count", 5)])
+
+    environment = assess_environment(metrics)
+    if environment.variant is not None and (
+        environment.status == "CAUTION"
+        and environment.variant in {1, 2, 3, 4}
+        or environment.status == "RISK"
+        and environment.variant in {5, 6, 7, 8}
+    ):
+        guides.append(_GUIDES[("guide_env", "environment", environment.variant)])
+
+    report_area_statuses = (
         activity.movement.status,
         activity.remote_control.status,
         environment.status,
         reception.status,
-        assess_risk_score(metrics.current.risk_score_avg).status,
     )
+    risk_score_status = assess_risk_score(metrics.current.risk_score_avg).status
     if (
         not guides
-        and all(status == "GOOD" for status in report_statuses)
+        and risk_score_status == "GOOD"
+        and not any(status in {"CAUTION", "RISK"} for status in report_area_statuses)
         and metrics.current.risk_detected_count == 0
     ):
         guides.append(_GUIDES[("guide_stable", "overall", 1)])
@@ -83,99 +100,154 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         source="movement_count",
         status="RISK",
         variant=1,
-        condition_label="움직임 감소",
-        title="안부 확인이 필요해요",
-        analysis="움직임이 많이 줄었어요.",
+        condition_label="활동 감소",
+        title="안부를 한 번 확인해 주세요",
+        description="활동이 많이 줄어든 모습이에요.",
+        tag="안부 전화하기",
+        template_id="ACT_RISK_01",
     ),
     ("guide_activity", "movement_count", 2): GuardianGuide(
         guide_type="guide_activity",
         source="movement_count",
-        status="RISK",
+        status="CAUTION",
         variant=2,
-        condition_label="움직임 증가",
-        title="생활 변화를 확인해 주세요",
-        analysis="움직임이 평소보다 크게 늘었어요.",
-    ),
-    ("guide_activity", "remote_control_count", 3): GuardianGuide(
-        guide_type="guide_activity",
-        source="remote_control_count",
-        status="RISK",
-        variant=3,
-        condition_label="리모컨 감소",
-        title="생활 확인이 필요해요",
-        analysis="리모컨 사용이 많이 줄었어요.",
+        condition_label="활동 증가",
+        title="생활에 달라진 점이 있는지 살펴봐 주세요",
+        description="활동이 평소보다 많이 늘어난 모습이에요.",
+        tag="생활 확인하기",
+        template_id="ACT_RISK_02",
     ),
     ("guide_activity", "remote_control_count", 4): GuardianGuide(
         guide_type="guide_activity",
         source="remote_control_count",
         status="RISK",
         variant=4,
-        condition_label="리모컨 증가",
-        title="안부 전화를 권해요",
-        analysis="리모컨 사용이 반복적으로 많았어요.",
+        condition_label="생활 패턴 감소",
+        title="안부를 한 번 확인해 주세요",
+        description="TV 이용 등 일상적인 생활 패턴이 많이 줄었어요.",
+        tag="안부 전화하기",
+        template_id="ACT_RISK_03",
+    ),
+    ("guide_activity", "remote_control_count", 5): GuardianGuide(
+        guide_type="guide_activity",
+        source="remote_control_count",
+        status="CAUTION",
+        variant=5,
+        condition_label="생활 패턴 증가",
+        title="최근 생활에 달라진 점이 있는지 살펴봐 주세요",
+        description="TV 이용 등 일상적인 생활 패턴이 많이 늘었어요.",
+        tag="생활 확인하기",
+        template_id="ACT_RISK_04",
     ),
     ("guide_env", "environment", 1): GuardianGuide(
         guide_type="guide_env",
         source="environment",
-        status="RISK",
+        status="CAUTION",
         variant=1,
-        condition_label="습도 낮음",
-        title="실내가 건조해요",
-        analysis="실내가 많이 건조해 가습이나 환기 상태를 확인해 주세요.",
+        condition_label="더운 환경",
+        title="냉방이나 환기 상태를 확인해 주세요",
+        description="집 안이 조금 더운 날이 있었어요.",
+        tag="환경 확인하기",
+        template_id="ENV_CAUTION_01",
     ),
     ("guide_env", "environment", 2): GuardianGuide(
         guide_type="guide_env",
         source="environment",
-        status="RISK",
+        status="CAUTION",
         variant=2,
-        condition_label="습도 높음",
-        title="실내가 습해요",
-        analysis="실내가 많이 습해 곰팡이나 냄새가 생길 수 있어요.",
+        condition_label="추운 환경",
+        title="난방 상태를 확인해 주세요",
+        description="집 안이 조금 추운 날이 있었어요.",
+        tag="환경 확인하기",
+        template_id="ENV_CAUTION_02",
     ),
     ("guide_env", "environment", 3): GuardianGuide(
         guide_type="guide_env",
         source="environment",
-        status="RISK",
+        status="CAUTION",
         variant=3,
-        condition_label="온도 높음",
-        title="실내가 더워요",
-        analysis="실내 온도가 높아 냉방이나 환기 상태를 확인해 주세요.",
+        condition_label="습한 환경",
+        title="제습이나 환기가 필요한지 살펴봐 주세요",
+        description="집 안이 습한 날이 있었어요.",
+        tag="환경 확인하기",
+        template_id="ENV_CAUTION_03",
     ),
     ("guide_env", "environment", 4): GuardianGuide(
         guide_type="guide_env",
         source="environment",
-        status="RISK",
+        status="CAUTION",
         variant=4,
-        condition_label="온도 낮음",
-        title="실내가 추워요",
-        analysis="실내 온도가 낮아 난방 상태를 확인해 주세요.",
+        condition_label="건조한 환경",
+        title="실내가 너무 건조하지 않은지 살펴봐 주세요",
+        description="집 안이 건조한 날이 있었어요.",
+        tag="환경 확인하기",
+        template_id="ENV_CAUTION_04",
     ),
     ("guide_env", "environment", 5): GuardianGuide(
         guide_type="guide_env",
         source="environment",
         status="RISK",
         variant=5,
-        condition_label="온도 및 습도 권장 범위 이탈 반복",
-        title="생활 환경을 확인해 주세요",
-        analysis="실내 온도와 습도가 권장 범위 이탈이 반복되었어요.",
+        condition_label="덥고 습한 환경",
+        title="냉방과 환기 상태를 함께 확인해 주세요",
+        description="덥고 습한 날이 여러 번 이어졌어요.",
+        tag="환경 확인하기",
+        template_id="ENV_RISK_05",
+    ),
+    ("guide_env", "environment", 6): GuardianGuide(
+        guide_type="guide_env",
+        source="environment",
+        status="RISK",
+        variant=6,
+        condition_label="덥고 건조한 환경",
+        title="냉방 상태와 실내 습도를 함께 확인해 주세요",
+        description="덥고 건조한 날이 여러 번 이어졌어요.",
+        tag="환경 확인하기",
+        template_id="ENV_RISK_06",
+    ),
+    ("guide_env", "environment", 7): GuardianGuide(
+        guide_type="guide_env",
+        source="environment",
+        status="RISK",
+        variant=7,
+        condition_label="춥고 습한 환경",
+        title="난방과 환기 상태를 함께 확인해 주세요",
+        description="춥고 습한 날이 여러 번 이어졌어요.",
+        tag="환경 확인하기",
+        template_id="ENV_RISK_07",
+    ),
+    ("guide_env", "environment", 8): GuardianGuide(
+        guide_type="guide_env",
+        source="environment",
+        status="RISK",
+        variant=8,
+        condition_label="춥고 건조한 환경",
+        title="난방 상태와 실내 습도를 함께 확인해 주세요",
+        description="춥고 건조한 날이 여러 번 이어졌어요.",
+        tag="환경 확인하기",
+        template_id="ENV_RISK_08",
     ),
     ("guide_device_power", "device_data", 1): GuardianGuide(
         guide_type="guide_device_power",
         source="device_data",
         status="CAUTION",
         variant=1,
-        condition_label="전원뽑음 주의",
-        title="전원 확인이 필요해요",
-        analysis="기기 전원이 빠진 이력이 있어요.",
+        condition_label="전원 확인",
+        title="기기 전원이 잘 연결되어 있는지 확인해 주세요",
+        description="생활 정보가 들어오지 않은 날이 있었어요.",
+        tag="기기 확인하기",
+        template_id="DEV_POWER_01",
     ),
     ("guide_device_pos", "device_data", 1): GuardianGuide(
         guide_type="guide_device_pos",
         source="device_data",
         status="CAUTION",
         variant=1,
-        condition_label="기기위치변경 주의",
-        title="기기 위치 확인이 필요해요",
-        analysis="움직임·리모컨 사용이 적게 확인됐어요.",
+        condition_label="위치 확인",
+        title="기기가 제자리에 있는지 확인해 주세요",
+        description="생활 정보가 평소보다 적게 들어온 날이 있었어요.",
+        tag="기기 확인하기",
+        template_id="DEV_POS_01",
     ),
     ("guide_device_no_data", "device_data", 1): GuardianGuide(
         guide_type="guide_device_no_data",
@@ -184,7 +256,9 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         variant=1,
         condition_label="센서 자료 부족",
         title="기기 전원이 연결되어 있는지 확인해 주세요",
-        analysis="지난 한 주 기기 데이터 수신이 확인되지 않았어요.",
+        description="지난 한 주 기기 데이터 수신이 확인되지 않았어요.",
+        tag="기기 확인하기",
+        template_id=None,
     ),
     ("guide_stable", "overall", 1): GuardianGuide(
         guide_type="guide_stable",
@@ -192,7 +266,9 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="GOOD",
         variant=1,
         condition_label="상태 양호",
-        title="꾸준히 안부를 확인해 주세요",
-        analysis="지난 한 주는 큰 이상 없이 안정적인 흐름을 보였어요.",
+        title="평소처럼 안부를 확인해 주세요",
+        description="평소와 비슷한 생활 흐름이 이어지고 있어요.",
+        tag="안부 전화하기",
+        template_id=None,
     ),
 }

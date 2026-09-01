@@ -49,7 +49,9 @@ async def test_weekly_report_meets_deterministic_release_criteria(
 
 
 @pytest.mark.asyncio
-async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_tampered_metric_prevents_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class EvaluatedModel:
         async def complete(self, *args: object, **kwargs: object) -> str:
             return VALID_NARRATIVE
@@ -75,7 +77,9 @@ async def test_tampered_metric_prevents_release(monkeypatch: pytest.MonkeyPatch)
     evaluations = evaluate_weekly_report_batch(
         WardWeeklyReportBatchResult.model_validate(tampered)
     )
-    grounding = next(item for item in evaluations if item.criterion == "numeric_grounding")
+    grounding = next(
+        item for item in evaluations if item.criterion == "numeric_grounding"
+    )
     assert grounding.status == "failed"
     assert not weekly_report_release_ready(evaluations)
 
@@ -96,14 +100,14 @@ async def test_false_device_missing_data_copy_prevents_release(
     tampered = deepcopy(output)
     markdown = tampered["reports"][0]["markdown"]
     markdown = markdown.replace(
-        "## 3. 기기 데이터 수신\n\n- 상태: GOOD",
-        "## 3. 기기 데이터 수신\n\n- 상태: 자료 없음",
+        "## 기기 상태\n\n- 상태: GOOD",
+        "## 기기 상태\n\n- 상태: 자료 없음",
         1,
     )
     tampered["reports"][0]["markdown"] = markdown.replace(
         "# 보호자 행동 제안",
         "# 보호자 행동 제안\n\n## 1. 기기 전원이 연결되어 있는지 확인해 주세요\n\n"
-        "- 분석: 지난 한 주 기기 데이터 수신이 확인되지 않았어요.",
+        "- 설명: 지난 한 주 기기 데이터 수신이 확인되지 않았어요.",
         1,
     )
 
@@ -111,9 +115,7 @@ async def test_false_device_missing_data_copy_prevents_release(
         WardWeeklyReportBatchResult.model_validate(tampered)
     )
     device = next(
-        item
-        for item in evaluations
-        if item.criterion == "device_reception_consistency"
+        item for item in evaluations if item.criterion == "device_reception_consistency"
     )
     assert device.status == "failed"
     assert not weekly_report_release_ready(evaluations)
@@ -178,4 +180,5 @@ async def test_structure_evaluation_accepts_omitted_empty_sleep_section(
     )
     assert structure.status == "passed"
     assert "수면 패턴" not in report.markdown
-    assert "## 1. 활동량" in report.markdown
+    assert "## 생활 활동" in report.markdown
+    assert "## 생활 패턴" in report.markdown

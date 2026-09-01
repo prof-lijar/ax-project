@@ -224,6 +224,7 @@ services:
       VITE_AGENT_SERVER_BASE_URL: http://agent-server:2024
       VITE_WEEKLY_REPORT_BULK_API_BASE_URL: http://weekly-report-bulk-api:8090
       VITE_RAG_SERVER_BASE_URL: http://192.168.0.18:8765
+      VITE_SCOUT_API_BASE_URL: http://192.168.0.18:8091
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:

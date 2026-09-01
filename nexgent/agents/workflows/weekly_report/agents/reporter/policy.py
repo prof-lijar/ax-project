@@ -6,6 +6,8 @@ import re
 
 from ax_contracts import WeeklyNarrative
 
+from workflows.weekly_report.domain.models import FactPackage
+
 FORBIDDEN_PHRASES = (
     "위험합니다",
     "응급",
@@ -30,6 +32,13 @@ UNRELATED_FILLER_PHRASES = (
     "정성껏 살펴보고",
     "보호자님께서도 마음 편히",
     "함께 지켜봐 주시기를 부탁드립니다",
+    "각 항목을 살펴보면",
+    "자료를 바탕으로",
+    "종합적으로 확인되었습니다",
+    "전반적인 생활 흐름을 안정적으로 확인할 수 있었습니다",
+    "첫째",
+    "둘째",
+    "셋째",
 )
 
 LEGACY_REPORT_PERIOD_PHRASES = (
@@ -38,27 +47,7 @@ LEGACY_REPORT_PERIOD_PHRASES = (
     "지난 주",
 )
 
-CASUAL_NARRATIVE_ENDINGS = (
-    "됐어요",
-    "했어요",
-    "있어요",
-    "보여요",
-    "필요해요",
-    "권장해요",
-    "권해요",
-    "없어요",
-    "어려워요",
-    "이어졌어요",
-    "줄었어요",
-    "늘었어요",
-    "많았어요",
-    "않아요",
-    "좋아요",
-    "건조해요",
-    "습해요",
-    "더워요",
-    "추워요",
-)
+FORMAL_NARRATIVE_ENDINGS = ("습니다", "입니다", "합니다", "됩니다")
 
 URGENT_NARRATIVE_PHRASES = (
     "빠른",
@@ -100,16 +89,110 @@ TOPIC_MARKERS = {
         "유효 데이터",
     ),
     "위험 감지": ("위험", "감지 기록"),
-    "기기 데이터 수신": (
+    "기기 상태": (
         "데이터가 정상적으로 수집",
+        "생활 정보",
         "기기 전원",
         "기기 위치",
         "수신상태",
         "기기 데이터",
     ),
     "활동": ("활동", "움직임", "리모컨"),
-    "실내 환경": ("실내 환경", "온도", "습도", "조도"),
+    "실내 환경": (
+        "실내 환경",
+        "온도",
+        "습도",
+        "조도",
+        "집 안",
+        "더운",
+        "추운",
+        "습한",
+        "건조한",
+        "덥고",
+    ),
 }
+
+FREE_SUMMARY_FORBIDDEN_WORDS = (
+    "움직임",
+    "리모컨",
+    "GOOD",
+    "CAUTION",
+    "RISK",
+)
+
+
+def validate_summary_text(text: str, facts: FactPackage) -> str:
+    """Validate one model-authored, report-ready summary paragraph."""
+
+    summary = text.strip()
+    if not summary:
+        raise ValueError("weekly summary must not be empty")
+    if "\n" in summary or "\r" in summary:
+        raise ValueError("weekly summary must be one paragraph")
+    if summary.startswith(("#", "-", "*", ">")) or re.search(
+        r"(?:^|\s)(?:제목|총평|설명)\s*:", summary
+    ):
+        raise ValueError("weekly summary must contain body text only")
+    if not re.search(r"[가-힣]", summary):
+        raise ValueError("weekly summary must contain Korean")
+    if re.search(r"\d", summary):
+        raise ValueError("weekly summary must not contain digits")
+    if any(word in summary for word in FREE_SUMMARY_FORBIDDEN_WORDS):
+        raise ValueError("weekly summary contains a forbidden output word")
+    if any(phrase in summary for phrase in FORBIDDEN_PHRASES):
+        raise ValueError("weekly summary contains forbidden categorical language")
+    if any(phrase in summary for phrase in UNRELATED_FILLER_PHRASES):
+        raise ValueError("weekly summary contains unrelated filler")
+    if any(phrase in summary for phrase in LEGACY_REPORT_PERIOD_PHRASES):
+        raise ValueError("weekly summary contains a legacy report-period phrase")
+    if any(marker in summary for marker in REPORT_EXCLUDED_TOPIC_MARKERS):
+        raise ValueError("weekly summary mentions a report-excluded topic")
+    if any(phrase in summary for phrase in URGENT_NARRATIVE_PHRASES):
+        raise ValueError("weekly summary contains urgent wording")
+    if any(ending in summary for ending in FORMAL_NARRATIVE_ENDINGS):
+        raise ValueError("weekly summary must use warm haeyo register")
+    if len(summary) > 500:
+        raise ValueError("weekly summary must contain at most 500 characters")
+
+    sentences = re.split(r"(?<=[.!?])\s+", summary)
+    if not 1 <= len(sentences) <= 12 or any(
+        not sentence.endswith((".", "!", "?")) for sentence in sentences
+    ):
+        raise ValueError("weekly summary must contain one to twelve sentences")
+    if len(sentences[0]) > 160:
+        raise ValueError("weekly summary first sentence must contain at most 160 characters")
+
+    data = facts.weekly_report_data
+    if data is not None:
+        material_markers = (
+            (data.living_activity.status, ("활동",), "생활 활동"),
+            (
+                data.living_pattern.status,
+                ("TV 이용", "생활 패턴", "일상생활"),
+                "생활 패턴",
+            ),
+            (
+                data.indoor_environment.status,
+                TOPIC_MARKERS["실내 환경"],
+                "실내 환경",
+            ),
+            (data.device_status.status, TOPIC_MARKERS["기기 상태"], "기기 상태"),
+        )
+        for status, markers, label in material_markers:
+            if status in {"CAUTION", "RISK"} and not any(
+                marker in summary for marker in markers
+            ):
+                raise ValueError(f"weekly summary omits material section: {label}")
+
+    for topic in facts.required_topics:
+        markers = {
+            "활동": ("활동", "TV 이용", "생활 패턴", "일상생활"),
+            "실내 환경": TOPIC_MARKERS["실내 환경"],
+            "기기 상태": TOPIC_MARKERS["기기 상태"],
+        }.get(topic, TOPIC_MARKERS.get(topic, (topic,)))
+        if not any(marker in summary for marker in markers):
+            raise ValueError(f"weekly summary omits required topic: {topic}")
+    return summary
 
 
 def validate_narrative(
@@ -119,6 +202,7 @@ def validate_narrative(
     allowed_numbers: set[str] | None = None,
     structured_outline: bool = False,
     available_items: list[str] | None = None,
+    required_analysis_block: str | None = None,
 ) -> WeeklyNarrative:
     has_evaluable_items = available_items is None or bool(available_items)
     named_values = [
@@ -153,14 +237,26 @@ def validate_narrative(
             phrase in value for phrase in URGENT_NARRATIVE_PHRASES
         ):
             raise ValueError("structured summary contains urgent wording")
-    if any(
+    analysis_remainder = (
+        _required_block_remainder(
+            narrative.analysis_text,
+            required_analysis_block,
+        )
+        if structured_outline and required_analysis_block
+        else narrative.analysis_text
+    )
+    if structured_outline and any(
         ending in value
-        for value in (narrative.headline, narrative.analysis_text)
-        for ending in CASUAL_NARRATIVE_ENDINGS
+        for value in (narrative.headline, analysis_remainder)
+        for ending in FORMAL_NARRATIVE_ENDINGS
     ):
-        raise ValueError("headline and analysis_text must use formal Korean register")
+        raise ValueError("headline and analysis_text must use warm haeyo register")
     sentence_count = len(re.findall(r"[.!?](?:\s|$)", narrative.analysis_text))
-    if structured_outline and has_evaluable_items and sentence_count not in {1, 2, 3, 4}:
+    if (
+        structured_outline
+        and has_evaluable_items
+        and sentence_count not in {1, 2, 3, 4}
+    ):
         raise ValueError("structured analysis_text must contain one to four insights")
     if structured_outline and not has_evaluable_items and sentence_count != 0:
         raise ValueError("structured analysis_text must be empty without insights")
@@ -173,7 +269,16 @@ def validate_narrative(
             raise ValueError("structured headline must start with the report period")
         if "지난 한 주" in narrative.analysis_text:
             raise ValueError("structured analysis repeats the report period")
-        _validate_connected_sentences(narrative.analysis_text)
+        if required_analysis_block:
+            _required_block_remainder(
+                narrative.analysis_text,
+                required_analysis_block,
+            )
+        _require_supporting_insight(
+            narrative.analysis_text,
+            required_analysis_block,
+            available_items,
+        )
     if len(narrative.analysis_text) > 420:
         raise ValueError("analysis_text must contain at most 420 characters")
     if (
@@ -223,19 +328,39 @@ def _reject_omitted_items(text: str, available_items: list[str] | None) -> None:
         "움직임": ("움직임",),
         "리모컨": ("리모컨",),
         "실내 환경": ("실내 환경", "온도", "습도"),
-        "기기 데이터 수신": ("기기", "데이터 수신", "전원", "위치"),
+        "기기 상태": ("기기", "데이터 수신", "전원", "위치"),
     }
     for item, markers in item_markers.items():
         if item not in available and any(marker in text for marker in markers):
             raise ValueError(f"structured summary mentions omitted item: {item}")
 
 
-def _validate_connected_sentences(text: str) -> None:
-    sentences = [
-        sentence.strip()
-        for sentence in re.split(r"(?<=[.!?])\s+", text.strip())
-        if sentence.strip()
-    ]
-    for sentence in sentences:
-        if not sentence.startswith(SUMMARY_CONNECTORS):
-            raise ValueError("structured summary sentences must use connectors")
+def _required_block_remainder(text: str, required_block: str) -> str:
+    if text == required_block:
+        return ""
+    if text.startswith(f"{required_block} "):
+        return text[len(required_block) + 1 :]
+    for connector in SUMMARY_CONNECTORS:
+        prefixed_block = f"{connector} {required_block}"
+        if text == prefixed_block:
+            return ""
+        if text.startswith(f"{prefixed_block} "):
+            return text[len(prefixed_block) + 1 :]
+    raise ValueError("structured analysis must start with the required activity block")
+
+
+def _require_supporting_insight(
+    text: str,
+    required_block: str | None,
+    available_items: list[str] | None,
+) -> None:
+    if not required_block or not available_items:
+        return
+    has_supporting_evidence = any(
+        item in {"실내 환경", "기기 상태"} for item in available_items
+    )
+    if has_supporting_evidence and not _required_block_remainder(
+        text,
+        required_block,
+    ):
+        raise ValueError("structured summary must add a supporting weekly insight")

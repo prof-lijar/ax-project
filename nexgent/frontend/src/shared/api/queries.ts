@@ -9,6 +9,12 @@ import {
   type RagEmbedInput,
   type RagSearchInput
 } from "./ragClient";
+import { scoutClient, type ScoutRunRequest } from "./scoutClient";
+import {
+  scoutScheduleClient,
+  type ScoutScheduleCreateRequest,
+  type ScoutScheduleRecord
+} from "./scoutScheduleClient";
 
 export const queryKeys = {
   health: ["system-health"] as const,
@@ -22,7 +28,8 @@ export const queryKeys = {
   nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
   nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const,
   nextcloudPreview: (path: string) => ["nextcloud-preview", path] as const,
-  ragDataStats: ["rag-data-stats"] as const
+  ragDataStats: ["rag-data-stats"] as const,
+  scoutSchedules: ["scout-schedules"] as const
 };
 
 export function useAgentServerHealth() {
@@ -165,5 +172,51 @@ export function useRagDeleteData() {
       queryClient.setQueryData(queryKeys.ragDataStats, emptyStats);
       void queryClient.invalidateQueries({ queryKey: queryKeys.ragDataStats });
     }
+  });
+}
+
+export function useScoutRun() {
+  return useMutation({
+    mutationFn: (input: ScoutRunRequest) => scoutClient.run(input)
+  });
+}
+
+export function useScoutSchedules() {
+  return useQuery({
+    queryKey: queryKeys.scoutSchedules,
+    queryFn: ({ signal }) => scoutScheduleClient.list({ signal }),
+    refetchInterval: (query) =>
+      getScoutScheduleRefetchInterval(query.state.data?.schedules),
+    retry: false
+  });
+}
+
+export function getScoutScheduleRefetchInterval(
+  schedules?: ScoutScheduleRecord[]
+) {
+  return schedules?.some(
+    ({ status }) => status === "pending" || status === "running"
+  )
+    ? 4_000
+    : false;
+}
+
+export function useCreateScoutSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScoutScheduleCreateRequest) =>
+      scoutScheduleClient.create(input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.scoutSchedules })
+  });
+}
+
+export function useCancelScoutSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (scheduleId: string) =>
+      scoutScheduleClient.cancel(scheduleId),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.scoutSchedules })
   });
 }

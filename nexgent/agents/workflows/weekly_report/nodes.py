@@ -143,7 +143,8 @@ async def aggregate_reports(state: WeeklyReportState) -> dict[str, Any]:
             "event": "batch_completed",
             "report_count": len(result.reports),
             "fallback_count": sum(
-                report.generation_mode == "template_fallback" for report in result.reports
+                report.generation_mode == "template_fallback"
+                for report in result.reports
             ),
         }
     )

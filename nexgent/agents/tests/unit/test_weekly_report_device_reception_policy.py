@@ -19,9 +19,9 @@ def test_device_reception_good_uses_exact_approved_copy() -> None:
     assert assessment.kind == "device_good"
     assert device_reception_status_label(assessment) == "GOOD"
     assert device_reception_description(assessment) == (
-        "모든 데이터가 정상적으로 수집되었어요."
+        "생활 정보가 빠짐없이 잘 들어왔어요."
     )
-    assert device_reception_summary(assessment) == "수신상태 양호"
+    assert device_reception_summary(assessment) == "정상"
 
 
 def test_device_power_has_precedence_and_uses_exact_approved_copy() -> None:
@@ -38,9 +38,10 @@ def test_device_power_has_precedence_and_uses_exact_approved_copy() -> None:
     assert assessment.status == "CAUTION"
     assert assessment.kind == "device_power"
     assert device_reception_description(assessment) == (
-        "기기 전원이 연결되어 있는지 확인해 주세요."
+        "생활 정보가 들어오지 않은 날이 있었어요. "
+        "기기 전원이 잘 연결되어 있는지 확인해 주세요."
     )
-    assert device_reception_summary(assessment) == "전원 확인 필요"
+    assert device_reception_summary(assessment) == "전원 확인"
 
 
 def test_device_position_uses_exact_approved_copy() -> None:
@@ -57,9 +58,10 @@ def test_device_position_uses_exact_approved_copy() -> None:
     assert assessment.status == "CAUTION"
     assert assessment.kind == "device_position"
     assert device_reception_description(assessment) == (
-        "움직임·리모컨 사용이 적게 확인됐어요. 기기 위치가 올바른지 확인해 주세요."
+        "일부 생활 정보가 평소보다 적게 들어온 날이 있었어요. "
+        "기기가 제자리에 있는지 확인해 주세요."
     )
-    assert device_reception_summary(assessment) == "기기 위치 확인 필요"
+    assert device_reception_summary(assessment) == "위치 확인"
 
 
 def test_any_good_reception_is_good_when_no_caution_rule_matches() -> None:
@@ -78,9 +80,9 @@ def test_any_good_reception_is_good_when_no_caution_rule_matches() -> None:
     assert assessment.other_count == 1
     assert device_reception_status_label(assessment) == "GOOD"
     assert device_reception_description(assessment) == (
-        "모든 데이터가 정상적으로 수집되었어요."
+        "생활 정보가 빠짐없이 잘 들어왔어요."
     )
-    assert device_reception_summary(assessment) == "수신상태 양호"
+    assert device_reception_summary(assessment) == "정상"
 
 
 def test_zero_source_rows_request_a_device_power_check() -> None:
@@ -104,7 +106,7 @@ def test_zero_source_rows_request_a_device_power_check() -> None:
     assert device_reception_description(assessment) == (
         "기기 전원이 연결되어 있는지 확인해 주세요."
     )
-    assert device_reception_summary(assessment) == "수신상태 확인 필요"
+    assert device_reception_summary(assessment) == "기기 상태 확인 필요"
 
 
 def test_rows_without_any_weekly_match_are_not_called_missing_or_power_loss() -> None:
@@ -146,12 +148,12 @@ def test_device_reception_fact_package_includes_significant_power_count() -> Non
 
     facts = build_fact_package(metrics)
 
-    assert facts.summary_outline is not None
-    assert facts.summary_outline.mode == "PARTIAL_DEVICE"
-    assert facts.summary_outline.data_quality_code == "PARTIAL_POWER"
-    assert "기기 전원 확인이 필요한 기록" in facts.summary_outline.headline
-    assert "기기 전원 분리 패턴이 2회 확인" in facts.summary_outline.safety
-    assert "기기 데이터 수신" in facts.allowed_topics
-    assert "전원 확인이 필요해요" in facts.suggested_actions
-    assert facts.summary_outline.close not in facts.suggested_actions
+    assert facts.weekly_report_data is not None
+    assert facts.weekly_report_data.device_status.status == "CAUTION"
+    assert facts.weekly_report_data.device_status.summary == "전원 확인"
+    assert "기기 전원이 잘 연결되어 있는지" in (
+        facts.weekly_report_data.device_status.description
+    )
+    assert "기기 상태" in facts.allowed_topics
+    assert "기기 전원이 잘 연결되어 있는지 확인해 주세요" in facts.suggested_actions
     assert not any("3회" in fact for fact in facts.facts)

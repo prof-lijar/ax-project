@@ -11,6 +11,10 @@ describe("App agent routing", () => {
     expect(getAgentsRoute("2")).toEqual({ kind: "detail", agentId: "2" });
   });
 
+  it("opens Scout in its dedicated workbench", () => {
+    expect(getAgentsRoute("ansimk_scout_agent")).toEqual({ kind: "scout" });
+  });
+
   it("renders the catalog when no detail id is active", () => {
     expect(getAgentsRoute(null)).toEqual({ kind: "catalog" });
   });

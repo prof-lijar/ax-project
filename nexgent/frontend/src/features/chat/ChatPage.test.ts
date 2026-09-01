@@ -4,16 +4,20 @@ import {
   agentCatalogClient,
   RAG_CHAT_GRAPH_ID
 } from "../../shared/api/agentCatalogClient";
-import { usesRagChat } from "./ChatPage";
+import { getChatCapableAgents, usesRagChat } from "./ChatPage";
 
 describe("ChatPage agent routing", () => {
-  it("receives only Weekly Reporter and RAG Agent from the shared catalog", async () => {
+  it("offers only explicitly Chat-capable catalog agents", async () => {
     const agents = await agentCatalogClient.listAgents();
 
-    expect(agents.map((agent) => agent.name)).toEqual([
-      "Weekly Reporter",
-      "RAG Agent"
-    ]);
+    expect(getChatCapableAgents(agents).map((agent) => agent.name)).toEqual(
+      ["Weekly Reporter", "RAG Agent"]
+    );
+    expect(
+      getChatCapableAgents(agents).some(
+        (agent) => agent.id === "ansimk_scout_agent"
+      )
+    ).toBe(false);
   });
 
   it("routes only the real RAG Agent through dedicated RAG Chat", () => {

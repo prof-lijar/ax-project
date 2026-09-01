@@ -2,6 +2,7 @@ import json
 from datetime import date, time
 
 import pytest
+from ax_contracts import WardWeeklyMetrics
 
 from workflows.weekly_report.agents.reporter.fallback import build_fallback
 from workflows.weekly_report.agents.reporter.narrative import generate_narrative
@@ -12,6 +13,7 @@ from workflows.weekly_report.source.calculator import (
     _environment_day_counts,
     calculate_metrics,
 )
+from workflows.weekly_report.tools.source_repository import _mock_delta, _snapshot
 
 
 def test_calculator_matches_weighted_and_linear_average_semantics() -> None:
@@ -88,9 +90,11 @@ def test_calculator_matches_weighted_and_linear_average_semantics() -> None:
     assert metrics.current.humidity_out_of_range_days == 0
     assert metrics.current.environment_out_of_range_days == 1
     assert metrics.current.low_temperature_days == 0
+    assert metrics.current.cool_temperature_days == 0
     assert metrics.current.high_temperature_days == 1
     assert metrics.current.low_humidity_days == 0
     assert metrics.current.high_humidity_days == 0
+    assert metrics.current.humidity_at_or_above_70_days == 0
     assert metrics.current.device_good_count == 2
     assert metrics.current.device_power_count == 0
     assert metrics.current.device_position_count == 0
@@ -154,7 +158,7 @@ def test_environment_risk_direction_counts_use_daily_maximum_extreme_thresholds(
         ),
     ],
 )
-def test_environment_recommended_boundaries_are_excluded_but_not_extreme_risk(
+def test_environment_exact_boundaries_are_inside_the_sheet_range(
     field: str,
     departure_field: str,
     overrides: dict[str, float],
@@ -174,10 +178,49 @@ def test_environment_recommended_boundaries_are_excluded_but_not_extreme_risk(
     counts = _environment_day_counts(rows)
 
     assert counts[field] == 0
-    assert counts[departure_field] == 4
+    assert counts[departure_field] == 0
 
 
-def test_environment_values_strictly_inside_recommended_ranges_are_not_departures() -> None:
+def test_environment_special_combined_thresholds_use_daily_maxima() -> None:
+    rows = [
+        {
+            "date": date(2026, 8, 3 + offset),
+            "min_temperature": 10,
+            "max_temperature": 17.9,
+            "min_humidity": 40,
+            "max_humidity": 70,
+        }
+        for offset in range(4)
+    ]
+
+    counts = _environment_day_counts(rows)
+
+    assert counts["low_temperature_days"] == 0
+    assert counts["cool_temperature_days"] == 4
+    assert counts["high_humidity_days"] == 0
+    assert counts["humidity_at_or_above_70_days"] == 4
+
+
+def test_environment_special_combined_thresholds_keep_exact_18_exclusive() -> None:
+    counts = _environment_day_counts(
+        [
+            {
+                "date": date(2026, 8, 3),
+                "min_temperature": 10,
+                "max_temperature": 18,
+                "min_humidity": 40,
+                "max_humidity": 69.9,
+            }
+        ]
+    )
+
+    assert counts["cool_temperature_days"] == 0
+    assert counts["humidity_at_or_above_70_days"] == 0
+
+
+def test_environment_values_strictly_inside_recommended_ranges_are_not_departures() -> (
+    None
+):
     rows = [
         {
             "date": date(2026, 8, 3),
@@ -341,11 +384,8 @@ def test_device_reception_rows_follow_good_power_position_else_if_order() -> Non
 
 
 def test_fact_package_prioritizes_available_facts_over_coverage_disclosure() -> None:
-    from workflows.weekly_report.tools.source_repository import _mock_delta, _snapshot
-
     current = _snapshot(103, current=True).model_copy(update={"covered_days": 4})
     previous = _snapshot(103, current=False)
-    from ax_contracts import WardWeeklyMetrics
 
     metrics = WardWeeklyMetrics(
         ward_id=103,
@@ -359,20 +399,26 @@ def test_fact_package_prioritizes_available_facts_over_coverage_disclosure() -> 
     facts = build_fact_package(metrics)
     assert facts.coverage == "incomplete"
     assert facts.required_topics == []
-    assert "자료 상태" not in facts.allowed_topics
-    assert facts.summary_outline is not None
-    assert facts.summary_outline.mode == "ALL_GOOD"
-    assert "출동" not in facts.summary_outline.issue_topic_list
+    assert "자료 상태" in facts.allowed_topics
+    assert facts.weekly_report_data is not None
+    assert facts.weekly_report_data.subscriber == "대상"
     assert len(facts.suggested_actions) <= 3
 
 
 @pytest.mark.asyncio
-async def test_reporter_accepts_one_complete_json_code_fence() -> None:
-    facts = FactPackage(
-        coverage="complete",
-        facts=["활동 흐름은 2주 전과 비슷하게 이어졌습니다."],
-        allowed_topics=["활동"],
-        suggested_actions=[],
+async def test_reporter_rejects_code_fenced_output_and_uses_fallback() -> None:
+    current = _snapshot(101, current=True)
+    previous = _snapshot(101, current=False)
+    facts = build_fact_package(
+        WardWeeklyMetrics(
+            ward_id=101,
+            display_name="대상",
+            week_start=date(2026, 8, 3),
+            week_end=date(2026, 8, 10),
+            current=current,
+            previous=previous,
+            delta=_mock_delta(current, previous),
+        )
     )
     expected = build_fallback(facts)
 
@@ -384,40 +430,40 @@ async def test_reporter_accepts_one_complete_json_code_fence() -> None:
     narrative, mode, metadata = await generate_narrative(FencedJsonModel(), facts)
 
     assert narrative == expected
-    assert mode == "llm"
-    assert metadata.validation_status == "passed"
-    assert metadata.fallback_reason is None
+    assert mode == "template_fallback"
+    assert metadata.validation_status == "fallback"
 
 
 @pytest.mark.asyncio
 async def test_reporter_gives_specific_sentence_feedback_before_retry() -> None:
-    facts = FactPackage(
-        coverage="complete",
-        facts=["활동 흐름은 2주 전과 비슷하게 이어졌습니다."],
-        allowed_topics=["활동"],
-        suggested_actions=[],
+    current = _snapshot(101, current=True)
+    previous = _snapshot(101, current=False)
+    facts = build_fact_package(
+        WardWeeklyMetrics(
+            ward_id=101,
+            display_name="대상",
+            week_start=date(2026, 8, 3),
+            week_end=date(2026, 8, 10),
+            current=current,
+            previous=previous,
+            delta=_mock_delta(current, previous),
+        )
     )
     expected = build_fallback(facts)
-    too_many_sentences = expected.model_copy(
-        update={
-            "analysis_text": " ".join(
-                ["활동 흐름을 확인했습니다."] * 7
-            )
-        }
-    )
+    expected_text = f"{expected.headline} {expected.analysis_text}"
 
     class CorrectingModel:
         def __init__(self) -> None:
             self.calls = 0
 
-        async def complete(self, messages: list[dict[str, str]], **kwargs: object) -> str:
+        async def complete(
+            self, messages: list[dict[str, str]], **kwargs: object
+        ) -> str:
             self.calls += 1
             if self.calls == 1:
-                value = too_many_sentences
-            else:
-                assert "마침표로 구분된 한 문장부터 여섯 문장" in messages[-1]["content"]
-                value = expected
-            return json.dumps(value.model_dump(mode="json"), ensure_ascii=False)
+                return "지난 한 주 생활 흐름을 살펴봤어요.\n생활 정보도 확인했어요."
+            assert "한 문단" in messages[-1]["content"]
+            return expected_text
 
     model = CorrectingModel()
     narrative, mode, metadata = await generate_narrative(model, facts)
@@ -429,36 +475,38 @@ async def test_reporter_gives_specific_sentence_feedback_before_retry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reporter_retries_casual_summary_in_formal_register() -> None:
-    facts = FactPackage(
-        coverage="complete",
-        facts=["움직임이 2주 전보다 줄어든 흐름이 보여요."],
-        allowed_topics=["활동"],
-        required_topics=["활동"],
-        suggested_actions=[],
+async def test_reporter_retries_formal_summary_in_warm_haeyo_register() -> None:
+    current = _snapshot(101, current=True)
+    previous = _snapshot(101, current=False)
+    facts = build_fact_package(
+        WardWeeklyMetrics(
+            ward_id=101,
+            display_name="대상",
+            week_start=date(2026, 8, 3),
+            week_end=date(2026, 8, 10),
+            current=current,
+            previous=previous,
+            delta=_mock_delta(current, previous),
+        )
     )
     expected = build_fallback(facts)
-    casual = expected.model_copy(
-        update={
-            "headline": "움직임이 2주 전보다 줄어든 흐름이 보여요.",
-            "analysis_text": "움직임이 2주 전보다 줄어든 흐름이 보여요.",
-        }
-    )
+    expected_text = f"{expected.headline} {expected.analysis_text}"
+    formal = "지난 한 주 대상님은 생활 흐름을 유지했습니다. 생활 정보도 확인되었습니다."
 
-    class FormalizingModel:
+    class WarmingModel:
         def __init__(self) -> None:
             self.calls = 0
 
-        async def complete(self, messages: list[dict[str, str]], **kwargs: object) -> str:
+        async def complete(
+            self, messages: list[dict[str, str]], **kwargs: object
+        ) -> str:
             self.calls += 1
             if self.calls == 1:
-                value = casual
-            else:
-                assert "따뜻하고 정중한 합니다체" in messages[-1]["content"]
-                value = expected
-            return json.dumps(value.model_dump(mode="json"), ensure_ascii=False)
+                return formal
+            assert "부드러운 해요체" in messages[-1]["content"]
+            return expected_text
 
-    model = FormalizingModel()
+    model = WarmingModel()
     narrative, mode, metadata = await generate_narrative(model, facts)
 
     assert model.calls == 2
@@ -469,19 +517,20 @@ async def test_reporter_retries_casual_summary_in_formal_register() -> None:
 
 @pytest.mark.asyncio
 async def test_reporter_rejects_unsupported_topic_then_uses_fallback() -> None:
-    facts = FactPackage(
-        coverage="complete",
-        facts=["활동 흐름은 2주 전과 비슷하게 이어졌습니다."],
-        allowed_topics=["활동"],
-        suggested_actions=[],
+    current = _snapshot(101, current=True)
+    previous = _snapshot(101, current=False)
+    facts = build_fact_package(
+        WardWeeklyMetrics(
+            ward_id=101,
+            display_name="대상",
+            week_start=date(2026, 8, 3),
+            week_end=date(2026, 8, 10),
+            current=current,
+            previous=previous,
+            delta=_mock_delta(current, previous),
+        )
     )
-    unsupported = build_fallback(facts).model_copy(
-        update={
-            "analysis_text": (
-                f"{build_fallback(facts).analysis_text} 출동 요청도 확인했어요."
-            )
-        }
-    )
+    unsupported = "지난 한 주 대상님은 생활 흐름을 이어가셨어요. 출동 요청도 확인했어요."
 
     class UnsupportedModel:
         def __init__(self) -> None:
@@ -489,7 +538,7 @@ async def test_reporter_rejects_unsupported_topic_then_uses_fallback() -> None:
 
         async def complete(self, *args: object, **kwargs: object) -> str:
             self.calls += 1
-            return json.dumps(unsupported.model_dump(mode="json"), ensure_ascii=False)
+            return unsupported
 
     model = UnsupportedModel()
     narrative, mode, metadata = await generate_narrative(model, facts)
@@ -519,23 +568,20 @@ def test_fallback_uses_one_available_fact_without_padding() -> None:
 
 @pytest.mark.asyncio
 async def test_reporter_rejects_unrelated_missing_data_filler() -> None:
-    facts = FactPackage(
-        coverage="incomplete",
-        facts=["움직임이 2주 전보다 줄어든 흐름이 보여요."],
-        allowed_topics=["활동"],
-        required_topics=["활동"],
-        suggested_actions=[],
+    current = _snapshot(101, current=True)
+    previous = _snapshot(101, current=False)
+    facts = build_fact_package(
+        WardWeeklyMetrics(
+            ward_id=101,
+            display_name="대상",
+            week_start=date(2026, 8, 3),
+            week_end=date(2026, 8, 10),
+            current=current,
+            previous=previous,
+            delta=_mock_delta(current, previous),
+        )
     )
-    unrelated = {
-        "headline": "지난 한 주 생활 요약 안내드립니다",
-        "analysis_text": (
-            "지난 한 주에는 수집된 자료가 충분하지 않아 전반적인 생활 흐름을 세밀하게 살펴보는 데 제한이 있었습니다. "
-            "건강 상태의 변화를 의미하는 것은 아니니 너무 염려하지 않으셔도 좋습니다. "
-            "다음 주에는 조금 더 풍성한 기록을 통해 정성껏 살펴보고 안내해 드리겠습니다."
-        ),
-        "observations": ["자료가 부족했어요."],
-        "suggestions": [],
-    }
+    unrelated = "지난 한 주 생활 요약 안내드립니다. 다음 주에는 더 잘 살펴볼게요."
 
     class UnrelatedModel:
         def __init__(self) -> None:
@@ -543,7 +589,7 @@ async def test_reporter_rejects_unrelated_missing_data_filler() -> None:
 
         async def complete(self, *args: object, **kwargs: object) -> str:
             self.calls += 1
-            return json.dumps(unrelated, ensure_ascii=False)
+            return unrelated
 
     model = UnrelatedModel()
     narrative, mode, metadata = await generate_narrative(model, facts)
@@ -551,20 +597,22 @@ async def test_reporter_rejects_unrelated_missing_data_filler() -> None:
     assert model.calls == 2
     assert mode == "template_fallback"
     assert metadata.fallback_reason == "invalid_narrative_content"
-    assert narrative.analysis_text == "움직임이 2주 전보다 줄어든 흐름이 보였습니다."
+    assert "생활 요약 안내드립니다" not in (
+        f"{narrative.headline} {narrative.analysis_text}"
+    )
 
 
 def test_fallback_builds_formal_insight_summary_from_weekly_facts() -> None:
     facts = FactPackage(
         coverage="complete",
         facts=[
-            "모든 데이터가 정상적으로 수집되었어요.",
+            "생활 정보가 빠짐없이 잘 들어왔어요.",
             "권장 온도와 습도 이탈이 여러 날 이어져 냉난방·환기 상태 확인이 필요해요.",
             "움직임이 2주 전과 비슷하게 유지됐어요.",
             "리모컨 사용이 2주 전과 비슷했어요.",
         ],
-        allowed_topics=["기기 데이터 수신", "실내 환경", "활동"],
-        required_topics=["기기 데이터 수신", "실내 환경", "활동"],
+        allowed_topics=["기기 상태", "실내 환경", "활동"],
+        required_topics=["기기 상태", "실내 환경", "활동"],
         suggested_actions=["생활 환경을 확인해 주세요"],
     )
 
@@ -574,7 +622,7 @@ def test_fallback_builds_formal_insight_summary_from_weekly_facts() -> None:
         "움직임과 리모컨 사용량은 2주 전과 비슷하게 유지되었습니다."
     )
     assert narrative.analysis_text == (
-        "모든 데이터가 정상적으로 수집되었습니다. "
+        "생활 정보가 빠짐없이 잘 들어왔습니다. "
         "움직임과 리모컨 사용량은 2주 전과 비슷하게 유지되었습니다. "
         "다만 권장 온도와 습도 이탈이 여러 날 이어져 "
         "냉난방·환기 상태 확인이 필요합니다."

@@ -26,12 +26,9 @@ def calculate_metrics(
         index = 0 if row["date"] < week_start else 1
         by_period[(int(row["ward_id"]), index)].append(row)
 
-    risk = {
-        (int(row["ward_id"]), int(row["period_index"])): row for row in risk_rows
-    }
+    risk = {(int(row["ward_id"]), int(row["period_index"])): row for row in risk_rows}
     dispatch = {
-        (int(row["ward_id"]), int(row["period_index"])): row
-        for row in dispatch_rows
+        (int(row["ward_id"]), int(row["period_index"])): row for row in dispatch_rows
     }
     output = []
     for ward_id in sorted(ward_names):
@@ -71,7 +68,9 @@ def _snapshot(
     return WardWeeklyMetricSnapshot(
         covered_days=len({row["date"] for row in rows}),
         daily_summary_count=len(rows),
-        device_count=len({row["device_id"] for row in rows if row["device_id"] is not None}),
+        device_count=len(
+            {row["device_id"] for row in rows if row["device_id"] is not None}
+        ),
         temperature_avg=_weighted_average(rows, "temperature", "temperature_count"),
         temperature_min=_minimum(rows, "min_temperature"),
         temperature_max=_maximum(rows, "max_temperature"),
@@ -142,7 +141,9 @@ def _delta(
     )
 
 
-def _weighted_average(rows: list[dict[str, Any]], value: str, count: str) -> float | None:
+def _weighted_average(
+    rows: list[dict[str, Any]], value: str, count: str
+) -> float | None:
     numerator = 0.0
     denominator = 0
     for row in rows:
@@ -192,11 +193,9 @@ def _maximum(rows: list[dict[str, Any]], field: str) -> float | None:
 
 def _environment_day_counts(rows: list[dict[str, Any]]) -> dict[str, int | None]:
     from workflows.weekly_report.domain.environment_policy import (
+        COOL_TEMPERATURE_THRESHOLD,
+        HUMIDITY_AT_OR_ABOVE_THRESHOLD,
         HUMIDITY_RANGE,
-        RISK_HIGH_HUMIDITY_MAX,
-        RISK_HIGH_TEMPERATURE_MAX,
-        RISK_LOW_HUMIDITY_MAX,
-        RISK_LOW_TEMPERATURE_MAX,
         TEMPERATURE_RANGE,
     )
 
@@ -212,9 +211,11 @@ def _environment_day_counts(rows: list[dict[str, Any]]) -> dict[str, int | None]
         "humidity_out_of_range_days": 0,
         "environment_out_of_range_days": 0,
         "low_temperature_days": 0,
+        "cool_temperature_days": 0,
         "high_temperature_days": 0,
         "low_humidity_days": 0,
         "high_humidity_days": 0,
+        "humidity_at_or_above_70_days": 0,
     }
     for day_rows in by_date.values():
         extrema = {
@@ -223,14 +224,18 @@ def _environment_day_counts(rows: list[dict[str, Any]]) -> dict[str, int | None]
             "humidity_min": _minimum(day_rows, "min_humidity"),
             "humidity_max": _maximum(day_rows, "max_humidity"),
         }
-        if any(value is None for value in extrema.values()):
+        if extrema["temperature_max"] is None or extrema["humidity_max"] is None:
             continue
 
         counts["environment_observed_days"] += 1
-        low_temperature = extrema["temperature_min"] <= temperature_low
-        high_temperature = extrema["temperature_max"] >= temperature_high
-        low_humidity = extrema["humidity_min"] <= humidity_low
-        high_humidity = extrema["humidity_max"] >= humidity_high
+        low_temperature = extrema["temperature_max"] < temperature_low
+        cool_temperature = extrema["temperature_max"] < COOL_TEMPERATURE_THRESHOLD
+        high_temperature = extrema["temperature_max"] > temperature_high
+        low_humidity = extrema["humidity_max"] < humidity_low
+        high_humidity = extrema["humidity_max"] > humidity_high
+        humidity_at_or_above_70 = (
+            extrema["humidity_max"] >= HUMIDITY_AT_OR_ABOVE_THRESHOLD
+        )
         temperature_departure = low_temperature or high_temperature
         humidity_departure = low_humidity or high_humidity
         counts["temperature_out_of_range_days"] += int(temperature_departure)
@@ -238,18 +243,12 @@ def _environment_day_counts(rows: list[dict[str, Any]]) -> dict[str, int | None]
         counts["environment_out_of_range_days"] += int(
             temperature_departure or humidity_departure
         )
-        counts["low_temperature_days"] += int(
-            extrema["temperature_max"] < RISK_LOW_TEMPERATURE_MAX
-        )
-        counts["high_temperature_days"] += int(
-            extrema["temperature_max"] > RISK_HIGH_TEMPERATURE_MAX
-        )
-        counts["low_humidity_days"] += int(
-            extrema["humidity_max"] < RISK_LOW_HUMIDITY_MAX
-        )
-        counts["high_humidity_days"] += int(
-            extrema["humidity_max"] > RISK_HIGH_HUMIDITY_MAX
-        )
+        counts["low_temperature_days"] += int(low_temperature)
+        counts["cool_temperature_days"] += int(cool_temperature)
+        counts["high_temperature_days"] += int(high_temperature)
+        counts["low_humidity_days"] += int(low_humidity)
+        counts["high_humidity_days"] += int(high_humidity)
+        counts["humidity_at_or_above_70_days"] += int(humidity_at_or_above_70)
 
     if counts["environment_observed_days"] == 0:
         return {field: None for field in counts}
@@ -283,9 +282,7 @@ def _device_reception_counts(rows: list[dict[str, Any]]) -> dict[str, int | None
     for row in rows:
         values = tuple(row[field] for field in position_fields)
         good_values = tuple(row[field] for field in good_fields)
-        is_good = all(
-            value is not None and float(value) != 0 for value in good_values
-        )
+        is_good = all(value is not None and float(value) != 0 for value in good_values)
         is_power = (
             not is_good
             and values[0] is None
@@ -306,6 +303,8 @@ def _device_reception_counts(rows: list[dict[str, Any]]) -> dict[str, int | None
         "device_power_count": power_count,
         "device_position_count": position_count,
     }
+
+
 def _difference(current: float | None, previous: float | None) -> float | None:
     return current - previous if current is not None and previous is not None else None
 

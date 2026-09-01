@@ -17,7 +17,6 @@ from app.worker_agent import (
 
 
 scheduler = BackgroundScheduler()
-scheduler.start()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SEOUL_TIMEZONE_NAME = "Asia/Seoul"

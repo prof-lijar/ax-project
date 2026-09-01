@@ -4980,7 +4980,9 @@ dependencies = [
     { name = "gcsfs" },
     { name = "google-adk", extra = ["extensions", "gcp", "otel-gcp"] },
     { name = "google-cloud-logging" },
+    { name = "httpx" },
     { name = "opentelemetry-resourcedetector-gcp" },
+    { name = "sqlalchemy" },
 ]
 
 [package.optional-dependencies]
@@ -5012,8 +5014,10 @@ requires-dist = [
     { name = "google-adk", extras = ["extensions", "gcp", "otel-gcp"], specifier = ">=2.6.0,<3.0.0" },
     { name = "google-cloud-aiplatform", extras = ["evaluation"], marker = "extra == 'eval'", specifier = ">=1.156.0" },
     { name = "google-cloud-logging", specifier = ">=3.12.0,<4.0.0" },
+    { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
     { name = "opentelemetry-resourcedetector-gcp", specifier = "<=1.12.0a0" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.4.6,<1.0.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.52,<3.0.0" },
     { name = "ty", marker = "extra == 'lint'", specifier = ">=0.0.1a0" },
 ]
 provides-extras = ["eval", "lint"]

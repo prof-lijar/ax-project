@@ -1,4 +1,3 @@
-import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -12,27 +11,14 @@ from ax_integrations import ChatMessage, ModelRequestError
 from pydantic import ValidationError
 
 from workflows.weekly_report import graph
-from workflows.weekly_report.agents.reporter.fallback import build_fallback
-from workflows.weekly_report.domain.models import FactPackage
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
 )
 
-ANALYSIS = (
-    "지난 한 주 생활 흐름은 전반적으로 차분하게 이어졌어요. "
-    "확인된 자료에서는 2주 전과 다른 부분도 있었지만, 측정된 변화만으로 이유를 단정하지 않았어요. "
-    "활동과 휴식 흐름, 실내 온도와 습도 상태는 평소 모습과 함께 살펴보면 더 자연스럽게 이해할 수 있어요. "
-    "자료가 충분한 부분은 나란히 비교했고 부족한 부분은 해석을 넓히지 않았어요. "
-    "크게 서두르기보다 최근 안부와 생활 리듬을 편안하게 확인해 보시면 다음 흐름을 살피는 데 도움이 될 수 있어요."
-)
-VALID_NARRATIVE = json.dumps(
-    {
-        "headline": "지난 한 주 생활 흐름을 차분히 살펴봤어요.",
-        "analysis_text": ANALYSIS,
-        "observations": ["생활 흐름에 일부 변화가 보였어요."],
-        "suggestions": ["최근 안부를 편안하게 확인해 보셔도 좋아요."],
-    },
-    ensure_ascii=False,
+VALID_NARRATIVE = (
+    "지난 한 주 가입자님은 전반적으로 차분한 생활 흐름을 이어가셨어요. "
+    "생활 활동과 TV 이용 등 일상적인 패턴에서 확인할 변화는 보호자가 편안하게 이해할 수 있도록 살펴봤어요. "
+    "집 안 환경과 생활 정보 수신 상태도 함께 확인했으며, 필요한 부분은 평소처럼 지켜봐 주세요."
 )
 
 
@@ -53,12 +39,12 @@ class FakeNarrativeModel:
         temperature: float = 0.7,
     ) -> str:
         assert messages[0]["role"] == "system"
-        assert "의미 있는 값만 그대로 사용할 수 있습니다" in messages[0]["content"]
-        assert max_tokens == 900
-        assert temperature == 0.2
-        payload = json.loads(messages[-1]["content"].split(":\n", 1)[1])
-        narrative = build_fallback(FactPackage.model_validate(payload))
-        return json.dumps(narrative.model_dump(mode="json"), ensure_ascii=False)
+        assert "총평 본문만 출력합니다" in messages[0]["content"]
+        assert "<가입자_주간_데이터>" in messages[0]["content"]
+        assert "summary_outline" not in messages[0]["content"]
+        assert max_tokens == 600
+        assert temperature == 0.3
+        return VALID_NARRATIVE
 
 
 class FixedResponseModel:
@@ -91,7 +77,7 @@ async def test_graph_returns_ordered_grounded_warm_reports(
         report["markdown"].startswith("# 주간 생활 리포트")
         for report in result["reports"]
     )
-    assert all("## 4. 위험 관리" in report["markdown"] for report in result["reports"])
+    assert all("## 위험 관리" in report["markdown"] for report in result["reports"])
     assert all("수면" not in report["markdown"] for report in result["reports"])
     assert all("출동" not in report["markdown"] for report in result["reports"])
     assert all(report["narrative"]["analysis_text"] for report in result["reports"])
@@ -220,15 +206,16 @@ async def test_no_evaluatable_report_blocks_still_return_terminal_result(
     assert len(result["reports"]) == 1
     report = result["reports"][0]
     assert report["generation_mode"] == "template_fallback"
-    assert report["narrative"]["analysis_text"] == (
-        "구체적으로 움직임과 리모컨 사용량은 2주 전과 비교할 자료가 부족합니다. "
-        "이와 함께 실내 온도와 습도 상태를 판단할 자료가 부족합니다. "
-        "또한 기기 데이터 수신이 확인되지 않아 전원 연결 상태를 확인할 필요가 있습니다."
+    summary = (
+        f'{report["narrative"]["headline"]} '
+        f'{report["narrative"]["analysis_text"]}'
     )
-    assert len(report["narrative"]["observations"]) == 3
-    assert "## 1. 기기 전원이 연결되어 있는지 확인해 주세요" in report[
-        "markdown"
-    ]
+    assert "기기 전원이 연결되어 있는지 확인해 주세요" in summary
+    assert "움직임" not in summary
+    assert "리모컨" not in summary
+    assert not any(character.isdigit() for character in summary)
+    assert report["narrative"]["observations"] == []
+    assert "## 1. 기기 전원이 연결되어 있는지 확인해 주세요" in report["markdown"]
     assert "지난 한 주에는 안부를 확인하며" not in report["markdown"]
 
 
@@ -238,15 +225,7 @@ async def test_no_evaluatable_report_blocks_still_return_terminal_result(
     [
         "",
         "not-json",
-        json.dumps(
-            {
-                "headline": "위험합니다.",
-                "analysis_text": ANALYSIS,
-                "observations": ["기록을 확인했어요."],
-                "suggestions": [],
-            },
-            ensure_ascii=False,
-        ),
+        "지난 한 주 상태는 위험합니다.",
     ],
 )
 async def test_invalid_model_output_falls_back(

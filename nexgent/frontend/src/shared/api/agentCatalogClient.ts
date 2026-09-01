@@ -7,6 +7,7 @@ import type {
 export const WEEKLY_REPORTER_AGENT_ID = "1";
 export const RAG_CHAT_AGENT_ID = "7";
 export const RAG_CHAT_GRAPH_ID = "rag_chat";
+export const SCOUT_AGENT_ID = "ansimk_scout_agent";
 
 export interface AgentCatalogRecord extends Omit<AgentDefinition, "readiness" | "recentRuns"> {
   readiness: string | null;
@@ -22,6 +23,7 @@ const weeklyReporterRecord: AgentCatalogRecord = {
   description:
     "Compares current and previous danger-day totals for a bounded ward subset, then prepares grounded Korean Markdown reports.",
   graphId: "ansimk_weekly_reporter",
+  canRunInChat: true,
   readiness: "ready",
   currentWork: "Ready to query ward risk data through the database MCP",
   runtimeLabel: "LangGraph",
@@ -91,6 +93,7 @@ const ragChatRecord: AgentCatalogRecord = {
   description:
     "Answers one-turn questions from the indexed RAG corpus using grounded retrieval and source provenance.",
   graphId: RAG_CHAT_GRAPH_ID,
+  canRunInChat: true,
   readiness: null,
   currentWork: null,
   runtimeLabel: "LangGraph",
@@ -126,9 +129,62 @@ const ragChatRecord: AgentCatalogRecord = {
   recentRuns: []
 };
 
+const scoutAgentRecord: AgentCatalogRecord = {
+  id: SCOUT_AGENT_ID,
+  name: "AnsimK Scout Agent",
+  role: "Web research collaborator",
+  description:
+    "웹 자료를 검색하고 핵심 내용을 조사·요약해 Markdown 보고서로 생성합니다.",
+  graphId: SCOUT_AGENT_ID,
+  canRunInChat: false,
+  readiness: null,
+  currentWork: null,
+  runtimeLabel: "Google ADK",
+  lastObservedAt: null,
+  observationMode: null,
+  capabilities: [
+    "Public web search",
+    "Bounded page extraction",
+    "Evidence-grounded Markdown reports"
+  ],
+  inputs: [
+    {
+      name: "topic",
+      description: "Research topic, from 3 to 500 characters",
+      required: true
+    },
+    {
+      name: "keywords",
+      description: "Optional comma- or newline-separated research keywords",
+      required: false
+    },
+    {
+      name: "additional_instructions",
+      description: "Optional per-run or scheduled research guidance",
+      required: false
+    }
+  ],
+  outputDescription:
+    "A Markdown research report with fetched source URLs and run artifact references.",
+  configuration: [
+    { label: "Trigger", value: "Run Now · one-time schedule" },
+    { label: "Runtime", value: "Standalone Scout + Scheduling APIs" }
+  ],
+  limitations: [
+    "Runs synchronously and may take more than a minute",
+    "Run Now history is not retained; scheduled audit history is shown",
+    "Recurring/cron scheduling and Slack delivery are not implemented"
+  ],
+  recentRuns: []
+};
+
 export const agentCatalogClient = {
   async listAgents(): Promise<AgentDefinition[]> {
-    return normalizeAgentCatalog([weeklyReporterRecord, ragChatRecord]);
+    return normalizeAgentCatalog([
+      weeklyReporterRecord,
+      ragChatRecord,
+      scoutAgentRecord
+    ]);
   }
 };
 

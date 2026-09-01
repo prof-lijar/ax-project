@@ -40,6 +40,8 @@ async def test_private_source_api_returns_versioned_metrics() -> None:
     assert payload["items"][0]["current"]["movement_count_total"] >= 0
     assert payload["items"][0]["current"]["remote_control_count_total"] >= 0
     assert payload["items"][0]["current"]["environment_observed_days"] == 7
+    assert payload["items"][0]["current"]["cool_temperature_days"] == 0
+    assert payload["items"][0]["current"]["humidity_at_or_above_70_days"] == 0
     assert payload["items"][0]["current"]["environment_out_of_range_days"] == 0
     assert payload["items"][0]["current"]["device_good_count"] == 7
     assert payload["items"][0]["current"]["device_power_count"] == 0

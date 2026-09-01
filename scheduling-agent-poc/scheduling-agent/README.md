@@ -1,5 +1,9 @@
 # scheduling-agent
 
+Date: 2026-08-28 (Asia/Seoul)
+
+Updated: 2026-08-31 (Asia/Seoul) — Scout systemd supervision status.
+
 Simple ReAct agent
 Agent generated with `agents-cli` version `1.4.1`
 
@@ -81,6 +85,95 @@ agents-cli deploy
 
 To add CI/CD and Terraform, run `agents-cli scaffold enhance`.
 To set up your production infrastructure, run `agents-cli infra cicd`.
+
+## Persistent Scout Scheduling API
+
+The standalone FastAPI application now owns two logically separate schedulers:
+
+- the existing in-memory legacy scheduler used by the calculator and Worker
+  Agent POC; and
+- a persistent Scout scheduler whose only callback is the existing Scout HTTP
+  contract at `POST /v1/scout/runs`.
+
+The Scout path does not invoke `calculator_worker_agent` and does not duplicate
+Scout research logic. SQLite stores schedule history and APScheduler jobs. A
+requested `run_at` is an Asia/Seoul wall-clock value; the service normalizes it
+to an absolute UTC trigger while preserving the original local value.
+
+```text
+POST /v1/scout/schedules
+  -> SQLite pending record
+  -> persistent DateTrigger (Once) or Asia/Seoul CronTrigger (recurring)
+  -> at due time: atomic pending -> running claim
+  -> POST http://127.0.0.1:8091/v1/scout/runs
+  -> copy authoritative Scout result metadata
+  -> succeeded or failed audit record
+```
+
+Endpoints:
+
+- `POST /v1/scout/schedules` creates a Once, Daily, Weekly, or Monthly schedule.
+- `GET /v1/scout/schedules` lists pending and terminal audit history.
+- `DELETE /v1/scout/schedules/{schedule_id}` cancels a pending schedule without
+  deleting it.
+
+Existing one-time payloads remain valid and default to `recurrence: "once"`.
+Recurring payloads omit `run_at`, provide `schedule_time`, and add
+`day_of_week` for Weekly or `day_of_month` for Monthly. All recurrence rules use
+Asia/Seoul wall-clock time. Monthly day 29, 30, or 31 follows APScheduler cron
+semantics and skips a month that does not contain that day.
+
+Copy `.env.example` settings into the runtime environment, start Scout first,
+then start this API:
+
+```bash
+uv run uvicorn app.fast_api_app:app --host 0.0.0.0 --port 8092
+```
+
+Example creation request (use a future Seoul local time):
+
+```bash
+curl -X POST http://127.0.0.1:8092/v1/scout/schedules \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "topic": "고독사 예방 AI IoT 서비스 최근 동향",
+    "keywords": ["고독사 예방", "AI 돌봄", "IoT 모니터링"],
+    "recurrence": "once",
+    "run_at": "2026-08-29T09:00:00",
+    "timezone": "Asia/Seoul"
+  }'
+```
+
+Example recurring request:
+
+```bash
+curl -X POST http://127.0.0.1:8092/v1/scout/schedules \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "topic": "고독사 예방 AI IoT 서비스 최근 동향",
+    "keywords": ["AI 돌봄"],
+    "recurrence": "weekly",
+    "schedule_time": "09:00:00",
+    "day_of_week": "monday",
+    "timezone": "Asia/Seoul"
+  }'
+```
+
+After each recurring execution, the row returns to `pending`, advances
+`run_at`/`trigger_at` to its next occurrence, and keeps the latest Scout result
+or safe error metadata. Cancelling that pending row removes the CronTrigger and
+retains the audit record. The existing single-result schema does not retain a
+separate result row for every occurrence.
+
+The default Scout timeout is 180 seconds, execution concurrency is one, and
+the misfire grace period is 300 seconds. Exactly one API process may own the
+persistent scheduler. A validated single-worker systemd template now lives at
+`deploy/systemd/nexgent-scout-scheduler.service`. It is installed, enabled, and
+functionally verified as `nexgent-scout-scheduler.service` on port 8092.
+Inspect it with
+`systemctl status nexgent-scout-scheduler.service --no-pager` and
+`journalctl -u nexgent-scout-scheduler.service -b -n 100 --no-pager`. See
+`SCHEDULING_POC.md` for recovery and failure semantics.
 
 ## Observability
 

@@ -11,14 +11,11 @@ EnvironmentStatus = Literal["UNAVAILABLE", "GOOD", "CAUTION", "RISK"]
 
 TEMPERATURE_RANGE = (15.0, 31.0)
 HUMIDITY_RANGE = (30.0, 70.0)
-GOOD_MAX_DEPARTURE_DAYS = 1
+COOL_TEMPERATURE_THRESHOLD = 18.0
+HUMIDITY_AT_OR_ABOVE_THRESHOLD = 70.0
 CAUTION_MIN_DEPARTURE_DAYS = 2
 CAUTION_COMBINED_MAX_DEPARTURE_DAYS = 3
 RISK_REPEAT_DAYS = 4
-RISK_LOW_HUMIDITY_MAX = 30.0
-RISK_HIGH_HUMIDITY_MAX = 70.0
-RISK_LOW_TEMPERATURE_MAX = 15.0
-RISK_HIGH_TEMPERATURE_MAX = 31.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +33,7 @@ class EnvironmentAssessment:
 
 
 def assess_environment(metrics: WardWeeklyMetrics) -> EnvironmentAssessment:
-    """Classify daily extrema using the approved year-round strict ranges."""
+    """Classify daily maxima using the approved inclusive year-round ranges."""
 
     temperature_low, temperature_high = TEMPERATURE_RANGE
     humidity_low, humidity_high = HUMIDITY_RANGE
@@ -57,13 +54,21 @@ def assess_environment(metrics: WardWeeklyMetrics) -> EnvironmentAssessment:
         status, variant = "UNAVAILABLE", None
     else:
         status, variant = _classify(
-            temperature_days=current.temperature_out_of_range_days or 0,
-            humidity_days=current.humidity_out_of_range_days or 0,
             environment_days=current.environment_out_of_range_days or 0,
             low_temperature_days=current.low_temperature_days or 0,
+            cool_temperature_days=(
+                current.cool_temperature_days
+                if current.cool_temperature_days is not None
+                else current.low_temperature_days or 0
+            ),
             high_temperature_days=current.high_temperature_days or 0,
             low_humidity_days=current.low_humidity_days or 0,
             high_humidity_days=current.high_humidity_days or 0,
+            humidity_at_or_above_70_days=(
+                current.humidity_at_or_above_70_days
+                if current.humidity_at_or_above_70_days is not None
+                else current.high_humidity_days or 0
+            ),
         )
     return EnvironmentAssessment(
         temperature_low=temperature_low,
@@ -97,89 +102,129 @@ def environment_summary(assessment: EnvironmentAssessment) -> str:
 
 def _classify(
     *,
-    temperature_days: int,
-    humidity_days: int,
     environment_days: int,
     low_temperature_days: int,
+    cool_temperature_days: int,
     high_temperature_days: int,
     low_humidity_days: int,
     high_humidity_days: int,
+    humidity_at_or_above_70_days: int,
 ) -> tuple[EnvironmentStatus, int]:
-    has_temperature_departure = temperature_days > 0
-    has_humidity_departure = humidity_days > 0
+    combined_risk = (
+        (high_temperature_days, high_humidity_days, 5),
+        (high_temperature_days, low_humidity_days, 6),
+        (low_temperature_days, humidity_at_or_above_70_days, 7),
+        (low_temperature_days, low_humidity_days, 8),
+    )
+    for temperature_count, humidity_count, variant in combined_risk:
+        if temperature_count >= RISK_REPEAT_DAYS and humidity_count >= RISK_REPEAT_DAYS:
+            return "RISK", variant
+    directional = (
+        (high_temperature_days, 1),
+        (low_temperature_days, 2),
+        (high_humidity_days, 3),
+        (low_humidity_days, 4),
+    )
+    for days, variant in directional:
+        if days >= RISK_REPEAT_DAYS:
+            return "RISK", variant
 
-    if (
-        environment_days >= RISK_REPEAT_DAYS
-        and has_temperature_departure
-        and has_humidity_departure
-    ):
-        return "RISK", 5
-    if low_humidity_days >= RISK_REPEAT_DAYS:
-        return "RISK", 1
-    if high_humidity_days >= RISK_REPEAT_DAYS:
-        return "RISK", 2
-    if low_temperature_days >= RISK_REPEAT_DAYS:
-        return "RISK", 3
-    if high_temperature_days >= RISK_REPEAT_DAYS:
-        return "RISK", 4
-    if (
-        CAUTION_MIN_DEPARTURE_DAYS
-        <= environment_days
-        <= CAUTION_COMBINED_MAX_DEPARTURE_DAYS
-        and has_temperature_departure
-        and has_humidity_departure
-    ):
-        return "CAUTION", 3
-    if humidity_days >= CAUTION_MIN_DEPARTURE_DAYS:
-        return "CAUTION", 1
-    if temperature_days >= CAUTION_MIN_DEPARTURE_DAYS:
-        return "CAUTION", 2
-    if environment_days == 0:
+    combined_caution = (
+        (high_temperature_days, high_humidity_days, 5),
+        (high_temperature_days, low_humidity_days, 6),
+        (cool_temperature_days, high_humidity_days, 7),
+        (low_temperature_days, low_humidity_days, 8),
+    )
+    for temperature_count, humidity_count, variant in combined_caution:
+        if (
+            CAUTION_MIN_DEPARTURE_DAYS
+            <= temperature_count
+            <= CAUTION_COMBINED_MAX_DEPARTURE_DAYS
+            and CAUTION_MIN_DEPARTURE_DAYS
+            <= humidity_count
+            <= CAUTION_COMBINED_MAX_DEPARTURE_DAYS
+        ):
+            return "CAUTION", variant
+    for days, variant in directional:
+        if days >= CAUTION_MIN_DEPARTURE_DAYS:
+            return "CAUTION", variant
+    if environment_days <= 1:
         return "GOOD", 1
-    if environment_days <= GOOD_MAX_DEPARTURE_DAYS:
-        return "GOOD", 2
-    return "CAUTION", 3
+
+    # The sheet has no separate mixed-direction template. Select the most
+    # frequent verified direction deterministically without escalating it to
+    # RISK unless the same condition repeats on four or more dates.
+    _, variant = max(directional, key=lambda item: (item[0], -item[1]))
+    return "CAUTION", variant
 
 
 _COPY: dict[tuple[EnvironmentStatus, int], tuple[str, str]] = {
     ("GOOD", 1): (
-        "실내 온습도가 대체로 적정 범위에 있었어요.",
-        "쾌적 유지",
-    ),
-    ("GOOD", 2): (
-        "온도와 습도가 생활하기 좋은 범위에 가까웠어요.",
-        "적정 범위",
+        "집 안 온도와 습도가 대체로 쾌적하게 유지됐어요.",
+        "쾌적",
     ),
     ("CAUTION", 1): (
-        "실내 습도에 주의가 필요한 시간이 있었어요.",
-        "습도 주의",
+        "집 안이 조금 더운 날이 있었어요. 냉방이나 환기 상태를 한 번 살펴봐 주세요.",
+        "조금 더움",
     ),
     ("CAUTION", 2): (
-        "실내 온도가 평소보다 불편할 수 있는 구간에 있었어요.",
-        "온도 주의",
+        "집 안이 조금 추운 날이 있었어요. 난방 상태를 한 번 확인해 주세요.",
+        "조금 추움",
     ),
     ("CAUTION", 3): (
-        "온도나 습도 변화가 며칠간 이어져 확인이 필요해요.",
-        "온습도 주의",
+        "집 안이 습한 날이 있었어요. 제습이나 환기가 필요한지 살펴봐 주세요.",
+        "습함",
+    ),
+    ("CAUTION", 4): (
+        "집 안이 건조한 날이 있었어요. 너무 건조하지 않은지 한 번 살펴봐 주세요.",
+        "건조함",
+    ),
+    ("CAUTION", 5): (
+        "덥고 습한 날이 있었어요. 냉방과 환기가 잘 되고 있는지 함께 살펴봐 주세요.",
+        "덥고 습함",
+    ),
+    ("CAUTION", 6): (
+        "집 안이 덥고 건조한 날이 있었어요. 냉방 상태와 실내 습도를 함께 살펴봐 주세요.",
+        "덥고 건조함",
+    ),
+    ("CAUTION", 7): (
+        "집 안이 다소 서늘하고 습한 날이 있었어요. 난방과 환기 상태를 함께 살펴봐 주세요.",
+        "서늘하고 습함",
+    ),
+    ("CAUTION", 8): (
+        "집 안이 춥고 건조한 날이 있었어요. 난방 상태와 실내 습도를 함께 살펴봐 주세요.",
+        "춥고 건조함",
     ),
     ("RISK", 1): (
-        "건조한 실내 환경이 반복됐어요.",
-        "습도 확인 필요",
+        "집 안이 많이 더운 날이 여러 번 이어졌어요. 냉방이 잘 되고 있는지 조금 더 세심하게 살펴봐 주세요.",
+        "더운 날 이어짐",
     ),
     ("RISK", 2): (
-        "습한 실내 환경이 반복됐어요.",
-        "습도 확인 필요",
+        "집 안이 추운 날이 여러 번 이어졌어요. 난방 상태와 생활에 불편함은 없는지 살펴봐 주세요.",
+        "추운 날 이어짐",
     ),
     ("RISK", 3): (
-        "추운 실내 환경이 반복됐어요.",
-        "온도 확인 필요",
+        "습한 날이 여러 번 이어졌어요. 제습이나 환기가 잘 되고 있는지 살펴봐 주세요.",
+        "습한 날 이어짐",
     ),
     ("RISK", 4): (
-        "더운 실내 환경이 반복됐어요.",
-        "온습도 확인 필요",
+        "건조한 날이 여러 번 이어졌어요. 집 안이 너무 건조하지 않은지 살펴봐 주세요.",
+        "건조한 날 이어짐",
     ),
     ("RISK", 5): (
-        "권장 온도와 습도 이탈이 여러 날 이어져 냉난방·환기 상태 확인이 필요해요.",
-        "온습도 확인 필요",
+        "덥고 습한 날이 여러 번 이어졌어요. 냉방과 환기가 잘 되고 있는지 조금 더 세심하게 살펴봐 주세요.",
+        "덥고 습한 날 이어짐",
+    ),
+    ("RISK", 6): (
+        "덥고 건조한 날이 여러 번 이어졌어요. 냉방 상태와 실내 습도를 함께 살펴봐 주세요.",
+        "덥고 건조한 날 이어짐",
+    ),
+    ("RISK", 7): (
+        "춥고 습한 날이 여러 번 이어졌어요. 난방과 환기 상태를 함께 살펴봐 주세요.",
+        "춥고 습한 날 이어짐",
+    ),
+    ("RISK", 8): (
+        "춥고 건조한 날이 여러 번 이어졌어요. 난방 상태와 실내 습도를 조금 더 세심하게 살펴봐 주세요.",
+        "춥고 건조한 날 이어짐",
     ),
 }

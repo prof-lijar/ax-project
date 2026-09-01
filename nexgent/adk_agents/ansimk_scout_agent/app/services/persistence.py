@@ -37,19 +37,29 @@ class ArtifactStore:
         self.root = root.expanduser().resolve()
         self.runs_root = self.root / "runs"
 
-    def create_run(self) -> str:
+    def create_run(self, *, started_at: datetime | None = None) -> str:
         run_id = uuid.uuid4().hex
         run_dir = self.runs_root / run_id
         run_dir.mkdir(parents=True, mode=0o700, exist_ok=False)
-        self.append_event(run_id, "run_started")
+        self.append_event(run_id, "run_started", timestamp=started_at)
         return run_id
 
-    def append_event(self, run_id: str, phase: str, **metadata: object) -> None:
+    def append_event(
+        self,
+        run_id: str,
+        phase: str,
+        *,
+        timestamp: datetime | None = None,
+        **metadata: object,
+    ) -> None:
         run_dir = self._run_dir(run_id)
         run_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
         log_path = run_dir / "execution.jsonl"
+        occurred_at = timestamp or datetime.now(UTC)
+        if occurred_at.tzinfo is None or occurred_at.utcoffset() is None:
+            raise ValueError("event timestamp must be timezone-aware")
         record = {
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": occurred_at.astimezone(UTC).isoformat(),
             "run_id": run_id,
             "phase": phase,
             **metadata,

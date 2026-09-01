@@ -44,22 +44,55 @@ def _metrics(
 
 
 @pytest.mark.parametrize(
-    ("ratio", "status", "trend"),
+    ("ratio", "status", "trend", "description", "summary"),
     [
-        (39.9, "RISK", "decrease"),
-        (40, "CAUTION", "decrease"),
-        (69.9, "CAUTION", "decrease"),
-        (70, "GOOD", "stable"),
-        (150, "GOOD", "stable"),
-        (150.1, "CAUTION", "increase"),
-        (250, "CAUTION", "increase"),
-        (250.1, "RISK", "increase"),
+        (
+            39.9,
+            "RISK",
+            "decrease",
+            "활동이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+            "많이 감소",
+        ),
+        (40, "CAUTION", "decrease", "활동이 조금 줄어든 모습이에요.", "조금 감소"),
+        (
+            69.9,
+            "CAUTION",
+            "decrease",
+            "활동이 조금 줄어든 모습이에요.",
+            "조금 감소",
+        ),
+        (70, "GOOD", "stable", "활동은 비슷한 수준으로 이어졌어요.", "평소 수준"),
+        (
+            149.9,
+            "GOOD",
+            "stable",
+            "활동은 비슷한 수준으로 이어졌어요.",
+            "평소 수준",
+        ),
+        (150, "CAUTION", "increase", "활동이 조금 늘어난 모습이에요.", "조금 증가"),
+        (
+            150.1,
+            "CAUTION",
+            "increase",
+            "활동이 조금 늘어난 모습이에요.",
+            "조금 증가",
+        ),
+        (250, "CAUTION", "increase", "활동이 조금 늘어난 모습이에요.", "조금 증가"),
+        (
+            250.1,
+            "RISK",
+            "increase",
+            "활동이 많이 늘었어요. 생활에 달라진 점이 있는지 살펴봐 주세요.",
+            "많이 증가",
+        ),
     ],
 )
 def test_activity_policy_classifies_total_ratio_boundaries(
     ratio: float,
     status: str,
     trend: str,
+    description: str,
+    summary: str,
 ) -> None:
     assessment = assess_activity(
         _metrics(movement_current=ratio, movement_previous=100)
@@ -68,6 +101,8 @@ def test_activity_policy_classifies_total_ratio_boundaries(
     assert assessment.ratio_percent == pytest.approx(ratio)
     assert assessment.status == status
     assert assessment.trend == trend
+    assert activity_description("movement", assessment) == description
+    assert activity_summary("movement", assessment) == summary
 
 
 @pytest.mark.parametrize(
@@ -77,71 +112,71 @@ def test_activity_policy_classifies_total_ratio_boundaries(
             "movement",
             100,
             "GOOD",
-            "움직임이 2주 전과 비슷하게 유지됐어요.",
-            "움직임 평소 수준",
+            "활동은 비슷한 수준으로 이어졌어요.",
+            "평소 수준",
         ),
         (
             "remote_control",
             100,
             "GOOD",
-            "리모컨 사용이 2주 전과 비슷했어요.",
-            "리모컨 안정",
+            "TV 이용 등 일상적인 생활 패턴도 비슷하게 이어졌어요.",
+            "평소 수준",
         ),
         (
             "movement",
             50,
             "CAUTION",
-            "움직임이 2주 전보다 줄어든 흐름이 보여요.",
-            "움직임 줄어듦",
+            "활동이 조금 줄어든 모습이에요.",
+            "조금 감소",
         ),
         (
             "movement",
             200,
             "CAUTION",
-            "움직임이 2주 전보다 늘어난 흐름이 보여요.",
-            "움직임 늘어남",
+            "활동이 조금 늘어난 모습이에요.",
+            "조금 증가",
         ),
         (
             "remote_control",
             50,
             "CAUTION",
-            "리모컨 사용이 2주 전보다 줄어든 흐름이 보여요.",
-            "리모컨 사용 감소",
+            "TV 이용 등 일상적인 생활 패턴이 조금 줄었어요.",
+            "조금 감소",
         ),
         (
             "remote_control",
             200,
             "CAUTION",
-            "리모컨 사용이 2주 전보다 늘어난 흐름이 보여요.",
-            "리모컨 사용 증가",
+            "TV 이용 등 일상적인 생활 패턴이 조금 늘었어요.",
+            "조금 증가",
         ),
         (
             "movement",
             30,
             "RISK",
-            "움직임이 많이 줄어 안부 확인이 필요해요.",
-            "움직임 확인 필요",
+            "활동이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+            "많이 감소",
         ),
         (
             "movement",
             300,
             "RISK",
-            "움직임이 크게 늘어 생활 변화 확인이 필요해요.",
-            "생활 변화 확인 필요",
+            "활동이 많이 늘었어요. 생활에 달라진 점이 있는지 살펴봐 주세요.",
+            "많이 증가",
         ),
         (
             "remote_control",
             30,
             "RISK",
-            "리모컨 사용이 많이 줄어 생활 확인이 필요해요.",
-            "생활 확인 필요",
+            "TV 이용 등 일상적인 생활 패턴이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+            "많이 감소",
         ),
         (
             "remote_control",
             300,
             "RISK",
-            "리모컨 사용이 반복적으로 많아 안부 확인을 권장해요.",
-            "반복 사용 확인",
+            "TV 이용 등 일상적인 생활 패턴이 많이 늘었어요. 최근 생활에 달라진 점이 있는지 살펴봐 주세요.",
+            "많이 증가",
         ),
     ],
 )
@@ -191,16 +226,9 @@ def test_activity_facts_use_total_ratio_policy() -> None:
         )
     )
 
-    assert facts.summary_outline is not None
-    assert facts.summary_outline.mode == "RISK"
-    assert "리모컨 사용은 2주 전보다 늘어난 흐름" in facts.summary_outline.life
-    assert "움직임은 2주 전보다 크게 줄었습니다" in facts.summary_outline.life
-    assert facts.summary_outline.life.index("리모컨 사용") < facts.summary_outline.life.index(
-        "움직임"
-    )
-    assert not any(
-        character.isdigit()
-        for fact in facts.facts
-        for character in fact.replace("2주 전", "")
-    )
+    assert facts.weekly_report_data is not None
+    assert facts.weekly_report_data.living_activity.status == "RISK"
+    assert facts.weekly_report_data.living_activity.summary == "많이 감소"
+    assert facts.weekly_report_data.living_pattern.status == "CAUTION"
+    assert facts.weekly_report_data.living_pattern.summary == "조금 증가"
     assert "활동" in facts.allowed_topics

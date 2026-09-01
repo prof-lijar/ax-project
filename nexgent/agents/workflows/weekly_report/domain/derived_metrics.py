@@ -2,14 +2,37 @@
 
 from ax_contracts import WardWeeklyMetrics
 
-from .activity_policy import activity_description, assess_activity
+from .activity_policy import (
+    activity_description,
+    activity_status_label,
+    activity_summary,
+    assess_activity,
+)
 from .device_reception_policy import (
     assess_device_reception,
     device_reception_description,
+    device_reception_status_label,
+    device_reception_summary,
+)
+from .environment_policy import (
+    assess_environment,
+    environment_description,
+    environment_status_label,
+    environment_summary,
 )
 from .guardian_guidance_policy import build_guardian_guides
-from .models import FactPackage, SectionAssessment, SectionStatus
-from .summary_policy import build_weekly_summary_outline
+from .models import (
+    FactPackage,
+    SectionAssessment,
+    SectionStatus,
+    WeeklySummaryData,
+    WeeklySummarySection,
+)
+from .risk_score_policy import (
+    assess_risk_score,
+    risk_score_description,
+    risk_score_status_label,
+)
 
 _RISK_REPEAT_DAYS = 4
 _CAUTION_MIN_DAYS = 2
@@ -26,42 +49,35 @@ def build_fact_package(metrics: WardWeeklyMetrics) -> FactPackage:
         if current.covered_days == 7
         else "incomplete"
     )
-    outline = build_weekly_summary_outline(metrics)
-    outline_facts = [
-        outline.headline,
-        *(
-            block
-            for block in (outline.life, outline.environment, outline.safety)
-            if block
-        ),
-    ]
-    available_items = set(outline.available_item_list)
-    allowed_topics = [
-        topic
-        for topic, included in (
-            ("활동", bool({"움직임", "리모컨"} & available_items)),
-            ("실내 환경", "실내 환경" in available_items),
-            ("기기 데이터 수신", "기기 데이터 수신" in available_items),
-        )
-        if included
-    ]
-    issue_topic_names = {
-        "활동": "활동",
-        "환경": "실내 환경",
-        "기기": "기기 데이터 수신",
-    }
-    required_topics = [
-        issue_topic_names[topic]
-        for topic in outline.issue_topic_list
-        if issue_topic_names[topic] in allowed_topics
-    ]
-    if outline.data_quality_code != "VALID":
-        allowed_topics.insert(0, "자료 상태")
     guides = build_guardian_guides(metrics)
     guide_actions = [guide.title for guide in guides]
+    weekly_data = _weekly_summary_data(metrics, guide_actions)
+    activity = assess_activity(metrics)
+    environment = assess_environment(metrics)
+    reception = assess_device_reception(metrics.current)
+    allowed_topics = ["활동", "실내 환경", "기기 상태", "위험 감지"]
+    if coverage != "complete" or reception.status == "UNAVAILABLE":
+        allowed_topics.insert(0, "자료 상태")
+    required_topics = []
+    if any(
+        item.status in {"CAUTION", "RISK"}
+        for item in (activity.movement, activity.remote_control)
+    ):
+        required_topics.append("활동")
+    if environment.status in {"CAUTION", "RISK"}:
+        required_topics.append("실내 환경")
+    if reception.status == "CAUTION":
+        required_topics.append("기기 상태")
     return FactPackage(
         coverage=coverage,
-        facts=outline_facts,
+        facts=[
+            weekly_data.overall.description,
+            weekly_data.living_activity.description,
+            weekly_data.living_pattern.description,
+            weekly_data.indoor_environment.description,
+            weekly_data.device_status.description,
+            weekly_data.risk_management.description,
+        ],
         allowed_topics=allowed_topics,
         required_topics=required_topics,
         suggested_actions=list(dict.fromkeys(guide_actions))[:3],
@@ -72,11 +88,62 @@ def build_fact_package(metrics: WardWeeklyMetrics) -> FactPackage:
                 "status": guide.status,
                 "condition": guide.condition_label,
                 "title": guide.title,
-                "analysis": guide.analysis,
+                "description": guide.description,
+                "tag": guide.tag,
+                "template_id": guide.template_id,
             }
             for guide in guides
         ],
-        summary_outline=outline,
+        weekly_report_data=weekly_data,
+    )
+
+
+def _weekly_summary_data(
+    metrics: WardWeeklyMetrics,
+    guide_actions: list[str],
+) -> WeeklySummaryData:
+    """Build report-facing data without prescribing the summary's sentences."""
+
+    activity = assess_activity(metrics)
+    environment = assess_environment(metrics)
+    reception = assess_device_reception(metrics.current)
+    score = assess_risk_score(metrics.current.risk_score_avg)
+    risk_detected = metrics.current.risk_detected_count
+    return WeeklySummaryData(
+        subscriber=metrics.display_name,
+        overall=WeeklySummarySection(
+            status=risk_score_status_label(score),
+            description=risk_score_description(score),
+        ),
+        living_activity=WeeklySummarySection(
+            status=activity_status_label(activity.movement),
+            description=activity_description("movement", activity.movement),
+            summary=activity_summary("movement", activity.movement),
+        ),
+        living_pattern=WeeklySummarySection(
+            status=activity_status_label(activity.remote_control),
+            description=activity_description("remote_control", activity.remote_control),
+            summary=activity_summary("remote_control", activity.remote_control),
+        ),
+        indoor_environment=WeeklySummarySection(
+            status=environment_status_label(environment),
+            description=environment_description(environment),
+            summary=environment_summary(environment),
+        ),
+        device_status=WeeklySummarySection(
+            status=device_reception_status_label(reception),
+            description=device_reception_description(reception),
+            summary=device_reception_summary(reception),
+        ),
+        risk_management=WeeklySummarySection(
+            status=("위험 감지 없음" if risk_detected == 0 else "위험 감지 기록 있음"),
+            description=(
+                "지난 한 주 위험 감지 기록은 없었어요."
+                if risk_detected == 0
+                else "지난 한 주 위험 감지 기록이 있어 생활 흐름을 함께 확인해 주세요."
+            ),
+        ),
+        guardian_actions=list(dict.fromkeys(guide_actions))[:3],
     )
 
 

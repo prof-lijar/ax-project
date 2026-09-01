@@ -41,6 +41,7 @@ import {
   useAgentRunStore
 } from "../../shared/state/useAgentRunStore";
 import { useUiStore } from "../../shared/state/useUiStore";
+import type { AgentDefinition } from "../../shared/types/agents";
 import { ChatMarkdown } from "./ChatMarkdown";
 import styles from "./ChatPage.module.css";
 import { RequestLanes } from "./requestLanes";
@@ -809,7 +810,7 @@ export function ChatPage() {
                   Agent catalog unavailable.
                 </small>
               )}
-              {(catalogQuery.data ?? []).map((agent) => {
+              {getChatCapableAgents(catalogQuery.data ?? []).map((agent) => {
                 const isSelected = selectedAgent?.id === agent.id;
                 return (
                   <button
@@ -981,6 +982,10 @@ export function ChatPage() {
 
 export function usesRagChat(graphId: string | null): boolean {
   return graphId === RAG_CHAT_GRAPH_ID;
+}
+
+export function getChatCapableAgents(agents: AgentDefinition[]) {
+  return agents.filter((agent) => agent.canRunInChat);
 }
 
 function MockExecutionTrace({

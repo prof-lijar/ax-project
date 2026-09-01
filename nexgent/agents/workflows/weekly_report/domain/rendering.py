@@ -37,7 +37,6 @@ from .risk_score_policy import (
     risk_score_description,
     risk_score_status_label,
 )
-from .summary_policy import build_weekly_summary_outline
 
 _WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 
@@ -64,8 +63,9 @@ def render_report(
         else ""
     )
     suggestions = _render_suggestions(narrative, guardian_guides)
-    summary_outline = build_weekly_summary_outline(metrics)
-    summary_suggestion = summary_outline.close
+    summary_text = " ".join(
+        value for value in (narrative.headline, narrative.analysis_text) if value
+    )
     markdown = f"""# 주간 생활 리포트
 
 ## 기본 정보
@@ -79,25 +79,27 @@ def render_report(
 
 ## 한주 총평
 
-{summary_outline.headline}
-
-{narrative.analysis_text}
+{summary_text}
 {fallback_note}
-{summary_suggestion}
-
 ---
 
 # 주요 내용
 
-## 1. 활동량
-
-### 움직임
+## 생활 활동
 
 - 상태: {activity_status_label(activity.movement)}
 - 설명: {activity_description("movement", activity.movement)}
 - 요약: {activity_summary("movement", activity.movement)}
 
-### 리모컨 사용
+### 지표
+
+- 지난 한 주: {_number(current.movement_count_total, "회")}
+- 2주 전: {_number(previous.movement_count_total, "회")}
+- 2주 전과 비교: {_percentage(activity.movement)}
+
+---
+
+## 생활 패턴
 
 - 상태: {activity_status_label(activity.remote_control)}
 - 설명: {activity_description("remote_control", activity.remote_control)}
@@ -105,19 +107,13 @@ def render_report(
 
 ### 지표
 
-- 움직임 합계
-  - 지난 한 주: {_number(current.movement_count_total, "회")}
-  - 2주 전: {_number(previous.movement_count_total, "회")}
-  - 2주 전과 비교: {_percentage(activity.movement)}
-
-- 리모컨 사용 합계
-  - 지난 한 주: {_number(current.remote_control_count_total, "회")}
-  - 2주 전: {_number(previous.remote_control_count_total, "회")}
-  - 2주 전과 비교: {_percentage(activity.remote_control)}
+- 지난 한 주: {_number(current.remote_control_count_total, "회")}
+- 2주 전: {_number(previous.remote_control_count_total, "회")}
+- 2주 전과 비교: {_percentage(activity.remote_control)}
 
 ---
 
-## 2. 실내 환경
+## 실내 환경
 
 - 상태: {environment_status_label(environment)}
 - 설명: {environment_description(environment)}
@@ -140,7 +136,7 @@ def render_report(
 
 ---
 
-## 3. 기기 데이터 수신
+## 기기 상태
 
 - 상태: {device_reception_status_label(reception)}
 - 설명: {device_reception_description(reception)}
@@ -163,7 +159,7 @@ def render_report(
 
 ---
 
-## 4. 위험 관리
+## 위험 관리
 
 - 상태: {_risk_status(current.risk_detected_count)}
 - 설명: {_risk_description(current.risk_detected_count)}
@@ -174,10 +170,6 @@ def render_report(
   - 위험 감지: {current.risk_detected_count}회
   - 정상 해제: {current.risk_resolved_count}회
   - 2주 전: {previous.risk_detected_count}회 / {previous.risk_resolved_count}회
-
-### 위험 관리 기록
-
-- 상세 기록은 현재 주간 리포트 데이터에 포함되지 않아요.
 
 ---
 
@@ -247,61 +239,23 @@ def _render_suggestions(
     narrative: WeeklyNarrative,
     guardian_guides: list[GuardianGuide],
 ) -> str:
+    del narrative
     sections = [
         _render_guardian_guide(index, guide)
         for index, guide in enumerate(guardian_guides, start=1)
     ]
-    remaining = 3 - len(sections)
-    if remaining <= 0:
-        return "\n\n".join(sections)
-
-    suggestions = narrative.suggestions
-    if not suggestions:
-        return (
-            "\n\n".join(sections)
-            if sections
-            else "- 확인된 자료를 바탕으로 한 별도 행동 제안은 없어요."
-        )
-    guide_actions = {_normalized_action(guide.title) for guide in guardian_guides}
-    suggestions = [
-        item
-        for item in suggestions
-        if _normalized_action(item) not in guide_actions
-        and not _is_summary_close_action(item)
-    ][:remaining]
-    for offset, suggestion in enumerate(suggestions):
-        index = len(sections) + 1
-        if narrative.observations:
-            observation_index = min(offset, len(narrative.observations) - 1)
-            evidence = narrative.observations[observation_index]
-        else:
-            evidence = narrative.headline
-        sections.append(
-            f"## {index}. {suggestion.rstrip('.')}\n\n"
-            f"- 분석: {evidence}"
-        )
-    return "\n\n".join(sections)
+    return (
+        "\n\n".join(sections)
+        if sections
+        else "- 확인된 자료를 바탕으로 한 별도 행동 제안은 없어요."
+    )
 
 
 def _render_guardian_guide(index: int, guide: GuardianGuide) -> str:
-    return f"## {index}. {guide.title}\n\n- 분석: {guide.analysis}"
-
-
-def _normalized_action(value: str) -> str:
-    replacements = (
-        ("필요합니다", "필요해요"),
-        ("권해 드립니다", "권해요"),
-        ("건조합니다", "건조해요"),
-        ("습합니다", "습해요"),
-        ("덥습니다", "더워요"),
-        ("춥습니다", "추워요"),
-    )
-    result = value.strip().rstrip(".!?")
-    for formal, approved in replacements:
-        result = result.replace(formal, approved)
-    return result
-
-
-def _is_summary_close_action(value: str) -> bool:
-    normalized = value.strip()
-    return normalized.startswith(("지난 한 주에는", "이번 주에는"))
+    metadata = [
+        f"- 설명: {guide.description}",
+        f"- 태그: {guide.tag}",
+    ]
+    if guide.template_id is not None:
+        metadata.append(f"- template_id: {guide.template_id}")
+    return f"## {index}. {guide.title}\n\n" + "\n".join(metadata)

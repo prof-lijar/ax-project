@@ -13,22 +13,12 @@ from ax_persistence import (
     LocalBulkArtifactStore,
 )
 
-from workflows.weekly_report.agents.reporter.fallback import build_fallback
 from workflows.weekly_report.bulk import (
     WEEKLY_REPORT_BULK_JOB_KIND,
     WeeklyReportBulkRunner,
 )
-from workflows.weekly_report.domain.models import FactPackage
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
-)
-
-ANALYSIS = (
-    "지난 한 주 생활 흐름은 전반적으로 차분하게 이어졌어요. "
-    "확인된 자료에서는 2주 전과 다른 부분도 있었지만, 측정된 변화만으로 이유를 단정하지 않았어요. "
-    "활동과 휴식 흐름, 실내 온도와 습도 상태는 평소 모습과 함께 살펴보면 더 자연스럽게 이해할 수 있어요. "
-    "자료가 충분한 부분은 나란히 비교했고 부족한 부분은 해석을 넓히지 않았어요. "
-    "크게 서두르기보다 최근 안부와 생활 리듬을 편안하게 확인해 보시면 다음 흐름을 살피는 데 도움이 될 수 있어요."
 )
 
 
@@ -37,11 +27,11 @@ class FakeModel:
 
     async def complete(self, messages: list[dict[str, str]], **kwargs: object) -> str:
         self.calls += 1
-        payload = json.loads(messages[-1]["content"].split(":\n", 1)[1])
-        narrative = build_fallback(FactPackage.model_validate(payload))
-        return json.dumps(
-            narrative.model_dump(mode="json"),
-            ensure_ascii=False,
+        assert "<가입자_주간_데이터>" in messages[0]["content"]
+        return (
+            "지난 한 주 가입자님은 전반적으로 평소와 비슷한 생활 흐름을 "
+            "이어가셨어요. 생활 활동과 TV 이용 등 일상적인 생활 패턴을 함께 "
+            "살펴봤고, 집 안 환경과 생활 정보 수신 상태도 확인했어요."
         )
 
 

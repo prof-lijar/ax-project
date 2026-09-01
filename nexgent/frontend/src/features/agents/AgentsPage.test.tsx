@@ -17,6 +17,7 @@ const agent: AgentDefinition = {
   role: "Work insight collaborator",
   description: "Prepares Korean weekly reports.",
   graphId: "ansimk_weekly_reporter",
+  canRunInChat: true,
   readiness: "ready",
   currentWork: "Ready for a report",
   runtimeLabel: "LangGraph",
@@ -72,6 +73,9 @@ describe("AgentsPage", () => {
 
     expect(markup).toContain("Weekly Reporter");
     expect(markup).toContain("RAG Agent");
+    expect(markup).toContain("AnsimK Scout Agent");
+    expect(markup).toContain('href="/agents/ansimk_scout_agent"');
+    expect(markup).toContain("Google ADK");
     expect(markup).not.toContain("Data Analyst");
     expect(markup).not.toContain("Report QA");
     expect(markup).not.toContain("Document Assistant");
@@ -82,6 +86,20 @@ describe("AgentsPage", () => {
     expect(markup).not.toContain("Needs attention");
     expect(markup).not.toContain("0 runs");
     expect(markup).toContain("2 runs");
+  });
+
+  it("does not offer the non-Chat Scout card as a Chat action", async () => {
+    const scout = (await agentCatalogClient.listAgents()).find(
+      ({ id }) => id === "ansimk_scout_agent"
+    );
+    expect(scout).toBeDefined();
+
+    const markup = renderToStaticMarkup(
+      <AgentsPageView agents={[scout!]} search="" />
+    );
+
+    expect(markup).toContain("AnsimK Scout Agent");
+    expect(markup).not.toContain(">Chat<");
   });
 
   it("prepares Chat with the selected agent without a pending run intent", () => {

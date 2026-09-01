@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,43 @@ def test_report_persistence_and_append_only_execution_log(tmp_path: Path) -> Non
         "report_saved",
     ]
     assert all(record["run_id"] == run_id for record in records)
+
+
+def test_authoritative_event_timestamp_is_written_exactly(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path)
+    started_at = datetime(2026, 8, 28, 1, 30, tzinfo=UTC)
+    completed_at = datetime(2026, 8, 28, 1, 31, 17, 896000, tzinfo=UTC)
+
+    run_id = store.create_run(started_at=started_at)
+    store.append_event(
+        run_id,
+        "run_succeeded",
+        timestamp=completed_at,
+        started_at=started_at.isoformat(),
+        completed_at=completed_at.isoformat(),
+        duration_seconds=77.896,
+        source_count=1,
+    )
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "runs" / run_id / "execution.jsonl").read_text().splitlines()
+    ]
+    assert records[0]["timestamp"] == started_at.isoformat()
+    assert records[-1]["timestamp"] == completed_at.isoformat()
+    assert records[-1]["completed_at"] == completed_at.isoformat()
+
+
+def test_authoritative_event_timestamp_must_be_timezone_aware(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path)
+    run_id = store.create_run()
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.append_event(
+            run_id,
+            "run_succeeded",
+            timestamp=datetime(2026, 8, 28, 10, 30),
+        )
 
 
 def test_report_validation_rejects_unfetched_source(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ const weeklyReporter: AgentDefinition = {
   role: "Ward risk reporting collaborator",
   description: "Produces ward danger-day reports.",
   graphId: "ansimk_weekly_reporter",
+  canRunInChat: true,
   readiness: "ready",
   currentWork: "Ready",
   runtimeLabel: "LangGraph",

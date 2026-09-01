@@ -46,7 +46,10 @@ def test_chat_attachment_reference_is_strict_and_kind_safe() -> None:
 
     with pytest.raises(ValidationError, match="basename"):
         ChatAttachmentRef(
-            **(reference.model_dump(exclude={"filename"}) | {"filename": "../notes.txt"})
+            **(
+                reference.model_dump(exclude={"filename"})
+                | {"filename": "../notes.txt"}
+            )
         )
     with pytest.raises(ValidationError, match="not supported"):
         ChatAttachmentRef(
@@ -155,6 +158,32 @@ def test_weekly_metric_snapshot_rejects_inconsistent_calculations() -> None:
             low_humidity_days=0,
             high_humidity_days=0,
         )
+
+    with pytest.raises(ValidationError, match="supplemental.*provided together"):
+        WardWeeklyMetricSnapshot(
+            environment_observed_days=7,
+            temperature_out_of_range_days=1,
+            humidity_out_of_range_days=0,
+            environment_out_of_range_days=1,
+            low_temperature_days=1,
+            high_temperature_days=0,
+            low_humidity_days=0,
+            high_humidity_days=0,
+            cool_temperature_days=1,
+        )
+
+    WardWeeklyMetricSnapshot(
+        environment_observed_days=7,
+        temperature_out_of_range_days=1,
+        humidity_out_of_range_days=0,
+        environment_out_of_range_days=1,
+        low_temperature_days=1,
+        high_temperature_days=0,
+        low_humidity_days=0,
+        high_humidity_days=0,
+        cool_temperature_days=2,
+        humidity_at_or_above_70_days=1,
+    )
 
     with pytest.raises(ValidationError, match="provided together"):
         WardWeeklyMetricSnapshot(daily_summary_count=7, device_good_count=7)

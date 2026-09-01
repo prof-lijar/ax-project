@@ -162,15 +162,20 @@ model responses, or page bodies.
 
 ## FastAPI contract
 
-The public contract is unchanged:
+The public endpoint set established by this POC remains:
 
 - `GET /health/live`
 - `GET /health/ready`
 - `POST /v1/scout/runs`
 
-The POST remains synchronous and accepts `topic` plus optional `keywords`. A
-success returns `run_id`, `status`, the report, validated sources, and relative
-report/log artifact references. Raw ADK runtime/session APIs remain private.
+The synchronous POST request shape remains compatible: it accepts `topic` plus
+optional `keywords`. The original success response returned `run_id`, `status`,
+the report, validated sources, and relative report/log artifact references.
+Phase 1 subsequently extended that success response with `started_at`,
+`completed_at`, `duration_seconds`, and `source_count`; the original fields
+remain. Raw ADK runtime/session APIs remain private. See
+[`scout-scheduling-integration.md`](scout-scheduling-integration.md) for the
+current integrated contract and timing behavior.
 
 ## Locked stack
 
@@ -200,7 +205,8 @@ The suite proves single-Agent/function-tool registration, absence of a planning
 Agent dependency, a controlled native ADK function-call loop, search and fetch
 budgets, searched-URL eligibility, URL/network safeguards, successful-fetch
 tracking, rejection of unfetched citations, atomic report persistence, safe
-failure logs, and the unchanged FastAPI contract. Two non-failing warnings are
+failure logs, and the then-current endpoint and request contract. Two non-failing
+warnings are
 from ADK: the upstream `BaseAgentConfig` deprecation and experimental function
 declaration JSON-schema support.
 
@@ -270,17 +276,44 @@ var/runs/23da51fbc70e4ac887ef8bab7a96da3f/execution.jsonl
   follow-up search, though the hard call limit remains three.
 - DNS is checked before HTTPX connects but the checked address is not pinned, so
   mitigation is not complete DNS-rebinding protection.
-- POST execution and ADK sessions are synchronous/in-memory. There is no queue,
-  cancellation API, database, retention policy, or multiprocess coordination.
+- The Scout backend's POST execution and ADK sessions are synchronous/in-memory.
+  Scout itself has no queue, run-cancellation API, database-backed run-state
+  subsystem, retention policy, or multiprocess coordination. One-time
+  scheduling, persisted schedule state, and pending-schedule cancellation were
+  subsequently implemented in the separate standalone Scheduling API.
 - Only static HTML/XHTML/plain text is extracted. Browser rendering, recursive
   crawling, PDF extraction, downloads, and authenticated pages remain absent.
 - Source grounding is mechanically constrained and manually spot-checked; it is
   not a production claim-level citation evaluator.
 
-## Deferred integrations
+## Deferred integrations at the time of this POC
 
-- Frontend remains TODO; its planned POST contract remains compatible.
-- Scheduling/cron remains TODO and should later invoke the same HTTP or run-service
-  boundary.
-- Slack remains TODO and should execute deterministically only after successful
-  persistence.
+On 2026-08-27, frontend integration and scheduling were not yet implemented,
+and Slack notification remained TODO. Frontend Run Now and one-time Scout
+scheduling were subsequently implemented and validated while continuing to use
+the same Scout HTTP boundary. Recurring/cron scheduling and Slack notification
+remain deferred. See
+[`scout-scheduling-integration.md`](scout-scheduling-integration.md) for the
+current state.
+
+## Optional per-request research guidance update — 2026-08-31
+
+`POST /v1/scout/runs` now accepts an optional `additional_instructions` string.
+The field is trimmed, blank input becomes `null`, and normalized content is
+limited to 2,000 characters. Omitting it preserves the previous request and
+dynamic prompt shape.
+
+The fixed `SCOUT_INSTRUCTION` remains unchanged. When guidance is present,
+`ScoutRunService` serializes it inside the existing role-user request JSON and
+adds a fixed reminder that the value is subordinate to the Agent instruction,
+tool boundaries, source-grounding requirements, report contract, and host
+validation. The value is not written to the execution JSONL log. Existing web
+tool safety and deterministic report/source validation are unchanged.
+
+Validation on 2026-08-31:
+
+- focused request, prompt-boundary, Agent-instruction, run-service, and API
+  tests: 27 passed;
+- full Scout backend suite: 49 passed with two existing dependency warnings;
+  and
+- `uv run ruff check app tests`: passed.

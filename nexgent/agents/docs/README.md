@@ -30,21 +30,24 @@
   adapters, risk classification, and the configured read-only database MCP.
 - [Ansimk weekly reporter](../workflows/weekly_report/README.md): private
   FastAPI/raw-PostgreSQL metadata source, deterministic current/prior metrics,
-  formal Korean insight generation, a selective evaluatable-only `한주 총평`
-  that covers material issues without mechanically listing every GOOD fact and
-  excludes sleep and dispatch from the complete report, validation,
-  and terminal grounded fallback behavior even when no report block is
-  evaluatable.
+  deterministic section evaluations, and an LLM-authored one-paragraph
+  `한주 총평` generated from report-facing weekly data rather than a
+  Python-selected sentence formula. Validation enforces body-only warm 해요체,
+  material-issue coverage, no digits, no `움직임`/`리모컨`, no English status
+  values, and whole-report sleep and dispatch exclusions. The renderer
+  recombines the paragraph with deterministic detail sections and guardian
+  actions; bounded correction and disclosed fallback remain.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
-  implemented FastAPI source boundary, calculation rules, strict year-round
-  indoor-environment recommended ranges and maximum-based RISK thresholds,
-  weekly-total activity and device-reception status with transparent
+  implemented FastAPI source boundary, calculation rules, inclusive year-round
+  indoor-environment recommended ranges, special cool-humid/cold-humid daily
+  maximum counters, and exact environment copy,
+  weekly-total activity and `기기 상태` presentation with transparent
   unmatched-row counts,
   actionable power-check copy only for zero-reception weeks without synthetic
   event counts or false missing-data claims,
   weekly-average risk-score presentation, personalized deterministic summary
   openings, qualitative sensor evidence, deterministic guardian action guides
-  with internal conditions and title-plus-analysis cards,
+  with internal conditions, descriptions, approved tags, and template IDs,
   connected sparse-data insights, non-urgent summary wording, deterministic
   device-power guardian guidance, fixed report-topic exclusions, LLM safety contract,
   100-ward bulk paging, in-flight cancellation, terminal queue-failure
