@@ -34,9 +34,27 @@
   `한주 총평` generated from report-facing weekly data rather than a
   Python-selected sentence formula. Validation enforces body-only warm 해요체,
   material-issue coverage, no digits, no `움직임`/`리모컨`, no English status
-  values, and whole-report sleep and dispatch exclusions. The renderer
+  values, no repeated findings/actions, no unsupported safety reassurance, no
+  stable close that contradicts an attention signal, and whole-report sleep
+  and dispatch exclusions. It also excludes `위험`, rushed or alarm-amplifying
+  wording, and exclamation marks from `한주 총평`. Risk-management and
+  separate-record data are omitted from the model payload and summary in all
+  cases, while the deterministic detail section remains unchanged. The renderer
   recombines the paragraph with deterministic detail sections and guardian
   actions; bounded correction and disclosed fallback remain.
+  The writer addresses an adult child living apart from a parent who lives
+  alone, puts all observations before one practical final action, and rejects
+  emotional-attitude directions such as `다정하게`.
+  The summary prompt omits report `기본 정보` and overall score-band results,
+  retaining only a summary-opening name plus the four lifestyle areas and
+  approved actions. Its first sentence contains the core activity/lifestyle
+  flow, and related findings are joined into two to four natural sentences.
+  The fixed `[이름]님은` opening avoids an immediate second `은/는` topic
+  particle by using forms such as `활동이`; correction and fallback enforce
+  the same natural Korean grammar.
+  Known subscriber names replace generic honorifics. Complete lifestyle-data
+  reception absence produces only the approved two-sentence information and
+  power-check summary, without an unsupported overall lifestyle assessment.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
   implemented FastAPI source boundary, calculation rules, inclusive year-round
   indoor-environment recommended ranges, special cool-humid/cold-humid daily

@@ -1,6 +1,6 @@
 # AX Agents Architecture
 
-Date: 2026-08-31
+Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
@@ -595,6 +595,83 @@ Python splits the validated first sentence only to satisfy the existing
 sections and guardian actions remain deterministic; one correction and the
 disclosed validated fallback remain reliability boundaries.
 
+Weekly Reporter summary-quality guardrail update on 2026-09-01: prompt version
+`weekly-korean-free-summary-v22` incorporates production feedback for sparse
+and attention-heavy reports without changing deterministic calculations or
+section classifications. The model synthesizes related findings rather than
+copying section descriptions, states each fact once, and consolidates
+same-purpose actions. Overall score-band and device-reception results cannot be
+expanded into subscriber safety claims. An absent risk-detection record is
+normally omitted and never means a dangerous situation did not occur; a
+present record is mandatory but may be described only as a record, without
+cause or severity inference. Material changes, device checks, and present risk
+records prohibit a contradictory generic stable close. Validation rejects
+repeated sentences or check-in intent, unsupported safety reassurance, omitted
+present risk records, and stable closes that conflict with attention signals;
+the single corrective retry receives a specific safe instruction. The
+deterministic fallback strips section-local action repetition, combines the two
+living-pattern trends, and appends at most one grounded action before passing
+the same validator.
+
+Weekly Reporter calm-record wording update on 2026-09-01: prompt version
+`weekly-korean-free-summary-v23` keeps all deterministic record calculations,
+detail-section labels, and classifications unchanged while removing categorical
+or alarm-amplifying language from `한주 총평`. An absent separate record is no
+longer included in the model payload; a present record is exposed only through
+neutral `별도 확인 기록` data and summarized with calm observation wording.
+Summary validation rejects `위험`, rushed or alarming words, and exclamation
+marks, while still requiring a neutral mention when a record exists. Correction
+feedback and deterministic fallback use the same unhurried language.
+
+Weekly Reporter sparse-reception personalization update on 2026-09-01: prompt
+version `weekly-korean-free-summary-v24` requires a usable supplied subscriber
+name in the summary opening and rejects generic substitute honorifics in later
+direct references. For deterministic complete lifestyle-information reception
+absence (`기기 상태: 자료 없음`), the model payload is reduced to the subscriber,
+one neutral reception-absence fact, and the approved power check. The summary
+contains only the two grounded sentences `생활 정보가 들어오지 않은 날이
+있었어요` and `기기 전원이 잘 연결되어 있는지 확인해 주세요`; unrelated
+overall, activity, environment, and record interpretation are omitted.
+Correction feedback and deterministic fallback enforce the same boundary.
+
+Weekly Reporter guardian-persona and closing-order update on 2026-09-01:
+prompt version `weekly-korean-free-summary-v25` removes risk-management and
+separate-record data from the `한주 총평` model payload and forbids mentioning
+or implying those records in the generated paragraph. This does not change the
+deterministic `위험 관리` detail section. The summary persona is an experienced
+customer-support adviser describing a parent who lives alone to an adult child
+who lives apart. Activity evidence uses `활동` and `TV 이용 등 일상적인 생활
+패턴`, never the unsupported duration phrase `TV 이용 시간`. All observations
+must precede one consolidated final action sentence; validation rejects action
+requests before the last sentence, new facts after an action, repeated actions,
+and emotional-attitude directions such as `다정하게` or `따뜻하게`. Correction
+feedback, the deterministic fallback, tests, and project-local skill references
+share this boundary.
+
+Weekly Reporter natural-flow and basic-information boundary update on
+2026-09-01: prompt version `weekly-korean-free-summary-v26` removes overall
+score-band and every other `기본 정보` value from the `한주 총평` payload. The
+subscriber display name remains only as the identity required by the fixed
+`지난 한 주 [이름]님은` opening. That first sentence now carries the core
+activity and everyday lifestyle-pattern flow instead of repeating generic
+overall copy. Normal summaries contain two to four sentences, join related
+findings with natural Korean connective endings, and combine stable
+activity/pattern and device/environment observations instead of reciting one
+short sentence per section. A summary-only underscore immediately after a
+bracketed service label is normalized to a space; stored identity and the
+deterministic basic-information section remain unchanged. Risk-management
+exclusion, non-duration TV wording, final-action ordering, correction, and
+fallback boundaries from v25 remain in force.
+
+Weekly Reporter opening-particle update on 2026-09-01: prompt version
+`weekly-korean-free-summary-v27` prevents the fixed `지난 한 주 [이름]님은`
+opening from immediately repeating the Korean topic particle with `활동은`,
+`생활 활동은`, or `생활 패턴은`. The first clause uses an `이/가` subject form
+such as `활동이` or restructures the phrase, while later contrastive `은/는`
+remains valid. Deterministic validation triggers one specific corrective retry,
+and the fallback applies the same grammar normalization. No calculation,
+payload, rendering, or report-section boundary changes.
+
 Weekly Reporter environment day-count update on 2026-08-25, superseded by the
 2026-08-27 spreadsheet-template policy above: the source service collapses
 device summaries by date and deterministically counts departures from the
@@ -1082,8 +1159,8 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   completed batch to an approved Slack destination; delivery is not
   an automatic graph side effect. Weekly-average risk-score bands and indoor
   environment ranges are product-approved deterministic presentation rules;
-  the weekly-summary model receives no numeric score but does receive the
-  report-facing overall status and approved qualitative explanation. The
+  the weekly-summary model receives neither numeric score nor report-facing
+  overall/basic-information values. The
   model-backed chat workflow remains a
   one-turn path and does not yet compose the reusable web research tools. Chat
   attachments are transient and cannot be referenced by later turns;

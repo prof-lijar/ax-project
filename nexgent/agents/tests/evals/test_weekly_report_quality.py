@@ -4,7 +4,7 @@ import pytest
 from ax_contracts import WardWeeklyReportBatchResult
 from ax_evals import evaluate_weekly_report_batch, weekly_report_release_ready
 
-from tests.unit.test_weekly_report_graph import VALID_NARRATIVE
+from tests.unit.test_weekly_report_graph import valid_narrative_for_messages
 from workflows.weekly_report import graph
 from workflows.weekly_report.domain.rendering import render_report
 from workflows.weekly_report.tools.source_repository import (
@@ -25,8 +25,8 @@ async def test_weekly_report_meets_deterministic_release_criteria(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class EvaluatedModel:
-        async def complete(self, *args: object, **kwargs: object) -> str:
-            return VALID_NARRATIVE
+        async def complete(self, messages, **kwargs: object) -> str:
+            return valid_narrative_for_messages(messages)
 
     monkeypatch.setattr(
         "workflows.weekly_report.nodes.get_default_chat_model",
@@ -53,8 +53,8 @@ async def test_tampered_metric_prevents_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class EvaluatedModel:
-        async def complete(self, *args: object, **kwargs: object) -> str:
-            return VALID_NARRATIVE
+        async def complete(self, messages, **kwargs: object) -> str:
+            return valid_narrative_for_messages(messages)
 
     monkeypatch.setattr(
         "workflows.weekly_report.nodes.get_default_chat_model",
@@ -89,8 +89,8 @@ async def test_false_device_missing_data_copy_prevents_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class EvaluatedModel:
-        async def complete(self, *args: object, **kwargs: object) -> str:
-            return VALID_NARRATIVE
+        async def complete(self, messages, **kwargs: object) -> str:
+            return valid_narrative_for_messages(messages)
 
     monkeypatch.setattr(
         "workflows.weekly_report.nodes.get_default_chat_model",
@@ -128,8 +128,8 @@ async def test_structure_evaluation_accepts_omitted_empty_sleep_section(
     night_awake_count: float | None,
 ) -> None:
     class EvaluatedModel:
-        async def complete(self, *args: object, **kwargs: object) -> str:
-            return VALID_NARRATIVE
+        async def complete(self, messages, **kwargs: object) -> str:
+            return valid_narrative_for_messages(messages)
 
     monkeypatch.setattr(
         "workflows.weekly_report.nodes.get_default_chat_model",

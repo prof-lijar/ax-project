@@ -88,19 +88,56 @@ are Python-owned.
 ## Narrative boundary
 
 After calculation, Python creates report-facing weekly data containing the
-subscriber name, overall qualitative result, deterministic `생활 활동`,
-`생활 패턴`, `실내 환경`, and `기기 상태` results, qualitative risk
-management, and approved guardian actions. It sends no raw rows, totals,
+subscriber name for the summary opening, deterministic `생활 활동`,
+`생활 패턴`, `실내 환경`, and `기기 상태` results, and approved guardian
+actions. It sends no raw rows, totals,
 percentages, thresholds, dates, measurements, sleep or dispatch fields,
-`summary_outline`, or prewritten activity-combination sentence.
+`summary_outline`, risk-management data, report `기본 정보`, overall
+score-band results, or prewritten activity-combination sentence.
 
-Prompt version `weekly-korean-free-summary-v21` asks the model to author the
+Prompt version `weekly-korean-free-summary-v27` asks the model to author the
 complete `한주 총평` body as one short, natural paragraph. The response is plain
 text rather than JSON. Validation rejects titles, labels, Markdown, line
 breaks, digits, `움직임`, `리모컨`, English status values, formal administrative
-endings, excluded topics, unsupported claims, and omitted material
-CAUTION/RISK areas. One corrected retry is allowed; failure uses a disclosed
+endings, excluded topics, unsupported claims, omitted material CAUTION/RISK
+areas, repeated findings/actions, unsupported
+safety reassurance, and attention summaries that end with contradictory
+generic reassurance. It also rejects `위험`, rushed or alarm-amplifying words,
+exclamation marks, persona-misaligned wording, actions before the final
+sentence, and new facts after an action. One corrected retry is allowed; failure uses a disclosed
 deterministic fallback built from the same report-facing section results.
+
+The model synthesizes related section findings instead of copying their
+descriptions in order and writes each same-purpose action once. Risk-management
+and separate-record data are always omitted from the summary prompt and output;
+the deterministic detail section remains available elsewhere in the report. Device
+reception describes information availability, not the subscriber's health or
+safety. Sparse data stays concise rather than being padded with reassuring
+filler.
+
+The summary voice is an experienced customer-support adviser explaining the
+week of a parent who lives alone to an adult child living apart. It uses
+`활동` and `TV 이용 등 일상적인 생활 패턴`, never `TV 이용 시간`, presents
+all observations first, and puts consolidated practical checks in the final
+sentence. Emotional-attitude directions such as `다정하게` are rejected.
+The first sentence starts with `지난 한 주 [이름]님은` and carries the core
+activity/lifestyle-pattern flow. Normal summaries use two to four sentences and
+join related GOOD activity/pattern and device/environment findings instead of
+reciting one short sentence per section. A summary-only service-label separator
+such as `[넥스터]_이름` is presented as `[넥스터] 이름`; stored and rendered
+basic information is unchanged.
+Because the fixed opening already ends in `님은`, its first clause uses
+`활동이` or `TV 이용 등 일상적인 생활 패턴이` instead of immediately
+repeating `활동은` or `생활 패턴은`. Validation, correction, and fallback all
+enforce this Korean-particle rule.
+
+A known usable subscriber name must appear in the opening and replaces generic
+honorifics in later references. When complete lifestyle-information reception
+is absent and `기기 상태` is `자료 없음`, the model receives only the subscriber
+and approved reception/power-check facts. The summary is limited to
+`생활 정보가 들어오지 않은 날이 있었어요` followed by
+`기기 전원이 잘 연결되어 있는지 확인해 주세요`; unrelated overall-state,
+activity, environment, and record interpretation are prohibited.
 
 For compatibility, the first validated sentence is stored in
 `WeeklyNarrative.headline` and the remainder in `analysis_text`. Observations

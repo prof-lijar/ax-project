@@ -92,28 +92,72 @@ The POST body is `WeeklyReportRequest`; the response is
 
 ## Narrative contract
 
-Prompt version `weekly-korean-free-summary-v21` receives validated,
+Prompt version `weekly-korean-free-summary-v27` receives validated,
 report-facing weekly data and returns the complete `한주 총평` as plain Korean
-body text. The payload contains the subscriber name, overall qualitative
-result, deterministic `생활 활동`, `생활 패턴`, `실내 환경`, and `기기 상태`
-results, qualitative risk management, and approved guardian actions. It does
+body text. The payload contains the subscriber name as summary identity and
+deterministic `생활 활동`, `생활 패턴`, `실내 환경`, and `기기 상태`
+results and approved guardian actions. It does
 not contain raw rows, totals, ratios, thresholds, dates, measurements, sleep or
 dispatch fields, `summary_outline`, `required_topics`, or a Python-selected
-activity-combination sentence.
+activity-combination sentence. Report `기본 정보`, overall score-band,
+risk-management, and separate-record data are not part of the summary payload.
 
-The model connects overall state, notable changes, indoor environment, device
-state, and a grounded close as one short paragraph. It should sound like an
+The model starts with `지난 한 주 [이름]님은`, places the core activity and
+everyday lifestyle-pattern flow in that first sentence, and then connects
+indoor environment, device state, and a grounded close as one short paragraph. It should sound like an
 experienced guardian-support adviser, not a field list or machine-generated
 report. Missing and incomparable data remain limitations rather than abnormal
 conditions, and the model may not invent causes, diagnoses, risks, or actions.
+It must synthesize related findings, state each fact once, and merge
+same-purpose actions. Sparse reports remain concise rather than adding generic
+reassurance.
+
+Overall score-band status is not a safety determination, and device reception
+is only the reliability of incoming information. Risk management and separate
+records are omitted from the model payload and summary in every case; the
+deterministic detail section is unchanged. Any attention signal prevents a contradictory
+`평소처럼 지켜봐 주세요` close; the summary instead uses a relevant approved
+action once.
+
+The writer persona is an experienced customer-support adviser describing a
+parent living alone to an adult child who lives apart. It says `활동` and
+`TV 이용 등 일상적인 생활 패턴`, never `TV 이용 시간`. All observations
+precede one consolidated final action sentence. Validation rejects emotional
+directions such as `다정하게`, action requests before the last sentence, and
+new facts added after an action.
+
+Normal summaries use two to four sentences and reject a sequence of short
+single-fact section copies. Related GOOD activity/pattern findings and related
+GOOD device/environment findings are combined. For summary presentation only,
+an underscore after a bracketed service label is normalized to a space; stored
+identity and the deterministic basic-information section are unchanged.
+
+The fixed opening already carries the topic particle in `[이름]님은`, so its
+first clause may not immediately repeat `은/는` with `활동은`, `생활 활동은`,
+or `생활 패턴은`. It uses an `이/가` subject form such as `활동이`; later
+contrastive topic particles are still allowed. Validation sends a specific
+bounded correction for this defect, and fallback wording follows the same rule.
+
+When the subscriber has a usable supplied name, validation requires that name
+in the opening and rejects generic substitute honorifics in later references.
+For deterministic complete lifestyle-information reception absence
+(`기기 상태: 자료 없음`), the prompt omits all other report areas and provides
+only the subscriber, reception absence, and power check. Validation requires
+the approved two-sentence copy and rejects generic overall-state or unrelated
+sensor interpretation.
 
 Validation requires one body-only Korean paragraph in warm `해요체`. It rejects
 titles, labels, Markdown, line breaks, every digit, `움직임`, `리모컨`, `GOOD`,
 `CAUTION`, `RISK`, formal administrative endings, excluded topics, urgent
 terms, unsupported claims, and omission of any material deterministic
-CAUTION/RISK area. Invalid output receives one bounded correction attempt.
-Remaining model or validation failures use a disclosed deterministic fallback
-built from the same report-facing section descriptions.
+CAUTION/RISK area. It also rejects all risk-management references, repeated
+sentences, repeated check-in intent, unsupported safety reassurance, a stable
+close that conflicts with an attention signal, persona-misaligned wording,
+actions before the final sentence, and new facts after an action, plus `위험`,
+rushed or alarm-amplifying words, and exclamation marks. Invalid output receives
+one bounded correction attempt. Remaining model or validation failures use a
+disclosed deterministic fallback built from the same report-facing section
+descriptions with duplicated local actions removed.
 
 `WeeklyNarrative` remains the versioned compatibility contract. Python splits
 the first validated sentence into `headline` and stores the remainder in

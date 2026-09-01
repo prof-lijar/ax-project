@@ -16,11 +16,17 @@ from workflows.weekly_report.tools.source_repository import (
 )
 
 VALID_NARRATIVE = (
-    "지난 한 주 가입자님은 전반적으로 차분한 생활 흐름을 이어가셨어요. "
-    "생활 활동과 TV 이용 등 일상적인 패턴에서 확인할 변화는 보호자가 편안하게 이해할 수 있도록 살펴봤어요. "
-    "집 안 환경과 생활 정보 수신 상태도 함께 확인했으며, 필요한 부분은 평소처럼 지켜봐 주세요."
+    "지난 한 주 가입자님은 생활 활동과 TV 이용 등 일상적인 생활 패턴을 "
+    "함께 살펴봤어요. 집 안 환경과 생활 정보 수신 상태도 확인했고, "
+    "생활 흐름을 한 번 더 살펴봐 주세요."
 )
 
+
+def valid_narrative_for_messages(messages: Sequence[ChatMessage]) -> str:
+    assert '"위험 관리"' not in messages[0]["content"].split(
+        "<가입자_주간_데이터>", 1
+    )[1]
+    return VALID_NARRATIVE
 
 @pytest.fixture(autouse=True)
 def use_deterministic_repository(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,7 +50,7 @@ class FakeNarrativeModel:
         assert "summary_outline" not in messages[0]["content"]
         assert max_tokens == 600
         assert temperature == 0.3
-        return VALID_NARRATIVE
+        return valid_narrative_for_messages(messages)
 
 
 class FixedResponseModel:
@@ -210,7 +216,7 @@ async def test_no_evaluatable_report_blocks_still_return_terminal_result(
         f'{report["narrative"]["headline"]} '
         f'{report["narrative"]["analysis_text"]}'
     )
-    assert "기기 전원이 연결되어 있는지 확인해 주세요" in summary
+    assert "기기 전원이 잘 연결되어 있는지 확인해 주세요" in summary
     assert "움직임" not in summary
     assert "리모컨" not in summary
     assert not any(character.isdigit() for character in summary)

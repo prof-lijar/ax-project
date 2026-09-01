@@ -6,7 +6,7 @@ import re
 
 from ax_contracts import WeeklyNarrative
 
-from workflows.weekly_report.domain.models import FactPackage
+from workflows.weekly_report.domain.models import FactPackage, WeeklySummaryData
 
 FORBIDDEN_PHRASES = (
     "위험합니다",
@@ -115,9 +115,85 @@ TOPIC_MARKERS = {
 FREE_SUMMARY_FORBIDDEN_WORDS = (
     "움직임",
     "리모컨",
+    "위험",
     "GOOD",
     "CAUTION",
     "RISK",
+)
+
+ALARMING_SUMMARY_WORDS = (
+    "위급",
+    "긴급",
+    "즉시",
+    "서둘러",
+    "급히",
+    "심각",
+    "비상",
+    "경고",
+    "불안",
+    "우려",
+    "염려",
+    "주의",
+    "걱정",
+    "조심",
+    "급격",
+    "비정상",
+    "징후",
+    "사고",
+    "크게",
+)
+
+SUMMARY_EXCLUDED_MANAGEMENT_MARKERS = (
+    "기록",
+    "살펴볼 기록",
+    "확인할 기록",
+    "별도 확인 기록",
+    "감지 기록",
+    "위험 관리",
+)
+
+AWKWARD_SUPPORT_PHRASES = (
+    "다정하게",
+    "따뜻하게",
+    "마음을 담아",
+    "세심하게",
+    "확인이 필요해요",
+    "확인이 필요한 상태",
+    "주시기 바랍니다",
+    "TV 이용 시간",
+    "활동량",
+)
+
+UNSUPPORTED_SAFETY_REASSURANCE_PHRASES = (
+    "다행히",
+    "위험한 상황은 없",
+    "위험한 상태는 아니",
+    "위험하지 않",
+    "안전하",
+    "안전했",
+    "문제가 없",
+    "문제없",
+    "이상이 없",
+    "이상 없",
+    "안심해도",
+    "걱정하지 않아도",
+)
+
+ATTENTION_CONTRADICTING_CLOSE_PHRASES = (
+    "평소처럼 지켜봐",
+    "평소처럼 계속 지켜봐",
+    "평소처럼 따뜻하게 지켜봐",
+    "평소처럼 안부를 확인",
+)
+
+GENERIC_SUBSCRIBER_REFERENCES = (
+    "가입자님",
+    "가입자 님",
+    "대상자님",
+    "대상자 님",
+    "어르신",
+    "고객님",
+    "고객 님",
 )
 
 
@@ -139,6 +215,16 @@ def validate_summary_text(text: str, facts: FactPackage) -> str:
         raise ValueError("weekly summary must not contain digits")
     if any(word in summary for word in FREE_SUMMARY_FORBIDDEN_WORDS):
         raise ValueError("weekly summary contains a forbidden output word")
+    if any(
+        phrase in summary for phrase in UNSUPPORTED_SAFETY_REASSURANCE_PHRASES
+    ):
+        raise ValueError("weekly summary contains unsupported safety reassurance")
+    if "!" in summary or any(word in summary for word in ALARMING_SUMMARY_WORDS):
+        raise ValueError("weekly summary contains alarming wording")
+    if any(phrase in summary for phrase in AWKWARD_SUPPORT_PHRASES):
+        raise ValueError("weekly summary contains persona-misaligned wording")
+    if any(marker in summary for marker in SUMMARY_EXCLUDED_MANAGEMENT_MARKERS):
+        raise ValueError("weekly summary mentions excluded risk-management content")
     if any(phrase in summary for phrase in FORBIDDEN_PHRASES):
         raise ValueError("weekly summary contains forbidden categorical language")
     if any(phrase in summary for phrase in UNRELATED_FILLER_PHRASES):
@@ -161,9 +247,36 @@ def validate_summary_text(text: str, facts: FactPackage) -> str:
         raise ValueError("weekly summary must contain one to twelve sentences")
     if len(sentences[0]) > 160:
         raise ValueError("weekly summary first sentence must contain at most 160 characters")
+    if len(sentences) > 4:
+        raise ValueError("weekly summary reads like a choppy section recital")
+    normalized_sentences = [
+        re.sub(
+            r"^(?:다만|또한|이와 함께|한편|그리고)\s+",
+            "",
+            sentence.rstrip(".!? "),
+        )
+        for sentence in sentences
+    ]
+    if len(normalized_sentences) != len(set(normalized_sentences)):
+        raise ValueError("weekly summary repeats the same sentence")
+    if summary.count("안부") > 1:
+        raise ValueError("weekly summary repeats the same action intent")
 
     data = facts.weekly_report_data
     if data is not None:
+        known_name = _known_subscriber_name(data.subscriber)
+        if known_name is not None and known_name not in summary:
+            raise ValueError("weekly summary omits the known subscriber name")
+        if known_name is not None and any(
+            reference in summary for reference in GENERIC_SUBSCRIBER_REFERENCES
+        ):
+            raise ValueError("weekly summary uses a generic subscriber reference")
+        if data.device_status.status == "자료 없음":
+            _validate_no_reception_summary(summary, sentences)
+            return summary
+
+        _validate_opening(sentences[0], known_name, data)
+
         material_markers = (
             (data.living_activity.status, ("활동",), "생활 활동"),
             (
@@ -183,6 +296,11 @@ def validate_summary_text(text: str, facts: FactPackage) -> str:
                 marker in summary for marker in markers
             ):
                 raise ValueError(f"weekly summary omits material section: {label}")
+        if _has_attention_signal(facts) and any(
+            phrase in summary for phrase in ATTENTION_CONTRADICTING_CLOSE_PHRASES
+        ):
+            raise ValueError("weekly summary uses a contradictory stable close")
+        _validate_closing_order(sentences, facts)
 
     for topic in facts.required_topics:
         markers = {
@@ -193,6 +311,99 @@ def validate_summary_text(text: str, facts: FactPackage) -> str:
         if not any(marker in summary for marker in markers):
             raise ValueError(f"weekly summary omits required topic: {topic}")
     return summary
+
+
+def _validate_no_reception_summary(summary: str, sentences: list[str]) -> None:
+    required = (
+        "생활 정보가 들어오지 않은 날이 있었어요",
+        "기기 전원이 잘 연결되어 있는지 확인해 주세요",
+    )
+    if len(sentences) != 2 or not all(phrase in summary for phrase in required):
+        raise ValueError("weekly summary must use the no-reception two-sentence copy")
+    unrelated = (
+        "생활 모습",
+        "평소와",
+        "전반적인 수신 상태",
+        "상태 점수",
+        "생활 활동",
+        "TV 이용",
+        "집 안",
+        "살펴볼 기록",
+    )
+    if any(phrase in summary for phrase in unrelated):
+        raise ValueError("weekly summary adds unsupported no-reception assessment")
+
+
+def _validate_closing_order(
+    sentences: list[str],
+    facts: FactPackage,
+) -> None:
+    action_indexes = [
+        index for index, sentence in enumerate(sentences) if "주세요" in sentence
+    ]
+    if len(action_indexes) > 1:
+        raise ValueError("weekly summary must consolidate actions in the closing")
+    if action_indexes and action_indexes[0] != len(sentences) - 1:
+        raise ValueError("weekly summary adds facts after the closing action")
+    if (_has_attention_signal(facts) or facts.suggested_actions) and not action_indexes:
+        raise ValueError("weekly summary omits a grounded closing action")
+
+
+def _validate_opening(
+    first_sentence: str,
+    known_name: str | None,
+    data: WeeklySummaryData,
+) -> None:
+    expected = f"지난 한 주 {known_name}님은" if known_name else "지난 한 주"
+    if not first_sentence.startswith(expected):
+        raise ValueError("weekly summary must use the required opening format")
+    opening_remainder = first_sentence.removeprefix(expected).lstrip()
+    repeated_topic_starts = (
+        r"(?:일상적인\s+)?(?:생활\s+)?활동은(?:\s|,)",
+        r"TV\s+이용(?:\s+등\s+일상적인\s+생활\s+패턴)?은(?:\s|,)",
+        r"(?:일상적인\s+)?생활\s+패턴은(?:\s|,)",
+    )
+    if any(re.match(pattern, opening_remainder) for pattern in repeated_topic_starts):
+        raise ValueError("weekly summary opening repeats the topic particle")
+    activity_available = data.living_activity.status != "자료 없음"
+    pattern_available = data.living_pattern.status != "자료 없음"
+    if (activity_available or pattern_available) and not any(
+        marker in first_sentence
+        for marker in ("활동", "TV 이용", "생활 패턴", "일상생활")
+    ):
+        raise ValueError("weekly summary opening omits the core lifestyle flow")
+
+
+def _known_subscriber_name(value: str) -> str | None:
+    name = normalize_summary_subscriber_name(value)
+    if not name or re.search(r"\d", name) or name.startswith("관리 대상"):
+        return None
+    return name
+
+
+def normalize_summary_subscriber_name(value: str) -> str:
+    """Normalize presentation-only separators without changing report identity."""
+
+    name = re.sub(r"(?<=\])_+", " ", value.strip())
+    return re.sub(r"\s+", " ", name)
+
+
+def _has_attention_signal(facts: FactPackage) -> bool:
+    data = facts.weekly_report_data
+    if data is None:
+        return False
+    return (
+        data.overall.status in {"CAUTION", "RISK"}
+        or any(
+            section.status in {"CAUTION", "RISK"}
+            for section in (
+                data.living_activity,
+                data.living_pattern,
+                data.indoor_environment,
+                data.device_status,
+            )
+        )
+    )
 
 
 def validate_narrative(

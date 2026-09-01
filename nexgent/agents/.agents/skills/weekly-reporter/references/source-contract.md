@@ -355,25 +355,63 @@ and its template ID when one was supplied.
 
 ## Approved weekly-summary interpretation
 
-Prompt version `weekly-korean-free-summary-v21` replaces the earlier
+Prompt version `weekly-korean-free-summary-v27` extends the earlier
 Python-owned summary formula and semantic outline. The LLM receives subscriber
-identity plus the deterministic report-facing result for overall state,
-`생활 활동`, `생활 패턴`, `실내 환경`, `기기 상태`, risk management, and
+identity as a summary-opening field plus the deterministic report-facing result
+for `생활 활동`, `생활 패턴`, `실내 환경`, `기기 상태`, and
 approved guardian actions. It does not receive raw rows, totals, ratios,
 thresholds, dates, measurements, sleep or dispatch values, `summary_outline`,
-or a prewritten activity-combination block.
+raw risk-management data, `기본 정보`, overall score-band results, or a
+prewritten activity-combination block.
 
-The model authors the complete `한주 총평` as one short paragraph. It connects
-overall state, notable changes, indoor environment, device status, and a
-grounded close like an experienced guardian-support adviser rather than
-listing field names. Missing or incomparable data is not an abnormal result.
-The output must not invent causes, diagnoses, risks, or actions.
+The model authors the complete `한주 총평` as one short paragraph. It opens
+with `지난 한 주 [이름]님은`, summarizes activity and everyday lifestyle
+pattern in that first sentence, then connects indoor environment, device
+status, and a grounded close like an experienced guardian-support adviser
+rather than listing field names. Missing or incomparable data is not an abnormal result.
+The output must not invent causes, diagnoses, risks, or actions. Related
+findings are synthesized, same-purpose actions appear once, and sparse evidence
+must not be padded with reassurance. Overall status and device reception are
+not safety findings. Risk management and separate records are omitted from the
+prompt and summary in every case; their deterministic detail section is not
+changed.
+
+The persona is an experienced customer-support adviser reporting the week of a
+parent who lives alone to an adult child who cannot check in person. Use
+`활동` and `TV 이용 등 일상적인 생활 패턴`, never `TV 이용 시간`. Put all
+observations first and consolidate practical guardian checks in the final
+sentence. Reject emotional-attitude directions such as `다정하게` and facts
+added after an action request.
+
+Normal summaries contain two to four sentences. Reject a section-by-section
+recital of short single-fact sentences. Related GOOD activity/pattern findings
+share the opening sentence, while GOOD device/environment findings share a
+following sentence. The summary-only display name normalizes an underscore
+immediately following a bracketed service label to a space; stored identity and
+the rendered basic-information section remain unchanged.
+
+The fixed `지난 한 주 [이름]님은` opening must not immediately repeat the
+topic particle with `활동은`, `생활 활동은`, or `생활 패턴은`. Use an `이/가`
+subject form in that first clause; later contrastive topic particles remain
+available when grammatically useful. Prompt validation, correction, and the
+deterministic fallback enforce the same rule.
 
 The model returns body text only. Reject titles, labels, Markdown, lists,
 line breaks, digits, `움직임`, `리모컨`, English status values, formal
-administrative endings, excluded topics, urgent wording, and unsupported
+administrative endings, excluded topics, rushed wording, and unsupported
 interpretation. Every report area with a deterministic CAUTION/RISK result
-remains mandatory. Permit one bounded corrective retry.
+remains mandatory. Repeated sentences,
+repeated check-in intent, unsupported safety reassurance, and a generic stable
+close that conflicts with an attention signal are also rejected. The summary
+also rejects `위험`, alarm-amplifying words, and exclamation marks. Permit one
+bounded corrective retry.
+
+A usable supplied subscriber name is mandatory in the opening and replaces
+generic subscriber honorifics in later direct references. For deterministic
+complete lifestyle-information reception absence (`기기 상태: 자료 없음`), the
+model receives only the subscriber plus neutral reception-absence and
+power-check copy. Validation requires the approved two-sentence summary and
+rejects overall lifestyle, activity, environment, or record interpretation.
 
 For compatibility with the versioned `WeeklyNarrative` contract, Python splits
 the validated first sentence into `headline` and the remaining sentences into

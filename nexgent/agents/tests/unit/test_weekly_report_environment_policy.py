@@ -409,7 +409,7 @@ def test_environment_facts_are_required_in_weekly_analysis() -> None:
     assert "건조한 날" in summary
 
     messages = build_messages(facts)
-    assert PROMPT_VERSION == "weekly-korean-free-summary-v21"
+    assert PROMPT_VERSION == "weekly-korean-free-summary-v27"
     assert len(messages) == 1
     assert "총평 본문만 출력합니다" in messages[0]["content"]
     assert '"실내 환경"' in messages[0]["content"]
