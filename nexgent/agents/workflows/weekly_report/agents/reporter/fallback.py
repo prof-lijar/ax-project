@@ -171,8 +171,6 @@ def _activity_pattern_observation(facts: FactPackage) -> str | None:
 def _fallback_action(facts: FactPackage) -> str | None:
     data = facts.weekly_report_data
     assert data is not None
-    if data.guardian_actions:
-        return data.guardian_actions[0]
     for section in (
         data.device_status,
         data.living_activity,

@@ -95,7 +95,7 @@ percentages, thresholds, dates, measurements, sleep or dispatch fields,
 `summary_outline`, risk-management data, report `기본 정보`, overall
 score-band results, or prewritten activity-combination sentence.
 
-Prompt version `weekly-korean-free-summary-v27` asks the model to author the
+Prompt version `weekly-korean-free-summary-v28` asks the model to author the
 complete `한주 총평` body as one short, natural paragraph. The response is plain
 text rather than JSON. Validation rejects titles, labels, Markdown, line
 breaks, digits, `움직임`, `리모컨`, English status values, formal administrative
@@ -161,7 +161,7 @@ thresholds, and numeric comparisons do not. Urgent wording such as `빠른` or
 
 Python selects product-approved guardian guides from activity decrease `RISK`,
 activity increase `CAUTION`, directional indoor-environment
-`CAUTION`, combined indoor-environment `RISK`, and device-reception `CAUTION`
+`CAUTION` or `RISK`, combined indoor-environment `RISK`, and device-reception `CAUTION`
 results. Remote-control increase likewise selects an action only at `CAUTION`;
 increase `RISK` does not reuse it. Each guide owns an internal condition,
 displayed title, description, tag, and optional template ID. The condition is
@@ -173,11 +173,13 @@ environment, then general check-in. At most three guides are rendered. Approved 
 the first action slots. Related practical guidance is integrated beside its
 supporting finding in `한주 총평`. Model suggestions
 do not fill unused rendered slots because they have no approved tag or template
-ID. The model receives approved titles as qualitative suggestions but never
-selects their status mapping, ordering, description, tag, or template ID.
+ID. The model receives approved titles as observation-style card headings, not
+as closing action sentences, and never selects their status mapping, ordering,
+description, tag, or template ID. Summary actions remain grounded in verified
+section descriptions.
 When the weekly risk score is `GOOD`, no area has a CAUTION/RISK status, no
 mapped issue guide exists, and no risk event was detected, the section renders
-the deterministic `평소처럼 안부를 확인해 주세요` guide with the approved stable-week
+the deterministic `평소와 비슷하게 지내셨어요` guide with the approved stable-week
 description and tag. Its template ID remains null because none was supplied.
 Zero-source device reception instead produces the deterministic
 `기기 전원이 연결되어 있는지 확인해 주세요` guide.

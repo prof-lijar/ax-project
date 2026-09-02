@@ -95,7 +95,7 @@ def test_approved_sheet_example_renders_exact_markdown_template() -> None:
         narrative,
         "llm",
         NarrativeGenerationMetadata(
-            prompt_version="weekly-korean-free-summary-v27",
+            prompt_version="weekly-korean-free-summary-v28",
             validation_status="passed",
         ),
     )

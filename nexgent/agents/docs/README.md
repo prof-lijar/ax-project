@@ -52,6 +52,9 @@
   The fixed `[이름]님은` opening avoids an immediate second `은/는` topic
   particle by using forms such as `활동이`; correction and fallback enforce
   the same natural Korean grammar.
+  Guardian cards use observation-style titles, and directional environment
+  CAUTION or RISK states share the approved `ENV_CAUTION_01`–`04` mappings;
+  summary closing actions remain grounded in deterministic section copy.
   Known subscriber names replace generic honorifics. Complete lifestyle-data
   reception absence produces only the approved two-sentence information and
   power-check summary, without an unsupported overall lifestyle assessment.

@@ -46,7 +46,7 @@ def _metrics(
                 "RISK",
                 1,
                 "활동 감소",
-                "안부를 한 번 확인해 주세요",
+                "활동이 줄었어요",
                 "활동이 많이 줄어든 모습이에요.",
                 "안부 전화하기",
                 "ACT_RISK_01",
@@ -61,7 +61,7 @@ def _metrics(
                 "CAUTION",
                 2,
                 "활동 증가",
-                "생활에 달라진 점이 있는지 살펴봐 주세요",
+                "활동이 늘었어요",
                 "활동이 평소보다 많이 늘어난 모습이에요.",
                 "생활 확인하기",
                 "ACT_RISK_02",
@@ -76,7 +76,7 @@ def _metrics(
                 "RISK",
                 4,
                 "생활 패턴 감소",
-                "안부를 한 번 확인해 주세요",
+                "생활 패턴이 줄었어요",
                 "TV 이용 등 일상적인 생활 패턴이 많이 줄었어요.",
                 "안부 전화하기",
                 "ACT_RISK_03",
@@ -91,7 +91,7 @@ def _metrics(
                 "CAUTION",
                 5,
                 "생활 패턴 증가",
-                "최근 생활에 달라진 점이 있는지 살펴봐 주세요",
+                "생활 패턴이 늘었어요",
                 "TV 이용 등 일상적인 생활 패턴이 많이 늘었어요.",
                 "생활 확인하기",
                 "ACT_RISK_04",
@@ -110,7 +110,7 @@ def _metrics(
                 "CAUTION",
                 4,
                 "건조한 환경",
-                "실내가 너무 건조하지 않은지 살펴봐 주세요",
+                "건조한 환경에서 지내셨어요",
                 "집 안이 건조한 날이 있었어요.",
                 "환경 확인하기",
                 "ENV_CAUTION_04",
@@ -129,7 +129,7 @@ def _metrics(
                 "CAUTION",
                 3,
                 "습한 환경",
-                "제습이나 환기가 필요한지 살펴봐 주세요",
+                "습한 환경에서 지내셨어요",
                 "집 안이 습한 날이 있었어요.",
                 "환경 확인하기",
                 "ENV_CAUTION_03",
@@ -148,7 +148,7 @@ def _metrics(
                 "CAUTION",
                 1,
                 "더운 환경",
-                "냉방이나 환기 상태를 확인해 주세요",
+                "더운 환경에서 지내셨어요",
                 "집 안이 조금 더운 날이 있었어요.",
                 "환경 확인하기",
                 "ENV_CAUTION_01",
@@ -167,7 +167,7 @@ def _metrics(
                 "CAUTION",
                 2,
                 "추운 환경",
-                "난방 상태를 확인해 주세요",
+                "추운 환경에서 지내셨어요",
                 "집 안이 조금 추운 날이 있었어요.",
                 "환경 확인하기",
                 "ENV_CAUTION_02",
@@ -188,7 +188,7 @@ def _metrics(
                 "RISK",
                 5,
                 "덥고 습한 환경",
-                "냉방과 환기 상태를 함께 확인해 주세요",
+                "덥고 습한 환경에서 지내셨어요",
                 "덥고 습한 날이 여러 번 이어졌어요.",
                 "환경 확인하기",
                 "ENV_RISK_05",
@@ -209,7 +209,7 @@ def _metrics(
                 "RISK",
                 6,
                 "덥고 건조한 환경",
-                "냉방 상태와 실내 습도를 함께 확인해 주세요",
+                "덥고 건조한 환경에서 지내셨어요",
                 "덥고 건조한 날이 여러 번 이어졌어요.",
                 "환경 확인하기",
                 "ENV_RISK_06",
@@ -230,7 +230,7 @@ def _metrics(
                 "RISK",
                 7,
                 "춥고 습한 환경",
-                "난방과 환기 상태를 함께 확인해 주세요",
+                "춥고 습한 환경에서 지내셨어요",
                 "춥고 습한 날이 여러 번 이어졌어요.",
                 "환경 확인하기",
                 "ENV_RISK_07",
@@ -251,7 +251,7 @@ def _metrics(
                 "RISK",
                 8,
                 "춥고 건조한 환경",
-                "난방 상태와 실내 습도를 함께 확인해 주세요",
+                "춥고 건조한 환경에서 지내셨어요",
                 "춥고 건조한 날이 여러 번 이어졌어요.",
                 "환경 확인하기",
                 "ENV_RISK_08",
@@ -270,7 +270,7 @@ def _metrics(
                 "CAUTION",
                 1,
                 "전원 확인",
-                "기기 전원이 잘 연결되어 있는지 확인해 주세요",
+                "기기 전원 확인이 필요해요",
                 "생활 정보가 들어오지 않은 날이 있었어요.",
                 "기기 확인하기",
                 "DEV_POWER_01",
@@ -289,7 +289,7 @@ def _metrics(
                 "CAUTION",
                 1,
                 "위치 확인",
-                "기기가 제자리에 있는지 확인해 주세요",
+                "기기 위치 확인이 필요해요",
                 "생활 정보가 평소보다 적게 들어온 날이 있었어요.",
                 "기기 확인하기",
                 "DEV_POS_01",
@@ -322,6 +322,90 @@ def test_guardian_guides_use_exact_approved_copy(
         guide.tag,
         guide.template_id,
     ) == expected
+
+
+@pytest.mark.parametrize(
+    ("current_updates", "variant", "condition", "title", "description", "template_id"),
+    [
+        (
+            {
+                "temperature_out_of_range_days": 4,
+                "environment_out_of_range_days": 4,
+                "high_temperature_days": 4,
+            },
+            1,
+            "더운 환경",
+            "더운 환경에서 지내셨어요",
+            "집 안이 조금 더운 날이 있었어요.",
+            "ENV_CAUTION_01",
+        ),
+        (
+            {
+                "temperature_out_of_range_days": 4,
+                "environment_out_of_range_days": 4,
+                "low_temperature_days": 4,
+            },
+            2,
+            "추운 환경",
+            "추운 환경에서 지내셨어요",
+            "집 안이 조금 추운 날이 있었어요.",
+            "ENV_CAUTION_02",
+        ),
+        (
+            {
+                "humidity_out_of_range_days": 4,
+                "environment_out_of_range_days": 4,
+                "high_humidity_days": 4,
+            },
+            3,
+            "습한 환경",
+            "습한 환경에서 지내셨어요",
+            "집 안이 습한 날이 있었어요.",
+            "ENV_CAUTION_03",
+        ),
+        (
+            {
+                "humidity_out_of_range_days": 4,
+                "environment_out_of_range_days": 4,
+                "low_humidity_days": 4,
+            },
+            4,
+            "건조한 환경",
+            "건조한 환경에서 지내셨어요",
+            "집 안이 건조한 날이 있었어요.",
+            "ENV_CAUTION_04",
+        ),
+    ],
+)
+def test_directional_environment_risk_reuses_approved_environment_card(
+    current_updates: dict[str, int | float],
+    variant: int,
+    condition: str,
+    title: str,
+    description: str,
+    template_id: str,
+) -> None:
+    guides = build_guardian_guides(_metrics(current_updates=current_updates))
+
+    assert len(guides) == 1
+    guide = guides[0]
+    assert (
+        guide.status,
+        guide.variant,
+        guide.condition_label,
+        guide.title,
+        guide.description,
+        guide.tag,
+        guide.template_id,
+    ) == (
+        "RISK",
+        variant,
+        condition,
+        title,
+        description,
+        "환경 확인하기",
+        template_id,
+    )
 
 
 def test_guardian_guides_are_priority_ordered_and_capped_at_three() -> None:
@@ -406,7 +490,7 @@ def test_all_good_report_gets_stable_guardian_guide() -> None:
         "GOOD",
         1,
         "상태 양호",
-        "평소처럼 안부를 확인해 주세요",
+        "평소와 비슷하게 지내셨어요",
         "평소와 비슷한 생활 흐름이 이어지고 있어요.",
         "안부 전화하기",
         None,
@@ -449,7 +533,7 @@ def test_report_renders_stable_guide_when_no_issue_action_exists() -> None:
         NarrativeGenerationMetadata(prompt_version="test", validation_status="passed"),
     )
 
-    assert "## 1. 평소처럼 안부를 확인해 주세요" in report.markdown
+    assert "## 1. 평소와 비슷하게 지내셨어요" in report.markdown
     assert "- 설명: 평소와 비슷한 생활 흐름이 이어지고 있어요." in (report.markdown)
     assert "- 태그: 안부 전화하기" in report.markdown
     assert "- template_id:" not in report.markdown
@@ -482,7 +566,7 @@ def test_report_renders_only_deterministic_guides_with_metadata() -> None:
 
     assert "이번 주에는" not in report.markdown
     assert "빠른" not in report.markdown
-    assert "## 1. 안부를 한 번 확인해 주세요" in report.markdown
+    assert "## 1. 활동이 줄었어요" in report.markdown
     assert "- 설명: 활동이 많이 줄어든 모습이에요." in report.markdown
     assert "- 태그: 안부 전화하기" in report.markdown
     assert "- template_id: ACT_RISK_01" in report.markdown
@@ -491,7 +575,7 @@ def test_report_renders_only_deterministic_guides_with_metadata() -> None:
     assert "평소 생활 흐름을 살펴보셔도 좋아요" not in report.markdown
 
     facts = build_fact_package(metrics)
-    assert facts.suggested_actions[0] == "안부를 한 번 확인해 주세요"
+    assert facts.suggested_actions[0] == "활동이 줄었어요"
     assert [item.source for item in facts.section_assessments] == [
         "movement_count",
         "remote_control_count",
@@ -503,7 +587,7 @@ def test_report_renders_only_deterministic_guides_with_metadata() -> None:
         "source": "movement_count",
         "status": "RISK",
         "condition": "활동 감소",
-        "title": "안부를 한 번 확인해 주세요",
+        "title": "활동이 줄었어요",
         "description": "활동이 많이 줄어든 모습이에요.",
         "tag": "안부 전화하기",
         "template_id": "ACT_RISK_01",
@@ -529,7 +613,7 @@ def test_report_keeps_deterministic_guide_when_model_suggestions_are_empty() -> 
         NarrativeGenerationMetadata(prompt_version="test", validation_status="passed"),
     )
 
-    assert "## 1. 안부를 한 번 확인해 주세요" in report.markdown
+    assert "## 1. 활동이 줄었어요" in report.markdown
     assert "별도 행동 제안은 없어요" not in report.markdown
 
 
@@ -602,7 +686,7 @@ def test_report_does_not_render_summary_close_as_numbered_guardian_action() -> N
         NarrativeGenerationMetadata(prompt_version="test", validation_status="passed"),
     )
 
-    assert "## 1. 평소처럼 안부를 확인해 주세요" in report.markdown
+    assert "## 1. 평소와 비슷하게 지내셨어요" in report.markdown
     assert "## 2. 지난 한 주에는" not in report.markdown
 
 
@@ -615,7 +699,7 @@ def test_report_deduplicates_formalized_model_copy_of_guardian_action() -> None:
         headline="움직임이 2주 전보다 크게 줄었습니다.",
         analysis_text="움직임이 많이 줄어 안부 확인이 필요합니다.",
         observations=["평소보다 활동이 많이 줄었습니다."],
-        suggestions=["안부를 한 번 확인해 주세요."],
+        suggestions=["활동이 줄었어요."],
     )
 
     report = render_report(
@@ -625,5 +709,5 @@ def test_report_deduplicates_formalized_model_copy_of_guardian_action() -> None:
         NarrativeGenerationMetadata(prompt_version="test", validation_status="passed"),
     )
 
-    assert report.markdown.count("## 1. 안부를 한 번 확인해 주세요") == 1
-    assert "## 2. 안부를 한 번 확인해 주세요" not in report.markdown
+    assert report.markdown.count("## 1. 활동이 줄었어요") == 1
+    assert "## 2. 활동이 줄었어요" not in report.markdown

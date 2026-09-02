@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from ax_contracts import WardWeeklyMetrics
@@ -69,12 +69,13 @@ def build_guardian_guides(metrics: WardWeeklyMetrics) -> list[GuardianGuide]:
 
     environment = assess_environment(metrics)
     if environment.variant is not None and (
-        environment.status == "CAUTION"
+        environment.status in {"CAUTION", "RISK"}
         and environment.variant in {1, 2, 3, 4}
         or environment.status == "RISK"
         and environment.variant in {5, 6, 7, 8}
     ):
-        guides.append(_GUIDES[("guide_env", "environment", environment.variant)])
+        environment_guide = _GUIDES[("guide_env", "environment", environment.variant)]
+        guides.append(replace(environment_guide, status=environment.status))
 
     report_area_statuses = (
         activity.movement.status,
@@ -101,7 +102,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="RISK",
         variant=1,
         condition_label="활동 감소",
-        title="안부를 한 번 확인해 주세요",
+        title="활동이 줄었어요",
         description="활동이 많이 줄어든 모습이에요.",
         tag="안부 전화하기",
         template_id="ACT_RISK_01",
@@ -112,7 +113,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=2,
         condition_label="활동 증가",
-        title="생활에 달라진 점이 있는지 살펴봐 주세요",
+        title="활동이 늘었어요",
         description="활동이 평소보다 많이 늘어난 모습이에요.",
         tag="생활 확인하기",
         template_id="ACT_RISK_02",
@@ -123,7 +124,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="RISK",
         variant=4,
         condition_label="생활 패턴 감소",
-        title="안부를 한 번 확인해 주세요",
+        title="생활 패턴이 줄었어요",
         description="TV 이용 등 일상적인 생활 패턴이 많이 줄었어요.",
         tag="안부 전화하기",
         template_id="ACT_RISK_03",
@@ -134,7 +135,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=5,
         condition_label="생활 패턴 증가",
-        title="최근 생활에 달라진 점이 있는지 살펴봐 주세요",
+        title="생활 패턴이 늘었어요",
         description="TV 이용 등 일상적인 생활 패턴이 많이 늘었어요.",
         tag="생활 확인하기",
         template_id="ACT_RISK_04",
@@ -145,7 +146,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=1,
         condition_label="더운 환경",
-        title="냉방이나 환기 상태를 확인해 주세요",
+        title="더운 환경에서 지내셨어요",
         description="집 안이 조금 더운 날이 있었어요.",
         tag="환경 확인하기",
         template_id="ENV_CAUTION_01",
@@ -156,7 +157,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=2,
         condition_label="추운 환경",
-        title="난방 상태를 확인해 주세요",
+        title="추운 환경에서 지내셨어요",
         description="집 안이 조금 추운 날이 있었어요.",
         tag="환경 확인하기",
         template_id="ENV_CAUTION_02",
@@ -167,7 +168,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=3,
         condition_label="습한 환경",
-        title="제습이나 환기가 필요한지 살펴봐 주세요",
+        title="습한 환경에서 지내셨어요",
         description="집 안이 습한 날이 있었어요.",
         tag="환경 확인하기",
         template_id="ENV_CAUTION_03",
@@ -178,7 +179,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=4,
         condition_label="건조한 환경",
-        title="실내가 너무 건조하지 않은지 살펴봐 주세요",
+        title="건조한 환경에서 지내셨어요",
         description="집 안이 건조한 날이 있었어요.",
         tag="환경 확인하기",
         template_id="ENV_CAUTION_04",
@@ -189,7 +190,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="RISK",
         variant=5,
         condition_label="덥고 습한 환경",
-        title="냉방과 환기 상태를 함께 확인해 주세요",
+        title="덥고 습한 환경에서 지내셨어요",
         description="덥고 습한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
         template_id="ENV_RISK_05",
@@ -200,7 +201,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="RISK",
         variant=6,
         condition_label="덥고 건조한 환경",
-        title="냉방 상태와 실내 습도를 함께 확인해 주세요",
+        title="덥고 건조한 환경에서 지내셨어요",
         description="덥고 건조한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
         template_id="ENV_RISK_06",
@@ -211,7 +212,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="RISK",
         variant=7,
         condition_label="춥고 습한 환경",
-        title="난방과 환기 상태를 함께 확인해 주세요",
+        title="춥고 습한 환경에서 지내셨어요",
         description="춥고 습한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
         template_id="ENV_RISK_07",
@@ -222,7 +223,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="RISK",
         variant=8,
         condition_label="춥고 건조한 환경",
-        title="난방 상태와 실내 습도를 함께 확인해 주세요",
+        title="춥고 건조한 환경에서 지내셨어요",
         description="춥고 건조한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
         template_id="ENV_RISK_08",
@@ -233,7 +234,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=1,
         condition_label="전원 확인",
-        title="기기 전원이 잘 연결되어 있는지 확인해 주세요",
+        title="기기 전원 확인이 필요해요",
         description="생활 정보가 들어오지 않은 날이 있었어요.",
         tag="기기 확인하기",
         template_id="DEV_POWER_01",
@@ -244,7 +245,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="CAUTION",
         variant=1,
         condition_label="위치 확인",
-        title="기기가 제자리에 있는지 확인해 주세요",
+        title="기기 위치 확인이 필요해요",
         description="생활 정보가 평소보다 적게 들어온 날이 있었어요.",
         tag="기기 확인하기",
         template_id="DEV_POS_01",
@@ -266,7 +267,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         status="GOOD",
         variant=1,
         condition_label="상태 양호",
-        title="평소처럼 안부를 확인해 주세요",
+        title="평소와 비슷하게 지내셨어요",
         description="평소와 비슷한 생활 흐름이 이어지고 있어요.",
         tag="안부 전화하기",
         template_id=None,

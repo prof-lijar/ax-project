@@ -23,7 +23,7 @@ management notes, risk-management data, sleep data, dispatch data, `summary_outl
 
 ## Prompt and output
 
-Prompt version `weekly-korean-free-summary-v27` extends the product-owner
+Prompt version `weekly-korean-free-summary-v28` extends the product-owner
 system prompt with production feedback rules, then replaces
 `{{WEEKLY_REPORT_DATA}}` with the validated JSON payload. The model returns
 only the completed Korean summary body, not JSON and not separate headline,
@@ -55,6 +55,12 @@ observations before a single final action sentence. Do not add a device-state
 fact after asking the guardian to act, and do not direct an emotional manner
 with `다정하게`, `따뜻하게`, or similar wording. Ask for a practical check-in
 or device/environment check instead.
+
+Guardian-card titles are observation-style headings, not necessarily action
+requests. They may be supplied as qualitative context, but the summary's final
+practical check must be grounded in the verified section descriptions. The
+deterministic fallback likewise ignores card titles when selecting its closing
+action.
 
 For normal weekly data, use two to four sentences. Avoid a sequence of short,
 single-fact sentences. Join related findings with natural Korean connective

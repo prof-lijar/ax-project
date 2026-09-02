@@ -276,67 +276,68 @@ treat the band as a diagnosis or certainty that an incident occurred.
 
 ## Approved guardian-action interpretation
 
-The product owner promoted the spreadsheet guardian action guides on 2026-08-27
-and replaced their copy, eligibility, tags, and template identifiers on
-2026-08-31. Select only these deterministic mappings from validated statuses:
+The product owner promoted the spreadsheet guardian action guides on 2026-08-27,
+replaced their copy, eligibility, tags, and template identifiers on 2026-08-31,
+and revised the displayed titles plus directional-environment eligibility on
+2026-09-01. Select only these deterministic mappings from validated statuses:
 
 - movement `RISK/decrease`: `활동 감소` /
-  `안부를 한 번 확인해 주세요` / `활동이 많이 줄어든 모습이에요.` /
+  `활동이 줄었어요` / `활동이 많이 줄어든 모습이에요.` /
   `안부 전화하기` / `ACT_RISK_01`;
 - movement `CAUTION/increase`: `활동 증가` /
-  `생활에 달라진 점이 있는지 살펴봐 주세요` /
+  `활동이 늘었어요` /
   `활동이 평소보다 많이 늘어난 모습이에요.` / `생활 확인하기` /
   `ACT_RISK_02`;
 - remote-control `RISK/decrease`: `생활 패턴 감소` /
-  `안부를 한 번 확인해 주세요` /
+  `생활 패턴이 줄었어요` /
   `TV 이용 등 일상적인 생활 패턴이 많이 줄었어요.` / `안부 전화하기` /
   `ACT_RISK_03`;
 - remote-control `CAUTION/increase`: `생활 패턴 증가` /
-  `최근 생활에 달라진 점이 있는지 살펴봐 주세요` /
+  `생활 패턴이 늘었어요` /
   `TV 이용 등 일상적인 생활 패턴이 많이 늘었어요.` / `생활 확인하기` /
   `ACT_RISK_04`;
-- environment `CAUTION 1`: `더운 환경` /
-  `냉방이나 환기 상태를 확인해 주세요` / `집 안이 조금 더운 날이 있었어요.` /
+- environment `CAUTION or RISK 1`: `더운 환경` /
+  `더운 환경에서 지내셨어요` / `집 안이 조금 더운 날이 있었어요.` /
   `환경 확인하기` / `ENV_CAUTION_01`;
-- environment `CAUTION 2`: `추운 환경` / `난방 상태를 확인해 주세요` /
+- environment `CAUTION or RISK 2`: `추운 환경` / `추운 환경에서 지내셨어요` /
   `집 안이 조금 추운 날이 있었어요.` / `환경 확인하기` /
   `ENV_CAUTION_02`;
-- environment `CAUTION 3`: `습한 환경` /
-  `제습이나 환기가 필요한지 살펴봐 주세요` / `집 안이 습한 날이 있었어요.` /
+- environment `CAUTION or RISK 3`: `습한 환경` /
+  `습한 환경에서 지내셨어요` / `집 안이 습한 날이 있었어요.` /
   `환경 확인하기` / `ENV_CAUTION_03`;
-- environment `CAUTION 4`: `건조한 환경` /
-  `실내가 너무 건조하지 않은지 살펴봐 주세요` /
+- environment `CAUTION or RISK 4`: `건조한 환경` /
+  `건조한 환경에서 지내셨어요` /
   `집 안이 건조한 날이 있었어요.` / `환경 확인하기` /
   `ENV_CAUTION_04`;
 - environment `RISK 5`: `덥고 습한 환경` /
-  `냉방과 환기 상태를 함께 확인해 주세요` /
+  `덥고 습한 환경에서 지내셨어요` /
   `덥고 습한 날이 여러 번 이어졌어요.` / `환경 확인하기` /
   `ENV_RISK_05`;
 - environment `RISK 6`: `덥고 건조한 환경` /
-  `냉방 상태와 실내 습도를 함께 확인해 주세요` /
+  `덥고 건조한 환경에서 지내셨어요` /
   `덥고 건조한 날이 여러 번 이어졌어요.` / `환경 확인하기` /
   `ENV_RISK_06`;
 - environment `RISK 7`: `춥고 습한 환경` /
-  `난방과 환기 상태를 함께 확인해 주세요` /
+  `춥고 습한 환경에서 지내셨어요` /
   `춥고 습한 날이 여러 번 이어졌어요.` / `환경 확인하기` /
   `ENV_RISK_07`;
 - environment `RISK 8`: `춥고 건조한 환경` /
-  `난방 상태와 실내 습도를 함께 확인해 주세요` /
+  `춥고 건조한 환경에서 지내셨어요` /
   `춥고 건조한 날이 여러 번 이어졌어요.` / `환경 확인하기` /
   `ENV_RISK_08`;
 - device `CAUTION/power`: `전원 확인` /
-  `기기 전원이 잘 연결되어 있는지 확인해 주세요` /
+  `기기 전원 확인이 필요해요` /
   `생활 정보가 들어오지 않은 날이 있었어요.` / `기기 확인하기` /
   `DEV_POWER_01`;
 - device `CAUTION/position`: `위치 확인` /
-  `기기가 제자리에 있는지 확인해 주세요` /
+  `기기 위치 확인이 필요해요` /
   `생활 정보가 평소보다 적게 들어온 날이 있었어요.` / `기기 확인하기` /
   `DEV_POS_01`.
 
 The stable guide requires a GOOD weekly risk score, no mapped CAUTION/RISK
 guide, no CAUTION/RISK activity, environment, or device status, and zero
 detected risk events. It renders `상태 양호` /
-`평소처럼 안부를 확인해 주세요` /
+`평소와 비슷하게 지내셨어요` /
 `평소와 비슷한 생활 흐름이 이어지고 있어요.` / `안부 전화하기`. No stable
 template ID was supplied, so its validated `template_id` is null and the
 Markdown omits that line. Preserve the existing zero-source power-check guide
@@ -347,15 +348,15 @@ Render device problems first, then activity changes, environment, and the
 general stable guide, with at most three guides. Increase `RISK` does not reuse
 the increase `CAUTION` action. Model suggestions do not fill unused rendered
 slots because they do not own approved tags or template IDs. Approved guide
-titles may enter the prompt's
-allowlisted suggested-actions field, but selection, ordering, condition, title,
-description, tag, template ID, and rendered copy remain Python-owned. The
+titles may enter the prompt as observation-style card headings, but they are
+not treated as closing action sentences. Selection, ordering, condition,
+title, description, tag, template ID, and rendered copy remain Python-owned. The
 internal condition is not rendered; each card shows title, description, tag,
 and its template ID when one was supplied.
 
 ## Approved weekly-summary interpretation
 
-Prompt version `weekly-korean-free-summary-v27` extends the earlier
+Prompt version `weekly-korean-free-summary-v28` extends the earlier
 Python-owned summary formula and semantic outline. The LLM receives subscriber
 identity as a summary-opening field plus the deterministic report-facing result
 for `생활 활동`, `생활 패턴`, `실내 환경`, `기기 상태`, and

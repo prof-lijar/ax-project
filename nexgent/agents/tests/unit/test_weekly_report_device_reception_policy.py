@@ -155,5 +155,5 @@ def test_device_reception_fact_package_includes_significant_power_count() -> Non
         facts.weekly_report_data.device_status.description
     )
     assert "기기 상태" in facts.allowed_topics
-    assert "기기 전원이 잘 연결되어 있는지 확인해 주세요" in facts.suggested_actions
+    assert "기기 전원 확인이 필요해요" in facts.suggested_actions
     assert not any("3회" in fact for fact in facts.facts)

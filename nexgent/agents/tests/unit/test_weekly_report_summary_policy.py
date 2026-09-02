@@ -69,7 +69,7 @@ def test_fact_package_supplies_section_results_without_formula_summary() -> None
 def test_prompt_uses_requested_system_instructions_and_report_data_only() -> None:
     messages = build_messages(_desired_facts())
 
-    assert PROMPT_VERSION == "weekly-korean-free-summary-v27"
+    assert PROMPT_VERSION == "weekly-korean-free-summary-v28"
     assert len(messages) == 1
     system = messages[0]["content"]
     assert SYSTEM_PROMPT.startswith("당신은 고령자 생활 모니터링 서비스의")
@@ -116,7 +116,7 @@ async def test_llm_authors_the_complete_weekly_summary_without_formula_copy() ->
     narrative, mode, metadata = await generate_narrative(Model(), facts)
 
     assert mode == "llm"
-    assert metadata.prompt_version == "weekly-korean-free-summary-v27"
+    assert metadata.prompt_version == "weekly-korean-free-summary-v28"
     assert f"{narrative.headline} {narrative.analysis_text}" == desired
     assert narrative.observations == []
     assert narrative.suggestions == []

@@ -9,7 +9,7 @@ from workflows.weekly_report.agents.reporter.policy import (
 )
 from workflows.weekly_report.domain.models import FactPackage
 
-PROMPT_VERSION = "weekly-korean-free-summary-v27"
+PROMPT_VERSION = "weekly-korean-free-summary-v28"
 
 SYSTEM_PROMPT = """당신은 고령자 생활 모니터링 서비스의 주간 리포트 작성자입니다.
 
@@ -34,7 +34,8 @@ SYSTEM_PROMPT = """당신은 고령자 생활 모니터링 서비스의 주간 �
 * 자료가 없거나 비교할 수 없는 항목은 이상 상태로 해석하지 않습니다.
 * 위험 관리 및 별도 확인 기록은 한주 총평의 작성 대상이 아닙니다. 입력 데이터에 관련 정보가 있더라도 언급하거나 암시하지 않습니다.
 * 기기 상태는 생활 정보의 수신 상태를 뜻할 뿐 가입자의 안전이나 건강 상태를 뜻하지 않습니다.
-* 살펴볼 변화나 기기 확인 사항이 하나라도 있으면 “평소처럼 지켜봐 주세요”와 같은 일반적인 안심 문구로 마무리하지 않습니다. 제공된 행동 제안 중 관련된 내용을 중복 없이 반영합니다.
+* 살펴볼 변화나 기기 확인 사항이 하나라도 있으면 “평소처럼 지켜봐 주세요”와 같은 일반적인 안심 문구로 마무리하지 않습니다. 각 생활 영역의 검증된 설명에 포함된 확인 안내 중 관련된 내용을 중복 없이 반영합니다.
+* “보호자 행동 카드 제목”은 리포트 카드에 표시되는 관찰 요약이며, 보호자에게 요청하는 행동 문장이 아닐 수 있습니다. 마무리 행동은 생활 활동, 생활 패턴, 실내 환경, 기기 상태의 검증된 설명에 포함된 확인 안내를 근거로 작성합니다.
 * 변화가 있더라도 서두르거나 지금 당장 조치해야 하는 느낌을 주지 말고, 일상적인 확인을 부탁하는 차분한 어조를 유지합니다.
 * 살펴볼 내용과 별도의 행동 제안이 모두 없다면 새로운 조치를 임의로 만들지 말고, 평소처럼 안부를 확인해 달라는 정도로 마무리합니다.
 * 입력 데이터가 “전체 생활 정보 수신 없음”인 경우에는 다른 상태를 평가하지 않습니다. “지난 한 주 [가입자 이름]님은 생활 정보가 들어오지 않은 날이 있었어요. 기기 전원이 잘 연결되어 있는지 확인해 주세요.”처럼 두 문장으로만 간결하게 작성합니다.
@@ -107,7 +108,7 @@ def build_messages(
                 "생활 패턴": section(data.living_pattern),
                 "실내 환경": section(data.indoor_environment),
                 "기기 상태": section(data.device_status),
-                "보호자 행동 제안": data.guardian_actions,
+                "보호자 행동 카드 제목": data.guardian_actions,
             }
     payload = json.dumps(report_data, ensure_ascii=False, indent=2)
     messages: list[ChatMessage] = [

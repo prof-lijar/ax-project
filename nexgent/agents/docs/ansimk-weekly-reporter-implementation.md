@@ -92,7 +92,7 @@ The POST body is `WeeklyReportRequest`; the response is
 
 ## Narrative contract
 
-Prompt version `weekly-korean-free-summary-v27` receives validated,
+Prompt version `weekly-korean-free-summary-v28` receives validated,
 report-facing weekly data and returns the complete `한주 총평` as plain Korean
 body text. The payload contains the subscriber name as summary identity and
 deterministic `생활 활동`, `생활 패턴`, `실내 환경`, and `기기 상태`
@@ -158,6 +158,16 @@ rushed or alarm-amplifying words, and exclamation marks. Invalid output receives
 one bounded correction attempt. Remaining model or validation failures use a
 disclosed deterministic fallback built from the same report-facing section
 descriptions with duplicated local actions removed.
+
+Guardian action-card titles use the 2026-09-01 observation-style copy:
+`평소와 비슷하게 지내셨어요`, activity/pattern increase or decrease, the
+applicable environment statement, or the device check-needed statement.
+Directional environment variants one through four select the same
+`ENV_CAUTION_01` through `ENV_CAUTION_04` card for either CAUTION or RISK;
+combined variants five through eight remain RISK-only. Card titles supplied to
+the summary prompt are qualitative headings rather than action requests, so
+the model and deterministic fallback ground their closing check in verified
+section descriptions.
 
 `WeeklyNarrative` remains the versioned compatibility contract. Python splits
 the first validated sentence into `headline` and stores the remainder in

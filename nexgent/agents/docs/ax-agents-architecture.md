@@ -672,6 +672,18 @@ remains valid. Deterministic validation triggers one specific corrective retry,
 and the fallback applies the same grammar normalization. No calculation,
 payload, rendering, or report-section boundary changes.
 
+Weekly Reporter guardian-card title and environment-eligibility update on
+2026-09-01: deterministic guardian cards now use observation-style titles for
+stable, activity, everyday-pattern, environment, and device states while
+preserving the approved descriptions, tags, and template IDs. Directional
+environment variants one through four select `ENV_CAUTION_01` through
+`ENV_CAUTION_04` for either CAUTION or RISK; combined variants five through
+eight remain RISK-only. Prompt version `weekly-korean-free-summary-v28` labels
+these values as guardian-card titles rather than closing action sentences.
+Summary closing checks and deterministic fallback actions are grounded in the
+verified section descriptions. Card priority, the three-card cap, stable-card
+eligibility, and the zero-source device safeguard are unchanged.
+
 Weekly Reporter environment day-count update on 2026-08-25, superseded by the
 2026-08-27 spreadsheet-template policy above: the source service collapses
 device summaries by date and deterministically counts departures from the
