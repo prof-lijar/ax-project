@@ -103,3 +103,7 @@
 - [Workspace README](../README.md#docker-development-server): license-free
   Docker development startup, parent Nexgent Compose integration, and
   trusted-LAN publishing.
+- [Root production-server stack](../../docs/08-implementation/docker-production-stack.md):
+  separate stable server for tested releases, with isolated ports and volumes,
+  immutable web/backend containers, and the currently shared application-level
+  Agent Server implementation.

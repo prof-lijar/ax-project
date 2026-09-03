@@ -309,9 +309,10 @@ http://192.168.0.18:5173/
 - Docker serves the browser version of the frontend; it does not run the Tauri
   desktop shell, which requires host display and native OS integration.
 - The stack is optimized for local development, not production hardening.
-- A future production design should use built frontend assets, a production
-  HTTP server, immutable application containers, a reverse proxy or ingress,
-  explicit secret management, and deployment-specific TLS.
+- A separate [stable production-server stack](docker-production-stack.md) now uses
+  built frontend assets, Nginx, immutable application containers, isolated
+  volumes, and non-conflicting host ports. Explicit secret management,
+  authenticated ingress, and deployment-specific TLS remain follow-up work.
 - The Agent Server uses in-memory development persistence and noop
   authentication; it is restricted to the trusted LAN and is not a production
   deployment.

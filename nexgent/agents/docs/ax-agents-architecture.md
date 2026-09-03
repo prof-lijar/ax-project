@@ -282,6 +282,18 @@ context remains `/nexgent/agents`, the frontend proxy resolves the container as
 `192.168.0.18:2024`. Running `docker compose up --build` from `/nexgent` starts
 all three development services.
 
+Root production-server update on 2026-09-03: `/nexgent/compose.prod.yaml` adds
+an isolated `nexgent-prod` Compose project for the separate stable server used
+by the designated user group after application testing. It has separate host
+ports and volumes, an immutable backend container, and a compiled frontend
+served through Nginx. In this operational naming, `production` distinguishes
+the stable user server from the new-feature development server; it does not
+mean a LangSmith-hosted deployment. The stable server intentionally reuses the
+current environment values and tested in-memory Agent Server implementation
+for now. References to a `production-grade Agent Server` elsewhere in this
+document describe a separate future hardening milestone and are outside the
+current two-server separation scope.
+
 Chat streaming update on 2026-08-10: the chat workflow now consumes the
 provider adapter's asynchronous token iterator directly and emits only text
 deltas through LangGraph's `custom` stream mode. It still returns the assembled

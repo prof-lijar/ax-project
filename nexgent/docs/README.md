@@ -19,6 +19,7 @@ This documentation set defines the product architecture before implementation be
 - [Desktop App Status](08-implementation/desktop-app-status.md): implementation state, run commands, validation, and known gaps.
 - [Document Viewer](08-implementation/document-viewer.md): NextCloud file preview behavior, supported formats, LibreOffice setup, and validation.
 - [Docker Development Stack](08-implementation/docker-development-stack.md): dated implementation record for the FastAPI and Vite Compose stack, configuration, operation, validation, and remaining runtime check.
+- [Docker Production Server Stack](08-implementation/docker-production-stack.md): separate stable server for tested releases, non-conflicting ports, immutable frontend/backend images, shared temporary credential values, operations, validation, and runtime boundaries.
 - [Dashboard Content Scrolling](08-implementation/dashboard-content-scrolling.md): app-shell sizing fix that keeps left-navigation section content scrollable within the desktop window.
 - [Frontend Section Routing](08-implementation/frontend-section-routing.md): stable URL paths, direct-load behavior, and browser-history synchronization for sidebar sections.
 - [Agent Server Chat](08-implementation/agent-server-chat.md): Workspace replacement, streamed AX chatbot client, session transcript, networking, and validation.
