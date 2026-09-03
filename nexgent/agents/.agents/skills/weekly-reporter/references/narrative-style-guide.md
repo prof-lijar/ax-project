@@ -13,8 +13,9 @@ assemble the normal LLM summary from formula-owned prose.
 The LLM receives only report-facing, Python-verified weekly data:
 
 - subscriber display name as summary identity only, not a `기본 정보` block;
-- `생활 활동`, `생활 패턴`, `실내 환경`, and `기기 상태` status,
-  description, and short summary;
+- activity-detection, everyday-pattern, `실내 환경`, and `기기 상태` status,
+  description, and short summary; the first two remain separate qualitative
+  inputs even though the rendered report combines them under `생활 활동`;
 - already-approved guardian-action titles.
 
 Do not send raw rows, totals, ratios, thresholds, dates, sensor measurements,

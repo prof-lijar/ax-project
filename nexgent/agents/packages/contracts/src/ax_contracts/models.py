@@ -708,11 +708,190 @@ class SkippedWard(ContractModel):
     reason: Literal["not_found", "source_error"]
 
 
+class _WeeklyReportTemplateModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+WeeklyReportSectionStatus = Literal[
+    "GOOD",
+    "CAUTION",
+    "RISK",
+    "자료 없음",
+    "판정 불가",
+]
+
+
+class WeeklyReportPeriod(_WeeklyReportTemplateModel):
+    """Inclusive display period for the frontend report template."""
+
+    start_date: date
+    end_date: date
+    display_value: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_seven_day_period(self) -> "WeeklyReportPeriod":
+        if self.end_date != self.start_date + timedelta(days=6):
+            raise ValueError("weekly report display period must contain seven days")
+        return self
+
+
+class WeeklyReportBasicInfo(_WeeklyReportTemplateModel):
+    subscriber_name: str = Field(min_length=1, max_length=256)
+    week_label: str = Field(min_length=1, max_length=64)
+    period: WeeklyReportPeriod
+    risk_score: int | None = Field(default=None, ge=0, le=100)
+    risk_score_display: str = Field(min_length=1, max_length=32)
+    status: Literal["GOOD", "CAUTION", "RISK", "자료 없음"]
+    status_description: str = Field(min_length=1, max_length=500)
+
+
+class WeeklyReportComparisonMetrics(_WeeklyReportTemplateModel):
+    current_week: float | None = Field(default=None, ge=0)
+    current_week_display: str = Field(min_length=1, max_length=64)
+    previous_week: float | None = Field(default=None, ge=0)
+    previous_week_display: str = Field(min_length=1, max_length=64)
+    comparison_percent: float | None = Field(default=None, ge=0)
+    comparison_display: str = Field(min_length=1, max_length=64)
+
+
+class WeeklyReportComparisonSection(_WeeklyReportTemplateModel):
+    title: Literal["활동감지", "리모컨 이용"]
+    status: WeeklyReportSectionStatus
+    metrics: WeeklyReportComparisonMetrics
+
+
+class WeeklyReportActivitySection(_WeeklyReportTemplateModel):
+    title: Literal["생활 활동"] = "생활 활동"
+    descriptions: list[str] = Field(min_length=1, max_length=2)
+    tag: str = Field(min_length=1, max_length=128)
+    activity_detection: WeeklyReportComparisonSection
+    remote_control_usage: WeeklyReportComparisonSection
+
+    @model_validator(mode="after")
+    def validate_signal_identity(self) -> "WeeklyReportActivitySection":
+        if self.activity_detection.title != "활동감지":
+            raise ValueError("activity_detection title must be 활동감지")
+        if self.remote_control_usage.title != "리모컨 이용":
+            raise ValueError("remote_control_usage title must be 리모컨 이용")
+        return self
+
+
+class WeeklyReportEnvironmentMetrics(_WeeklyReportTemplateModel):
+    observed_days: int | None = Field(default=None, ge=0, le=7)
+    temperature_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    humidity_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    environment_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    temperature_max: float | None = None
+    temperature_min: float | None = None
+    humidity_max: float | None = None
+    humidity_min: float | None = None
+    observed_days_display: str = Field(min_length=1, max_length=32)
+    temperature_out_of_range_days_display: str = Field(min_length=1, max_length=32)
+    humidity_out_of_range_days_display: str = Field(min_length=1, max_length=32)
+    environment_out_of_range_days_display: str = Field(min_length=1, max_length=32)
+    temperature_max_display: str = Field(min_length=1, max_length=32)
+    temperature_min_display: str = Field(min_length=1, max_length=32)
+    humidity_max_display: str = Field(min_length=1, max_length=32)
+    humidity_min_display: str = Field(min_length=1, max_length=32)
+
+
+class WeeklyReportEnvironmentSection(_WeeklyReportTemplateModel):
+    title: Literal["실내 환경"] = "실내 환경"
+    status: WeeklyReportSectionStatus
+    description: str = Field(min_length=1, max_length=500)
+    tag: str = Field(min_length=1, max_length=128)
+    metrics: WeeklyReportEnvironmentMetrics
+
+
+class WeeklyReportDeviceMetrics(_WeeklyReportTemplateModel):
+    normal_reception_days: int = Field(ge=0, le=7)
+    other_count: int | None = Field(default=None, ge=0)
+    power_check_days: int = Field(ge=0, le=7)
+    position_count: int | None = Field(default=None, ge=0)
+    current_covered_days: int = Field(ge=0, le=7)
+    previous_covered_days: int = Field(ge=0, le=7)
+    current_device_count: int = Field(ge=0)
+    previous_device_count: int = Field(ge=0)
+    normal_reception_days_display: str = Field(min_length=1, max_length=32)
+    other_count_display: str = Field(min_length=1, max_length=32)
+    power_check_days_display: str = Field(min_length=1, max_length=32)
+    position_count_display: str = Field(min_length=1, max_length=32)
+    current_covered_days_display: str = Field(min_length=1, max_length=32)
+    previous_covered_days_display: str = Field(min_length=1, max_length=32)
+    current_device_count_display: str = Field(min_length=1, max_length=32)
+    previous_device_count_display: str = Field(min_length=1, max_length=32)
+
+
+class WeeklyReportDeviceSection(_WeeklyReportTemplateModel):
+    title: Literal["기기 상태"] = "기기 상태"
+    status: WeeklyReportSectionStatus
+    description: str = Field(min_length=1, max_length=500)
+    tag: str = Field(min_length=1, max_length=128)
+    metrics: WeeklyReportDeviceMetrics
+
+
+class WeeklyReportRiskMetrics(_WeeklyReportTemplateModel):
+    detected_count: int = Field(ge=0)
+    resolved_count: int = Field(ge=0)
+    previous_detected_count: int = Field(ge=0)
+    previous_resolved_count: int = Field(ge=0)
+    detected_count_display: str = Field(min_length=1, max_length=32)
+    resolved_count_display: str = Field(min_length=1, max_length=32)
+    previous_counts_display: str = Field(min_length=1, max_length=64)
+
+
+class WeeklyReportRiskSection(_WeeklyReportTemplateModel):
+    title: Literal["위험 관리"] = "위험 관리"
+    status: Literal["위험 감지 없음", "위험 감지 기록 있음"]
+    description: str = Field(min_length=1, max_length=500)
+    metrics: WeeklyReportRiskMetrics
+
+
+class WeeklyReportGuardianAction(_WeeklyReportTemplateModel):
+    title: str = Field(min_length=1, max_length=256)
+    description: str = Field(min_length=1, max_length=500)
+    tag: str = Field(min_length=1, max_length=128)
+    template_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class WeeklyReportGuardianActions(_WeeklyReportTemplateModel):
+    title: Literal["보호자 행동 제안"] = "보호자 행동 제안"
+    items: list[WeeklyReportGuardianAction] = Field(default_factory=list, max_length=3)
+    empty_message: str | None = Field(default=None, min_length=1, max_length=500)
+    template_id: Literal["GUI_GOOD_01"] | None = None
+
+    @model_validator(mode="after")
+    def validate_content(self) -> "WeeklyReportGuardianActions":
+        if bool(self.items) == bool(self.empty_message):
+            raise ValueError("guardian actions require either items or an empty message")
+        if self.items and self.template_id is not None:
+            raise ValueError("guardian action items cannot use an empty template ID")
+        if self.empty_message and self.template_id is None:
+            raise ValueError("empty guardian actions require GUI_GOOD_01")
+        return self
+
+
+class WeeklyReportTemplateData(_WeeklyReportTemplateModel):
+    """Frontend-ready JSON representation kept alongside legacy Markdown."""
+
+    template_version: Literal["weekly-report-v5"] = "weekly-report-v5"
+    title: Literal["주간 생활 리포트"] = "주간 생활 리포트"
+    basic_info: WeeklyReportBasicInfo
+    weekly_summary: str = Field(min_length=1, max_length=1_000)
+    generation_notice: str | None = Field(default=None, min_length=1, max_length=256)
+    living_activity: WeeklyReportActivitySection
+    indoor_environment: WeeklyReportEnvironmentSection
+    device_status: WeeklyReportDeviceSection
+    risk_management: WeeklyReportRiskSection
+    guardian_actions: WeeklyReportGuardianActions
+
+
 class WardWeeklyReport(ContractModel):
     ward_id: int = Field(ge=1)
     display_name: str = Field(min_length=1, max_length=256)
     metrics: WardWeeklyMetrics
     narrative: WeeklyNarrative
+    template_data: WeeklyReportTemplateData
     markdown: str = Field(min_length=1, max_length=40_000)
     generation_mode: Literal["llm", "template_fallback"]
     generation: NarrativeGenerationMetadata
@@ -722,6 +901,7 @@ class WardWeeklyReport(ContractModel):
         if (
             self.ward_id != self.metrics.ward_id
             or self.display_name != self.metrics.display_name
+            or self.display_name != self.template_data.basic_info.subscriber_name
         ):
             raise ValueError("report identity must match ward metrics identity")
         return self

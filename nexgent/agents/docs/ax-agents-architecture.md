@@ -114,7 +114,8 @@ PostgreSQL contains only job metadata, opaque cursors, artifact references,
 checksums, attempt counts, leases, and safe error codes. Input snapshots,
 rendered reports, and the ZIP export live on a private persistent volume with
 owner-only permissions and atomic replacement. The terminal ZIP contains
-`manifest.json`, `reports.jsonl`, and deterministic per-ward Markdown paths.
+`manifest.json`, `reports.jsonl`, deterministic `reports/<ward_id>.md`
+Markdown files, and frontend-ready `json/<ward_id>.json` template files.
 Artifacts expire after seven days; long-term report history, a public bulk API,
 scheduling, frontend controls, and bulk Slack delivery are deliberately out of
 scope. Slack remains a separate human-approved side-effect boundary.
@@ -126,6 +127,49 @@ disclosed deterministic fallback policy is unchanged. Python owns all metrics,
 section statuses, and rendering. Worker concurrency is async and
 bounded—Python threads and process-local sub-agent fan-out are not the scaling
 boundary.
+
+Weekly Reporter structured-template update on 2026-09-02: every
+`WardWeeklyReport` retains its `markdown` field and additionally returns
+`template_data`, now versioned as `weekly-report-v5`. Stable keys cover basic
+information, the LLM-authored summary, the combined living-activity section,
+the remaining deterministic detail sections, and guardian actions. Raw numeric values and approved display
+strings are both present, avoiding client-side parsing and duplicated product
+logic. Interactive responses and existing report JSON/JSONL artifacts carry
+the new field. PostgreSQL remains limited to the existing bulk metadata and
+artifact references; structured report persistence is deferred. ZIP downloads
+also expose each `template_data` object as `json/<ward_id>.json` while keeping
+all existing entries and Markdown paths intact.
+
+Weekly Reporter activity-format update on 2026-09-02: the former sibling
+`생활 활동` and `생활 패턴` sections are combined under one `생활 활동` parent.
+Its children are `활동감지` and `리모컨 이용`; child descriptions and summaries
+are removed. The parent renders the two available descriptions, collapses two
+unavailable comparisons into one approved data-limitation sentence, and shows
+one `태그` selected by `RISK`, `CAUTION`, unavailable, then `GOOD` severity.
+Equal statuses prefer `활동감지`. Calculation bands and the LLM summary inputs
+remain unchanged.
+
+Weekly Reporter missing-metric display update on 2026-09-02: indoor-environment
+rendering now distinguishes temperature-only, humidity-only, and combined data
+limitations with approved Korean copy and displays unavailable metrics as `-`.
+Count-based device metrics without source values display `0`. Structured raw
+values remain null in both cases, and neither display fallback changes status
+calculation or the LLM fact package.
+
+Weekly Reporter tag-contract update on 2026-09-02: all deterministic detail
+sections render the label `태그` rather than `요약`. The frontend template
+renames indoor-environment and device-status `summary` keys to `tag`, requiring
+the `weekly-report-v4` version. When no CAUTION/RISK guardian action is selected,
+the stable GOOD card outputs `GUI_GOOD_01` as its template ID. Markdown remains
+available alongside the structured JSON. If no card is selected, the empty
+state exposes the same code through `template_id` in both JSON and Markdown.
+
+Weekly Reporter device-day display update on 2026-09-02: `정보 수신` now uses
+the current covered-day count, while `전원 확인` is the selected seven-day
+period minus that count. The v5 frontend keys are `normal_reception_days` and
+`power_check_days`. The source-derived power-pattern occurrence count remains
+internal to the backward-compatible device status policy and is no longer
+rendered as the power metric.
 
 Release capacity is measured end to end against a representative private-model
 deployment. The hard gate is 10,000 reports in at most two hours (at least

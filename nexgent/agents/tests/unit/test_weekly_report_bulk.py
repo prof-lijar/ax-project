@@ -73,7 +73,7 @@ class FailingSource:
 
 
 @pytest.mark.asyncio
-async def test_bulk_runner_exports_manifest_jsonl_and_markdown(tmp_path) -> None:
+async def test_bulk_runner_exports_manifest_jsonl_markdown_and_json(tmp_path) -> None:
     store = InMemoryBulkJobStore()
     artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
     request = WeeklyReportBulkJobRequest(
@@ -105,8 +105,11 @@ async def test_bulk_runner_exports_manifest_jsonl_and_markdown(tmp_path) -> None
             "manifest.json",
             "reports.jsonl",
             "reports/101.md",
+            "json/101.json",
             "reports/102.md",
+            "json/102.json",
             "reports/103.md",
+            "json/103.json",
         ]
         reports_jsonl = archive.read("reports.jsonl")
         manifest = json.loads(archive.read("manifest.json"))
@@ -116,6 +119,15 @@ async def test_bulk_runner_exports_manifest_jsonl_and_markdown(tmp_path) -> None
             == hashlib.sha256(reports_jsonl).hexdigest()
         )
         assert "# 주간 생활 리포트" in archive.read("reports/101.md").decode()
+        first_report = json.loads(reports_jsonl.splitlines()[0])
+        assert first_report["template_data"]["template_version"] == (
+            "weekly-report-v5"
+        )
+        assert first_report["template_data"]["title"] == "주간 생활 리포트"
+        assert first_report["markdown"].startswith("# 주간 생활 리포트")
+        frontend_report = json.loads(archive.read("json/101.json"))
+        assert frontend_report == first_report["template_data"]
+        assert "markdown" not in frontend_report
 
 
 @pytest.mark.asyncio

@@ -159,7 +159,8 @@ def _has_required_headings(report: WardWeeklyReport) -> bool:
         return False
     detail_headings = (
         "## 생활 활동",
-        "## 생활 패턴",
+        "### 활동감지",
+        "### 리모컨 이용",
         "## 실내 환경",
         "## 기기 상태",
         "## 위험 관리",

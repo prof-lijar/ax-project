@@ -493,7 +493,7 @@ def test_all_good_report_gets_stable_guardian_guide() -> None:
         "평소와 비슷하게 지내셨어요",
         "평소와 비슷한 생활 흐름이 이어지고 있어요.",
         "안부 전화하기",
-        None,
+        "GUI_GOOD_01",
     )
 
 
@@ -536,7 +536,7 @@ def test_report_renders_stable_guide_when_no_issue_action_exists() -> None:
     assert "## 1. 평소와 비슷하게 지내셨어요" in report.markdown
     assert "- 설명: 평소와 비슷한 생활 흐름이 이어지고 있어요." in (report.markdown)
     assert "- 태그: 안부 전화하기" in report.markdown
-    assert "- template_id:" not in report.markdown
+    assert "- template_id: GUI_GOOD_01" in report.markdown
     assert "별도 행동 제안은 없어요" not in report.markdown
 
 

@@ -58,6 +58,20 @@
   Known subscriber names replace generic honorifics. Complete lifestyle-data
   reception absence produces only the approved two-sentence information and
   power-check summary, without an unsupported overall lifestyle assessment.
+  Each result retains guardian-facing `markdown` and adds a strict
+  `weekly-report-v5` `template_data` JSON object with stable keys and
+  paired raw/display metric values for direct frontend rendering. This phase
+  generates and returns JSON without storing report content in PostgreSQL.
+  Bulk ZIP downloads include one `json/<ward_id>.json` template beside the
+  existing per-ward Markdown paths. Activity detection and remote-control use
+  now render as children of one `생활 활동` section with combined descriptions
+  and one worst-status tag. Missing environment displays use `-` with
+  temperature/humidity-specific copy, while missing count-based device metrics
+  display `0` without replacing their null raw values. Detail sections use `태그` instead
+  of `요약`; stable and empty guardian-action states output `GUI_GOOD_01`.
+  Device detail uses covered days for normal reception and the remaining days
+  in the selected week for power checks; the old power-pattern count is not
+  rendered.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
   implemented FastAPI source boundary, calculation rules, inclusive year-round
   indoor-environment recommended ranges, special cool-humid/cold-humid daily

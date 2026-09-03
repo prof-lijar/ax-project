@@ -181,4 +181,6 @@ async def test_structure_evaluation_accepts_omitted_empty_sleep_section(
     assert structure.status == "passed"
     assert "수면 패턴" not in report.markdown
     assert "## 생활 활동" in report.markdown
-    assert "## 생활 패턴" in report.markdown
+    assert "### 활동감지" in report.markdown
+    assert "### 리모컨 이용" in report.markdown
+    assert "## 생활 패턴" not in report.markdown

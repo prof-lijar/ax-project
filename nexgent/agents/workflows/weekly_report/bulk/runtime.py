@@ -436,6 +436,10 @@ class WeeklyReportBulkRunner:
                 for item in completed:
                     report = read_report(item)
                     archive.writestr(f"reports/{report.ward_id}.md", report.markdown)
+                    archive.writestr(
+                        f"json/{report.ward_id}.json",
+                        report.template_data.model_dump_json(indent=2),
+                    )
 
         export = await asyncio.to_thread(
             self.artifacts.write_file, job_id, "weekly-reports.zip", write_zip

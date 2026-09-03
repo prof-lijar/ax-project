@@ -270,6 +270,6 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="평소와 비슷하게 지내셨어요",
         description="평소와 비슷한 생활 흐름이 이어지고 있어요.",
         tag="안부 전화하기",
-        template_id=None,
+        template_id="GUI_GOOD_01",
     ),
 }

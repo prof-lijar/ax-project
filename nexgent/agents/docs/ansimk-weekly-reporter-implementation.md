@@ -186,10 +186,9 @@ The deterministic renderer uses the following order:
 
 1. `주간 생활 리포트` basic information and `한주 총평`, where practical
    guidance appears beside the finding that supports it;
-2. separate `생활 활동` and `생활 패턴` sections, each with its own flat
-   current/prior/comparison metric list, followed by indoor environment,
-   device-data reception, and risk management, with no numbering on any main
-   detail heading;
+2. one `생활 활동` section containing `활동감지` and `리모컨 이용`, followed by
+   indoor environment, device-data reception, and risk management, with no
+   numbering on any main detail heading;
 3. up to three deterministic guardian action cards, each with its approved
    description, tag, and supplied template ID.
 
@@ -209,10 +208,10 @@ calm classification but omits the full score-band legend. Sleep and dispatch
 are not report topics and are never rendered.
 
 The contract's exclusive Monday `week_end` is displayed as the inclusive
-Sunday reporting date. The separate `생활 활동` and `생활 패턴` sections compare
-current and previous weekly totals independently for movement and
-remote-control use. Each signal
-shows its total ratio, uppercase status, exact guidance, and short summary:
+Sunday reporting date. The `활동감지` and `리모컨 이용` children compare current
+and previous weekly totals independently. Each child shows its uppercase
+status and metric values. Their exact guidance is combined once at the parent,
+where one `태그` uses the worse status and its approved short summary:
 `GOOD` for 70% up to but not including 150%, `CAUTION` for 40% up to 70% or
 150% through 250%, and `RISK` below 40% or above 250%. Exactly 150% and 250%
 are `CAUTION`; missing totals or a zero previous total
@@ -327,7 +326,40 @@ input snapshots, report JSON, and a terminal ZIP containing:
 - `manifest.json`, including counts, safe failures, prompt/model metadata, and
   the `reports.jsonl` checksum;
 - `reports.jsonl`, one validated report contract per line;
-- `reports/<ward_id>.md`, one guardian-facing Markdown report per ward.
+- `reports/<ward_id>.md`, one guardian-facing Markdown report per ward; and
+- `json/<ward_id>.json`, one frontend-ready `template_data` object per ward.
+
+`WardWeeklyReport` retains the existing `markdown` field and also generates
+`template_data` with template version `weekly-report-v5`. Its stable keys are
+`basic_info`, `weekly_summary`, `living_activity`, `indoor_environment`,
+`device_status`, `risk_management`, and `guardian_actions`. The combined
+`living_activity` object contains descriptions, one tag, `activity_detection`,
+and `remote_control_usage`. Raw numeric values sit beside approved display strings
+so a frontend does not need to parse Markdown, units, or percentages. The typed
+object is returned in interactive graph results and included in each existing
+report JSON artifact and `reports.jsonl` record. PostgreSQL persistence of this
+template is intentionally not part of this change. ZIP download additionally
+places the same object in `json/<ward_id>.json`; existing Markdown paths and
+archive entries remain available.
+
+The v3 display policy distinguishes missing temperature-only, humidity-only,
+and combined indoor-environment data. Missing environment metrics display `-`;
+missing count-based device metrics display `0`. Their JSON raw values remain
+null, so the presentation fallback cannot be mistaken for a measured or
+classified value.
+
+The v4 presentation contract renames the indoor-environment and device-status
+`summary` keys to `tag` and renders `태그` throughout the Markdown detail
+sections. The deterministic stable-week guardian card now outputs template ID
+`GUI_GOOD_01` when no CAUTION/RISK action card is selected. A truly empty
+guardian-action result keeps its message and exposes the same code as
+`template_id` in both JSON and Markdown.
+
+The v5 device-detail contract renders `정보 수신` from the current
+`covered_days` value and calculates `전원 확인` as the seven-day selected period
+minus that value. These JSON metrics are named `normal_reception_days` and
+`power_check_days` and render with day units. The prior source-derived power
+pattern count remains available only to the existing status classifier.
 
 The default development Compose stack now starts the job database, worker, and
 private control API. The API is not published on a host port; the current Vite
@@ -428,8 +460,8 @@ explicit confirmation and displays this limitation before submission.
   numeric grounding, narrative safety, fallback disclosure, and explicit bulk
   two-hour/ninety-minute capacity projections.
 - Bulk unit and contract tests cover idempotent submission, leased claims,
-  atomic private artifacts, manifest/JSONL/Markdown export, safe partial
-  failure, cancellation, recent-job ordering, private control API validation,
+  atomic private artifacts, manifest/JSONL/Markdown/per-ward JSON export, safe
+  partial failure, cancellation, recent-job ordering, private control API validation,
   checksum-verified download, non-zero response length, and lease recovery. A PostgreSQL-backed
   integration run and a representative 10,000-report model benchmark remain
   deployment release gates.

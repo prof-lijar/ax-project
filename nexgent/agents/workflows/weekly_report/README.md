@@ -27,16 +27,26 @@ weighted, activity averages are arithmetic means, and clock times use the
 existing linear averaging behavior. Both periods are half-open Monday ranges
 in the requested IANA timezone.
 
+Every validated report carries two equivalent presentation outputs. The
+legacy `markdown` field is retained. The frontend-ready
+`template_data` field is a strict, versioned JSON object with stable section
+keys: `basic_info`, `weekly_summary`, `living_activity`, `indoor_environment`,
+`device_status`, `risk_management`, and
+`guardian_actions`. Numeric metrics include both their raw value and approved
+Korean display value, so clients do not parse units or formatted prose. This
+change generates the JSON only; it does not add PostgreSQL report storage.
+
 The rendered Markdown follows the guardian-facing `주간 생활 리포트` layout:
 basic information, a warm LLM-authored one-paragraph `한주 총평`, metric
-sections, then up to three detailed action
-cards with approved descriptions, tags, and template IDs. Sleep and dispatch
+sections, then up to three detailed action cards with approved descriptions,
+tags, and template IDs. Sleep and dispatch
 are excluded from the entire report, including
 the LLM fact package, narrative, Markdown, observations, and suggestions. The
-activity signals are split into the unnumbered sibling sections `생활 활동` and
-`생활 패턴`, each with its own flat `지표` list. The remaining sections are
-indoor environment, device-data reception, and risk management; all five main
-detail headings are unnumbered. The basic information
+activity signals share one unnumbered `생활 활동` section with the child
+headings `활동감지` and `리모컨 이용`. Their descriptions are combined above the
+children, and one `태그` reflects the worse signal status. The remaining
+sections are indoor environment, device-data reception, and risk management.
+The basic information
 omits the score-band legend. The exclusive period end is displayed as the
 inclusive Sunday. The approved year-round ranges include their boundaries:
 `15℃ ≤ daily maximum temperature ≤ 31℃` and
@@ -59,7 +69,7 @@ approved source semantics,
 including signal-loss counts and management-note details, are omitted rather
 than inferred or rendered as empty placeholder sections.
 
-The `생활 활동` and `생활 패턴` sections sum the raw `movement_count` and
+The `활동감지` and `리모컨 이용` children sum the raw `movement_count` and
 `remote_control_count` columns respectively for each seven-day period and
 evaluate each signal independently from
 the current-to-previous total percentage. It renders `GOOD` for 70% up to but
@@ -67,6 +77,12 @@ not including 150%, `CAUTION` for 40% up to 70% or 150% through 250%, and
 `RISK` below 40% or above 250%, using the
 approved boundary inclusivity and Korean guidance. Exactly 250% is `CAUTION`;
 missing totals or a zero previous total produce an unavailable comparison.
+
+Missing indoor-environment values render as `-`. The section distinguishes
+temperature-only, humidity-only, and combined data limitations with approved
+copy. Missing count-based other/position display values render as `0`; their
+structured raw values remain null and do not affect deterministic status
+calculation.
 
 The device-data reception section evaluates the approved count columns on each
 raw device-day row. Rows whose temperature, humidity, light, and movement
@@ -82,8 +98,11 @@ three row rules appear as the neutral `기타 수신 패턴` count and do not ov
 a matched weekly status. If rows exist but no weekly rule matches, the status
 is `판정 불가` and no power-check guide is created. A zero-source week alone uses
 the actionable description `기기 전원이 연결되어 있는지 확인해 주세요.` without
-inventing a power-pattern count. Status, exact Korean copy, summary, and counts
-are Python-owned.
+inventing a power-pattern count. Status, exact Korean copy, tag, and displayed
+metrics are Python-owned. `정보 수신` uses the current `자료가 있는 날` value;
+`전원 확인` uses selected-period days minus that value. Both render in days.
+The old power-pattern occurrence count remains internal to status selection and
+is not rendered as this metric.
 
 ## Narrative boundary
 
@@ -180,9 +199,15 @@ section descriptions.
 When the weekly risk score is `GOOD`, no area has a CAUTION/RISK status, no
 mapped issue guide exists, and no risk event was detected, the section renders
 the deterministic `평소와 비슷하게 지내셨어요` guide with the approved stable-week
-description and tag. Its template ID remains null because none was supplied.
+description and tag. Its template ID is `GUI_GOOD_01`.
 Zero-source device reception instead produces the deterministic
 `기기 전원이 연결되어 있는지 확인해 주세요` guide.
+If no card is selected at all, the empty-state message also outputs
+`GUI_GOOD_01` through `template_id` in both JSON and Markdown.
+
+All rendered detail sections use the label `태그`, not `요약`. In structured
+template JSON, the indoor-environment and device-status objects expose `tag`
+keys for the same values.
 
 ## Input
 
@@ -210,9 +235,11 @@ reports, `workflows.weekly_report.bulk` uses the same source contracts,
 calculation rules, reporter specialist, and renderer behind a durable worker.
 A leased producer pages the source at one hundred wards per request; bounded
 async consumers claim wards from PostgreSQL and write private atomic artifacts.
-The final export is a seven-day ZIP with a manifest, JSONL records, and one
-Markdown file per completed ward. Failed wards are recorded with safe error
-codes and up to three attempts; one bad ward does not discard successful work.
+The final export is a seven-day ZIP with a manifest, JSONL records, one
+unchanged `reports/<ward_id>.md` file, and one frontend-ready
+`json/<ward_id>.json` template per completed ward. Failed wards are recorded
+with safe error codes and up to three attempts; one bad ward does not discard
+successful work.
 Cancel requests are persisted and watched during execution. The worker cancels
 in-flight model awaits, marks pending and leased items cancelled, and packages
 only reports that completed before cancellation.

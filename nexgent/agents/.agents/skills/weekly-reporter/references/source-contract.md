@@ -76,8 +76,8 @@ independently using `current total / previous total * 100`:
 - 150% inclusive to 250% inclusive: `CAUTION` increase;
 - above 250%: `RISK` increase.
 
-For movement in the `생활 활동` section, render these exact description and
-summary pairs:
+For the activity-detection signal, use these exact description and short-summary
+pairs when comparison data is available:
 
 - `GOOD/stable`: `활동은 비슷한 수준으로 이어졌어요.` / `평소 수준`;
 - `CAUTION/decrease`: `활동이 조금 줄어든 모습이에요.` / `조금 감소`;
@@ -88,8 +88,8 @@ summary pairs:
   `활동이 많이 늘었어요. 생활에 달라진 점이 있는지 살펴봐 주세요.` /
   `많이 증가`.
 
-For remote-control use in the `생활 패턴` section, render these exact
-description and summary pairs:
+For the remote-control-use signal, use these exact description and
+short-summary pairs when comparison data is available:
 
 - `GOOD/stable`: `TV 이용 등 일상적인 생활 패턴도 비슷하게 이어졌어요.` /
   `평소 수준`;
@@ -116,17 +116,24 @@ sentence for `한주 총평`. The model decides how to connect the two results i
 natural guardian-facing prose, while validation still requires any material
 CAUTION/RISK activity change to be represented.
 
-Render each signal's uppercase status, exact approved Korean guidance, short
-summary, current and previous totals, and comparison percentage from
-deterministic Python. The model may receive only the resulting qualitative
-guidance, never the totals, percentage, or thresholds.
+Render both signals inside one unnumbered `생활 활동` section. The child
+headings are `활동감지` and `리모컨 이용`; each child renders only its uppercase
+status and the ordered `지난 한 주`, `2주 전`, `2주 전과 비교` values. Combine
+the two deterministic descriptions above the children and render one `태그`
+instead of child-level `설명` or `요약` fields. The tag uses the worse signal
+status in `RISK`, `CAUTION`, unavailable, `GOOD` priority; equal statuses use
+`활동감지` first. Its value is the selected signal's approved short summary.
 
-In Markdown, render movement as the sibling `생활 활동` section and
-remote-control use as `생활 패턴`. Each section owns its own flat `지표` list in
-this order: `지난 한 주`, `2주 전`, and `2주 전과 비교`. Do not render the old
-numbered `활동량` wrapper or the `움직임 합계` and `리모컨 사용 합계` metric
-group labels. All other main detail headings (`실내 환경`, `기기 상태`,
-and `위험 관리`) are also unnumbered.
+When only movement comparison is unavailable, use
+`지난 주는 활동 감지를 살펴볼 정보가 부족했어요.` for that description. When
+only remote-control comparison is unavailable, use
+`지난 주는 리모컨 이용을 살펴볼 정보가 부족했어요.`. When both are
+unavailable, replace both descriptions with the single sentence
+`지난 주는 생활 활동을 살펴볼 정보가 부족했어요.`. Do not render the old
+numbered `활동량` wrapper, a sibling `생활 패턴` main section, child-level
+descriptions/summaries, or the old metric group labels. The LLM still receives
+the two qualitative signal results independently and never receives totals,
+percentages, or thresholds.
 
 ## Approved environment interpretation
 
@@ -197,9 +204,19 @@ Render these exact description/summary pairs:
 - `RISK 7`: `춥고 습한 날이 여러 번 이어졌어요. 난방과 환기 상태를 함께 살펴봐 주세요.` / `춥고 습한 날 이어짐`;
 - `RISK 8`: `춥고 건조한 날이 여러 번 이어졌어요. 난방 상태와 실내 습도를 조금 더 세심하게 살펴봐 주세요.` / `춥고 건조한 날 이어짐`.
 
-Python renders the uppercase status, exact copy, summary, affected-day counts,
+Python renders the uppercase status, exact copy, `태그`, affected-day counts,
 and weekly extrema. Numeric ranges remain internal and are not sent to the
 model; only qualitative findings may enter the fact package.
+
+For rendered detail only, determine temperature availability from a positive
+temperature measurement count plus both weekly extrema, and determine humidity
+availability the same way. If only temperature is unavailable, render
+`지난 주는 온도를 살펴볼 정보가 부족했어요.`. If only humidity is unavailable,
+render `지난 주는 습도를 살펴볼 정보가 부족했어요.`. If both are unavailable,
+render `지난 주는 실내 환경을 살펴볼 정보가 부족했어요.`. Any unavailable
+environment metric display value is `-`; the structured raw value remains
+null. This presentation rule does not manufacture measurements or alter the
+LLM fact package.
 
 ## Approved device-status interpretation
 
@@ -246,12 +263,21 @@ Render these exact description/summary pairs:
   `일부 생활 정보가 평소보다 적게 들어온 날이 있었어요. 기기가 제자리에 있는지 확인해 주세요.` /
   `위치 확인`.
 
-Render the uppercase status, exact approved Korean description, short summary,
-the three classified occurrence counts, and the derived other-pattern count in
-deterministic Python. Raw row values and thresholds must not enter the model
-fact package. A selected weekly power or position occurrence count may enter
-the Python-owned summary outline as a significant value; narrative validation
-permits only numeric tokens already present in that outline.
+Render the uppercase status, exact approved Korean description, and short tag
+in deterministic Python. For detail metrics, `정보 수신` is the current
+snapshot's `covered_days`. `전원 확인` is the selected period length minus that
+normal-reception day count; for the seven-day weekly contract, three covered
+days therefore render as `정보 수신: 3일` and `전원 확인: 4일`. Keep the
+existing source-derived `device_power_count` for backward-compatible status
+classification, but do not render that occurrence count as the power metric.
+The neutral other-pattern and position-pattern values remain occurrence counts.
+
+The frontend contract exposes the day values as `normal_reception_days` and
+`power_check_days`, each with a paired display field. When a rendered
+other-pattern or position-pattern metric has no source value, keep its
+structured raw value null but display `0`. Raw row values and thresholds must
+not enter the model fact package, and display calculations do not alter status
+selection.
 
 ## Approved risk-score interpretation
 
@@ -338,11 +364,14 @@ The stable guide requires a GOOD weekly risk score, no mapped CAUTION/RISK
 guide, no CAUTION/RISK activity, environment, or device status, and zero
 detected risk events. It renders `상태 양호` /
 `평소와 비슷하게 지내셨어요` /
-`평소와 비슷한 생활 흐름이 이어지고 있어요.` / `안부 전화하기`. No stable
-template ID was supplied, so its validated `template_id` is null and the
-Markdown omits that line. Preserve the existing zero-source power-check guide
+`평소와 비슷한 생활 흐름이 이어지고 있어요.` / `안부 전화하기` /
+`GUI_GOOD_01`. Preserve the existing zero-source power-check guide
 as a data-availability safeguard; its template ID is also null because no ID
 was supplied.
+
+If no guardian-action card is selected at all, keep the approved empty message
+and output `GUI_GOOD_01` as the empty-state template ID. It is rendered as
+`template_id` in both structured JSON and Markdown.
 
 Render device problems first, then activity changes, environment, and the
 general stable guide, with at most three guides. Increase `RISK` does not reuse
@@ -353,6 +382,11 @@ not treated as closing action sentences. Selection, ordering, condition,
 title, description, tag, template ID, and rendered copy remain Python-owned. The
 internal condition is not rendered; each card shows title, description, tag,
 and its template ID when one was supplied.
+
+Across rendered report detail sections, use the Korean display label `태그`
+instead of `요약`. The structured frontend keys for indoor environment and
+device status are likewise `tag`; internal qualitative fact-package fields may
+retain `summary` because they are not part of the rendered template contract.
 
 ## Approved weekly-summary interpretation
 

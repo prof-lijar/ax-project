@@ -102,9 +102,140 @@ def test_approved_sheet_example_renders_exact_markdown_template() -> None:
 
     expected = _HUMAN_GOOD_SAMPLE.read_text(encoding="utf-8").rstrip("\n")
     assert report.markdown == expected
+    assert report.template_data.model_dump(mode="json") == {
+        "template_version": "weekly-report-v5",
+        "title": "주간 생활 리포트",
+        "basic_info": {
+            "subscriber_name": "[넥스터]_김동현",
+            "week_label": "8월 3주차",
+            "period": {
+                "start_date": "2026-08-17",
+                "end_date": "2026-08-23",
+                "display_value": "2026-08-17(월) ~ 2026-08-23(일)",
+            },
+            "risk_score": 93,
+            "risk_score_display": "93점",
+            "status": "GOOD",
+            "status_description": "전반적으로 평소와 비슷한 생활 흐름을 이어가셨어요.",
+        },
+        "weekly_summary": (
+            "지난 한 주 [넥스터]_김동현님은 전반적으로 평소와 비슷한 생활 "
+            "흐름을 이어가셨어요. 생활 활동은 평소와 비슷하게 이어졌고, "
+            "생활 정보도 빠짐없이 잘 들어왔어요. 집 안 온도와 습도도 대체로 "
+            "쾌적했으니 평소처럼 지켜봐 주세요."
+        ),
+        "generation_notice": None,
+        "living_activity": {
+            "title": "생활 활동",
+            "descriptions": [
+                "활동은 비슷한 수준으로 이어졌어요.",
+                "지난 주는 리모컨 이용을 살펴볼 정보가 부족했어요.",
+            ],
+            "tag": "비교 자료 없음",
+            "activity_detection": {
+                "title": "활동감지",
+                "status": "GOOD",
+                "metrics": {
+                    "current_week": 2224.0,
+                    "current_week_display": "2224회",
+                    "previous_week": 2176.0,
+                    "previous_week_display": "2176회",
+                    "comparison_percent": pytest.approx(102.20588235294117),
+                    "comparison_display": "102.2%",
+                },
+            },
+            "remote_control_usage": {
+                "title": "리모컨 이용",
+                "status": "자료 없음",
+                "metrics": {
+                    "current_week": 0.0,
+                    "current_week_display": "0회",
+                    "previous_week": 0.0,
+                    "previous_week_display": "0회",
+                    "comparison_percent": None,
+                    "comparison_display": "비교 불가",
+                },
+            },
+        },
+        "indoor_environment": {
+            "title": "실내 환경",
+            "status": "GOOD",
+            "description": "집 안 온도와 습도가 대체로 쾌적하게 유지됐어요.",
+            "tag": "쾌적",
+            "metrics": {
+                "observed_days": 7,
+                "temperature_out_of_range_days": 0,
+                "humidity_out_of_range_days": 0,
+                "environment_out_of_range_days": 0,
+                "temperature_max": 28.9,
+                "temperature_min": 26.2,
+                "humidity_max": 68.7,
+                "humidity_min": 52.9,
+                "observed_days_display": "7일",
+                "temperature_out_of_range_days_display": "0일",
+                "humidity_out_of_range_days_display": "0일",
+                "environment_out_of_range_days_display": "0일",
+                "temperature_max_display": "28.9℃",
+                "temperature_min_display": "26.2℃",
+                "humidity_max_display": "68.7%",
+                "humidity_min_display": "52.9%",
+            },
+        },
+        "device_status": {
+            "title": "기기 상태",
+            "status": "GOOD",
+            "description": "생활 정보가 빠짐없이 잘 들어왔어요.",
+            "tag": "정상",
+            "metrics": {
+                "normal_reception_days": 7,
+                "other_count": 0,
+                "power_check_days": 0,
+                "position_count": 0,
+                "current_covered_days": 7,
+                "previous_covered_days": 7,
+                "current_device_count": 1,
+                "previous_device_count": 1,
+                "normal_reception_days_display": "7일",
+                "other_count_display": "0회",
+                "power_check_days_display": "0일",
+                "position_count_display": "0회",
+                "current_covered_days_display": "7일",
+                "previous_covered_days_display": "7일",
+                "current_device_count_display": "1대",
+                "previous_device_count_display": "1대",
+            },
+        },
+        "risk_management": {
+            "title": "위험 관리",
+            "status": "위험 감지 없음",
+            "description": "지난 한 주 위험 감지 기록은 없었어요.",
+            "metrics": {
+                "detected_count": 0,
+                "resolved_count": 0,
+                "previous_detected_count": 0,
+                "previous_resolved_count": 0,
+                "detected_count_display": "0회",
+                "resolved_count_display": "0회",
+                "previous_counts_display": "0회 / 0회",
+            },
+        },
+        "guardian_actions": {
+            "title": "보호자 행동 제안",
+            "items": [
+                {
+                    "title": "평소와 비슷하게 지내셨어요",
+                    "description": "평소와 비슷한 생활 흐름이 이어지고 있어요.",
+                    "tag": "안부 전화하기",
+                    "template_id": "GUI_GOOD_01",
+                }
+            ],
+            "empty_message": None,
+            "template_id": None,
+        },
+    }
 
 
-def test_activity_signals_render_as_separate_flat_sections() -> None:
+def test_activity_signals_render_inside_one_living_activity_section() -> None:
     current = _snapshot(101, current=True).model_copy(
         update={
             "movement_count_total": 3607.0,
@@ -142,31 +273,209 @@ def test_activity_signals_render_as_separate_flat_sections() -> None:
 
     expected = """## 생활 활동
 
+설명:
+- 활동은 비슷한 수준으로 이어졌어요.
+- TV 이용 등 일상적인 생활 패턴이 많이 늘었어요. 최근 생활에 달라진 점이 있는지 살펴봐 주세요.
+- 태그: 많이 증가
+
+### 활동감지
+
 - 상태: GOOD
-- 설명: 활동은 비슷한 수준으로 이어졌어요.
-- 요약: 평소 수준
-
-### 지표
-
 - 지난 한 주: 3607회
 - 2주 전: 3240회
 - 2주 전과 비교: 111.3%
 
 ---
 
-## 생활 패턴
+### 리모컨 이용
 
 - 상태: RISK
-- 설명: TV 이용 등 일상적인 생활 패턴이 많이 늘었어요. 최근 생활에 달라진 점이 있는지 살펴봐 주세요.
-- 요약: 많이 증가
-
-### 지표
-
 - 지난 한 주: 5075회
 - 2주 전: 1355회
 - 2주 전과 비교: 374.5%"""
     assert expected in report.markdown
     assert "## 1. 활동량" not in report.markdown
+
+
+@pytest.mark.parametrize(
+    (
+        "movement_current",
+        "movement_previous",
+        "remote_current",
+        "remote_previous",
+        "descriptions",
+        "expected_tag",
+    ),
+    [
+        (
+            100.0,
+            0.0,
+            100.0,
+            100.0,
+            [
+                "지난 주는 활동 감지를 살펴볼 정보가 부족했어요.",
+                "TV 이용 등 일상적인 생활 패턴도 비슷하게 이어졌어요.",
+            ],
+            "비교 자료 없음",
+        ),
+        (
+            100.0,
+            100.0,
+            100.0,
+            0.0,
+            [
+                "활동은 비슷한 수준으로 이어졌어요.",
+                "지난 주는 리모컨 이용을 살펴볼 정보가 부족했어요.",
+            ],
+            "비교 자료 없음",
+        ),
+        (
+            100.0,
+            0.0,
+            100.0,
+            0.0,
+            ["지난 주는 생활 활동을 살펴볼 정보가 부족했어요."],
+            "비교 자료 없음",
+        ),
+        (
+            30.0,
+            100.0,
+            100.0,
+            0.0,
+            [
+                "활동이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+                "지난 주는 리모컨 이용을 살펴볼 정보가 부족했어요.",
+            ],
+            "많이 감소",
+        ),
+        (
+            50.0,
+            100.0,
+            200.0,
+            100.0,
+            [
+                "활동이 조금 줄어든 모습이에요.",
+                "TV 이용 등 일상적인 생활 패턴이 조금 늘었어요.",
+            ],
+            "조금 감소",
+        ),
+    ],
+)
+def test_activity_section_combines_missing_information_descriptions(
+    movement_current: float,
+    movement_previous: float,
+    remote_current: float,
+    remote_previous: float,
+    descriptions: list[str],
+    expected_tag: str,
+) -> None:
+    current = _snapshot(101, current=True).model_copy(
+        update={
+            "movement_count_total": movement_current,
+            "remote_control_count_total": remote_current,
+        }
+    )
+    previous = _snapshot(101, current=False).model_copy(
+        update={
+            "movement_count_total": movement_previous,
+            "remote_control_count_total": remote_previous,
+        }
+    )
+    metrics = WardWeeklyMetrics(
+        ward_id=101,
+        display_name="테스트 가입자",
+        week_start=date(2026, 8, 17),
+        week_end=date(2026, 8, 24),
+        current=current,
+        previous=previous,
+        delta=_mock_delta(current, previous),
+    )
+
+    report = render_report(
+        metrics,
+        WeeklyNarrative(headline="지난 한 주를 살펴봤어요."),
+        "llm",
+        NarrativeGenerationMetadata(
+            prompt_version="test",
+            validation_status="passed",
+        ),
+    )
+
+    assert report.template_data.living_activity.descriptions == descriptions
+    assert report.template_data.living_activity.tag == expected_tag
+    assert f"- 태그: {expected_tag}" in report.markdown
+    for description in descriptions:
+        assert f"- {description}" in report.markdown
+
+
+@pytest.mark.parametrize(
+    ("missing_temperature", "missing_humidity", "expected_description"),
+    [
+        (True, False, "지난 주는 온도를 살펴볼 정보가 부족했어요."),
+        (False, True, "지난 주는 습도를 살펴볼 정보가 부족했어요."),
+        (True, True, "지난 주는 실내 환경을 살펴볼 정보가 부족했어요."),
+    ],
+)
+def test_environment_section_uses_specific_missing_data_copy_and_dash_values(
+    missing_temperature: bool,
+    missing_humidity: bool,
+    expected_description: str,
+) -> None:
+    current = _snapshot(101, current=True).model_copy(
+        update={
+            "temperature_avg": None if missing_temperature else 23.5,
+            "temperature_min": None if missing_temperature else 26.0,
+            "temperature_max": None if missing_temperature else 28.0,
+            "temperature_count": 0 if missing_temperature else 84,
+            "humidity_avg": None if missing_humidity else 50.0,
+            "humidity_min": None if missing_humidity else 40.0,
+            "humidity_max": None if missing_humidity else 58.0,
+            "humidity_count": 0 if missing_humidity else 84,
+            "environment_observed_days": None,
+            "temperature_out_of_range_days": None,
+            "humidity_out_of_range_days": None,
+            "environment_out_of_range_days": None,
+            "low_temperature_days": None,
+            "cool_temperature_days": None,
+            "high_temperature_days": None,
+            "low_humidity_days": None,
+            "high_humidity_days": None,
+            "humidity_at_or_above_70_days": None,
+        }
+    )
+    previous = _snapshot(101, current=False)
+    metrics = WardWeeklyMetrics(
+        ward_id=101,
+        display_name="테스트 가입자",
+        week_start=date(2026, 8, 17),
+        week_end=date(2026, 8, 24),
+        current=current,
+        previous=previous,
+        delta=_mock_delta(current, previous),
+    )
+
+    report = render_report(
+        metrics,
+        WeeklyNarrative(headline="지난 한 주를 살펴봤어요."),
+        "llm",
+        NarrativeGenerationMetadata(
+            prompt_version="test",
+            validation_status="passed",
+        ),
+    )
+    rendered = report.template_data.indoor_environment
+
+    assert rendered.description == expected_description
+    assert f"- 설명: {expected_description}" in report.markdown
+    assert rendered.metrics.observed_days is None
+    assert rendered.metrics.observed_days_display == "-"
+    assert "- 온습도 관측일: -" in report.markdown
+    assert rendered.metrics.temperature_max_display == (
+        "-" if missing_temperature else "28℃"
+    )
+    assert rendered.metrics.humidity_max_display == (
+        "-" if missing_humidity else "58%"
+    )
 
 
 def test_risk_score_description_uses_approved_good_copy() -> None:
@@ -223,23 +532,26 @@ async def test_report_uses_guardian_facing_section_template() -> None:
     assert "이번 주에는" not in report.markdown
     assert "수면" not in report.markdown
     assert "출동" not in report.markdown
-    assert "## 생활 활동\n\n- 상태: GOOD" in report.markdown
-    assert "- 설명: 활동은 비슷한 수준으로 이어졌어요." in report.markdown
-    assert "- 요약: 평소 수준" in report.markdown
-    assert "## 생활 패턴\n\n- 상태: GOOD" in report.markdown
+    assert "## 생활 활동\n\n설명:" in report.markdown
+    assert "- 활동은 비슷한 수준으로 이어졌어요." in report.markdown
+    assert "- 태그: 평소 수준" in report.markdown
+    assert "### 활동감지\n\n- 상태: GOOD" in report.markdown
+    assert "### 리모컨 이용\n\n- 상태: GOOD" in report.markdown
+    assert "## 생활 패턴" not in report.markdown
     assert "## 1. 활동량" not in report.markdown
     assert "### 움직임" not in report.markdown
     assert "### 리모컨 사용" not in report.markdown
+    assert "### 지표" not in report.markdown.split("## 실내 환경", 1)[0]
     assert "- 움직임 합계" not in report.markdown
     assert "- 리모컨 사용 합계" not in report.markdown
     assert "- 2주 전과 비교: 112.5%" in report.markdown
     assert "## 기기 상태" in report.markdown
     assert "## 기기 상태\n\n- 상태: GOOD" in report.markdown
     assert "- 설명: 생활 정보가 빠짐없이 잘 들어왔어요." in report.markdown
-    assert "- 요약: 정상" in report.markdown
-    assert "- 정상 수신: 7회" in report.markdown
+    assert "- 태그: 정상" in report.markdown
+    assert "- 정보 수신: 7일" in report.markdown
     assert "- 기타 수신 패턴: 0회" in report.markdown
-    assert "- 전원 확인 패턴: 0회" in report.markdown
+    assert "- 전원 확인: 0일" in report.markdown
     assert "- 기기 위치 확인 패턴: 0회" in report.markdown
     assert "### 위험 관리 기록" not in report.markdown
     assert (
@@ -247,6 +559,8 @@ async def test_report_uses_guardian_facing_section_template() -> None:
     )
     assert "# 보호자 행동 제안" in report.markdown
     assert "- 확인된 자료를 바탕으로 한 별도 행동 제안은 없어요." in (report.markdown)
+    assert "- template_id: GUI_GOOD_01" in report.markdown
+    assert report.template_data.guardian_actions.template_id == "GUI_GOOD_01"
     assert "생활 흐름에 일부 변화가 보였어요." not in report.markdown
     assert "- 권장 행동:" not in report.markdown
 
@@ -289,8 +603,55 @@ async def test_report_requests_power_check_when_device_rows_are_missing() -> Non
 
     assert "## 기기 상태\n\n- 상태: 자료 없음" in report.markdown
     assert "- 설명: 기기 전원이 연결되어 있는지 확인해 주세요." in report.markdown
-    assert "- 정상 수신: 자료 없음" in report.markdown
-    assert "- 기타 수신 패턴: 자료 없음" in report.markdown
+    assert "- 정보 수신: 0일" in report.markdown
+    assert "- 기타 수신 패턴: 0" in report.markdown
+    assert "- 전원 확인: 7일" in report.markdown
+    assert "- 기기 위치 확인 패턴: 0" in report.markdown
+    assert report.template_data.device_status.metrics.normal_reception_days == 0
+    assert report.template_data.device_status.metrics.power_check_days == 7
+
+
+@pytest.mark.asyncio
+async def test_device_day_metrics_use_covered_days_and_period_remainder() -> None:
+    source = await MockWeeklyReportSourceRepository().load(
+        WeeklyReportRequest(week_start=date(2026, 8, 3), ward_ids=[101])
+    )
+    metrics = source.items[0]
+    metrics = metrics.model_copy(
+        update={
+            "current": metrics.current.model_copy(
+                update={
+                    "covered_days": 3,
+                    "daily_summary_count": 3,
+                    "device_good_count": 3,
+                    "device_power_count": 0,
+                    "device_position_count": 0,
+                }
+            ),
+            "delta": metrics.delta.model_copy(
+                update={"covered_days": 3 - metrics.previous.covered_days}
+            ),
+        }
+    )
+
+    report = render_report(
+        metrics,
+        WeeklyNarrative(headline="지난 한 주를 살펴봤어요."),
+        "llm",
+        NarrativeGenerationMetadata(
+            prompt_version="test",
+            validation_status="passed",
+        ),
+    )
+
+    device_metrics = report.template_data.device_status.metrics
+    assert device_metrics.normal_reception_days == 3
+    assert device_metrics.normal_reception_days_display == "3일"
+    assert device_metrics.power_check_days == 4
+    assert device_metrics.power_check_days_display == "4일"
+    assert "- 정보 수신: 3일" in report.markdown
+    assert "- 전원 확인: 4일" in report.markdown
+    assert "전원 확인 패턴" not in report.markdown
 
 
 @pytest.mark.asyncio
@@ -324,8 +685,8 @@ async def test_report_labels_available_device_rows_without_claiming_no_data() ->
 
     assert "## 기기 상태\n\n- 상태: GOOD" in report.markdown
     assert "- 설명: 생활 정보가 빠짐없이 잘 들어왔어요." in report.markdown
-    assert "- 요약: 정상" in report.markdown
-    assert "- 정상 수신: 6회" in report.markdown
+    assert "- 태그: 정상" in report.markdown
+    assert "- 정보 수신: 7일" in report.markdown
     assert "- 기타 수신 패턴: 1회" in report.markdown
     assert "지난 한 주 기기 데이터 수신이 확인되지 않았어요." not in report.markdown
     assert "기기 전원이 연결되어 있는지 확인해 주세요" not in report.markdown
@@ -390,7 +751,9 @@ async def test_report_omits_sleep_section_regardless_of_source_metrics(
     assert "평균 취침 시간" not in report.markdown
     assert "출동" not in report.markdown
     assert "## 생활 활동" in report.markdown
-    assert "## 생활 패턴" in report.markdown
+    assert "### 활동감지" in report.markdown
+    assert "### 리모컨 이용" in report.markdown
+    assert "## 생활 패턴" not in report.markdown
     assert "## 실내 환경" in report.markdown
     assert "## 기기 상태" in report.markdown
     assert "## 위험 관리" in report.markdown
@@ -428,7 +791,7 @@ async def test_report_renders_approved_monthly_environment_ranges() -> None:
 
     assert "## 실내 환경\n\n- 상태: GOOD" in report.markdown
     assert "- 설명: 집 안 온도와 습도가 대체로 쾌적하게 유지됐어요." in report.markdown
-    assert "- 요약: 쾌적" in report.markdown
+    assert "- 태그: 쾌적" in report.markdown
     assert "- 온습도 관측일: 7일" in report.markdown
     assert "- 온도 권장범위 이탈: 0일" in report.markdown
     assert "- 습도 권장범위 이탈: 0일" in report.markdown
@@ -526,7 +889,7 @@ async def test_report_gives_approved_feedback_from_environment_day_counts(
 
     assert f"- 상태: {status}" in report.markdown
     assert f"- 설명: {feedback}" in report.markdown
-    assert f"- 요약: {summary}" in report.markdown
+    assert f"- 태그: {summary}" in report.markdown
 
 
 @pytest.mark.parametrize(
