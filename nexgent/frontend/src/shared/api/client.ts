@@ -1,11 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import {
-  activity,
   agents,
-  approvals,
-  systemHealth,
-  tasks
+  systemHealth
 } from "./mockData";
 import {
   downloadBrowserNextcloudFile,
@@ -15,12 +12,9 @@ import {
   readBrowserNextcloudTextFile
 } from "./nextcloudBackendClient";
 import type {
-  ActivityEvent,
   AgentSummary,
-  ApprovalRequest,
   CommandError,
-  SystemHealth,
-  TaskSummary
+  SystemHealth
 } from "../types/domain";
 import type {
   NextcloudDownloadResponse,
@@ -94,39 +88,6 @@ function normalizeCommandError(error: unknown): CommandError {
 export const desktopApi = {
   getSystemHealth: () =>
     callCommand<SystemHealth>("system_health", () => systemHealth),
-  listTasks: () => callCommand<TaskSummary[]>("tasks_list", () => tasks),
-  getTask: (id: string) =>
-    callCommand<TaskSummary>(
-      "tasks_get",
-      () => {
-        const task = tasks.find((item) => item.id === id);
-        if (!task) {
-          throw normalizeCommandError({
-            code: "not_found",
-            message: `Task with id '${id}' was not found.`
-          });
-        }
-        return task;
-      },
-      { id }
-    ),
-  listApprovals: () =>
-    callCommand<ApprovalRequest[]>("approvals_list", () => approvals),
-  getApproval: (id: string) =>
-    callCommand<ApprovalRequest>(
-      "approvals_get",
-      () => {
-        const approval = approvals.find((item) => item.id === id);
-        if (!approval) {
-          throw normalizeCommandError({
-            code: "not_found",
-            message: `Approval request with id '${id}' was not found.`
-          });
-        }
-        return approval;
-      },
-      { id }
-    ),
   listAgents: () => callCommand<AgentSummary[]>("agents_list", () => agents),
   getAgent: (id: string) =>
     callCommand<AgentSummary>(
@@ -143,8 +104,6 @@ export const desktopApi = {
       },
       { id }
     ),
-  listActivity: () =>
-    callCommand<ActivityEvent[]>("activity_list", () => activity),
   getNextcloudStatus: () =>
     callDesktopOrBrowser<NextcloudStatus>(
       "nextcloud_health",

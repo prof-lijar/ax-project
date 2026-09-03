@@ -8,6 +8,36 @@ The first Linux desktop implementation has been added under `frontend/`. It prov
 
 The app is usable as a web preview and builds successfully as a Debian package.
 
+## Update: Retired Tasks, Approvals, and Activity UI
+
+Date: 2026-09-03
+
+The Tasks, Approvals, and Activity menu items and pages were removed from the
+React frontend. Their route identifiers, rendering branches, query hooks,
+browser mock data, frontend domain types, dedicated table styling, status/risk
+badge helpers, and progress component were removed with them. The related
+placeholder command-strip actions for Policy, Notifications, and Create task
+were also removed; global search and Pause remain available on non-Chat pages.
+
+Direct visits to `/tasks`, `/approvals`, or `/activity` now follow the existing
+unknown-route behavior and are replaced with `/chat`. The Tauri command modules
+and Rust domain models remain in place because this change removes frontend
+surfaces only and does not retire backend capabilities.
+
+Validation performed from `frontend/`:
+
+```bash
+npm test
+npm run build
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-check cargo check --manifest-path src-tauri/Cargo.toml
+git diff --check
+```
+
+All four checks passed. `npm audit --audit-level=moderate` could not be
+completed because this execution environment denied access to the external npm
+registry. Run that exact command from `frontend/` in an authorized network
+environment to complete the dependency audit.
+
 ## Update: Agent Server Chat
 
 Date: 2026-08-10
@@ -64,7 +94,7 @@ npm run build
 - Created `frontend/` as a Tauri 2 + React + TypeScript + Vite project.
 - Added an AX chatbot as the first screen with streamed responses, cancellation,
   session-only transcript state, and Agent Server availability reporting.
-- Added secondary views for Tasks, Approvals, Team, Activity, and Settings.
+- Added secondary views for Agents, NextCloud, RAG, Test agent, and Settings.
 - Added a NextCloud Drive surface for read-first file browsing through the local backend.
 - Added a NextCloud document viewer for PDF, Markdown, text, images, DOCX, PPTX, and XLSX.
   - Office files are converted to PDF by LibreOffice on the backend machine.
@@ -90,7 +120,8 @@ npm run build
 - Document preview uses backend-proxied bytes and scoped `blob:` rendering for PDF/image previews.
 - Markdown is rendered as React nodes with limited safe support for details blocks and safe links.
 - Credentials are not stored in frontend state.
-- Approval and task data are sample data only; destructive actions are not implemented.
+- Retired task, approval, and activity operations remain enforced behind the
+  Tauri command boundary and are not exposed by the current React UI.
 - UI icons use `lucide-react`, an open-source icon package with React and TypeScript support.
 
 ## Validation
@@ -159,7 +190,8 @@ npm run tauri:build
 - NextCloud Drive integration is read-first; upload, write, delete, copy, and move are intentionally not exposed yet.
 - DOCX, PPTX, and XLSX previews require LibreOffice packages on the backend host.
 - The desktop app expects the FastAPI backend to run separately; it does not supervise the backend process yet.
-- Approval decisions are visible in the UI but do not mutate persistent state yet.
+- Task, approval, and activity command handlers remain sample-data backed and
+  have no current React UI.
 - AppImage bundling is not enabled by default because it failed in this environment with a read-only filesystem error.
 - The Tauri icon is a generated placeholder and should be replaced with a proper product icon.
 - Agent chat streaming is implemented; general domain event streaming is not.
@@ -167,7 +199,6 @@ npm run tauri:build
 ## Next Work
 
 1. Add SQLite persistence behind Rust commands.
-2. Implement approval decision commands and audit events.
-3. Connect the existing FastAPI backend health/integration state beyond the read-first Drive view.
-4. Replace seed data with persisted task, approval, agent, and activity records.
-5. Add focused frontend tests for approval controls, task status rendering, and event reconciliation.
+2. Connect the existing FastAPI backend health/integration state beyond the read-first Drive view.
+3. Replace remaining command-backed sample data when the associated product
+   surfaces are prioritized again.

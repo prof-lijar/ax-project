@@ -3,11 +3,8 @@ import { useUiStore, type AppSection } from "../state/useUiStore";
 export const sectionPaths: Record<AppSection, string> = {
   chat: "/chat",
   nextcloud: "/nextcloud",
-  tasks: "/tasks",
-  approvals: "/approvals",
   agents: "/agents",
   "test-agent": "/test-agent",
-  activity: "/activity",
   rag: "/rag",
   settings: "/settings"
 };

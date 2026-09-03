@@ -5,11 +5,8 @@ import type { AgentDefinition } from "../types/agents";
 export type AppSection =
   | "chat"
   | "nextcloud"
-  | "tasks"
-  | "approvals"
   | "agents"
   | "test-agent"
-  | "activity"
   | "rag"
   | "settings";
 

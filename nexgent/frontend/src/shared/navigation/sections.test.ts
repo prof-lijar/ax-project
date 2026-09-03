@@ -8,6 +8,15 @@ import {
 } from "./sections";
 
 describe("section routing", () => {
+  it("omits the retired Tasks, Approvals, and Activity sections", () => {
+    expect(navItems.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(["tasks", "approvals", "activity"])
+    );
+    expect(resolveSectionLocation("/tasks")).toBeNull();
+    expect(resolveSectionLocation("/approvals")).toBeNull();
+    expect(resolveSectionLocation("/activity")).toBeNull();
+  });
+
   it("uses /agents as the canonical Agents route", () => {
     expect(sectionPaths.agents).toBe("/agents");
     expect(resolveSectionLocation("/agents")).toEqual({

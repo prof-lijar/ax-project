@@ -1,15 +1,12 @@
 import { useLayoutEffect } from "react";
 
-import { ActivityPage } from "../features/activity/ActivityPage";
 import { AgentDetailPage } from "../features/agents/AgentDetailPage";
 import { AgentsPage } from "../features/agents/AgentsPage";
 import { ScoutWorkbenchPage } from "../features/agents/ScoutWorkbenchPage";
-import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
 import { ChatPage } from "../features/chat/ChatPage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
 import { RagPage } from "../features/rag/RagPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
-import { TasksPage } from "../features/tasks/TasksPage";
 import { TestAgentPage } from "../features/test-agent/TestAgentPage";
 import { SCOUT_AGENT_ID } from "../shared/api/agentCatalogClient";
 import {
@@ -48,8 +45,6 @@ export function App() {
     <AppShell>
       {activeSection === "chat" && <ChatPage />}
       {activeSection === "nextcloud" && <NextcloudPage />}
-      {activeSection === "tasks" && <TasksPage />}
-      {activeSection === "approvals" && <ApprovalsPage />}
       {activeSection === "agents" &&
         (agentsRoute.kind === "weekly-reporter" ? (
           <TestAgentPage mode="agent" />
@@ -61,7 +56,6 @@ export function App() {
           <AgentsPage />
         ))}
       {activeSection === "test-agent" && <TestAgentPage />}
-      {activeSection === "activity" && <ActivityPage />}
       {activeSection === "rag" && <RagPage />}
       {activeSection === "settings" && <SettingsPage />}
     </AppShell>

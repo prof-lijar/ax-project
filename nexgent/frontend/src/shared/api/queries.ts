@@ -19,11 +19,8 @@ import {
 export const queryKeys = {
   health: ["system-health"] as const,
   agentServerHealth: ["agent-server-health"] as const,
-  tasks: ["tasks"] as const,
-  approvals: ["approvals"] as const,
   agents: ["agents"] as const,
   agentCatalog: ["agent-catalog"] as const,
-  activity: ["activity"] as const,
   nextcloudStatus: ["nextcloud-status"] as const,
   nextcloudFiles: (path: string) => ["nextcloud-files", path] as const,
   nextcloudTextFile: (path: string) => ["nextcloud-text-file", path] as const,
@@ -49,20 +46,6 @@ export function useSystemHealth() {
   });
 }
 
-export function useTasks() {
-  return useQuery({
-    queryKey: queryKeys.tasks,
-    queryFn: desktopApi.listTasks
-  });
-}
-
-export function useApprovals() {
-  return useQuery({
-    queryKey: queryKeys.approvals,
-    queryFn: desktopApi.listApprovals
-  });
-}
-
 export function useAgents() {
   return useQuery({
     queryKey: queryKeys.agents,
@@ -74,13 +57,6 @@ export function useAgentCatalog() {
   return useQuery({
     queryKey: queryKeys.agentCatalog,
     queryFn: agentCatalogClient.listAgents
-  });
-}
-
-export function useActivity() {
-  return useQuery({
-    queryKey: queryKeys.activity,
-    queryFn: desktopApi.listActivity
   });
 }
 

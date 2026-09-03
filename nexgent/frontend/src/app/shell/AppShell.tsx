@@ -1,9 +1,6 @@
 import {
-  Bell,
-  CirclePlus,
   PauseCircle,
-  Search,
-  ShieldCheck
+  Search
 } from "lucide-react";
 import type { PropsWithChildren } from "react";
 
@@ -87,23 +84,9 @@ export function AppShell({ children }: PropsWithChildren) {
           </label>
 
           <div className={styles.actions}>
-            <button className={styles.iconButton} type="button" title="Policy">
-              <ShieldCheck size={18} />
-            </button>
-            <button
-              className={styles.iconButton}
-              type="button"
-              title="Notifications"
-            >
-              <Bell size={18} />
-            </button>
             <button className={styles.secondaryButton} type="button">
               <PauseCircle size={18} />
               <span>Pause</span>
-            </button>
-            <button className={styles.primaryButton} type="button">
-              <CirclePlus size={18} />
-              <span>Create task</span>
             </button>
           </div>
         </header>}
