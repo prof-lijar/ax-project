@@ -110,10 +110,11 @@ after process loss. Additional worker processes or containers increase the
 consumer pool while all select the oldest active job, so the first release
 processes one bulk job at a time and queues later jobs.
 
-PostgreSQL contains only job metadata, opaque cursors, artifact references,
-checksums, attempt counts, leases, and safe error codes. Input snapshots,
-rendered reports, and the ZIP export live on a private persistent volume with
-owner-only permissions and atomic replacement. The terminal ZIP contains
+The separate bulk-job PostgreSQL contains only job metadata, opaque cursors,
+artifact references, checksums, attempt counts, leases, and safe error codes.
+Input snapshots, rendered reports, and the ZIP export live on a private
+persistent volume with owner-only permissions and atomic replacement. The
+terminal ZIP contains
 `manifest.json`, `reports.jsonl`, deterministic `reports/<ward_id>.md`
 Markdown files, and frontend-ready `json/<ward_id>.json` template files.
 Artifacts expire after seven days; long-term report history, a public bulk API,
@@ -135,8 +136,8 @@ information, the LLM-authored summary, the combined living-activity section,
 the remaining deterministic detail sections, and guardian actions. Raw numeric values and approved display
 strings are both present, avoiding client-side parsing and duplicated product
 logic. Interactive responses and existing report JSON/JSONL artifacts carry
-the new field. PostgreSQL remains limited to the existing bulk metadata and
-artifact references; structured report persistence is deferred. ZIP downloads
+the new field. The bulk finalizer also persists that frontend object to the
+dedicated report table described below. ZIP downloads
 also expose each `template_data` object as `json/<ward_id>.json` while keeping
 all existing entries and Markdown paths intact.
 
@@ -170,6 +171,17 @@ period minus that count. The v5 frontend keys are `normal_reception_days` and
 `power_check_days`. The source-derived power-pattern occurrence count remains
 internal to the backward-compatible device status policy and is no longer
 rendered as the power metric.
+
+Weekly Reporter report-storage update on 2026-09-03: the workflow-owned
+`ansimk.ward_weekly_report` table is the durable frontend JSON target. After
+generating verified JSONL and ZIP artifacts, the bulk worker streams completed
+report artifacts through a dedicated writer DSN into bounded 500-row upsert
+batches inside one transaction. `report_data` contains `template_data` only;
+score and status are copied to queryable columns, and `week_end_date` is the
+inclusive Sunday shown to the guardian. The ward/week unique key makes a
+reclaimed or repeated finalization idempotent. Any write or count mismatch
+rolls back storage and fails the job. The private source service and interactive
+preview remain non-writing, while bulk-job metadata storage stays separate.
 
 Release capacity is measured end to end against a representative private-model
 deployment. The hard gate is 10,000 reports in at most two hours (at least

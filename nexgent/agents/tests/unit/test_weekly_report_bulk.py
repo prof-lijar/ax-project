@@ -16,6 +16,8 @@ from ax_persistence import (
 from workflows.weekly_report.bulk import (
     WEEKLY_REPORT_BULK_JOB_KIND,
     WeeklyReportBulkRunner,
+    WeeklyReportStorageRecord,
+    WeeklyReportStorageUnavailable,
 )
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
@@ -72,6 +74,25 @@ class FailingSource:
         raise RuntimeError("source unavailable")
 
 
+class RecordingWeeklyReportStore:
+    def __init__(self) -> None:
+        self.records: list[WeeklyReportStorageRecord] = []
+
+    async def upsert_reports(self, reports) -> int:
+        stored_count = 0
+        async for report in reports:
+            self.records.append(report)
+            stored_count += 1
+        return stored_count
+
+
+class FailingWeeklyReportStore:
+    async def upsert_reports(self, reports) -> int:
+        async for _ in reports:
+            break
+        raise WeeklyReportStorageUnavailable("test storage failure")
+
+
 @pytest.mark.asyncio
 async def test_bulk_runner_exports_manifest_jsonl_markdown_and_json(tmp_path) -> None:
     store = InMemoryBulkJobStore()
@@ -87,11 +108,13 @@ async def test_bulk_runner_exports_manifest_jsonl_markdown_and_json(tmp_path) ->
         request.model_dump(mode="json"),
     )
     model = FakeModel()
+    report_store = RecordingWeeklyReportStore()
     status = await WeeklyReportBulkRunner(
         store,
         artifacts,
         MockWeeklyReportSourceRepository(),
         model,
+        report_store,
         poll_seconds=0.001,
     ).run(job.job_id, concurrency=3)
 
@@ -99,6 +122,12 @@ async def test_bulk_runner_exports_manifest_jsonl_markdown_and_json(tmp_path) ->
     assert status.completed_count == 3
     assert status.fallback_count == 0
     assert model.calls == 3
+    assert [record.ward_id for record in report_store.records] == [101, 102, 103]
+    assert all(
+        json.loads(record.report_data_json)["template_version"]
+        == "weekly-report-v5"
+        for record in report_store.records
+    )
     assert status.export is not None
     with zipfile.ZipFile(artifacts.local_path(status.export.uri)) as archive:
         assert archive.namelist() == [
@@ -181,6 +210,7 @@ async def test_bulk_runner_requests_one_hundred_wards_per_source_page(
         artifacts,
         source,
         FakeModel(),
+        RecordingWeeklyReportStore(),
         poll_seconds=0.001,
     ).run(job.job_id, concurrency=1)
 
@@ -208,12 +238,44 @@ async def test_bulk_runner_marks_producer_failure_terminal(tmp_path) -> None:
         artifacts,
         FailingSource(),
         FakeModel(),
+        RecordingWeeklyReportStore(),
         poll_seconds=0.001,
     ).run(job.job_id, concurrency=1)
 
     assert status.status == "failed"
     assert status.running_count == 0
     assert status.pending_count == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_runner_does_not_complete_when_report_storage_fails(
+    tmp_path,
+) -> None:
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3),
+        max_reports=1,
+        idempotency_key="report-storage-failure-is-terminal",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND,
+        request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+
+    status = await WeeklyReportBulkRunner(
+        store,
+        artifacts,
+        MockWeeklyReportSourceRepository(),
+        FakeModel(),
+        FailingWeeklyReportStore(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+
+    assert status.status == "failed"
+    assert status.completed_count == 1
+    assert status.export is None
 
 
 @pytest.mark.asyncio
@@ -237,6 +299,7 @@ async def test_bulk_runner_falls_back_when_one_model_item_times_out(tmp_path) ->
         artifacts,
         MockWeeklyReportSourceRepository(),
         model,
+        RecordingWeeklyReportStore(),
         poll_seconds=0.001,
         item_timeout_seconds=0.01,
     ).run(job.job_id, concurrency=1)
@@ -310,6 +373,7 @@ async def test_bulk_runner_cancels_in_flight_report_generation(tmp_path) -> None
             artifacts,
             MockWeeklyReportSourceRepository(),
             model,
+            RecordingWeeklyReportStore(),
             poll_seconds=0.001,
         ).run(job.job_id, concurrency=3)
     )

@@ -462,6 +462,29 @@ network and require parameterized application-owned SQL, pooled read-only
 transactions, bounded timeouts, safe errors, and readiness checks. Never expose
 a generic query endpoint.
 
+## Weekly-report storage schema
+
+The approved PostgreSQL target is `ansimk.ward_weekly_report`, defined by
+`workflows/weekly_report/source/migrations/001_create_ward_weekly_report.sql`.
+It owns one row per ward and `week_start_date`, references
+`ansimk.resources_ward(id)` with `ON DELETE RESTRICT`, and stores the generated
+frontend report JSON in the non-null `report_data` JSONB column. The score and
+status columns provide queryable weekly metadata beside the JSON document.
+
+The private source API remains read-only and the interactive graph does not
+persist previews. The durable bulk finalizer uses a separate
+`WEEKLY_REPORT_STORAGE_DATABASE_DSN` writer after the JSONL and ZIP artifacts
+have been generated. It stores frontend `template_data` only, copies the
+basic-info score/status into queryable columns, and uses the inclusive Sunday
+display date for `week_end_date`.
+
+One finalization sends bounded batches inside a single database transaction.
+`ON CONFLICT (ward_id, week_start_date) DO UPDATE` replaces the report fields
+and advances `updated_at`, making recovery idempotent. A storage or record-count
+failure prevents the bulk job from reaching `completed`; the transaction rolls
+back rather than accepting a partial weekly set. Production should use a
+dedicated role limited to this table and its identity sequence.
+
 For durable bulk execution, any producer, consumer, or finalizer exception must
 persist a terminal job state and cancel unfinished items so an oldest failed
 job cannot block later jobs. Bound each narrative model await with

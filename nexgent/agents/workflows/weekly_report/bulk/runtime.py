@@ -7,6 +7,7 @@ import json
 import logging
 import socket
 import zipfile
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -36,8 +37,15 @@ from workflows.weekly_report.agents.reporter.prompt import PROMPT_VERSION
 from workflows.weekly_report.domain import build_fact_package, render_report
 from workflows.weekly_report.tools.source_repository import WeeklyReportSourceRepository
 
+from .report_store import (
+    WeeklyReportStorageRecord,
+    WeeklyReportStorageUnavailable,
+    WeeklyReportStore,
+)
+
 WEEKLY_REPORT_BULK_JOB_KIND = "weekly_report_export_v1"
 _TERMINAL_STATES = {"completed", "partial", "failed", "cancelled", "expired"}
+_STORAGE_ARTIFACT_BATCH_SIZE = 250
 _LOG = logging.getLogger(__name__)
 
 
@@ -54,6 +62,7 @@ class WeeklyReportBulkRunner:
         artifacts: LocalBulkArtifactStore,
         source: WeeklyReportSourceRepository,
         model: Any,
+        report_store: WeeklyReportStore,
         *,
         lease_seconds: int = 900,
         max_attempts: int = 3,
@@ -71,6 +80,7 @@ class WeeklyReportBulkRunner:
         self.artifacts = artifacts
         self.source = source
         self.model = model
+        self.report_store = report_store
         self.lease_seconds = lease_seconds
         self.max_attempts = max_attempts
         self.claim_size = claim_size
@@ -444,6 +454,17 @@ class WeeklyReportBulkRunner:
         export = await asyncio.to_thread(
             self.artifacts.write_file, job_id, "weekly-reports.zip", write_zip
         )
+        stored_count = await self.report_store.upsert_reports(
+            self._storage_records(completed, read_report)
+        )
+        if stored_count != len(completed):
+            raise WeeklyReportStorageUnavailable(
+                "weekly-report storage count did not match generated reports"
+            )
+        _LOG.info(
+            "weekly reports stored",
+            extra={"job_id": str(job_id), "stored_count": stored_count},
+        )
         await self.store.finish_job(
             job_id,
             status=terminal_status,
@@ -451,6 +472,26 @@ class WeeklyReportBulkRunner:
             export_checksum=export.sha256,
             expires_at=datetime.now(UTC) + timedelta(days=self.retention_days),
         )
+
+    @staticmethod
+    async def _storage_records(
+        completed: list[BulkItemRecord],
+        read_report: Callable[[BulkItemRecord], WardWeeklyReport],
+    ) -> AsyncIterator[WeeklyReportStorageRecord]:
+        for offset in range(0, len(completed), _STORAGE_ARTIFACT_BATCH_SIZE):
+            item_batch = completed[offset : offset + _STORAGE_ARTIFACT_BATCH_SIZE]
+
+            def load_batch(
+                items: list[BulkItemRecord],
+            ) -> list[WeeklyReportStorageRecord]:
+                return [
+                    WeeklyReportStorageRecord.from_report(read_report(item))
+                    for item in items
+                ]
+
+            records = await asyncio.to_thread(load_batch, item_batch)
+            for record in records:
+                yield record
 
     @staticmethod
     def _validate_source(
@@ -510,6 +551,8 @@ async def bulk_job_status(
 
 
 def _error_code(exc: BaseException) -> str:
+    if isinstance(exc, WeeklyReportStorageUnavailable):
+        return "report_storage_error"
     if isinstance(exc, ValidationError):
         return "invalid_contract"
     if isinstance(exc, (OSError, ValueError, json.JSONDecodeError)):

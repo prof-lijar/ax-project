@@ -361,6 +361,18 @@ minus that value. These JSON metrics are named `normal_reception_days` and
 `power_check_days` and render with day units. The prior source-derived power
 pattern count remains available only to the existing status classifier.
 
+An approved forward SQL migration defines
+`ansimk.ward_weekly_report` for JSON report persistence. The table has
+an identity primary key, a restricted foreign key to `ansimk.resources_ward`,
+weekly start/end dates, optional score and status metadata, non-null JSONB
+`report_data`, timestamps, and a unique ward/week-start constraint. Interactive
+previews remain non-writing. After bulk JSONL and ZIP artifacts are generated,
+the finalizer uses the dedicated `WEEKLY_REPORT_STORAGE_DATABASE_DSN` connection
+to upsert frontend `template_data`. It sends bounded batches inside one
+transaction, uses the inclusive Sunday report date as `week_end_date`, and
+updates score, status, JSON, and `updated_at` on a ward/week conflict. A write
+failure rolls the operation back and prevents the job from completing.
+
 The default development Compose stack now starts the job database, worker, and
 private control API. The API is not published on a host port; the current Vite
 development server proxies `/weekly-report-bulk-api` from the Weekly Reporter

@@ -33,8 +33,9 @@ legacy `markdown` field is retained. The frontend-ready
 keys: `basic_info`, `weekly_summary`, `living_activity`, `indoor_environment`,
 `device_status`, `risk_management`, and
 `guardian_actions`. Numeric metrics include both their raw value and approved
-Korean display value, so clients do not parse units or formatted prose. This
-change generates the JSON only; it does not add PostgreSQL report storage.
+Korean display value, so clients do not parse units or formatted prose.
+Interactive generation remains non-writing. The durable bulk finalizer also
+stores frontend `template_data` in PostgreSQL.
 
 The rendered Markdown follows the guardian-facing `주간 생활 리포트` layout:
 basic information, a warm LLM-authored one-paragraph `한주 총평`, metric
@@ -208,6 +209,24 @@ If no card is selected at all, the empty-state message also outputs
 All rendered detail sections use the label `태그`, not `요약`. In structured
 template JSON, the indoor-environment and device-status objects expose `tag`
 keys for the same values.
+
+## Report storage
+
+The approved table definition for JSON report persistence is available
+at `source/migrations/001_create_ward_weekly_report.sql`. It creates
+`ansimk.ward_weekly_report` with a foreign key to `ansimk.resources_ward`, one
+row per ward/week start, queryable score and status columns, and non-null JSONB
+`report_data`.
+
+After all completed report artifacts and the ZIP export have been built, the
+bulk worker uses a dedicated `WEEKLY_REPORT_STORAGE_DATABASE_DSN` to upsert
+frontend `template_data`. It sends bounded batches inside one transaction and
+uses `ON CONFLICT (ward_id, week_start_date) DO UPDATE`, so recovery replaces
+the same week instead of creating duplicates. `week_end_date` is the inclusive
+Sunday shown in the report; updates also advance `updated_at`. Interactive
+generation and the private source API never use this writer. For compatibility,
+the worker falls back to `ANSIMK_DATABASE_DSN` when the dedicated variable is
+unset; production should configure the dedicated least-privilege role.
 
 ## Input
 

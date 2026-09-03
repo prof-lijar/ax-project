@@ -60,8 +60,9 @@
   power-check summary, without an unsupported overall lifestyle assessment.
   Each result retains guardian-facing `markdown` and adds a strict
   `weekly-report-v5` `template_data` JSON object with stable keys and
-  paired raw/display metric values for direct frontend rendering. This phase
-  generates and returns JSON without storing report content in PostgreSQL.
+  paired raw/display metric values for direct frontend rendering. Interactive
+  previews remain non-writing; the durable bulk finalizer persists generated
+  frontend JSON before completing its job.
   Bulk ZIP downloads include one `json/<ward_id>.json` template beside the
   existing per-ward Markdown paths. Activity detection and remote-control use
   now render as children of one `생활 활동` section with combined descriptions
@@ -71,7 +72,11 @@
   of `요약`; stable and empty guardian-action states output `GUI_GOOD_01`.
   Device detail uses covered days for normal reception and the remaining days
   in the selected week for power checks; the old power-pattern count is not
-  rendered.
+  rendered. The bulk finalizer populates the `ansimk.ward_weekly_report` JSONB
+  store through a dedicated, atomic upsert writer without changing the
+  read-only source boundary. Compose can reuse the currently configured
+  `ANSIMK_DATABASE_DSN` for local compatibility; production should set the
+  dedicated writer DSN and least-privilege role explicitly.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
   implemented FastAPI source boundary, calculation rules, inclusive year-round
   indoor-environment recommended ranges, special cool-humid/cold-humid daily

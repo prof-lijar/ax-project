@@ -20,7 +20,9 @@ from ax_persistence import AsyncpgBulkJobStore, LocalBulkArtifactStore, utc_now
 
 from workflows.weekly_report.bulk import (
     WEEKLY_REPORT_BULK_JOB_KIND,
+    AsyncpgWeeklyReportStore,
     WeeklyReportBulkRunner,
+    WeeklyReportStorageSettings,
     bulk_job_status,
 )
 from workflows.weekly_report.tools import get_weekly_report_source_repository
@@ -100,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int:
     store = AsyncpgBulkJobStore(settings.database_dsn)
+    report_store: AsyncpgWeeklyReportStore | None = None
     artifacts = LocalBulkArtifactStore(
         settings.artifact_root, minimum_free_bytes=settings.artifact_min_free_bytes
     )
@@ -146,11 +149,16 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             return 0
 
         model = get_default_chat_model()
+        report_store = AsyncpgWeeklyReportStore(
+            WeeklyReportStorageSettings.from_env()
+        )
+        await report_store.start()
         runner = WeeklyReportBulkRunner(
             store,
             artifacts,
             get_weekly_report_source_repository(),
             model,
+            report_store,
             poll_seconds=settings.poll_seconds,
             item_timeout_seconds=settings.item_timeout_seconds,
         )
@@ -174,6 +182,8 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
                 )
                 await asyncio.sleep(settings.poll_seconds)
     finally:
+        if report_store is not None:
+            await report_store.close()
         await store.close()
 
 
