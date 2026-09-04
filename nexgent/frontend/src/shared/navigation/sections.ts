@@ -4,7 +4,6 @@ export const sectionPaths: Record<AppSection, string> = {
   chat: "/chat",
   nextcloud: "/nextcloud",
   agents: "/agents",
-  "test-agent": "/test-agent",
   rag: "/rag",
   settings: "/settings"
 };
@@ -59,6 +58,10 @@ export function resolveSectionLocation(
 
   if (normalizedPathname === "/co-workers") {
     return { section: "agents", path: sectionPaths.agents };
+  }
+
+  if (normalizedPathname === "/test-agent") {
+    return { section: "agents", path: "/agents/1" };
   }
 
   if (getAgentIdFromPath(normalizedPathname)) {

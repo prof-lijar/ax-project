@@ -7,7 +7,7 @@ import { ChatPage } from "../features/chat/ChatPage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
 import { RagPage } from "../features/rag/RagPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
-import { TestAgentPage } from "../features/test-agent/TestAgentPage";
+import { WeeklyReporterPage } from "../features/weekly-report/WeeklyReporterPage";
 import { SCOUT_AGENT_ID } from "../shared/api/agentCatalogClient";
 import {
   getAgentIdFromPath,
@@ -47,7 +47,7 @@ export function App() {
       {activeSection === "nextcloud" && <NextcloudPage />}
       {activeSection === "agents" &&
         (agentsRoute.kind === "weekly-reporter" ? (
-          <TestAgentPage mode="agent" />
+          <WeeklyReporterPage />
         ) : agentsRoute.kind === "scout" ? (
           <ScoutWorkbenchPage />
         ) : agentsRoute.kind === "detail" ? (
@@ -55,7 +55,6 @@ export function App() {
         ) : (
           <AgentsPage />
         ))}
-      {activeSection === "test-agent" && <TestAgentPage />}
       {activeSection === "rag" && <RagPage />}
       {activeSection === "settings" && <SettingsPage />}
     </AppShell>

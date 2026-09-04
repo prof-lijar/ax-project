@@ -34,12 +34,12 @@ describe("section routing", () => {
     expect(getAgentIdFromPath("/agents/data%20agent")).toBe("data agent");
   });
 
-  it("resolves the weekly reporter test route", () => {
-    expect(sectionPaths["test-agent"]).toBe("/test-agent");
+  it("redirects the retired Weekly Reporter test route", () => {
     expect(resolveSectionLocation("/test-agent/")).toEqual({
-      section: "test-agent",
-      path: "/test-agent"
+      section: "agents",
+      path: "/agents/1"
     });
+    expect(navItems.map(({ id }) => id)).not.toContain("test-agent");
   });
 
   it("resolves the RAG route and keeps it immediately before Settings", () => {

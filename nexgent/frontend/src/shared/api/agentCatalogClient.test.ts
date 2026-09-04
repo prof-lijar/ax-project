@@ -22,12 +22,12 @@ describe("agentCatalogClient", () => {
     expect(first[0]).toMatchObject({
       id: "1",
       graphId: "ansimk_weekly_reporter",
-      canRunInChat: true,
-      observationMode: "live",
+      canRunInChat: false,
+      observationMode: null,
       readiness: "ready"
     });
     expect(first[0].limitations).toContain(
-      "Scheduling and delivery are not connected"
+      "Scheduling and Slack delivery are separate workflows"
     );
     expect(first[1]).toMatchObject({
       id: "7",

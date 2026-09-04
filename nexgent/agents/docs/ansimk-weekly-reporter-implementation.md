@@ -2,7 +2,59 @@
 
 Date: 2026-08-24
 
-Status: **Implemented interactive and durable bulk reporting paths**
+Status: **Implemented backend compatibility graph and durable bulk reporting**
+
+## Update: Frontend Schedule UI Prototype
+
+Date: 2026-09-04
+
+The bulk-only Weekly Reporter page now includes a compact schedule card
+directly below its heading. The prototype defaults scheduled runs to enabled,
+Monday at 03:00, weekly repetition, and the `Asia/Seoul` time zone. Users can
+change the enabled state, weekday, and time locally and see the planned
+schedule rendered in twelve-hour display form.
+
+This is intentionally UI-only. The save button is disabled, the page states
+that changes are not saved and no automatic job will run, and no API,
+persistence model, timer, worker trigger, or bulk-job submission behavior was
+added. Existing manual bulk controls are unchanged.
+
+Validation completed on 2026-09-04:
+
+```text
+Focused schedule/page tests                  2 passed
+Frontend Vitest suite                       203 passed (20 files)
+TypeScript/Vite production build            passed
+```
+
+## Update: Frontend Bulk-Only Workflow
+
+Date: 2026-09-04
+
+The first-party frontend now exposes Weekly Reporter only through the durable
+bulk control plane at `/agents/1`. Quick Preview, interactive per-ward report
+review, the Chat-triggered reporter run, the `/test-agent` sidebar route, and
+the frontend Agent Server SSE parser/types for `ansimk_weekly_reporter` were
+removed. `/test-agent` redirects to `/agents/1` for old bookmarks. The catalog
+keeps Weekly Reporter visible but marks it as non-Chat-capable.
+
+The bulk browser client remains responsible for job submission, content-free
+status polling, recent-job selection, cancellation, and verified ZIP download.
+The registered LangGraph workflow remains available as a backend compatibility
+surface and continues to be covered by backend tests; this change does not
+remove or alter its source, calculation, rendering, or Slack boundaries.
+
+Validation completed on 2026-09-04:
+
+```text
+Frontend Vitest suite                       202 passed (20 files)
+TypeScript/Vite production build            passed
+Tauri cargo check                           passed
+npm audit --audit-level=moderate            0 vulnerabilities
+LangGraph configuration                     valid, 4 graphs found
+Root development Compose rendering          passed
+Git whitespace validation                   passed
+```
 
 ## Update: Report Storage Table Rename
 
@@ -373,15 +425,13 @@ explicit sensitive-delivery confirmation. Bulk Slack delivery is not
 implemented. Delivery remains outside generation so retries cannot duplicate
 messages. Slack setup is documented in `docs/slack-outbound-messaging.md`.
 
-## Concurrent interactive Chat
+## Frontend execution boundary
 
-The frontend treats normal Chat and a live Weekly Reporter run as independent
-bounded request lanes. One request of each type may run concurrently, with
-separate cancellation, loading, error, and notice state. The report appears as
-background work and does not disable the Chat composer. This changes only
-client-side ownership: both paths may still share an inference endpoint, so
-bulk worker concurrency must be benchmarked and interactive capacity reserved
-when necessary.
+The frontend no longer starts the interactive Weekly Reporter graph from Chat
+or the agent page. Normal Chat owns one cancellable request, while Weekly
+Reporter jobs run only through the independently scalable durable bulk worker.
+Both services may still share an inference endpoint, so bulk worker concurrency
+must be benchmarked and interactive capacity reserved when necessary.
 
 ## Bulk jobs: operation and recovery
 
@@ -469,8 +519,8 @@ sudo docker compose up --build -d
 sudo docker compose logs -f weekly-report-worker weekly-report-bulk-api
 ```
 
-Open `/agents/1`, choose **Bulk generation**, approve the live private-model
-run, and start with 100–1,000 reports before attempting 10,000. The UI polls
+Open `/agents/1`, approve the live private-model run, and start with 100–1,000
+reports before attempting 10,000. The UI polls
 content-free status, shows discovered/queued/running/completed/fallback/failed
 counts, observed reports per second, projected finish, recent durable jobs,
 in-flight cancellation, and the terminal ZIP download. Cancel and stop-and-refresh

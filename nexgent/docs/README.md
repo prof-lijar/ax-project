@@ -27,9 +27,9 @@ This documentation set defines the product architecture before implementation be
   read-only Top-5 grounding, streamed OpenAI-compatible generation,
   deterministic sources, completed Phase 1 live validation, and current limits.
 - [Chat File Attachments](08-implementation/chat-file-attachments.md): transient multi-file upload, document extraction, multimodal model input, security boundaries, and validation.
-- [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
+- [Agents Management Interface](08-implementation/agents-management-interface.md): agent catalog, bulk-only Weekly Reporter entry, inspector UX, routing, and integration boundaries.
 - [AnsimK Scout Agent Frontend POC](08-implementation/ansimk-scout-agent-frontend-poc.md): Agents-page workbench, direct browser-to-standalone-Scout API routing, authoritative run timing, exact-origin CORS, validated report rendering, and operational network limits.
-- [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): live `/agents/1` quick 1–25 report preview plus durable 1–10,000 report job submission, throughput monitoring, cancellation, export, private runtime path, and operator UX.
+- [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): bulk-only `/agents/1` job submission, throughput monitoring, cancellation, verified export, an explicitly UI-only weekly schedule control, private runtime path, and the retired Quick Preview boundary.
 - [RAG UI Integration](../RAG/docs/rag-ui-integration.md): sidebar and `/rag` page integration, direct browser-to-RAG API routing, RAG Chat validation, and the systemd-managed host RAG lifecycle.
 
 ## Stage-One Definition

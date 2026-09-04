@@ -60,8 +60,8 @@
   power-check summary, without an unsupported overall lifestyle assessment.
   Each result retains guardian-facing `markdown` and adds a strict
   `weekly-report-v5` `template_data` JSON object with stable keys and
-  paired raw/display metric values for direct frontend rendering. Interactive
-  previews remain non-writing; the durable bulk finalizer persists generated
+  paired raw/display metric values for direct frontend rendering. The
+  interactive compatibility graph remains non-writing; the durable bulk finalizer persists generated
   frontend JSON before completing its job.
   Bulk ZIP downloads include one `json/<ward_id>.json` template beside the
   existing per-ward Markdown paths. Activity detection and remote-control use
@@ -97,9 +97,11 @@
   recovery, a bounded per-report model deadline, capacity targets,
   configuration, and verification gates.
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
-  live `/agents/1` execution with quick 1–25 report preview, durable 1–10,000
-  report job control and throughput monitoring, safe report review, concurrent
-  background Chat, and the full Compose runtime path.
+  bulk-only `/agents/1` execution with durable 1–10,000 report job control,
+  throughput monitoring, cancellation, verified export, an explicitly
+  non-persistent Monday 03:00 weekly schedule UI prototype, and the full
+  Compose runtime path; the former Quick Preview and Chat execution paths are
+  retired.
 - [Outbound Slack messaging](slack-outbound-messaging.md): approved-channel
   configuration, reusable async delivery, safe failures, Slack app setup, and
   human-approved weekly-report verification.

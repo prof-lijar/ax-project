@@ -1,5 +1,4 @@
 import {
-  FlaskConical,
   Bot,
   Cloud,
   Database,
@@ -30,12 +29,6 @@ export const navItems: Array<{
     path: sectionPaths.nextcloud
   },
   { id: "agents", label: "Agents", icon: Bot, path: sectionPaths.agents },
-  {
-    id: "test-agent",
-    label: "Test agent",
-    icon: FlaskConical,
-    path: sectionPaths["test-agent"]
-  },
   { id: "rag", label: "RAG", icon: Database, path: sectionPaths.rag },
   { id: "settings", label: "Settings", icon: Settings, path: sectionPaths.settings }
 ];

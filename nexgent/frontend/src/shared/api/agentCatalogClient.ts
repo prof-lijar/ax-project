@@ -21,19 +21,19 @@ const weeklyReporterRecord: AgentCatalogRecord = {
   name: "Weekly Reporter",
   role: "Ward risk reporting collaborator",
   description:
-    "Compares current and previous danger-day totals for a bounded ward subset, then prepares grounded Korean Markdown reports.",
+    "Generates durable weekly ward reports concurrently and stores verified frontend-ready results.",
   graphId: "ansimk_weekly_reporter",
-  canRunInChat: true,
+  canRunInChat: false,
   readiness: "ready",
-  currentWork: "Ready to query ward risk data through the database MCP",
-  runtimeLabel: "LangGraph",
-  lastObservedAt: "2026-08-12T18:07:00+09:00",
-  observationMode: "live",
+  currentWork: "Ready to submit and monitor durable bulk jobs",
+  runtimeLabel: "Bulk worker",
+  lastObservedAt: null,
+  observationMode: null,
   capabilities: [
-    "Ward danger-day comparison",
-    "Database MCP integration",
-    "Per-ward report generation",
-    "Korean Markdown output",
+    "Durable concurrent report generation",
+    "Live progress and cancellation",
+    "Frontend-ready JSON storage",
+    "Verified ZIP exports",
     "Deterministic fallback reporting"
   ],
   inputs: [
@@ -46,44 +46,29 @@ const weeklyReporterRecord: AgentCatalogRecord = {
       name: "timezone",
       description: "Report timezone; defaults to Asia/Seoul",
       required: false
+    },
+    {
+      name: "max_reports",
+      description: "Maximum reports to generate, from 1 through 10,000",
+      required: true
     }
   ],
   outputDescription:
-    "One Korean Markdown risk report per ward, plus any batch-level warnings.",
+    "Persisted frontend report JSON plus a checksum-verified ZIP export.",
   configuration: [
-    { label: "Trigger", value: "Manual" },
+    { label: "Trigger", value: "Durable manual job" },
     { label: "Default timezone", value: "Asia/Seoul" },
-    { label: "Reporting window", value: "Monday to Monday" },
-    { label: "Data source", value: "ansimk.analysis_warddangerdaily via db MCP" },
-    { label: "Ward limit", value: "Operator-selected, 1–25" }
+    { label: "Reporting window", value: "Monday to Sunday" },
+    { label: "Data source", value: "Private weekly-report source API" },
+    { label: "Report limit", value: "Operator-selected, 1–10,000" }
   ],
   limitations: [
-    "Each run processes a bounded subset of up to 25 eligible wards",
-    "Danger-day semantics require domain validation",
-    "Scheduling and delivery are not connected",
-    "Run history is not persisted",
+    "Representative 10,000-report capacity remains a release gate",
+    "A shared model endpoint may reduce throughput",
+    "Scheduling and Slack delivery are separate workflows",
     "Authentication is not configured"
   ],
-  recentRuns: [
-    {
-      id: "preview-run-2026-08-03",
-      status: "completed",
-      trigger: "Manual preview",
-      startedAt: "2026-08-12T18:05:00+09:00",
-      duration: "12 sec",
-      resultSummary: "Prepared 3 ward danger-day reports",
-      warningCount: 0
-    },
-    {
-      id: "preview-run-2026-07-27",
-      status: "completed",
-      trigger: "Manual preview",
-      startedAt: "2026-08-12T17:42:00+09:00",
-      duration: "9 sec",
-      resultSummary: "Prepared 3 ward reports using fallback narratives",
-      warningCount: 1
-    }
-  ]
+  recentRuns: []
 };
 
 const ragChatRecord: AgentCatalogRecord = {

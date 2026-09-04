@@ -6,7 +6,6 @@ export type AppSection =
   | "chat"
   | "nextcloud"
   | "agents"
-  | "test-agent"
   | "rag"
   | "settings";
 

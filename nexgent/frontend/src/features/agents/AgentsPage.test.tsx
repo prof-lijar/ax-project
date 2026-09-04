@@ -85,7 +85,21 @@ describe("AgentsPage", () => {
     expect(markup).not.toContain("Awaiting live Agent Server-to-RAG");
     expect(markup).not.toContain("Needs attention");
     expect(markup).not.toContain("0 runs");
-    expect(markup).toContain("2 runs");
+    expect(markup).not.toContain("2 runs");
+  });
+
+  it("keeps Weekly Reporter out of Chat now that it is bulk-only", async () => {
+    const weeklyReporter = (await agentCatalogClient.listAgents()).find(
+      ({ id }) => id === "1"
+    );
+    expect(weeklyReporter).toBeDefined();
+
+    const markup = renderToStaticMarkup(
+      <AgentsPageView agents={[weeklyReporter!]} search="" />
+    );
+
+    expect(markup).toContain("Weekly Reporter");
+    expect(markup).not.toContain(">Chat<");
   });
 
   it("does not offer the non-Chat Scout card as a Chat action", async () => {

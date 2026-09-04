@@ -20,12 +20,13 @@ The current flat sidebar routes are:
 | Chat | `/chat` |
 | NextCloud | `/nextcloud` |
 | Agents | `/agents` |
-| Test agent | `/test-agent` |
 | RAG | `/rag` |
 | Settings | `/settings` |
 
 Agent detail URLs continue to use `/agents/:id`. The `/co-workers` compatibility
-path continues to normalize to `/agents`.
+path continues to normalize to `/agents`. As of 2026-09-04, the retired
+`/test-agent` Weekly Reporter route normalizes to `/agents/1`; it is no longer a
+sidebar section.
 
 ## Update: Agent Detail Routes
 
@@ -44,7 +45,7 @@ catalog lookup, and paths with additional segments remain unresolved.
 
 Focused route tests cover the canonical list path, detail paths, trailing-slash
 normalization, decoded IDs, unknown nested paths, the existing legacy
-`/co-workers` redirect, and the Weekly Reporter test route. See
+`/co-workers` redirect, and the `/test-agent` to `/agents/1` redirect. See
 [Agents Management Interface](agents-management-interface.md) for the detail
 UX, sequential mock ID mapping, frontend-only execution boundary, and complete
 validation record.

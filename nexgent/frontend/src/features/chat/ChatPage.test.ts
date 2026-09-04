@@ -11,7 +11,7 @@ describe("ChatPage agent routing", () => {
     const agents = await agentCatalogClient.listAgents();
 
     expect(getChatCapableAgents(agents).map((agent) => agent.name)).toEqual(
-      ["Weekly Reporter", "RAG Agent"]
+      ["RAG Agent"]
     );
     expect(
       getChatCapableAgents(agents).some(

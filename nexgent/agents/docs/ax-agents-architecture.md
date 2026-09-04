@@ -120,8 +120,8 @@ terminal ZIP contains
 `manifest.json`, `reports.jsonl`, deterministic `reports/<ward_id>.md`
 Markdown files, and frontend-ready `json/<ward_id>.json` template files.
 Artifacts expire after seven days; long-term report history, a public bulk API,
-scheduling, frontend controls, and bulk Slack delivery are deliberately out of
-scope. Slack remains a separate human-approved side-effect boundary.
+schedule persistence and execution, and bulk Slack delivery are deliberately
+out of scope. Slack remains a separate human-approved side-effect boundary.
 
 The model path is LLM-first for every report. OpenAI-compatible servers receive
 the dedicated weekly-summary system prompt plus validated report-facing data
@@ -200,6 +200,25 @@ per process. This keeps aggregate report/model work bounded at the existing
 limit rather than multiplying it by the number of active jobs. Producer, item,
 and finalizer leases retain restart and multi-process recovery behavior.
 
+Weekly Reporter frontend simplification on 2026-09-04: `/agents/1` is now a
+bulk-only operator surface. The Quick Preview mode, its per-report review UI,
+the Chat-triggered Weekly Reporter run, and the frontend `/runs/stream` parser
+and report contracts were removed. Weekly Reporter is no longer marked as
+Chat-capable in the frontend catalog. The retired `/test-agent` path normalizes
+to `/agents/1`, and its sidebar entry is gone. The durable bulk control client,
+status polling, cancellation, recent jobs, and verified ZIP download remain.
+The registered interactive graph remains a backend compatibility boundary; it
+has no first-party frontend caller.
+
+Weekly Reporter schedule UI prototype on 2026-09-04: the bulk-only
+`/agents/1` page renders a schedule card directly below its heading. It
+defaults to enabled, Monday at 03:00, repeats weekly, and displays
+`Asia/Seoul` as the time zone. Weekday, time, and enabled state are local
+React state only. The save action is disabled and the page explicitly states
+that changes are not saved and no automatic job will run. This adds no timer,
+API contract, durable schedule record, scheduler process, or job submission
+path; manual durable bulk controls remain unchanged.
+
 Release capacity is measured end to end against a representative private-model
 deployment. The hard gate is 10,000 reports in at most two hours (at least
 1.389 reports/second); the healthy target is ninety minutes (at least 1.852
@@ -222,9 +241,9 @@ boundaries; the API never executes model calls.
 The default development Compose topology starts the bulk PostgreSQL queue,
 worker, and control API. The control API has no host port and is reachable in
 the browser only through the existing Vite development proxy. The `/agents/1`
-workbench now separates **Quick preview** (one interactive LangGraph run,
-1–25 reports) from **Bulk generation** (one durable job, up to 10,000 reports).
-The bulk view displays source discovery in 100-item pages, active consumer count,
+workbench exposes only durable bulk generation for up to 10,000 reports. It
+does not call the interactive LangGraph reporter. The bulk view displays source
+discovery in 100-item pages, active consumer count,
 queued/completed/fallback/failed counts, observed throughput, projected finish,
 recent jobs, cancellation, and ZIP download. Submission requires explicit
 acknowledgement that allowlisted care-derived facts will reach the configured
@@ -443,9 +462,10 @@ through a deployment-specific `search_path`, while matching tables exist in
 qualifies the approved `ansimk` schema. Clone and archive relations cannot be
 selected implicitly, and a regression test enforces that source binding.
 
-Weekly Reporter frontend integration update on 2026-08-19: the catalog route
-`/agents/1` owns the live workbench again, while `/test-agent` remains an alias
-for isolated testing. An operator-triggered request sends an explicit limit of
+Weekly Reporter frontend integration update on 2026-08-19 (superseded on
+2026-09-04): at that time, the catalog route `/agents/1` owned the interactive
+workbench, while `/test-agent` remained an alias for isolated testing. An
+operator-triggered request sent an explicit limit of
 1–25 selected in the UI through the existing Agent Server SSE boundary; the
 default is three, and no query or model call occurs merely by opening the page.
 The Agent Server run configuration caps graph concurrency at four so a larger
@@ -835,10 +855,11 @@ The separate detailed action section remains. The score-band legend is no longer
 rendered. The later topic-removal policy supersedes the original conditional
 sleep-section behavior and excludes sleep from every report.
 
-Frontend launch integration update on 2026-08-14: the Agents catalog marks
-`ansimk_weekly_reporter` as the single live-data entry. Both of its **Run in
-Chat** actions create a one-shot run intent in UI state and navigate to Chat.
-Chat consumes that intent once, chooses the most recent completed Monday in
+Frontend launch integration update on 2026-08-14 (superseded on 2026-09-04):
+the Agents catalog marked `ansimk_weekly_reporter` as the single live-data
+entry. Both of its **Run in Chat** actions created a one-shot run intent in UI
+state and navigated to Chat. Chat consumed that intent once and chose the most
+recent completed Monday in
 the local calendar with `Asia/Seoul`, and calls the existing Agent Server SSE
 boundary with cancellation enabled. Custom workflow events drive a live
 four-stage trace; the completed per-ward Markdown reports and any warnings are
@@ -846,9 +867,10 @@ rendered in the transcript. Frontend parsing mirrors the ward danger-day
 contract and rejects malformed events or results. The browser stores no MCP
 endpoint or credential. Other preview agents still have no live runner.
 
-Concurrent Chat/Weekly Reporter update on 2026-08-20: the shared Chat workspace
-now owns independent `chat` and `weekly-report` request lanes. Each lane permits
-one request, owns its own abort controller and UI state, and can be cancelled
+Concurrent Chat/Weekly Reporter update on 2026-08-20 (superseded on
+2026-09-04): the shared Chat workspace owned independent `chat` and
+`weekly-report` request lanes. Each lane permitted one request, owned its own
+abort controller and UI state, and could be cancelled
 without affecting the other. Weekly Reporter remains visible as background
 work while the normal Chat composer stays available. This removes a frontend
 serialization bottleneck; the two requests may still compete for a shared
@@ -873,13 +895,14 @@ The running stack was not replaced because the current account cannot access
 the host Docker socket; deployment and the live overlapping-run browser check
 remain explicit operator gates.
 
-Weekly Reporter detail integration update on 2026-08-14: the stable catalog
-route `/agents/1` now renders the live `ansimk_weekly_reporter` workbench
-directly. Operators can select a reporting Monday and timezone, observe
+Weekly Reporter detail integration update on 2026-08-14 (superseded on
+2026-09-04): the stable catalog route `/agents/1` rendered the live
+`ansimk_weekly_reporter` workbench directly. Operators could select a reporting
+Monday and timezone, observe
 validated custom progress events, cancel the active Agent Server run, and
 inspect per-ward Markdown and metrics without leaving the agent detail route.
-The existing `/test-agent` route reuses the same workbench in test-oriented
-presentation, while all other agent detail routes retain their preview UI.
+The former `/test-agent` route reused the same workbench in test-oriented
+presentation, while all other agent detail routes retained their preview UI.
 
 Chat attachment runtime update on 2026-08-14: `ax-contracts` defines strict
 references for gateway-normalized transient chat artifacts and safe attachment

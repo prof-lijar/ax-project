@@ -44,10 +44,7 @@ import { useUiStore } from "../../shared/state/useUiStore";
 import type { AgentDefinition } from "../../shared/types/agents";
 import { ChatMarkdown } from "./ChatMarkdown";
 import styles from "./ChatPage.module.css";
-import { RequestLanes } from "./requestLanes";
 
-const WEEKLY_REPORTER_GRAPH_ID = "ansimk_weekly_reporter";
-const REPORT_TIMEZONE = "Asia/Seoul";
 const MAX_ATTACHMENT_COUNT = 5;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -67,13 +64,6 @@ const ATTACHMENT_ACCEPT =
   "application/pdf,text/plain,text/markdown,text/csv," +
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
   "image/png,image/jpeg,image/webp";
-const LIVE_REPORT_STAGES = [
-  "Starting report batch",
-  "Reading ward risk data",
-  "Generating ward reports",
-  "Finalizing output"
-] as const;
-
 const MOCK_SLASH_COMMANDS = [
   { command: "/a", label: "Action A" },
   { command: "/b", label: "Action B" },
@@ -81,19 +71,6 @@ const MOCK_SLASH_COMMANDS = [
 ] as const;
 
 type MockSlashCommand = (typeof MOCK_SLASH_COMMANDS)[number];
-
-interface LiveExecutionProgress {
-  agentId: string;
-  agentName: string;
-  assistantMessageId: string;
-  activeStageIndex: number;
-  startedAt: number;
-  durationSeconds: number | null;
-  status: "running" | "finished" | "stopped";
-  mode: "live";
-}
-
-type ExecutionProgress = LiveExecutionProgress | MockAgentRun;
 
 export function ChatPage() {
   const messages = useChatStore((state) => state.messages);
@@ -118,20 +95,11 @@ export function ChatPage() {
   const [draft, setDraft] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isChatSending, setIsChatSending] = useState(false);
-  const [isWeeklyReporterRunning, setIsWeeklyReporterRunning] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
   );
   const [notice, setNotice] = useState<string | null>(null);
-  const [weeklyReportError, setWeeklyReportError] = useState<string | null>(
-    null
-  );
-  const [weeklyReportNotice, setWeeklyReportNotice] = useState<string | null>(
-    null
-  );
   const isRagAgentSelected = usesRagChat(selectedAgent?.graphId ?? null);
-  const [liveExecution, setLiveExecution] =
-    useState<LiveExecutionProgress | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
   const [highlightedSlashCommandIndex, setHighlightedSlashCommandIndex] =
     useState(0);
@@ -139,19 +107,16 @@ export function ChatPage() {
   const composerRef = useRef<HTMLFormElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const agentSelectorRef = useRef<HTMLDetailsElement | null>(null);
-  const requestLanesRef = useRef(new RequestLanes());
+  const chatControllerRef = useRef<AbortController | null>(null);
   const activeMockRunRef = useRef<{ agentId: string; runId: string } | null>(
     null
   );
   const handledAgentRunRef = useRef<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const latestMessageContent = messages[messages.length - 1]?.content;
-  const isTranscriptBusy = isChatSending || isWeeklyReporterRunning;
+  const isTranscriptBusy = isChatSending;
   const mockRuns = Object.values(mockRunsByAgentId);
-  const executions: ExecutionProgress[] = liveExecution
-    ? [liveExecution, ...mockRuns]
-    : mockRuns;
-  const pendingExecution = executions
+  const pendingExecution = mockRuns
     .filter(
       (execution) =>
         !messages.some(
@@ -159,7 +124,7 @@ export function ChatPage() {
         )
     )
     .sort((left, right) => right.startedAt - left.startedAt)[0] ?? null;
-  const executionUpdateKey = executions
+  const executionUpdateKey = mockRuns
     .map(
       (execution) =>
         `${execution.agentId}:${execution.activeStageIndex}:${execution.status}`
@@ -194,14 +159,12 @@ export function ChatPage() {
     isTranscriptBusy,
     errorMessage,
     notice,
-    weeklyReportError,
-    weeklyReportNotice,
     executionUpdateKey
   ]);
 
   useEffect(
     () => () => {
-      requestLanesRef.current.cancelAll();
+      chatControllerRef.current?.abort();
     },
     []
   );
@@ -275,67 +238,8 @@ export function ChatPage() {
 
     handledAgentRunRef.current = pendingAgentRun.requestId;
     clearPendingAgentRun();
-    if (selectedAgent.graphId === WEEKLY_REPORTER_GRAPH_ID) {
-      void runWeeklyReporter(selectedAgent);
-      return;
-    }
     setErrorMessage(`${selectedAgent.name} does not have a live Chat runner yet.`);
   }, [clearPendingAgentRun, pendingAgentRun, selectedAgent]);
-
-  async function runWeeklyReporter(agent: { id: string; name: string }) {
-    const controller = requestLanesRef.current.start("weekly-report");
-    if (!controller) {
-      setWeeklyReportNotice("Weekly Reporter is already running.");
-      return;
-    }
-
-    const weekStart = getMostRecentCompletedMonday();
-    const assistantMessageId = createMessageId();
-    setIsWeeklyReporterRunning(true);
-    setWeeklyReportError(null);
-    setWeeklyReportNotice(null);
-    appendMessage(
-      createMessage(
-        "user",
-        `Run Weekly Reporter for ${weekStart} (${REPORT_TIMEZONE}).`
-      )
-    );
-    startLiveExecution(agent, assistantMessageId);
-
-    let requestCompleted = false;
-    try {
-      const result = await agentServerClient.runWeeklyReport(
-        { week_start: weekStart, timezone: REPORT_TIMEZONE, limit: 3 },
-        {
-          signal: controller.signal,
-          onProgress: updateLiveExecution
-        }
-      );
-      appendMessage({
-        id: assistantMessageId,
-        role: "assistant",
-        content: formatWeeklyReportBatch(result)
-      });
-      requestCompleted = true;
-    } catch (error) {
-      if (error instanceof AgentServerError && error.code === "cancelled") {
-        setWeeklyReportNotice(
-          "Weekly Reporter run cancelled. You can start it again from Agents."
-        );
-      } else {
-        setWeeklyReportError(
-          error instanceof Error
-            ? error.message
-            : "The Weekly Reporter could not complete the run."
-        );
-        void healthQuery.refetch();
-      }
-    } finally {
-      finishLiveExecution(requestCompleted);
-      requestLanesRef.current.finish("weekly-report", controller);
-      setIsWeeklyReporterRunning(false);
-    }
-  }
 
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
@@ -344,10 +248,11 @@ export function ChatPage() {
       return;
     }
 
-    const controller = requestLanesRef.current.start("chat");
-    if (!controller) {
+    if (chatControllerRef.current) {
       return;
     }
+    const controller = new AbortController();
+    chatControllerRef.current = controller;
     setIsChatSending(true);
     setErrorMessage(null);
     setNotice(null);
@@ -367,9 +272,7 @@ export function ChatPage() {
     const assistantMessageId = createMessageId();
 
     const mockRun =
-      selectedAgent?.graphId !== WEEKLY_REPORTER_GRAPH_ID &&
-      selectedAgent?.graphId !== RAG_CHAT_GRAPH_ID &&
-      selectedAgent
+      selectedAgent?.graphId !== RAG_CHAT_GRAPH_ID && selectedAgent
         ? {
             agentId: selectedAgent.id,
             runId: startMockRun({
@@ -444,7 +347,9 @@ export function ChatPage() {
       ) {
         activeMockRunRef.current = null;
       }
-      requestLanesRef.current.finish("chat", controller);
+      if (chatControllerRef.current === controller) {
+        chatControllerRef.current = null;
+      }
       setStreamingMessageId(null);
       setIsChatSending(false);
     }
@@ -510,63 +415,7 @@ export function ChatPage() {
     if (activeMockRun) {
       cancelMockRun(activeMockRun.agentId, activeMockRun.runId);
     }
-    requestLanesRef.current.cancel("chat");
-  }
-
-  function cancelWeeklyReport() {
-    requestLanesRef.current.cancel("weekly-report");
-  }
-
-  function startLiveExecution(
-    agent: { id: string; name: string },
-    assistantMessageId: string
-  ) {
-    setLiveExecution({
-      agentId: agent.id,
-      agentName: agent.name,
-      assistantMessageId,
-      activeStageIndex: 0,
-      startedAt: Date.now(),
-      durationSeconds: null,
-      status: "running",
-      mode: "live"
-    });
-  }
-
-  function updateLiveExecution(event: { event: string }) {
-    const stageIndex =
-      event.event === "risk_data_loaded"
-        ? 1
-        : event.event === "ward_report_ready" ||
-            event.event === "ward_report_fallback"
-          ? 2
-          : event.event === "batch_completed"
-            ? 3
-            : 0;
-    setLiveExecution((current) =>
-      current && current.mode === "live"
-        ? {
-            ...current,
-            activeStageIndex: Math.max(current.activeStageIndex, stageIndex)
-          }
-        : current
-    );
-  }
-
-  function finishLiveExecution(completed: boolean) {
-    setLiveExecution((current) => {
-      if (!current) {
-        return current;
-      }
-      return completed
-        ? {
-            ...current,
-            activeStageIndex: LIVE_REPORT_STAGES.length - 1,
-            durationSeconds: (Date.now() - current.startedAt) / 1000,
-            status: "finished"
-          }
-        : { ...current, status: "stopped" };
-    });
+    chatControllerRef.current?.abort();
   }
 
   function chooseAgent(agent: { id: string; name: string } | null) {
@@ -660,7 +509,7 @@ export function ChatPage() {
             messages.map((message) => {
               const messageExecution =
                 message.role === "assistant"
-                  ? executions.find(
+                  ? mockRuns.find(
                       (execution) =>
                         execution.assistantMessageId === message.id
                     ) ?? null
@@ -747,29 +596,11 @@ export function ChatPage() {
               {notice}
             </p>
           )}
-          {weeklyReportError && (
-            <p className={styles.error} role="alert">
-              {weeklyReportError}
-            </p>
-          )}
-          {weeklyReportNotice && (
-            <p className={styles.notice} role="status">
-              {weeklyReportNotice}
-            </p>
-          )}
           <div ref={scrollAnchorRef} />
         </div>
       </section>
 
       <footer className={styles.composerArea}>
-        {isWeeklyReporterRunning && (
-          <div className={styles.weeklyRunControl} role="status">
-            <span>Weekly Reporter is running in the background.</span>
-            <button type="button" onClick={cancelWeeklyReport}>
-              Cancel report
-            </button>
-          </div>
-        )}
         <div className={styles.composerMode}>
           <details className={styles.agentSelector} ref={agentSelectorRef}>
             <summary aria-label="Choose an agent for Chat">
@@ -991,32 +822,20 @@ export function getChatCapableAgents(agents: AgentDefinition[]) {
 function MockExecutionTrace({
   progress
 }: {
-  progress: ExecutionProgress;
+  progress: MockAgentRun;
 }) {
-  const isLive = isLiveExecution(progress);
-  const stages = isLive ? LIVE_REPORT_STAGES : MOCK_AGENT_RUN_STAGES;
   return (
     <section
       className={styles.mockExecution}
-      aria-label={`${isLive ? "Live" : "Frontend-only mock"} execution for ${progress.agentName}`}
+      aria-label={`Frontend-only mock execution for ${progress.agentName}`}
       aria-live="polite"
     >
       <header className={styles.mockExecutionHeader}>
-        <small
-          title={
-            isLive
-              ? "Live Agent Server events"
-              : "Simulated frontend events"
-          }
-        >
-          {isLive ? "Live run" : "Mock execution"}
-        </small>
+        <small title="Simulated frontend events">Mock execution</small>
       </header>
       <ol className={styles.mockStageList}>
-        {stages.map((stage, index) => {
-          const stageState = isLive
-            ? getLiveStageState(progress, index)
-            : getMockAgentRunStageState(progress, index);
+        {MOCK_AGENT_RUN_STAGES.map((stage, index) => {
+          const stageState = getMockAgentRunStageState(progress, index);
           if (stageState === "pending") {
             return null;
           }
@@ -1033,17 +852,12 @@ function MockExecutionTrace({
           );
         })}
       </ol>
-      {isLive && progress.status === "stopped" && (
-        <small className={styles.mockExecutionStopped}>
-          Run stopped before completion.
-        </small>
-      )}
-      {!isLive && progress.status === "cancelled" && (
+      {progress.status === "cancelled" && (
         <small className={styles.mockExecutionStopped}>
           Mock execution stopped before completion.
         </small>
       )}
-      {!isLive && progress.status === "failed" && (
+      {progress.status === "failed" && (
         <small className={styles.mockExecutionStopped}>
           Mock execution failed before completion.
         </small>
@@ -1055,12 +869,9 @@ function MockExecutionTrace({
 function ExecutionCompletion({
   progress
 }: {
-  progress: ExecutionProgress;
+  progress: MockAgentRun;
 }) {
-  const completed = isLiveExecution(progress)
-    ? progress.status === "finished"
-    : progress.status === "completed";
-  if (!completed || progress.durationSeconds === null) {
+  if (progress.status !== "completed" || progress.durationSeconds === null) {
     return null;
   }
 
@@ -1072,58 +883,9 @@ function ExecutionCompletion({
   );
 }
 
-function getLiveStageState(
-  progress: LiveExecutionProgress,
-  stageIndex: number
-): "pending" | "active" | "completed" {
-  if (progress.status === "finished" || stageIndex < progress.activeStageIndex) {
-    return "completed";
-  }
-  if (
-    progress.status === "running" &&
-    stageIndex === progress.activeStageIndex
-  ) {
-    return "active";
-  }
-  return "pending";
-}
-
-function isLiveExecution(
-  progress: ExecutionProgress
-): progress is LiveExecutionProgress {
-  return "mode" in progress && progress.mode === "live";
-}
-
 function getSlashQuery(value: string): string | null {
   const match = value.match(/^\/([^\s]*)$/);
   return match ? match[1].toLocaleLowerCase() : null;
-}
-
-function getMostRecentCompletedMonday(now = new Date()) {
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const daysSinceMonday = (monday.getDay() + 6) % 7;
-  monday.setDate(monday.getDate() - daysSinceMonday - 7);
-  const year = monday.getFullYear();
-  const month = String(monday.getMonth() + 1).padStart(2, "0");
-  const day = String(monday.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatWeeklyReportBatch(result: {
-  week_start: string;
-  week_end: string;
-  reports: Array<{ markdown: string }>;
-  warnings: string[];
-}) {
-  const reports = result.reports
-    .map((report) => report.markdown.trim())
-    .join("\n\n---\n\n");
-  const warnings = result.warnings.length
-    ? `\n\n## Run warnings\n\n${result.warnings
-        .map((warning) => `- ${warning}`)
-        .join("\n")}`
-    : "";
-  return `Weekly Reporter completed ${result.reports.length} ward reports for ${result.week_start} through ${result.week_end}.\n\n${reports}${warnings}`;
 }
 
 let messageSequence = 0;

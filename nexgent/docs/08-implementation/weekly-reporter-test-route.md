@@ -2,11 +2,66 @@
 
 Date: 2026-08-19
 
+## Update: Schedule UI Prototype
+
+Date: 2026-09-04
+
+The Weekly Reporter page now places a schedule card immediately below the page
+heading. It defaults to scheduled runs enabled every Monday at 03:00, repeats
+weekly, and identifies `Asia/Seoul` as the time zone. Weekday, time, and
+enabled changes update the displayed plan in local React state.
+
+This surface does not yet schedule work. Save is disabled, an inline notice
+states that changes are not persisted and no automatic job will run, and there
+is no new frontend API connection. The durable bulk job controls below the
+card retain their existing manual behavior.
+
+Validation completed on 2026-09-04:
+
+- two focused schedule/page tests passed;
+- all 203 frontend tests passed across 20 files; and
+- the TypeScript/Vite production build succeeded.
+
+## Update: Bulk-Only Weekly Reporter
+
+Date: 2026-09-04
+
+The Weekly Reporter frontend now has one execution path: durable bulk
+generation at `/agents/1`. The page submits 1–10,000-report jobs through the
+private bulk control API, polls content-free progress, lists recent jobs,
+requests cancellation, and downloads checksum-verified ZIP exports.
+
+The following frontend surfaces were removed:
+
+- the **Quick preview** mode and 1–25 report controls;
+- interactive per-subscriber Markdown and metric review;
+- the Chat-triggered `ansimk_weekly_reporter` run and its background control;
+- the frontend Agent Server `/runs/stream` request, progress/result parser, and
+  Weekly Reporter preview types;
+- the **Test agent** sidebar entry and standalone section; and
+- the static preview-run history and Weekly Reporter Chat action.
+
+Old `/test-agent` bookmarks normalize to `/agents/1`. Weekly Reporter remains
+visible in the Agents catalog but is no longer Chat-capable. The backend graph
+remains registered for compatibility and backend/operator use; no first-party
+frontend code calls it. Normal Chat, RAG Chat, and the durable bulk control API
+are unchanged.
+
+Validation completed on 2026-09-04:
+
+- 202 frontend tests passed across 20 files;
+- the TypeScript/Vite production build succeeded;
+- Tauri `cargo check` succeeded with an isolated target directory; and
+- `npm audit --audit-level=moderate` found zero vulnerabilities.
+
+The sections below are retained as historical records of the superseded
+interactive frontend implementation.
+
 Update: 2026-08-24
 
 ### Durable bulk generation
 
-The Weekly Reporter page now separates two execution modes:
+At that time, the Weekly Reporter page separated two execution modes:
 
 - **Quick preview** preserves the existing interactive LangGraph run and its
   1–25 result limit.

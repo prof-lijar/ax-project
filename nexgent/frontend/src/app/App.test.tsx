@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getAgentsRoute } from "./App";
 
 describe("App agent routing", () => {
-  it("renders Weekly Reporter with its live workbench", () => {
+  it("renders Weekly Reporter with its durable bulk workbench", () => {
     expect(getAgentsRoute("1")).toEqual({ kind: "weekly-reporter" });
   });
 

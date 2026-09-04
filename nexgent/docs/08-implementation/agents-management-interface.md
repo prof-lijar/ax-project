@@ -2,6 +2,18 @@
 
 Date: 2026-08-13
 
+## Update: Weekly Reporter Is Bulk-Only
+
+Date: 2026-09-04
+
+Weekly Reporter still has its dedicated `/agents/1` workbench, but that page
+now exposes only durable bulk generation. The catalog marks it as
+non-Chat-capable and no longer shows fabricated preview runs. Quick Preview,
+the Chat-triggered reporter execution, and the Test agent sidebar entry were
+removed. `/test-agent` remains only as a compatibility redirect to
+`/agents/1`. The dated sections below document earlier behavior and are
+superseded where they describe interactive frontend execution.
+
 ## Update: Live Weekly Reporter Detail Workbench
 
 Date: 2026-08-19
