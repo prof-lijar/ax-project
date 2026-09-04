@@ -72,9 +72,12 @@
   of `요약`; stable and empty guardian-action states output `GUI_GOOD_01`.
   Device detail uses covered days for normal reception and the remaining days
   in the selected week for power checks; the old power-pattern count is not
-  rendered. The bulk finalizer populates the `ansimk.ward_weekly_report` JSONB
-  store through a dedicated, atomic upsert writer without changing the
-  read-only source boundary. Compose can reuse the currently configured
+  rendered. The bulk finalizer populates the
+  `ansimk.resources_ward_weekly_report` JSONB store through a dedicated,
+  atomic upsert writer without changing the read-only source boundary. The bulk
+  worker admits four jobs per process by default while enforcing one shared
+  report/model concurrency ceiling across them. Compose can reuse the currently
+  configured
   `ANSIMK_DATABASE_DSN` for local compatibility; production should set the
   dedicated writer DSN and least-privilege role explicitly.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):

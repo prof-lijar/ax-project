@@ -11,12 +11,18 @@ import shutil
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from ax_contracts import WeeklyReportBulkJobRequest
 from ax_evals import evaluate_weekly_report_bulk_capacity
 from ax_integrations import get_default_chat_model
-from ax_persistence import AsyncpgBulkJobStore, LocalBulkArtifactStore, utc_now
+from ax_persistence import (
+    AsyncpgBulkJobStore,
+    BulkJobStore,
+    LocalBulkArtifactStore,
+    utc_now,
+)
 
 from workflows.weekly_report.bulk import (
     WEEKLY_REPORT_BULK_JOB_KIND,
@@ -34,6 +40,7 @@ class WorkerSettings:
     artifact_root: Path
     artifact_min_free_bytes: int
     concurrency: int
+    active_job_limit: int
     poll_seconds: float
     item_timeout_seconds: float
 
@@ -49,6 +56,13 @@ class WorkerSettings:
         if not 1 <= concurrency <= 512:
             raise ValueError(
                 "WEEKLY_REPORT_WORKER_CONCURRENCY must be between 1 and 512"
+            )
+        active_job_limit = int(
+            os.environ.get("WEEKLY_REPORT_ACTIVE_JOB_LIMIT", "4")
+        )
+        if not 1 <= active_job_limit <= 32:
+            raise ValueError(
+                "WEEKLY_REPORT_ACTIVE_JOB_LIMIT must be between 1 and 32"
             )
         item_timeout_seconds = float(
             os.environ.get("WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS", "60")
@@ -66,6 +80,7 @@ class WorkerSettings:
                 )
             ),
             concurrency=concurrency,
+            active_job_limit=active_job_limit,
             poll_seconds=float(
                 os.environ.get("WEEKLY_REPORT_WORKER_POLL_SECONDS", "1")
             ),
@@ -85,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="run one job until terminal")
     run.add_argument("job_id", type=UUID)
     run.add_argument("--concurrency", type=int)
-    commands.add_parser("serve", help="continuously run the oldest active job")
+    commands.add_parser("serve", help="continuously run bounded concurrent jobs")
     status = commands.add_parser("status", help="show content-free progress")
     status.add_argument("job_id", type=UUID)
     cancel = commands.add_parser("cancel", help="request cooperative cancellation")
@@ -161,6 +176,7 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             report_store,
             poll_seconds=settings.poll_seconds,
             item_timeout_seconds=settings.item_timeout_seconds,
+            item_semaphore=asyncio.Semaphore(settings.concurrency),
         )
         if args.command == "run":
             status = await runner.run(
@@ -168,23 +184,90 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             )
             _print_json(status)
             return 0
-        while True:
-            job = await store.next_job(WEEKLY_REPORT_BULK_JOB_KIND)
-            if job is None:
-                await asyncio.sleep(settings.poll_seconds)
-                continue
-            try:
-                await runner.run(job.job_id, concurrency=settings.concurrency)
-            except Exception:
-                logging.getLogger(__name__).exception(
-                    "weekly report bulk job loop recovered",
-                    extra={"job_id": str(job.job_id)},
-                )
-                await asyncio.sleep(settings.poll_seconds)
+        await _serve_jobs(
+            store,
+            runner,
+            active_job_limit=settings.active_job_limit,
+            item_concurrency=settings.concurrency,
+            poll_seconds=settings.poll_seconds,
+        )
+        return 0
     finally:
         if report_store is not None:
             await report_store.close()
         await store.close()
+
+
+async def _serve_jobs(
+    store: BulkJobStore,
+    runner: Any,
+    *,
+    active_job_limit: int,
+    item_concurrency: int,
+    poll_seconds: float,
+) -> None:
+    """Admit distinct jobs concurrently and recover each task independently."""
+
+    if not 1 <= active_job_limit <= 32:
+        raise ValueError("active_job_limit must be between 1 and 32")
+    active: dict[UUID, asyncio.Task[Any]] = {}
+    retry_not_before: dict[UUID, float] = {}
+    logger = logging.getLogger(__name__)
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            now = loop.time()
+            retry_not_before = {
+                job_id: retry_at
+                for job_id, retry_at in retry_not_before.items()
+                if retry_at > now
+            }
+            for job_id, task in list(active.items()):
+                if not task.done():
+                    continue
+                del active[job_id]
+                try:
+                    await task
+                except Exception:
+                    retry_not_before[job_id] = loop.time() + poll_seconds
+                    logger.exception(
+                        "weekly report bulk job loop recovered",
+                        extra={"job_id": str(job_id)},
+                    )
+
+            while len(active) < active_job_limit:
+                job = await store.next_job(
+                    WEEKLY_REPORT_BULK_JOB_KIND,
+                    exclude_job_ids=active.keys() | retry_not_before.keys(),
+                )
+                if job is None:
+                    break
+                logger.info(
+                    "weekly report bulk job admitted",
+                    extra={
+                        "job_id": str(job.job_id),
+                        "active_jobs": len(active) + 1,
+                        "active_job_limit": active_job_limit,
+                        "item_concurrency": item_concurrency,
+                    },
+                )
+                active[job.job_id] = asyncio.create_task(
+                    runner.run(job.job_id, concurrency=item_concurrency),
+                    name=f"weekly-report-job-{job.job_id}",
+                )
+
+            if not active:
+                await asyncio.sleep(poll_seconds)
+                continue
+            await asyncio.wait(
+                active.values(),
+                timeout=poll_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+    finally:
+        for task in active.values():
+            task.cancel()
+        await asyncio.gather(*active.values(), return_exceptions=True)
 
 
 def _print_json(value: object) -> None:

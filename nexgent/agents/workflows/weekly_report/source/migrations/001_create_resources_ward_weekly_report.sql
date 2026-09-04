@@ -1,4 +1,4 @@
-CREATE TABLE ansimk.ward_weekly_report (
+CREATE TABLE ansimk.resources_ward_weekly_report (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
     ward_id         BIGINT NOT NULL

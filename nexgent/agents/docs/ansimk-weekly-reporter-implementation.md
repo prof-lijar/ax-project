@@ -4,6 +4,78 @@ Date: 2026-08-24
 
 Status: **Implemented interactive and durable bulk reporting paths**
 
+## Update: Report Storage Table Rename
+
+Date: 2026-09-04
+
+The approved durable frontend JSON target is now
+`ansimk.resources_ward_weekly_report`. The bulk writer UPSERT, canonical schema
+migration, contract test, workflow documentation, and project-local source
+contract use the new name. This supersedes the original
+`ansimk.ward_weekly_report` name recorded in the 2026-09-03 storage
+implementation below; columns, foreign key, unique ward/week key, transaction
+behavior, and stored `template_data` are unchanged.
+
+Validation completed on 2026-09-04:
+
+```text
+Focused storage tests                         4 passed
+Targeted Ruff                                passed
+LangGraph configuration                      valid, 4 graphs found
+Root development Compose rendering           passed
+Root production-server Compose rendering     passed
+Standalone Agent Server Compose rendering    passed
+Weekly Reporter skill validation             passed
+Git whitespace validation                    passed
+```
+
+The complete 351-test agent suite reached the unrelated
+`test_reader_builds_delimited_document_content` attachment-reader test after
+39 results and then exceeded a 90-second diagnostic timeout. Full Ruff also
+reported two pre-existing ordering findings in
+`packages/integrations/src/ax_integrations/__init__.py` and
+`tests/unit/test_rag_chat_graph.py`; neither file is part of this table rename.
+
+No live storage query or write was performed against the configured database.
+After supplying the writer DSN, the remaining read-only deployment check is:
+
+```bash
+psql "$WEEKLY_REPORT_STORAGE_DATABASE_DSN" --no-psqlrc --tuples-only \
+  --command "SELECT to_regclass('ansimk.resources_ward_weekly_report');"
+```
+
+It must return `ansimk.resources_ward_weekly_report` before restarting a bulk
+worker with this code.
+
+## Update: Concurrent Bulk Job Admission
+
+Date: 2026-09-04
+
+The `serve` worker now admits up to four distinct bulk jobs concurrently instead
+of awaiting the oldest job to completion. The limit is configurable with
+`WEEKLY_REPORT_ACTIVE_JOB_LIMIT`. A single process-wide semaphore preserves
+`WEEKLY_REPORT_WORKER_CONCURRENCY` as the aggregate ceiling across all admitted
+jobs, and the scheduler excludes its active job IDs when selecting the next
+oldest job. Per-job producer, item, finalizer, cancellation, and terminal-failure
+boundaries remain unchanged.
+
+Validation completed:
+
+```text
+Focused bulk/runtime/contract tests            18 passed
+Suite excluding two Chat attachment test modules 336 passed, 1 skipped
+Targeted Ruff                                  passed
+LangGraph configuration                        valid, 4 graphs found
+Development and standalone Compose rendering   passed
+Git whitespace validation                      passed
+```
+
+The unfiltered suite still stalls in an existing Chat attachment graph test, and
+full Ruff still reports the two unrelated pre-existing import-order findings
+listed in the storage-table update above. No live worker was rebuilt because
+the pending storage-table change requires its documented database migration
+check before restart.
+
 ## Outcome
 
 `ansimk_weekly_reporter` calculates a current and previous seven-day snapshot
@@ -424,8 +496,12 @@ uv run python -m apps.workers.weekly_report capacity \
 ```
 
 Multiple `serve` containers may share one PostgreSQL database and artifact
-volume. They all select the oldest active job, so later jobs remain queued in
-the first release. Expired producer, item, and finalizer leases are reclaimed.
+volume. Each process admits up to `WEEKLY_REPORT_ACTIVE_JOB_LIMIT` distinct jobs
+(four by default), oldest first, so a second submitted job starts without
+waiting for the first job to finish. All jobs in that process share the single
+`WEEKLY_REPORT_WORKER_CONCURRENCY` item semaphore; four active jobs therefore do
+not turn the default thirty-two report/model-call ceiling into one hundred
+twenty-eight. Expired producer, item, and finalizer leases are reclaimed.
 The runner also terminalizes producer, consumer, and finalizer exceptions so a
 failed oldest job cannot remain active and block every later job. Individual
 model calls use `WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS` (default 60 seconds); a
@@ -448,12 +524,13 @@ load-balanced endpoint; do not compensate with unbounded tasks or Python
 threads. Keep vLLM structured output and prefix caching enabled only after the
 deployed model/version passes the narrative quality evaluation.
 
-The configured worker concurrency (32 by default) is an application-side upper
-bound, not a guarantee of 32 simultaneous GPU sequences. The inference server
-still owns continuous batching and admission. When bulk and Chat share one
-model endpoint, a load run can increase Chat latency; production must reserve
-interactive inference capacity or use a separate bulk endpoint. The UI requires
-explicit confirmation and displays this limitation before submission.
+The configured worker concurrency (32 by default) is a process-wide
+application-side upper bound across active jobs, not a guarantee of 32
+simultaneous GPU sequences. The inference server still owns continuous batching
+and admission. When bulk and Chat share one model endpoint, a load run can
+increase Chat latency; production must reserve interactive inference capacity
+or use a separate bulk endpoint. The UI requires explicit confirmation and
+displays this limitation before submission.
 
 ## Verification gates
 

@@ -3,6 +3,7 @@ import hashlib
 import json
 import zipfile
 from datetime import date
+from uuid import UUID
 
 import pytest
 from ax_contracts import WeeklyReportBulkJobRequest, WeeklyReportSourceResponse
@@ -13,6 +14,7 @@ from ax_persistence import (
     LocalBulkArtifactStore,
 )
 
+from apps.workers.weekly_report import WorkerSettings, _serve_jobs
 from workflows.weekly_report.bulk import (
     WEEKLY_REPORT_BULK_JOB_KIND,
     WeeklyReportBulkRunner,
@@ -56,6 +58,69 @@ class BlockingModel:
         raise AssertionError("unreachable")
 
 
+class ConcurrencyTrackingModel:
+    def __init__(self) -> None:
+        self.active_calls = 0
+        self.maximum_active_calls = 0
+
+    async def complete(self, messages: list[dict[str, str]], **kwargs: object) -> str:
+        self.active_calls += 1
+        self.maximum_active_calls = max(
+            self.maximum_active_calls, self.active_calls
+        )
+        try:
+            await asyncio.sleep(0.01)
+            return (
+                "지난 한 주 가입자님은 생활 활동과 TV 이용 등 일상적인 생활 패턴을 "
+                "함께 살펴봤어요. 집 안 환경과 생활 정보 수신 상태도 확인했고, "
+                "생활 흐름을 한 번 더 살펴봐 주세요."
+            )
+        finally:
+            self.active_calls -= 1
+
+
+class BlockingJobRunner:
+    def __init__(self, store: InMemoryBulkJobStore) -> None:
+        self.store = store
+        self.started: list[UUID] = []
+        self.active: set[UUID] = set()
+        self.maximum_active = 0
+        self.two_started = asyncio.Event()
+        self.third_started = asyncio.Event()
+        self.releases: dict[UUID, asyncio.Event] = {}
+
+    async def run(self, job_id: UUID, *, concurrency: int) -> None:
+        del concurrency
+        self.started.append(job_id)
+        self.active.add(job_id)
+        self.maximum_active = max(self.maximum_active, len(self.active))
+        self.releases[job_id] = asyncio.Event()
+        if len(self.started) >= 2:
+            self.two_started.set()
+        if len(self.started) >= 3:
+            self.third_started.set()
+        try:
+            await self.releases[job_id].wait()
+            await self.store.set_job_status(job_id, "completed")
+        finally:
+            self.active.discard(job_id)
+
+
+class FailingThenBlockingJobRunner:
+    def __init__(self, failing_job_id: UUID) -> None:
+        self.failing_job_id = failing_job_id
+        self.started: list[UUID] = []
+        self.later_job_started = asyncio.Event()
+
+    async def run(self, job_id: UUID, *, concurrency: int) -> None:
+        del concurrency
+        self.started.append(job_id)
+        if job_id == self.failing_job_id:
+            raise RuntimeError("injected runner failure")
+        self.later_job_started.set()
+        await asyncio.Event().wait()
+
+
 class EmptyRecordingSource:
     def __init__(self) -> None:
         self.limits: list[int] = []
@@ -91,6 +156,17 @@ class FailingWeeklyReportStore:
         async for _ in reports:
             break
         raise WeeklyReportStorageUnavailable("test storage failure")
+
+
+def test_worker_settings_bound_concurrent_jobs(monkeypatch) -> None:
+    monkeypatch.setenv("WEEKLY_REPORT_JOB_DATABASE_DSN", "postgresql://test")
+    monkeypatch.delenv("WEEKLY_REPORT_ACTIVE_JOB_LIMIT", raising=False)
+
+    assert WorkerSettings.from_env().active_job_limit == 4
+
+    monkeypatch.setenv("WEEKLY_REPORT_ACTIVE_JOB_LIMIT", "0")
+    with pytest.raises(ValueError, match="ACTIVE_JOB_LIMIT"):
+        WorkerSettings.from_env()
 
 
 @pytest.mark.asyncio
@@ -185,6 +261,124 @@ async def test_bulk_job_submission_is_idempotent() -> None:
             conflicting.idempotency_key,
             conflicting.model_dump(mode="json"),
         )
+
+
+@pytest.mark.asyncio
+async def test_bulk_scheduler_starts_distinct_jobs_without_waiting_for_first() -> None:
+    store = InMemoryBulkJobStore()
+    jobs = []
+    for index in range(3):
+        request = WeeklyReportBulkJobRequest(
+            week_start=date(2026, 8, 3),
+            max_reports=1,
+            idempotency_key=f"concurrent-job-{index}",
+        )
+        jobs.append(
+            await store.create_job(
+                WEEKLY_REPORT_BULK_JOB_KIND,
+                request.idempotency_key,
+                request.model_dump(mode="json"),
+            )
+        )
+    runner = BlockingJobRunner(store)
+    serving = asyncio.create_task(
+        _serve_jobs(
+            store,
+            runner,
+            active_job_limit=2,
+            item_concurrency=8,
+            poll_seconds=0.001,
+        )
+    )
+    try:
+        await asyncio.wait_for(runner.two_started.wait(), timeout=1)
+        assert runner.started == [jobs[0].job_id, jobs[1].job_id]
+        assert runner.maximum_active == 2
+
+        runner.releases[jobs[0].job_id].set()
+        await asyncio.wait_for(runner.third_started.wait(), timeout=1)
+        assert runner.started == [
+            jobs[0].job_id,
+            jobs[1].job_id,
+            jobs[2].job_id,
+        ]
+        assert runner.maximum_active == 2
+    finally:
+        serving.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await serving
+
+
+@pytest.mark.asyncio
+async def test_bulk_scheduler_failure_does_not_block_a_later_job() -> None:
+    store = InMemoryBulkJobStore()
+    jobs = []
+    for index in range(2):
+        request = WeeklyReportBulkJobRequest(
+            week_start=date(2026, 8, 3),
+            max_reports=1,
+            idempotency_key=f"scheduler-failure-{index}",
+        )
+        jobs.append(
+            await store.create_job(
+                WEEKLY_REPORT_BULK_JOB_KIND,
+                request.idempotency_key,
+                request.model_dump(mode="json"),
+            )
+        )
+    runner = FailingThenBlockingJobRunner(jobs[0].job_id)
+    serving = asyncio.create_task(
+        _serve_jobs(
+            store,
+            runner,
+            active_job_limit=1,
+            item_concurrency=8,
+            poll_seconds=0.01,
+        )
+    )
+    try:
+        await asyncio.wait_for(runner.later_job_started.wait(), timeout=1)
+        assert runner.started[:2] == [jobs[0].job_id, jobs[1].job_id]
+    finally:
+        serving.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await serving
+
+
+@pytest.mark.asyncio
+async def test_concurrent_jobs_share_one_process_wide_item_limit(tmp_path) -> None:
+    store = InMemoryBulkJobStore()
+    jobs = []
+    for index in range(2):
+        request = WeeklyReportBulkJobRequest(
+            week_start=date(2026, 8, 3),
+            max_reports=1,
+            idempotency_key=f"shared-item-limit-{index}",
+        )
+        jobs.append(
+            await store.create_job(
+                WEEKLY_REPORT_BULK_JOB_KIND,
+                request.idempotency_key,
+                request.model_dump(mode="json"),
+            )
+        )
+    model = ConcurrencyTrackingModel()
+    runner = WeeklyReportBulkRunner(
+        store,
+        LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0),
+        MockWeeklyReportSourceRepository(),
+        model,
+        RecordingWeeklyReportStore(),
+        poll_seconds=0.001,
+        item_semaphore=asyncio.Semaphore(1),
+    )
+
+    statuses = await asyncio.gather(
+        *(runner.run(job.job_id, concurrency=2) for job in jobs)
+    )
+
+    assert [status.status for status in statuses] == ["completed", "completed"]
+    assert model.maximum_active_calls == 1
 
 
 @pytest.mark.asyncio

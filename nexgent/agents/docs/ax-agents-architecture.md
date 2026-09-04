@@ -106,9 +106,11 @@ one hundred and stages each validated metric snapshot exactly once. Bounded
 asynchronous consumers claim independent wards from PostgreSQL with
 `FOR UPDATE SKIP LOCKED`, call the existing reporter specialist, and atomically
 write report artifacts. Producer, item, and finalizer leases can be reclaimed
-after process loss. Additional worker processes or containers increase the
-consumer pool while all select the oldest active job, so the first release
-processes one bulk job at a time and queues later jobs.
+after process loss. A worker process admits up to four distinct jobs by default,
+oldest first. All active jobs share the same process-wide item-concurrency
+ceiling, so admitting another job does not multiply simultaneous model calls.
+Additional worker processes or containers add bounded consumer capacity while
+the PostgreSQL leases prevent duplicate item completion.
 
 The separate bulk-job PostgreSQL contains only job metadata, opaque cursors,
 artifact references, checksums, attempt counts, leases, and safe error codes.
@@ -182,6 +184,21 @@ inclusive Sunday shown to the guardian. The ward/week unique key makes a
 reclaimed or repeated finalization idempotent. Any write or count mismatch
 rolls back storage and fails the job. The private source service and interactive
 preview remain non-writing, while bulk-job metadata storage stays separate.
+
+Weekly Reporter storage-table rename on 2026-09-04: the approved durable target
+is now `ansimk.resources_ward_weekly_report`, superseding the original table
+name in the 2026-09-03 record above. The schema remains `ansimk`; the columns,
+foreign key to `ansimk.resources_ward`, unique ward/week key, atomic upsert
+behavior, and writer configuration are unchanged.
+
+Weekly Reporter concurrent bulk-job update on 2026-09-04: the durable worker no
+longer awaits one entire job before admitting the next. It runs up to
+`WEEKLY_REPORT_ACTIVE_JOB_LIMIT` distinct jobs per process (default four),
+selects unadmitted jobs oldest first, and isolates task failure and cancellation
+by job. All admitted jobs share one `WEEKLY_REPORT_WORKER_CONCURRENCY` semaphore
+per process. This keeps aggregate report/model work bounded at the existing
+limit rather than multiplying it by the number of active jobs. Producer, item,
+and finalizer leases retain restart and multi-process recovery behavior.
 
 Release capacity is measured end to end against a representative private-model
 deployment. The hard gate is 10,000 reports in at most two hours (at least

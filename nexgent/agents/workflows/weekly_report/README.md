@@ -212,11 +212,11 @@ keys for the same values.
 
 ## Report storage
 
-The approved table definition for JSON report persistence is available
-at `source/migrations/001_create_ward_weekly_report.sql`. It creates
-`ansimk.ward_weekly_report` with a foreign key to `ansimk.resources_ward`, one
-row per ward/week start, queryable score and status columns, and non-null JSONB
-`report_data`.
+The approved table definition for JSON report persistence is available at
+`source/migrations/001_create_resources_ward_weekly_report.sql`. It creates
+`ansimk.resources_ward_weekly_report` with a foreign key to
+`ansimk.resources_ward`, one row per ward/week start, queryable score and status
+columns, and non-null JSONB `report_data`.
 
 After all completed report artifacts and the ZIP export have been built, the
 bulk worker uses a dedicated `WEEKLY_REPORT_STORAGE_DATABASE_DSN` to upsert
@@ -254,6 +254,9 @@ reports, `workflows.weekly_report.bulk` uses the same source contracts,
 calculation rules, reporter specialist, and renderer behind a durable worker.
 A leased producer pages the source at one hundred wards per request; bounded
 async consumers claim wards from PostgreSQL and write private atomic artifacts.
+The worker admits up to four jobs concurrently by default, oldest first. Their
+consumers share one process-wide concurrency ceiling, so later jobs begin
+promptly without multiplying model-call capacity.
 The final export is a seven-day ZIP with a manifest, JSONL records, one
 unchanged `reports/<ward_id>.md` file, and one frontend-ready
 `json/<ward_id>.json` template per completed ward. Failed wards are recorded

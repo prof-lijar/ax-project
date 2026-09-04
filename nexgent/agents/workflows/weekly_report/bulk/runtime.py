@@ -71,11 +71,14 @@ class WeeklyReportBulkRunner:
         retention_days: int = 7,
         item_timeout_seconds: float = 60.0,
         owner_prefix: str | None = None,
+        item_semaphore: asyncio.Semaphore | None = None,
     ) -> None:
         if lease_seconds < 30 or not 1 <= max_attempts <= 3 or claim_size < 1:
             raise ValueError("bulk runner limits are invalid")
         if item_timeout_seconds <= 0:
             raise ValueError("bulk item timeout must be positive")
+        if item_semaphore is not None and claim_size != 1:
+            raise ValueError("shared bulk item concurrency requires claim_size=1")
         self.store = store
         self.artifacts = artifacts
         self.source = source
@@ -87,6 +90,7 @@ class WeeklyReportBulkRunner:
         self.poll_seconds = poll_seconds
         self.retention_days = retention_days
         self.item_timeout_seconds = item_timeout_seconds
+        self.item_semaphore = item_semaphore
         base_owner = owner_prefix or socket.gethostname()
         self.owner_prefix = f"{base_owner}:{uuid4().hex[:8]}"
 
@@ -263,13 +267,12 @@ class WeeklyReportBulkRunner:
             if job.cancel_requested:
                 await self.store.cancel_pending_items(job_id)
                 return
-            claimed = await self.store.claim_items(
-                job_id, owner, self.claim_size, self.lease_seconds
-            )
+            if self.item_semaphore is None:
+                claimed = await self._claim_and_process(job_id, owner)
+            else:
+                async with self.item_semaphore:
+                    claimed = await self._claim_and_process(job_id, owner)
             if claimed:
-                await asyncio.gather(
-                    *(self._process_item(item, owner) for item in claimed)
-                )
                 continue
             counts = await self.store.item_counts(job_id)
             if (
@@ -281,6 +284,16 @@ class WeeklyReportBulkRunner:
             if job.status in _TERMINAL_STATES:
                 return
             await asyncio.sleep(self.poll_seconds)
+
+    async def _claim_and_process(
+        self, job_id: UUID, owner: str
+    ) -> list[BulkItemRecord]:
+        claimed = await self.store.claim_items(
+            job_id, owner, self.claim_size, self.lease_seconds
+        )
+        if claimed:
+            await asyncio.gather(*(self._process_item(item, owner) for item in claimed))
+        return claimed
 
     async def _cancel_consumers_when_requested(
         self, job_id: UUID, consumers: list[asyncio.Task[None]]

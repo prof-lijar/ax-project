@@ -12,7 +12,7 @@ import asyncpg
 from ax_contracts import WardWeeklyReport
 
 _UPSERT_REPORT_SQL = """
-INSERT INTO ansimk.ward_weekly_report (
+INSERT INTO ansimk.resources_ward_weekly_report (
     ward_id,
     week_start_date,
     week_end_date,

@@ -464,8 +464,9 @@ a generic query endpoint.
 
 ## Weekly-report storage schema
 
-The approved PostgreSQL target is `ansimk.ward_weekly_report`, defined by
-`workflows/weekly_report/source/migrations/001_create_ward_weekly_report.sql`.
+The approved PostgreSQL target is `ansimk.resources_ward_weekly_report`, defined
+by
+`workflows/weekly_report/source/migrations/001_create_resources_ward_weekly_report.sql`.
 It owns one row per ward and `week_start_date`, references
 `ansimk.resources_ward(id)` with `ON DELETE RESTRICT`, and stores the generated
 frontend report JSON in the non-null `report_data` JSONB column. The score and

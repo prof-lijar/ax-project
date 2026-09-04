@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
@@ -66,7 +66,11 @@ class BulkJobStore(Protocol):
     ) -> BulkJobRecord: ...
     async def get_job(self, job_id: UUID) -> BulkJobRecord: ...
     async def list_jobs(self, job_kind: str, limit: int = 20) -> list[BulkJobRecord]: ...
-    async def next_job(self, job_kind: str) -> BulkJobRecord | None: ...
+    async def next_job(
+        self,
+        job_kind: str,
+        exclude_job_ids: Collection[UUID] = (),
+    ) -> BulkJobRecord | None: ...
     async def set_job_status(self, job_id: UUID, status: str) -> None: ...
     async def claim_producer(
         self, job_id: UUID, owner: str, lease_seconds: int
@@ -265,15 +269,21 @@ class AsyncpgBulkJobStore:
             raise BulkStoreError("bulk jobs could not be loaded") from exc
         return [_job(row) for row in rows]
 
-    async def next_job(self, job_kind: str) -> BulkJobRecord | None:
+    async def next_job(
+        self,
+        job_kind: str,
+        exclude_job_ids: Collection[UUID] = (),
+    ) -> BulkJobRecord | None:
         try:
             row = await self._required_pool().fetchrow(
                 """
                 SELECT * FROM ax_bulk_jobs
                 WHERE job_kind=$1 AND status IN ('pending','preparing','running','finalizing','cancelling')
+                  AND NOT (job_id = ANY($2::uuid[]))
                 ORDER BY created_at LIMIT 1
                 """,
                 job_kind,
+                list(exclude_job_ids),
             )
         except asyncpg.PostgresError as exc:
             raise BulkStoreError("bulk job queue could not be loaded") from exc
@@ -598,11 +608,17 @@ class InMemoryBulkJobStore:
         jobs = [job for job in self.jobs.values() if job.job_kind == job_kind]
         return sorted(jobs, key=lambda job: job.created_at, reverse=True)[:limit]
 
-    async def next_job(self, job_kind: str) -> BulkJobRecord | None:
+    async def next_job(
+        self,
+        job_kind: str,
+        exclude_job_ids: Collection[UUID] = (),
+    ) -> BulkJobRecord | None:
+        excluded = set(exclude_job_ids)
         jobs = [
             j
             for j in self.jobs.values()
             if j.job_kind == job_kind
+            and j.job_id not in excluded
             and j.status
             in {"pending", "preparing", "running", "finalizing", "cancelling"}
         ]

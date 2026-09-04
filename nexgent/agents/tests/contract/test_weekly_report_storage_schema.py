@@ -6,14 +6,14 @@ _MIGRATION = (
     / "weekly_report"
     / "source"
     / "migrations"
-    / "001_create_ward_weekly_report.sql"
+    / "001_create_resources_ward_weekly_report.sql"
 )
 
 
 def test_weekly_report_storage_schema_matches_approved_contract() -> None:
     sql = _MIGRATION.read_text(encoding="utf-8")
 
-    assert "CREATE TABLE ansimk.ward_weekly_report" in sql
+    assert "CREATE TABLE ansimk.resources_ward_weekly_report" in sql
     assert "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY" in sql
     assert "REFERENCES ansimk.resources_ward(id)" in sql
     assert "ON DELETE RESTRICT" in sql
