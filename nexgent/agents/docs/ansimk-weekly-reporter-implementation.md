@@ -4,28 +4,53 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
-## Update: Frontend Schedule UI Prototype
+## Update: Fixed Weekly Cron Scheduler
 
 Date: 2026-09-04
 
-The bulk-only Weekly Reporter page now includes a compact schedule card
-directly below its heading. The prototype defaults scheduled runs to enabled,
-Monday at 03:00, weekly repetition, and the `Asia/Seoul` time zone. Users can
-change the enabled state, weekday, and time locally and see the planned
-schedule rendered in twelve-hour display form.
+`apps/weekly_report_scheduler` is a new independently deployable cron service.
+Its container timezone is fixed to `Asia/Seoul`, and BusyBox cron executes the
+submission command with `0 3 * * 1`: every Monday at 03:00 KST. The command
+selects the previous fully completed Monday-through-Sunday reporting period
+and submits a maximum 10,000-report job to the existing private bulk API.
 
-This is intentionally UI-only. The save button is disabled, the page states
-that changes are not saved and no automatic job will run, and no API,
-persistence model, timer, worker trigger, or bulk-job submission behavior was
-added. Existing manual bulk controls are unchanged.
+The idempotency key `cron-weekly-report-<week_start>` makes bounded transient
+retries safe and prevents duplicate jobs for the same reporting week. The
+response is size-limited and checked for a valid job ID, state, and matching
+week. Structured logs contain only content-free attempt, status, week, and job
+metadata. The scheduler has no database credentials and neither generates
+reports nor calls the model itself.
+
+The stable-server Compose topology starts the service by default and owns the
+automatic schedule. Agent-only and complete development topologies include it
+behind the opt-in `scheduled` profile, preventing duplicate weekly generation
+when environments share external source, writer, or model systems. Every
+enabled scheduler waits for the private bulk API to become healthy. Existing
+manual bulk controls remain unchanged. Cron does not provide a durable
+missed-run ledger: after all bounded delivery attempts fail, an operator must
+submit that week manually.
+
+The page schedule card now labels the configured server-cron default. Its weekday,
+time, and enabled interactions remain local UI previews, and Save remains
+disabled; changing the card does not reconfigure the fixed cron service.
 
 Validation completed on 2026-09-04:
 
 ```text
-Focused schedule/page tests                  2 passed
+Scheduler/API/deployment focused tests      14 passed
+Agent test suite                            361 passed, 1 optional skip
+Scheduler-focused Ruff                       passed
 Frontend Vitest suite                       203 passed (20 files)
-TypeScript/Vite production build            passed
+TypeScript/Vite production build             passed
+LangGraph configuration                      valid, 4 graphs found
+Agent/development/stable Compose rendering   passed
+Project skill validation                     passed
+Scheduler image build                        blocked: Docker socket permission
 ```
+
+The repository-wide Ruff command also ran. It is currently blocked by two
+pre-existing import/export ordering findings in `ax_integrations.__init__` and
+`test_rag_chat_graph.py`; neither file is part of this scheduler change.
 
 ## Update: Frontend Bulk-Only Workflow
 

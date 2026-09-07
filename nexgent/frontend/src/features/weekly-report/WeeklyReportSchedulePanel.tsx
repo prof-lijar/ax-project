@@ -34,7 +34,7 @@ export function WeeklyReportSchedulePanel() {
           <h2 id="weekly-schedule-title">Default schedule</h2>
           <p>Choose when this agent should prepare the weekly report.</p>
         </div>
-        <span className={styles.prototypeBadge}>UI only</span>
+        <span className={styles.prototypeBadge}>Server cron</span>
       </header>
 
       <form className={styles.form} onSubmit={preventPrototypeSubmit}>
@@ -49,7 +49,7 @@ export function WeeklyReportSchedulePanel() {
           </span>
           <span>
             <strong>Scheduled runs</strong>
-            <small>Run automatically at the selected time.</small>
+            <small>The server default runs automatically each week.</small>
           </span>
         </label>
 
@@ -118,8 +118,8 @@ export function WeeklyReportSchedulePanel() {
         </footer>
 
         <p className={styles.connectionNote} id="schedule-ui-note">
-          Scheduling is not connected yet. Changes are not saved and no
-          automatic job will run.
+          Server cron is configured for every Monday at 3:00 AM. UI changes
+          are previews only and are not saved yet.
         </p>
       </form>
     </section>

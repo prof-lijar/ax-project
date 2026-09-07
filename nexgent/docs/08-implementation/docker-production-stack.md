@@ -19,6 +19,21 @@ current production server deliberately runs the same tested application-level
 Agent Server implementation with a different published port; it does not share
 a running process or Docker state with development.
 
+## Update: Weekly Reporter Cron Ownership
+
+Date: 2026-09-04
+
+The stable-server stack now owns the active Weekly Reporter schedule through
+the private `weekly-report-scheduler` service. BusyBox cron runs every Monday
+at 03:00 `Asia/Seoul` and idempotently submits the previous completed week to
+the private bulk control API. The service has no database, model, or public
+network boundary.
+
+Development and agent-only Compose files contain the same service behind the
+opt-in `scheduled` profile. This prevents development and stable stacks from
+independently generating the same reporting week against shared external
+source, writer, and model systems.
+
 ## Update: Priority README Runbook
 
 Date: 2026-09-03

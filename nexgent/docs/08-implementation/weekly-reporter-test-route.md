@@ -2,25 +2,44 @@
 
 Date: 2026-08-19
 
-## Update: Schedule UI Prototype
+## Update: Fixed Weekly Cron Scheduler
 
 Date: 2026-09-04
 
-The Weekly Reporter page now places a schedule card immediately below the page
-heading. It defaults to scheduled runs enabled every Monday at 03:00, repeats
-weekly, and identifies `Asia/Seoul` as the time zone. Weekday, time, and
-enabled changes update the displayed plan in local React state.
+The Weekly Reporter now has a separate `weekly-report-scheduler` Compose
+service. Its BusyBox cron daemon runs at `0 3 * * 1` in an
+`Asia/Seoul`-configured container, submitting the previous fully completed
+Monday-through-Sunday period to the existing private bulk API. The default
+request covers up to 10,000 reports.
 
-This surface does not yet schedule work. Save is disabled, an inline notice
-states that changes are not persisted and no automatic job will run, and there
-is no new frontend API connection. The durable bulk job controls below the
-card retain their existing manual behavior.
+Submissions derive their idempotency key from the reporting week and use
+bounded transient retries. The scheduler validates a small content-free API
+response and logs only attempt, status, week, and job identifiers. It holds no
+database or model credentials and does not execute reports itself. The stable
+server starts the service by default. Agent-only and complete development
+topologies expose it through the opt-in `scheduled` profile, preventing
+duplicate generation when environments share external dependencies.
+
+The schedule card remains directly below the page heading and now labels the
+server cron. Weekday, time, and enabled changes are still frontend previews;
+Save is disabled and the card states that UI changes are not persisted.
+Manual bulk controls retain their existing behavior.
+
+Cron does not persist missed invocations. If all delivery attempts fail at the
+scheduled time, an operator must submit that week manually.
 
 Validation completed on 2026-09-04:
 
-- two focused schedule/page tests passed;
-- all 203 frontend tests passed across 20 files; and
-- the TypeScript/Vite production build succeeded.
+- 14 focused scheduler, bulk-API, and deployment-contract tests passed;
+- all 361 agent tests passed with one optional live evaluation skipped;
+- all 203 frontend tests passed and the TypeScript/Vite build succeeded;
+- all four LangGraph entries and all three Compose topologies validated; and
+- both project skills validated.
+
+The scheduler image build remains an operator gate because the implementation
+account cannot access the Docker socket. Scheduler-focused Ruff passes; the
+repository-wide command reports two unrelated, pre-existing ordering findings
+outside this change.
 
 ## Update: Bulk-Only Weekly Reporter
 
@@ -293,8 +312,9 @@ qualitative facts require explicit approval for the configured LLM endpoint.
 ## Known Limits
 
 - The workbench keeps only the current in-memory batch; reload clears it.
-- Report scheduling, persistence, approval, and Slack delivery are separate
-  workflows and are not triggered by this screen.
+- Editable schedule persistence, approval, and Slack delivery remain separate
+  workflows and are not triggered by this screen. Fixed Monday 03:00 KST bulk
+  submission is owned by the private cron service described above.
 - A batch may contain fewer reports than requested when the source has fewer
   eligible subscribers or skips requested data; the UI presents an explicit
   no-result state rather than fabricating reports.

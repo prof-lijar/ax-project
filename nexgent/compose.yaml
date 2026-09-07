@@ -166,6 +166,26 @@ services:
     restart: unless-stopped
     stop_grace_period: 5s
 
+  weekly-report-scheduler:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_scheduler/Dockerfile
+    image: ax-weekly-report-scheduler-dev:local
+    environment:
+      WEEKLY_REPORT_BULK_API_URL: http://weekly-report-bulk-api:8090
+      WEEKLY_REPORT_SCHEDULE_MAX_REPORTS: "${WEEKLY_REPORT_SCHEDULE_MAX_REPORTS:-10000}"
+      WEEKLY_REPORT_SCHEDULE_TIMEOUT_SECONDS: "${WEEKLY_REPORT_SCHEDULE_TIMEOUT_SECONDS:-30}"
+      WEEKLY_REPORT_SCHEDULE_ATTEMPTS: "${WEEKLY_REPORT_SCHEDULE_ATTEMPTS:-3}"
+      WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS: "${WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS:-2}"
+    depends_on:
+      weekly-report-bulk-api:
+        condition: service_healthy
+    profiles:
+      - scheduled
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5s
+
   backend:
     build:
       context: ./backend

@@ -17,7 +17,9 @@ describe("Weekly Reporter page", () => {
     expect(markup).toContain("Weekly");
     expect(markup).toContain("Asia/Seoul");
     expect(markup).toContain("Every Monday at 3:00 AM");
-    expect(markup).toContain("Scheduling is not connected yet");
+    expect(markup).toContain(
+      "Server cron is configured for every Monday at 3:00 AM",
+    );
     expect(markup).toContain("Durable bulk run");
     expect(markup).not.toContain("Quick preview");
     expect(markup).not.toContain("ansimk_weekly_reporter");

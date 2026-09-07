@@ -99,9 +99,10 @@
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   bulk-only `/agents/1` execution with durable 1–10,000 report job control,
   throughput monitoring, cancellation, verified export, an explicitly
-  non-persistent Monday 03:00 weekly schedule UI prototype, and the full
-  Compose runtime path; the former Quick Preview and Chat execution paths are
-  retired.
+  non-persistent schedule editor preview, and a fixed Monday 03:00
+  `Asia/Seoul` cron service that idempotently submits the previous completed
+  week through the private bulk API; the former Quick Preview and Chat
+  execution paths are retired.
 - [Outbound Slack messaging](slack-outbound-messaging.md): approved-channel
   configuration, reusable async delivery, safe failures, Slack app setup, and
   human-approved weekly-report verification.

@@ -49,6 +49,12 @@ This also means both stacks connect to the same configured external Nextcloud,
 model, RAG, Scout, source-database, and report-writer systems. Their Docker
 volumes and ports are separate, but those external systems are not.
 
+The stable production stack is the default owner of the Weekly Reporter cron
+schedule and submits the previous completed week every Monday at 03:00 KST.
+The development scheduler is behind the optional `scheduled` Compose profile
+to prevent duplicate model work and report writes while both environments are
+running.
+
 ### Development
 
 Start development with live source reload:

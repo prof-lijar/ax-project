@@ -120,8 +120,8 @@ terminal ZIP contains
 `manifest.json`, `reports.jsonl`, deterministic `reports/<ward_id>.md`
 Markdown files, and frontend-ready `json/<ward_id>.json` template files.
 Artifacts expire after seven days; long-term report history, a public bulk API,
-schedule persistence and execution, and bulk Slack delivery are deliberately
-out of scope. Slack remains a separate human-approved side-effect boundary.
+editable schedule persistence, and bulk Slack delivery are deliberately out of
+scope. Slack remains a separate human-approved side-effect boundary.
 
 The model path is LLM-first for every report. OpenAI-compatible servers receive
 the dedicated weekly-summary system prompt plus validated report-facing data
@@ -210,14 +210,25 @@ status polling, cancellation, recent jobs, and verified ZIP download remain.
 The registered interactive graph remains a backend compatibility boundary; it
 has no first-party frontend caller.
 
-Weekly Reporter schedule UI prototype on 2026-09-04: the bulk-only
-`/agents/1` page renders a schedule card directly below its heading. It
-defaults to enabled, Monday at 03:00, repeats weekly, and displays
-`Asia/Seoul` as the time zone. Weekday, time, and enabled state are local
-React state only. The save action is disabled and the page explicitly states
-that changes are not saved and no automatic job will run. This adds no timer,
-API contract, durable schedule record, scheduler process, or job submission
-path; manual durable bulk controls remain unchanged.
+Weekly Reporter cron scheduling update on 2026-09-04: the independently
+deployable `apps/weekly_report_scheduler` service runs BusyBox cron at
+`0 3 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
+calculates the previous fully completed Monday-through-Sunday period and
+submits up to 10,000 reports through the private bulk control API. It never
+accesses PostgreSQL or the model directly. A period-derived idempotency key
+prevents retry duplicates, transient delivery retries are bounded, responses
+are size-limited and validated, and logs contain only schedule/job metadata.
+The stable-server Compose topology starts the service by default and is the
+single automatic schedule owner. Agent-only and root development Compose keep
+the same service behind the opt-in `scheduled` profile so concurrently running
+environments cannot duplicate work against shared external systems. Every
+enabled scheduler depends on bulk-API readiness.
+
+The `/agents/1` schedule card now identifies the configured server cron while
+retaining local-only weekday/time previews for the future editable-schedule
+experience. UI changes and the disabled save action do not reconfigure cron.
+There is no schedule database, schedule-management API, missed-run catch-up,
+or automatic Slack delivery. Manual durable bulk controls remain available.
 
 Release capacity is measured end to end against a representative private-model
 deployment. The hard gate is 10,000 reports in at most two hours (at least
@@ -980,6 +991,7 @@ apps/
   gateway/                   # public API service
   agent_server/              # Agent Server deployment metadata
   workers/                   # independently scalable async execution boundary
+  weekly_report_scheduler/   # fixed private cron-to-bulk-API submission
 workflows/
   orchestrator/              # optional cross-workflow dynamic delegation
   smoke/                     # deterministic example graph
@@ -1274,10 +1286,14 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 ## 12. Known limitations and decisions deferred
 
 - The weekly reporter now calculates broad raw weekly metadata and produces
-  validated warm Korean summaries. It remains manually triggered and does not
-  schedule or persist rendered reports. An operator can explicitly deliver a
-  completed batch to an approved Slack destination; delivery is not
-  an automatic graph side effect. Weekly-average risk-score bands and indoor
+  validated warm Korean summaries. Manual submission remains available, and a
+  fixed Compose cron service submits the previous completed week every Monday
+  at 03:00 `Asia/Seoul`. Cron has bounded request retries but no durable
+  missed-run catch-up or editable schedule record. Durable bulk finalization
+  persists rendered frontend JSON; interactive compatibility runs remain
+  non-writing. An operator can explicitly deliver a completed batch to an
+  approved Slack destination; delivery is not an automatic graph side effect.
+  Weekly-average risk-score bands and indoor
   environment ranges are product-approved deterministic presentation rules;
   the weekly-summary model receives neither numeric score nor report-facing
   overall/basic-information values. The
