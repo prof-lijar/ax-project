@@ -2,6 +2,54 @@
 
 Date: 2026-08-03
 
+## Update: Retired Tasks, Approvals, and Activity Routes
+
+Date: 2026-09-03
+
+The Tasks, Approvals, and Activity sections were removed from the frontend
+navigation and route model. Their former paths (`/tasks`, `/approvals`, and
+`/activity`) now resolve as unknown locations and are replaced with the Chat
+fallback at `/chat` during application synchronization. Focused route tests
+verify that the three identifiers are absent from the sidebar and that their
+former URLs remain unresolved.
+
+The current flat sidebar routes are:
+
+| Section | Route |
+| --- | --- |
+| Chat | `/chat` |
+| NextCloud | `/nextcloud` |
+| Agents | `/agents` |
+| RAG | `/rag` |
+| Settings | `/settings` |
+
+Agent detail URLs continue to use `/agents/:id`. The `/co-workers` compatibility
+path continues to normalize to `/agents`. As of 2026-09-04, the retired
+`/test-agent` Weekly Reporter route normalizes to `/agents/1`; it is no longer a
+sidebar section.
+
+## Update: Agent Detail Routes
+
+Date: 2026-08-14
+
+The existing History API router now recognizes one dynamic route shape,
+`/agents/:id`, in addition to the flat section paths. Agent detail URLs remain
+part of the `agents` section so the sidebar state does not change when moving
+between the catalog and a detail page.
+
+Zustand now tracks the active normalized path alongside the active section.
+Initial URL synchronization, client-side navigation, and `popstate` updates set
+both values atomically. `App.tsx` uses the active path to choose the catalog at
+`/agents` or the detail view at `/agents/:id`. Detail IDs are URL-decoded for
+catalog lookup, and paths with additional segments remain unresolved.
+
+Focused route tests cover the canonical list path, detail paths, trailing-slash
+normalization, decoded IDs, unknown nested paths, the existing legacy
+`/co-workers` redirect, and the `/test-agent` to `/agents/1` redirect. See
+[Agents Management Interface](agents-management-interface.md) for the detail
+UX, sequential mock ID mapping, frontend-only execution boundary, and complete
+validation record.
+
 ## Update: Canonical Agents Route
 
 Date: 2026-08-13
@@ -19,7 +67,9 @@ design, data boundary, validation, and remaining live integration work.
 
 ## Implemented
 
-Every left-sidebar section now has a stable browser route:
+The initial implementation gave every left-sidebar section a stable browser
+route. Tasks, Approvals, and Activity were subsequently retired as documented
+in the 2026-09-03 update above:
 
 | Section | Route |
 | --- | --- |
@@ -31,11 +81,12 @@ Every left-sidebar section now has a stable browser route:
 | Activity | `/activity` |
 | Settings | `/settings` |
 
-Sidebar items are links with real `href` values and use client-side navigation
-for ordinary clicks. Workspace shortcut buttons use the same navigation path.
-Direct page loads select the section represented by the URL, and browser
-Back/Forward events synchronize the visible section with the restored route.
-The root path and unknown paths are replaced with `/workspace`.
+At that time, sidebar items were implemented as links with real `href` values
+and client-side navigation for ordinary clicks. Workspace shortcut buttons used
+the same navigation path. Direct page loads selected the section represented by
+the URL, and browser Back/Forward events synchronized the visible section with
+the restored route. The root path and unknown paths were originally replaced
+with `/workspace`; the current `/chat` fallback is documented above.
 
 ## Architecture Decisions
 

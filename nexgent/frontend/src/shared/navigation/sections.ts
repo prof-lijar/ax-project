@@ -3,19 +3,25 @@ import { useUiStore, type AppSection } from "../state/useUiStore";
 export const sectionPaths: Record<AppSection, string> = {
   chat: "/chat",
   nextcloud: "/nextcloud",
-  tasks: "/tasks",
-  approvals: "/approvals",
   agents: "/agents",
-  activity: "/activity",
+  rag: "/rag",
   settings: "/settings"
 };
 
 export function navigateToSection(section: AppSection) {
   const path = sectionPaths[section];
+  navigateToLocation(section, path);
+}
+
+export function navigateToAgentDetail(agentId: string) {
+  navigateToLocation("agents", `/agents/${encodeURIComponent(agentId)}`);
+}
+
+function navigateToLocation(section: AppSection, path: string) {
   if (normalizePath(window.location.pathname) !== path) {
     window.history.pushState({ section }, "", path);
   }
-  useUiStore.getState().setActiveSection(section);
+  useUiStore.getState().setActiveLocation(section, path);
 }
 
 export function syncSectionFromLocation() {
@@ -28,7 +34,7 @@ export function syncSectionFromLocation() {
     if (currentPath !== path) {
       window.history.replaceState({ section }, "", path);
     }
-    useUiStore.getState().setActiveSection(section);
+    useUiStore.getState().setActiveLocation(section, path);
     return;
   }
 
@@ -38,7 +44,7 @@ export function syncSectionFromLocation() {
     "",
     sectionPaths[fallback]
   );
-  useUiStore.getState().setActiveSection(fallback);
+  useUiStore.getState().setActiveLocation(fallback, sectionPaths[fallback]);
 }
 
 export function resolveSectionLocation(
@@ -54,11 +60,32 @@ export function resolveSectionLocation(
     return { section: "agents", path: sectionPaths.agents };
   }
 
+  if (normalizedPathname === "/test-agent") {
+    return { section: "agents", path: "/agents/1" };
+  }
+
+  if (getAgentIdFromPath(normalizedPathname)) {
+    return { section: "agents", path: normalizedPathname };
+  }
+
   const entry = Object.entries(sectionPaths).find(
     ([, path]) => path === normalizedPathname
   );
   const section = entry?.[0] as AppSection | undefined;
   return section ? { section, path: sectionPaths[section] } : null;
+}
+
+export function getAgentIdFromPath(pathname: string): string | null {
+  const match = normalizePath(pathname).match(/^\/agents\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 function normalizePath(pathname: string) {

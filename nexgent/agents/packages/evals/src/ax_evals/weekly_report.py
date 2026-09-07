@@ -1,30 +1,72 @@
-"""Deterministic release-gate checks for personal weekly reports."""
+"""Deterministic release gates for grounded, warm weekly reports."""
 
 import re
 
-from ax_contracts import EvaluationResult, UserWeeklyReport, WeeklyReportBatchResult
+from ax_contracts import EvaluationResult, WardWeeklyReport, WardWeeklyReportBatchResult
 
-REQUIRED_HEADINGS = ("## 핵심 지표", "## 이번 주 요약", "## 다음 주 제안")
+REQUIRED_HEADINGS = (
+    "## 기본 정보",
+    "## 한주 총평",
+    "# 주요 내용",
+    "# 보호자 행동 제안",
+)
+FORBIDDEN_PHRASES = (
+    "위험합니다",
+    "응급",
+    "진단",
+    "반드시",
+    "확실히",
+    "하세요",
+    "하십시오",
+)
+
+BULK_TARGET_REPORTS = 10_000
+BULK_SLA_SECONDS = 2 * 60 * 60
+BULK_HEALTHY_SECONDS = 90 * 60
+
+
+def evaluate_weekly_report_bulk_capacity(
+    observed_reports_per_second: float,
+) -> list[EvaluationResult]:
+    """Turn a representative end-to-end benchmark into explicit SLA gates."""
+
+    if observed_reports_per_second <= 0:
+        raise ValueError("observed_reports_per_second must be positive")
+    projected_seconds = BULK_TARGET_REPORTS / observed_reports_per_second
+    return [
+        _criterion(
+            "bulk_two_hour_sla",
+            projected_seconds <= BULK_SLA_SECONDS,
+            f"projected {projected_seconds:.1f}s for {BULK_TARGET_REPORTS} reports",
+            "add inference capacity or reduce per-report latency before release",
+        ),
+        _criterion(
+            "bulk_ninety_minute_headroom",
+            projected_seconds <= BULK_HEALTHY_SECONDS,
+            f"projected {projected_seconds:.1f}s for {BULK_TARGET_REPORTS} reports",
+            "scale workers/model replicas until the ninety-minute healthy target passes",
+        ),
+    ]
 
 
 def evaluate_weekly_report_batch(
-    result: WeeklyReportBatchResult,
+    result: WardWeeklyReportBatchResult,
 ) -> list[EvaluationResult]:
     """Evaluate observable batch, format, identity, and grounding behavior."""
 
-    checks = [
+    return [
         _criterion(
             "batch_completeness",
             bool(result.reports)
-            and [report.user_id for report in result.reports]
-            == sorted(report.user_id for report in result.reports),
-            f"validated {len(result.reports)} sorted unique reports",
-            "return at least one report and sort reports by user_id",
+            and [report.ward_id for report in result.reports]
+            == sorted(report.ward_id for report in result.reports),
+            f"validated {len(result.reports)} sorted unique ward reports",
+            "return at least one report and sort reports by ward_id",
         ),
         _criterion(
             "korean_markdown_structure",
             all(
-                all(heading in report.markdown for heading in REQUIRED_HEADINGS)
+                _has_required_headings(report)
                 and re.search(r"[가-힣]", report.markdown) is not None
                 for report in result.reports
             ),
@@ -34,20 +76,39 @@ def evaluate_weekly_report_batch(
         _criterion(
             "personalization",
             all(
-                report.markdown.startswith(
-                    f"# {report.display_name}님의 주간 업무 리포트"
-                )
+                report.markdown.startswith("# 주간 생활 리포트")
+                and f"- 가입자: {report.display_name}" in report.markdown
                 for report in result.reports
             ),
-            "every report title matches its validated user identity",
-            "render each title from the report contract identity",
+            "every report identifies its validated ward in the basic information",
+            "render each ward identity in the basic information section",
         ),
         _criterion(
             "numeric_grounding",
-            all(_has_grounded_kpi_rows(report) for report in result.reports)
-            and all(not _narrative_has_digits(report) for report in result.reports),
-            "KPI rows match calculated metrics and narrative sections contain no digits",
-            "render numbers only from validated metrics and reject numeric model prose",
+            all(_has_grounded_kpi_row(report) for report in result.reports)
+            and all(
+                _narrative_numbers_are_grounded(report) for report in result.reports
+            ),
+            "risk-event rows and significant narrative counts match calculated metrics",
+            "render only allowlisted significant values from validated metrics",
+        ),
+        _criterion(
+            "device_reception_consistency",
+            all(_has_consistent_device_reception(report) for report in result.reports),
+            "device status, unmatched-row count, and guardian copy match source-row evidence",
+            "apply power/position precedence, then GOOD for any good occurrence, and reserve missing-data power guidance for zero source rows",
+        ),
+        _criterion(
+            "narrative_safety",
+            all(
+                _narrative_numbers_are_grounded(report)
+                and not any(
+                    phrase in _narrative_text(report) for phrase in FORBIDDEN_PHRASES
+                )
+                for report in result.reports
+            ),
+            "narrative uses only grounded significant counts and avoids categorical language",
+            "regenerate unsafe narrative or use the deterministic fallback",
         ),
         _criterion(
             "fallback_disclosure",
@@ -60,7 +121,6 @@ def evaluate_weekly_report_batch(
             "label reports that use deterministic fallback prose",
         ),
     ]
-    return checks
 
 
 def weekly_report_release_ready(results: list[EvaluationResult]) -> bool:
@@ -83,32 +143,86 @@ def _criterion(
     )
 
 
-def _has_grounded_kpi_rows(report: UserWeeklyReport) -> bool:
-    current = report.metrics.current
-    previous = report.metrics.previous
-    delta = report.metrics.delta
-    rows = (
-        f"| 배정 업무 | {current.assigned_tasks}건 | {previous.assigned_tasks}건 | {_signed(delta.assigned_tasks, '건')} |",
-        f"| 완료 업무 | {current.completed_tasks}건 | {previous.completed_tasks}건 | {_signed(delta.completed_tasks, '건')} |",
-        f"| 완료율 | {current.completion_rate_percent:.1f}% | {previous.completion_rate_percent:.1f}% | {_signed(delta.completion_rate_percentage_points, '%p', one_decimal=True)} |",
-        f"| 집중 시간 | {_duration(current.focus_minutes)} | {_duration(previous.focus_minutes)} | {_signed(delta.focus_minutes, '분')} |",
-        f"| 활동일 | {current.active_days}일 | {previous.active_days}일 | {_signed(delta.active_days, '일')} |",
-        f"| 새 블로커 | {current.blockers_opened}건 | {previous.blockers_opened}건 | {_signed(delta.blockers_opened, '건')} |",
-        f"| 해결 블로커 | {current.blockers_resolved}건 | {previous.blockers_resolved}건 | {_signed(delta.blockers_resolved, '건')} |",
+def _has_grounded_kpi_row(report: WardWeeklyReport) -> bool:
+    metrics = report.metrics
+    expected = (
+        f"  - 위험 감지: {metrics.current.risk_detected_count}회\n"
+        f"  - 정상 해제: {metrics.current.risk_resolved_count}회\n"
+        f"  - 2주 전: {metrics.previous.risk_detected_count}회 / "
+        f"{metrics.previous.risk_resolved_count}회"
     )
-    return all(row in report.markdown for row in rows)
+    return expected in report.markdown
 
 
-def _narrative_has_digits(report: UserWeeklyReport) -> bool:
-    _, separator, narrative = report.markdown.partition("## 이번 주 요약")
-    return not separator or re.search(r"\d", narrative) is not None
+def _has_required_headings(report: WardWeeklyReport) -> bool:
+    if not all(heading in report.markdown for heading in REQUIRED_HEADINGS):
+        return False
+    detail_headings = (
+        "## 생활 활동",
+        "### 활동감지",
+        "### 리모컨 이용",
+        "## 실내 환경",
+        "## 기기 상태",
+        "## 위험 관리",
+    )
+    return all(heading in report.markdown for heading in detail_headings)
 
 
-def _duration(minutes: int) -> str:
-    hours, remainder = divmod(minutes, 60)
-    return f"{hours}시간 {remainder}분"
+def _has_consistent_device_reception(report: WardWeeklyReport) -> bool:
+    current = report.metrics.current
+    counts = (
+        current.device_good_count,
+        current.device_power_count,
+        current.device_position_count,
+    )
+    if current.daily_summary_count == 0:
+        return "## 기기 상태\n\n- 상태: 자료 없음" in report.markdown
+    if any(value is None for value in counts):
+        return False
+
+    other_count = current.daily_summary_count - sum(value or 0 for value in counts)
+    if f"- 기타 수신 패턴: {other_count}회" not in report.markdown:
+        return False
+    if "지난 한 주 기기 데이터 수신이 확인되지 않았어요." in report.markdown:
+        return False
+
+    if (current.device_power_count or 0) >= 2 or (
+        current.device_position_count or 0
+    ) >= 2:
+        expected_status = "CAUTION"
+    elif (current.device_good_count or 0) >= 1:
+        expected_status = "GOOD"
+        if "기기 전원이 연결되어 있는지 확인해 주세요" in report.markdown:
+            return False
+    else:
+        expected_status = "판정 불가"
+    return f"## 기기 상태\n\n- 상태: {expected_status}" in report.markdown
 
 
-def _signed(value: float, unit: str, *, one_decimal: bool = False) -> str:
-    rendered = f"{value:+.1f}" if one_decimal else f"{int(value):+d}"
-    return f"{rendered}{unit}"
+def _narrative_numbers_are_grounded(report: WardWeeklyReport) -> bool:
+    narrative = _narrative_text(report).replace("2주 전", "")
+    numbers = re.findall(r"\d+(?:\.\d+)?", narrative)
+    if not numbers:
+        return True
+
+    current = report.metrics.current
+    allowed = set(re.findall(r"\d+(?:\.\d+)?", report.display_name))
+    if current.covered_days < 4:
+        allowed.add(str(current.covered_days))
+    if (current.device_power_count or 0) >= 2:
+        allowed.add(str(current.device_power_count))
+    if (current.device_position_count or 0) >= 2:
+        allowed.add(str(current.device_position_count))
+    return all(number in allowed for number in numbers)
+
+
+def _narrative_text(report: WardWeeklyReport) -> str:
+    narrative = report.narrative
+    return " ".join(
+        [
+            narrative.headline,
+            narrative.analysis_text,
+            *narrative.observations,
+            *narrative.suggestions,
+        ]
+    )

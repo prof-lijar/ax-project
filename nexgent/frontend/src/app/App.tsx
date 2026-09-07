@@ -1,18 +1,39 @@
 import { useLayoutEffect } from "react";
 
-import { ActivityPage } from "../features/activity/ActivityPage";
+import { AgentDetailPage } from "../features/agents/AgentDetailPage";
 import { AgentsPage } from "../features/agents/AgentsPage";
-import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
+import { ScoutWorkbenchPage } from "../features/agents/ScoutWorkbenchPage";
 import { ChatPage } from "../features/chat/ChatPage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
+import { RagPage } from "../features/rag/RagPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
-import { TasksPage } from "../features/tasks/TasksPage";
-import { syncSectionFromLocation } from "../shared/navigation/sections";
+import { WeeklyReporterPage } from "../features/weekly-report/WeeklyReporterPage";
+import { SCOUT_AGENT_ID } from "../shared/api/agentCatalogClient";
+import {
+  getAgentIdFromPath,
+  syncSectionFromLocation
+} from "../shared/navigation/sections";
 import { useUiStore } from "../shared/state/useUiStore";
 import { AppShell } from "./shell/AppShell";
 
+export function getAgentsRoute(agentId: string | null) {
+  if (agentId === "1") {
+    return { kind: "weekly-reporter" } as const;
+  }
+  if (agentId === SCOUT_AGENT_ID) {
+    return { kind: "scout" } as const;
+  }
+  return agentId
+    ? ({ kind: "detail", agentId } as const)
+    : ({ kind: "catalog" } as const);
+}
+
 export function App() {
   const activeSection = useUiStore((state) => state.activeSection);
+  const activePath = useUiStore((state) => state.activePath);
+  const activeAgentId =
+    activeSection === "agents" ? getAgentIdFromPath(activePath) : null;
+  const agentsRoute = getAgentsRoute(activeAgentId);
 
   useLayoutEffect(() => {
     syncSectionFromLocation();
@@ -24,10 +45,17 @@ export function App() {
     <AppShell>
       {activeSection === "chat" && <ChatPage />}
       {activeSection === "nextcloud" && <NextcloudPage />}
-      {activeSection === "tasks" && <TasksPage />}
-      {activeSection === "approvals" && <ApprovalsPage />}
-      {activeSection === "agents" && <AgentsPage />}
-      {activeSection === "activity" && <ActivityPage />}
+      {activeSection === "agents" &&
+        (agentsRoute.kind === "weekly-reporter" ? (
+          <WeeklyReporterPage />
+        ) : agentsRoute.kind === "scout" ? (
+          <ScoutWorkbenchPage />
+        ) : agentsRoute.kind === "detail" ? (
+          <AgentDetailPage agentId={agentsRoute.agentId} />
+        ) : (
+          <AgentsPage />
+        ))}
+      {activeSection === "rag" && <RagPage />}
       {activeSection === "settings" && <SettingsPage />}
     </AppShell>
   );

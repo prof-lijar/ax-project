@@ -44,6 +44,6 @@
     "icon": [],
     "category": "Productivity",
     "shortDescription": "Agent workflow operator console",
-    "longDescription": "Nexgent is a local desktop console for supervising tasks, agents, approvals, and activity."
+    "longDescription": "Nexgent is a local desktop console for chatting with agents, browsing files, and operating agent tools."
   }
 }

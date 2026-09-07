@@ -1,11 +1,9 @@
 import {
-  Activity,
   Bot,
-  CheckSquare,
   Cloud,
+  Database,
   MessageSquare,
-  Settings,
-  ShieldCheck
+  Settings
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -30,19 +28,7 @@ export const navItems: Array<{
     icon: Cloud,
     path: sectionPaths.nextcloud
   },
-  { id: "tasks", label: "Tasks", icon: CheckSquare, path: sectionPaths.tasks },
-  {
-    id: "approvals",
-    label: "Approvals",
-    icon: ShieldCheck,
-    path: sectionPaths.approvals
-  },
   { id: "agents", label: "Agents", icon: Bot, path: sectionPaths.agents },
-  {
-    id: "activity",
-    label: "Activity",
-    icon: Activity,
-    path: sectionPaths.activity
-  },
+  { id: "rag", label: "RAG", icon: Database, path: sectionPaths.rag },
   { id: "settings", label: "Settings", icon: Settings, path: sectionPaths.settings }
 ];

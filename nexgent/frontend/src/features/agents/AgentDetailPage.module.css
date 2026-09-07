@@ -1,0 +1,379 @@
+.page {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 1040px);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.backLink {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-self: start;
+  min-height: 28px;
+  padding-right: 4px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--color-text);
+}
+
+.backLink:focus-visible,
+.runInChatButton:focus-visible,
+.stopRunButton:focus-visible,
+.latestRunAction:focus-visible {
+  outline: 3px solid rgb(27 97 201 / 22%);
+  outline-offset: 2px;
+}
+
+.details,
+.detailMessage {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.details {
+  padding: 28px;
+}
+
+.detailsHeader {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "icon title status"
+    "icon subtitle ."
+    "description description action";
+  column-gap: 15px;
+  row-gap: 5px;
+  align-items: center;
+}
+
+.detailsIcon {
+  display: inline-flex;
+  grid-area: icon;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-md);
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.detailsTitleRow {
+  display: flex;
+  grid-area: title;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.detailsHeader h1,
+.detailsHeader p,
+.description,
+.currentRun h2,
+.latestRun h2,
+.runPrompt,
+.noCurrentRun,
+.noLatestRun {
+  margin: 0;
+}
+
+.detailsHeader h1 {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.detailsSubtitle {
+  grid-area: subtitle;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.headerStatus {
+  grid-area: status;
+  justify-self: end;
+  min-width: 0;
+}
+
+.runInChatButton {
+  display: inline-flex;
+  grid-area: action;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  justify-self: end;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  background: var(--color-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.runInChatButton:hover {
+  background: var(--color-primary-strong);
+}
+
+.description {
+  grid-area: description;
+  max-width: 800px;
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.currentRun,
+.latestRun {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.currentRunHeader,
+.latestRunHeader {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.currentRun h2,
+.latestRun h2 {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.noCurrentRun,
+.noLatestRun {
+  margin-top: 10px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+}
+
+.currentRunBody {
+  display: grid;
+  gap: 11px;
+  max-width: 620px;
+  margin-top: 12px;
+}
+
+.latestRunBody {
+  display: grid;
+  gap: 11px;
+  margin-top: 12px;
+}
+
+.latestRunFooter {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.latestRunMetadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.latestRunAction {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.latestRunAction:hover {
+  border-color: #c7d3e0;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.runPrompt {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.runStages {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.runStageactive,
+.runStagecompleted,
+.runStagepending {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.runStageactive svg,
+.runStagecompleted svg,
+.runStagepending svg {
+  flex: 0 0 auto;
+}
+
+.runStageactive {
+  color: var(--color-link);
+  font-weight: 500;
+}
+
+.runStageactive svg {
+  animation: runStageSpin 1s linear infinite;
+}
+
+.runStagecompleted svg {
+  color: var(--color-forest);
+}
+
+.runStagepending {
+  opacity: 0.72;
+}
+
+.runFooter {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.runFooter small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.stopRunButton {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stopRunButton:hover {
+  border-color: #c7d3e0;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.detailMessage {
+  display: grid;
+  justify-items: center;
+  min-height: 280px;
+  padding: 64px 24px;
+  color: var(--color-text-soft);
+  text-align: center;
+}
+
+.detailMessage strong {
+  margin-top: 12px;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.detailMessage span {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+@keyframes runStageSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .details {
+    padding: 18px;
+  }
+
+  .detailsHeader {
+    grid-template-columns: 44px minmax(0, 1fr) max-content;
+  }
+
+  .detailsIcon {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 560px) {
+  .detailsHeader {
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-areas:
+      "icon title"
+      "icon subtitle"
+      "description description"
+      ". actions";
+    row-gap: 6px;
+  }
+
+  .headerStatus,
+  .runInChatButton {
+    grid-area: actions;
+  }
+
+  .headerStatus {
+    justify-self: start;
+  }
+
+  .runInChatButton {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 520px) {
+  .runFooter,
+  .latestRunFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runStageactive svg {
+    animation: none;
+  }
+}

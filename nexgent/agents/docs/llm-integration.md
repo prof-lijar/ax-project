@@ -19,6 +19,8 @@ cp .env.example .env
 URL=http://192.168.0.17:8000/v1
 MODEL=gemma-4-31b
 OPENAI_API_KEY=your-bearer-token
+OPENAI_SUPPORTS_VISION=false
+AX_CHAT_ARTIFACT_ROOT=/run/ax-chat
 ```
 
 `OPENAI_BASE_URL` may replace `URL`, and `OPENAI_MODEL` may replace `MODEL`.
@@ -69,6 +71,9 @@ the integration layer.
 - Authentication failures and malformed provider events are permanent.
 - Provider errors expose status and retryability without including the key or
   response body.
+- Text/image content parts are validated before submission. Image data URLs are
+  accepted only when `OPENAI_SUPPORTS_VISION=true`; the default is false. Enable
+  it only after the configured model passes a live image-input request.
 - Each provider text chunk becomes a LangGraph custom event, while the final
   values event remains the authoritative complete response.
 

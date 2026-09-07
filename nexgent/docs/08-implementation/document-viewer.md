@@ -2,6 +2,61 @@
 
 Date: 2026-07-03
 
+## Update: NextCloud File Workspace Polish
+
+Date: 2026-08-14
+
+The connected NextCloud workspace now has a compact page heading and explicit
+current-location treatment. The root is labeled `All files`; nested folders
+retain the existing parent action and clickable path segments, with an added
+root jump. Folder navigation still uses page-local path state and the existing
+path-keyed TanStack Query.
+
+List mode now presents consistent Name, Type, Modified, and Size columns using
+metadata already returned by the file-list operation. Concise labels are
+derived from existing content types and filename extensions. Folders retain a
+quiet folder-specific surface and omit irrelevant size detail. Card mode keeps
+the existing open/download behavior while presenting the same metadata in a
+compact wrapped line.
+
+The List/Card control was refined as a compact segmented control with clearer
+active, hover, focus-visible, and keyboard states. Responsive rules
+progressively hide the Type, Modified, and Size columns, expose a compact
+secondary line where useful, and collapse the card grid without horizontal
+overflow. Breadcrumbs remain available through a narrow scrollable row.
+
+No NextCloud operation was added or changed. Folder listing, preview, download,
+retry states, viewer rendering, view-mode state, and preview object-URL cleanup
+continue to use the existing frontend code. Upload, folder creation, rename,
+move, delete, copy, and search remain absent from the UI. Shared APIs, Tauri
+commands, backend routes, Chat, Agents, routing, and Zustand were not modified.
+
+Validation completed from `frontend/`:
+
+```bash
+npm test -- src/features/nextcloud/NextcloudPage.test.tsx
+npm run build
+npm test
+CARGO_TARGET_DIR=/tmp/nexgent-cargo-check.AytMsV cargo check --manifest-path src-tauri/Cargo.toml
+npm audit --audit-level=moderate
+```
+
+The focused suite passed all 3 tests, covering the root heading, nested
+breadcrumbs, layout selection markup, folder-first sorting, and derived file
+metadata. The full frontend suite passed all 37 tests. The TypeScript/Vite
+production build and Cargo check passed, and the dependency audit reported zero
+vulnerabilities. A connected NextCloud was not available for automated visual
+interaction, so the remaining check is:
+
+```bash
+npm run dev -- --host 127.0.0.1
+```
+
+Open NextCloud at the root and in nested folders, switch between List and Card,
+resize below 1050 px, 820 px, and 680 px, then confirm folder opening, file
+preview, Download, breadcrumb navigation, and viewer Back behavior remain
+unchanged.
+
 ## Summary
 
 The NextCloud Drive view now supports view-only previews for common work files:

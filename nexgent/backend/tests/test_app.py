@@ -22,6 +22,8 @@ def test_app_imports_with_routes(monkeypatch):
     paths = {route.path for route in app.routes if hasattr(route, "path")}
 
     assert "/health" in paths
+    assert "/api/chat/stream" in paths
+    assert "/api/rag/chat/stream" in paths
     assert "/api/nextcloud/files" in paths
     assert "/api/nextcloud/files/content" in paths
     assert "/api/nextcloud/files/preview" in paths
@@ -97,4 +99,7 @@ def test_content_disposition_supports_unicode_filename():
 
     header.encode("latin-1")
     assert 'filename="_AX_Problem_Statements_v0.1.pdf"' in header
-    assert "filename*=UTF-8''%EC%95%88%EC%8B%AC%EC%A7%80%ED%82%A4%EB%AF%B8_AX_Problem_Statements_v0.1.pdf" in header
+    assert (
+        "filename*=UTF-8''%EC%95%88%EC%8B%AC%EC%A7%80%ED%82%A4%EB%AF%B8_AX_Problem_Statements_v0.1.pdf"
+        in header
+    )

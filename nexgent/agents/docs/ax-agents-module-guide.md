@@ -70,11 +70,18 @@ returns the generated response. It is intentionally separate from `smoke` so
 model availability does not affect deterministic runtime checks.
 
 The `workflows/weekly_report` graph is the first business-specific workflow.
-It fans out a mock two-week activity window per user, calculates all metrics in
-Python, limits the model to digit-free Korean narrative, composes Markdown, and
-merges reports deterministically. Model or narrative-validation failures use a
-disclosed template fallback instead of failing the batch. Real data access,
-scheduling, persistence, and delivery remain outside this v1 graph.
+It loads bounded current/prior metadata from the private weekly-report FastAPI
+source, fans out per ward, converts validated metrics to qualitative facts,
+limits the model to a grounded Korean outline covering activity, indoor
+environment, and device reception with only allowlisted significant numeric
+tokens, and merges Markdown reports deterministically.
+Model or narrative validation failures use a
+disclosed warm template fallback. Scheduling, persistence, delivery, and
+risk-score interpretation remain outside the generation graph. A separate
+workflow-local Slack delivery module accepts only completed validated batches,
+uses the shared integration service and an approved default or configured
+logical destination, and requires explicit human approval before sending
+care-related content.
 
 Each workflow is a vertical module that owns its `graph.py`, minimal
 `state.py`, nodes, optional local agents and prompts, and workflow policy. The
@@ -93,6 +100,10 @@ The current implementation provides `ToolPolicy`, `authorize()`, and reusable
 provider-neutral executors, authorize each read-risk call, attach deterministic
 idempotency, and return normalized artifacts. An agent must not freely invoke
 an unapproved tool or destructive operation.
+It also converts discovered MCP tool definitions into collision-safe,
+namespaced `StructuredTool` instances. Remote JSON Schemas are checked locally,
+unclassified tools fail closed, and every call passes through the same
+allowlist and read/write/destructive policy.
 
 ## `ax-integrations`
 
@@ -110,6 +121,21 @@ configuration. The real Agent Server client remains to be implemented.
 It also provides a pooled SearXNG search adapter and an SSRF-safe public-page
 fetch adapter with bounded extraction. These adapters satisfy the web tool
 ports without making tools or workflows depend on SearXNG.
+The MCP integration adds a strict JSON server registry, environment-only HTTP
+header sources, pooled Streamable HTTP clients, paginated tool discovery,
+normalized untrusted call results, and a safe inspection CLI. The first entry
+is the read-only `db_mcp_server`; workflows still choose and allowlist its tools
+explicitly.
+The PostgreSQL integration adds an environment-backed `asyncpg` pool whose
+application-owned queries run inside read-only transactions. The weekly-report
+FastAPI process is its first consumer; the graph and model never receive its
+DSN or an arbitrary SQL capability.
+The outbound Slack integration wraps the official asynchronous Slack SDK behind
+typed message/result dataclasses. It validates text, blocks, thread timestamps,
+timeouts, and channel IDs; approves only configured default or logical
+destinations; performs one bounded rate-limit retry; and logs delivery status
+without tokens, content, metadata, or raw provider errors. Agents and workflows
+must use this service rather than importing `slack_sdk` directly.
 
 ## `apps/gateway`
 
@@ -132,6 +158,14 @@ Current routes are:
 The default gateway returns `503` until a real Agent Server adapter is
 configured. Agent Server should remain private; clients should use this
 gateway instead of depending directly on LangGraph APIs.
+
+## `apps/weekly_report_api`
+
+The private weekly-report source boundary. It owns source request/response
+validation, pooled database lifecycle, readiness, and safe database-error
+mapping. Its business calculations remain
+workflow-owned under `workflows/weekly_report/source`; the app composes and
+serves them without exposing generic database access.
 
 ## `apps/workers`
 
@@ -160,8 +194,10 @@ It owns evaluation datasets, deterministic contract checks, trajectory and
 tool-use evaluation, LLM-as-judge evaluators, regression comparisons, CI/CD
 thresholds, and production feedback analysis.
 
-The current package only exposes the shared `EvaluationResult` contract.
-Datasets and evaluators will be added with the first business-specific agent.
+The current package exposes the shared `EvaluationResult` contract plus
+deterministic weekly-report evaluators for batch completeness, Korean Markdown
+structure, identity, metric grounding, and fallback disclosure. Broader
+datasets and online evaluation remain future work.
 
 ## Practical ownership rule
 

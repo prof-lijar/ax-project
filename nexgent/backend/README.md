@@ -1,6 +1,6 @@
 # Nexgent Backend
 
-FastAPI backend for Nextcloud integration.
+FastAPI backend for AX Chat and Nextcloud integration.
 
 ## Get Started
 
@@ -78,4 +78,42 @@ sudo ufw status verbose
 
 ```bash
 uv run pytest
+```
+
+## AX Chat file attachments
+
+`POST /api/chat/stream` accepts `multipart/form-data` with a required `prompt`
+field and up to five repeated `files` fields. It proxies Agent Server's existing
+SSE stream without buffering it. Supported attachments are embedded-text PDF,
+UTF-8 TXT/Markdown/CSV, DOCX paragraphs and tables, and PNG/JPEG/WebP images.
+Each file is limited to 10 MiB, the request is limited to 25 MiB, and extracted
+document text is limited to 100,000 characters.
+
+The backend validates and normalizes every attachment into a private transient
+artifact directory. Backend and Agent Server must mount the same volume at
+`AX_CHAT_ARTIFACT_ROOT` (`/run/ax-chat` in the image), writable by the backend
+and read-only for Agent Server. Request artifacts are deleted after the SSE
+stream completes, fails, or is cancelled. Directories left by a process crash
+are removed on the next backend startup after `AX_CHAT_STALE_AFTER_SECONDS`.
+
+Example request:
+
+```bash
+curl --no-buffer http://127.0.0.1:8000/api/chat/stream \
+  --form 'prompt=Summarize these files' \
+  --form 'files=@notes.md;type=text/markdown' \
+  --form 'files=@chart.png;type=image/png'
+```
+
+Validation errors use a stable JSON envelope:
+
+```json
+{
+  "error": {
+    "schema_version": "1",
+    "code": "unsupported_file_type",
+    "message": "Supported files are PDF, TXT, Markdown, CSV, DOCX, PNG, JPEG, and WebP.",
+    "filename": "archive.zip"
+  }
+}
 ```

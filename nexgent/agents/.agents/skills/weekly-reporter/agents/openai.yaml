@@ -1,0 +1,4 @@
+interface:
+  display_name: "Weekly Reporter"
+  short_description: "Build and operate grounded Korean weekly reports"
+  default_prompt: "Use $weekly-reporter to implement or review the grounded Korean weekly-report workflow."

@@ -1,0 +1,31 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "new_york_weather_tool_call",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the weather in New York? Use the available tool."
+          }
+        ]
+      },
+      "expected_tool": "get_weather",
+      "expected_arguments": {
+        "city": "new york"
+      }
+    },
+    {
+      "eval_case_id": "official_python_docs_web_search",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Search the web for the official Python documentation and give me two relevant links. You must use web_search."
+          }
+        ]
+      },
+      "expected_tool": "web_search"
+    }
+  ]
+}

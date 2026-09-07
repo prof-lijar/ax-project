@@ -7,11 +7,20 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const agentServerTarget =
     env.VITE_AGENT_SERVER_BASE_URL?.trim() || "http://192.168.0.18:2024";
-  const agentServerProxy = {
+  const weeklyReportBulkApiTarget =
+    env.VITE_WEEKLY_REPORT_BULK_API_BASE_URL?.trim() ||
+    "http://127.0.0.1:8090";
+  const serviceProxy = {
     "/agent-server": {
       target: agentServerTarget,
       changeOrigin: true,
       rewrite: (path: string) => path.replace(/^\/agent-server/, "")
+    },
+    "/weekly-report-bulk-api": {
+      target: weeklyReportBulkApiTarget,
+      changeOrigin: true,
+      rewrite: (path: string) =>
+        path.replace(/^\/weekly-report-bulk-api/, "")
     }
   };
 
@@ -29,7 +38,7 @@ export default defineConfig(({ mode }) => {
             port: 1421
           }
         : undefined,
-      proxy: agentServerProxy,
+      proxy: serviceProxy,
       watch: {
         ignored: ["**/src-tauri/**"]
       }
@@ -38,7 +47,7 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 4173,
       strictPort: true,
-      proxy: agentServerProxy
+      proxy: serviceProxy
     }
   };
 });

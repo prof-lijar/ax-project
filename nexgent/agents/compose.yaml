@@ -34,6 +34,18 @@ services:
       URL: ${URL:-http://192.168.0.17:8000/v1}
       MODEL: ${MODEL:-gemma-4-31b}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_SUPPORTS_VISION: ${OPENAI_SUPPORTS_VISION:-false}
+      AX_CHAT_ARTIFACT_ROOT: ${AX_CHAT_ARTIFACT_ROOT:-/run/ax-chat}
+      DB_MCP_SERVER_BEARER_TOKEN: ${DB_MCP_SERVER_BEARER_TOKEN:-}
+      MCP_SERVERS_CONFIG: ${MCP_SERVERS_CONFIG:-config/mcp_servers.json}
+      WEEKLY_REPORT_SOURCE_URL: ${WEEKLY_REPORT_SOURCE_URL:-http://weekly-report-api:8080}
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: ${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_DEFAULT_CHANNEL_ID: ${SLACK_DEFAULT_CHANNEL_ID:-}
+      SLACK_CHANNEL_OPERATIONS: ${SLACK_CHANNEL_OPERATIONS:-}
+      SLACK_CHANNEL_REPORTS: ${SLACK_CHANNEL_REPORTS:-}
+      SLACK_CHANNEL_ALERTS: ${SLACK_CHANNEL_ALERTS:-}
+      SLACK_REQUEST_TIMEOUT_SECONDS: ${SLACK_REQUEST_TIMEOUT_SECONDS:-10}
       SEARXNG_BASE_URL: http://searxng:8080
       LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
     init: true
@@ -42,5 +54,141 @@ services:
     depends_on:
       searxng:
         condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 10s
+
+  weekly-report-api:
+    build:
+      context: .
+      dockerfile: apps/weekly_report_api/Dockerfile
+    image: ax-weekly-report-api-dev:local
+    environment:
+      ANSIMK_DATABASE_DSN: ${ANSIMK_DATABASE_DSN:-}
+      ANSIMK_DATABASE_MIN_POOL_SIZE: ${ANSIMK_DATABASE_MIN_POOL_SIZE:-1}
+      ANSIMK_DATABASE_MAX_POOL_SIZE: ${ANSIMK_DATABASE_MAX_POOL_SIZE:-5}
+      ANSIMK_DATABASE_CONNECT_TIMEOUT_SECONDS: ${ANSIMK_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}
+      ANSIMK_DATABASE_COMMAND_TIMEOUT_SECONDS: ${ANSIMK_DATABASE_COMMAND_TIMEOUT_SECONDS:-30}
+    expose:
+      - "8080"
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+  weekly-report-jobs-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      POSTGRES_USER: ${WEEKLY_REPORT_JOB_USER:-ax_bulk}
+      POSTGRES_PASSWORD: ${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}
+    volumes:
+      - weekly-report-job-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${WEEKLY_REPORT_JOB_USER:-ax_bulk} -d ${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  weekly-report-worker:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    image: ax-weekly-report-worker-dev:local
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: ${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}
+      WEEKLY_REPORT_WORKER_CONCURRENCY: ${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}
+      WEEKLY_REPORT_ACTIVE_JOB_LIMIT: ${WEEKLY_REPORT_ACTIVE_JOB_LIMIT:-4}
+      WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS: ${WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS:-60}
+      WEEKLY_REPORT_STORAGE_DATABASE_DSN: ${WEEKLY_REPORT_STORAGE_DATABASE_DSN:-${ANSIMK_DATABASE_DSN:-}}
+      WEEKLY_REPORT_STORAGE_MIN_POOL_SIZE: ${WEEKLY_REPORT_STORAGE_MIN_POOL_SIZE:-1}
+      WEEKLY_REPORT_STORAGE_MAX_POOL_SIZE: ${WEEKLY_REPORT_STORAGE_MAX_POOL_SIZE:-2}
+      WEEKLY_REPORT_STORAGE_BATCH_SIZE: ${WEEKLY_REPORT_STORAGE_BATCH_SIZE:-500}
+      WEEKLY_REPORT_STORAGE_CONNECT_TIMEOUT_SECONDS: ${WEEKLY_REPORT_STORAGE_CONNECT_TIMEOUT_SECONDS:-10}
+      WEEKLY_REPORT_STORAGE_COMMAND_TIMEOUT_SECONDS: ${WEEKLY_REPORT_STORAGE_COMMAND_TIMEOUT_SECONDS:-120}
+      WEEKLY_REPORT_SOURCE_URL: http://weekly-report-api:8080
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: ${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}
+      URL: ${URL:-http://192.168.0.17:8000/v1}
+      MODEL: ${MODEL:-gemma-4-31b}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    depends_on:
+      weekly-report-jobs-db:
+        condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  weekly-report-bulk-api:
+    build:
+      context: .
+      dockerfile: apps/weekly_report_bulk_api/Dockerfile
+    image: ax-weekly-report-bulk-api-dev:local
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: ${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}
+      WEEKLY_REPORT_WORKER_CONCURRENCY: ${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}
+      WEEKLY_REPORT_STATUS_POLL_SECONDS: ${WEEKLY_REPORT_STATUS_POLL_SECONDS:-2}
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    expose:
+      - "8090"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      weekly-report-jobs-db:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5s
+
+  weekly-report-scheduler:
+    build:
+      context: .
+      dockerfile: apps/weekly_report_scheduler/Dockerfile
+    image: ax-weekly-report-scheduler-dev:local
+    environment:
+      WEEKLY_REPORT_BULK_API_URL: http://weekly-report-bulk-api:8090
+      WEEKLY_REPORT_SCHEDULE_MAX_REPORTS: ${WEEKLY_REPORT_SCHEDULE_MAX_REPORTS:-10000}
+      WEEKLY_REPORT_SCHEDULE_TIMEOUT_SECONDS: ${WEEKLY_REPORT_SCHEDULE_TIMEOUT_SECONDS:-30}
+      WEEKLY_REPORT_SCHEDULE_ATTEMPTS: ${WEEKLY_REPORT_SCHEDULE_ATTEMPTS:-3}
+      WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS: ${WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS:-2}
+    depends_on:
+      weekly-report-bulk-api:
+        condition: service_healthy
+    profiles:
+      - scheduled
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5s
+
+volumes:
+  weekly-report-job-data:
+  weekly-report-artifacts:

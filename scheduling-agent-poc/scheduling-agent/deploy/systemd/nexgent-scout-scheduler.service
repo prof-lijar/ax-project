@@ -1,0 +1,39 @@
+[Unit]
+Description=Nexgent AnsimK Scout Scheduling API
+Wants=network-online.target nexgent-scout.service
+After=network-online.target nexgent-scout.service
+StartLimitIntervalSec=300
+StartLimitBurst=20
+
+[Service]
+Type=exec
+User=nextor-ai-02
+Group=nextor-ai-02
+WorkingDirectory=/home/nextor-ai-02/nextor_ai/ax-project/scheduling-agent-poc/scheduling-agent
+
+Environment="HOME=/home/nextor-ai-02"
+Environment="PATH=/home/nextor-ai-02/nextor_ai/ax-project/scheduling-agent-poc/scheduling-agent/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/nexgent/internal-openai.env
+EnvironmentFile=/etc/nexgent/nexgent-scout-scheduler.env
+
+ExecStartPre=/usr/bin/test -x /home/nextor-ai-02/nextor_ai/ax-project/scheduling-agent-poc/scheduling-agent/.venv/bin/uvicorn
+ExecStartPre=/usr/bin/curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8091/health/ready
+ExecStart=/home/nextor-ai-02/nextor_ai/ax-project/scheduling-agent-poc/scheduling-agent/.venv/bin/uvicorn app.fast_api_app:app --host 0.0.0.0 --port 8092 --workers 1
+
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=240s
+KillSignal=SIGTERM
+
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nexgent-scout-scheduler
+
+[Install]
+WantedBy=multi-user.target

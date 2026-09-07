@@ -7,22 +7,58 @@ import {
 } from "./agentCatalogClient";
 
 describe("agentCatalogClient", () => {
-  it("returns one deterministic Weekly Reporter preview", async () => {
+  it("returns Weekly Reporter, RAG Agent, and the ADK Scout", async () => {
     const first = await agentCatalogClient.listAgents();
     const second = await agentCatalogClient.listAgents();
 
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
-    expect(first).toHaveLength(1);
+    expect(first).toHaveLength(3);
+    expect(first.map(({ id, graphId }) => ({ id, graphId }))).toEqual([
+      { id: "1", graphId: "ansimk_weekly_reporter" },
+      { id: "7", graphId: "rag_chat" },
+      { id: "ansimk_scout_agent", graphId: "ansimk_scout_agent" }
+    ]);
     expect(first[0]).toMatchObject({
-      id: "ansimk-weekly-reporter",
+      id: "1",
       graphId: "ansimk_weekly_reporter",
-      observationMode: "preview",
+      canRunInChat: false,
+      observationMode: null,
       readiness: "ready"
     });
     expect(first[0].limitations).toContain(
-      "Scheduling and delivery are not connected"
+      "Scheduling and Slack delivery are separate workflows"
     );
+    expect(first[1]).toMatchObject({
+      id: "7",
+      name: "RAG Agent",
+      graphId: "rag_chat",
+      canRunInChat: true,
+      description:
+        "Answers one-turn questions from the indexed RAG corpus using grounded retrieval and source provenance.",
+      readiness: null,
+      currentWork: null,
+      lastObservedAt: null,
+      observationMode: null,
+      recentRuns: []
+    });
+    expect(first[1].limitations).not.toContain(
+      "Agent Server-to-RAG runtime connectivity still needs live validation"
+    );
+    expect(first[2]).toMatchObject({
+      id: "ansimk_scout_agent",
+      name: "AnsimK Scout Agent",
+      graphId: "ansimk_scout_agent",
+      canRunInChat: false,
+      runtimeLabel: "Google ADK",
+      readiness: null,
+      observationMode: null
+    });
+    expect(first[2].inputs).toContainEqual({
+      name: "additional_instructions",
+      description: "Optional per-run or scheduled research guidance",
+      required: false
+    });
   });
 
   it("normalizes unknown catalog and run states to safe fallbacks", () => {
@@ -32,6 +68,7 @@ describe("agentCatalogClient", () => {
       role: "Preview",
       description: "Unknown runtime state",
       graphId: "future_agent",
+      canRunInChat: false,
       readiness: "unexpected",
       currentWork: "Not connected",
       runtimeLabel: "LangGraph",

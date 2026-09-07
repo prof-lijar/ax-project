@@ -1,4 +1,4 @@
-"""Small reducer-backed state for batch fan-out and aggregation."""
+"""Small reducer-backed state for ward report fan-out and aggregation."""
 
 import operator
 from typing import Annotated, Any, TypedDict
@@ -7,6 +7,9 @@ from typing import Annotated, Any, TypedDict
 class WeeklyReportState(TypedDict, total=False):
     week_start: str
     timezone: str
+    ward_ids: list[int] | None
+    cursor: str | None
+    limit: int
     week_end: str
     work_items: list[dict[str, Any]]
     report_items: Annotated[list[dict[str, Any]], operator.add]
@@ -15,9 +18,11 @@ class WeeklyReportState(TypedDict, total=False):
     status: str
     reports: list[dict[str, Any]]
     warnings: list[str]
+    skipped: list[dict[str, Any]]
+    next_cursor: str | None
 
 
-class UserReportBranchState(TypedDict, total=False):
+class WardReportBranchState(TypedDict, total=False):
     week_start: str
     week_end: str
     timezone: str
@@ -25,10 +30,11 @@ class UserReportBranchState(TypedDict, total=False):
     metrics: dict[str, Any]
     narrative: dict[str, Any]
     generation_mode: str
+    generation: dict[str, Any]
     report_items: list[dict[str, Any]]
     warning_items: list[str]
 
 
-class UserReportBranchOutputState(TypedDict, total=False):
+class WardReportBranchOutputState(TypedDict, total=False):
     report_items: list[dict[str, Any]]
     warning_items: list[str]

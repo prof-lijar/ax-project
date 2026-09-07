@@ -1,6 +1,20 @@
 # Background workers
 
-This deployment boundary is reserved for long-running and asynchronous graph
-execution when API and queue workloads need independent scaling. Agent Server
-single-host mode remains the initial baseline; do not create a custom worker
-loop until measurements justify split API/queue deployment.
+`weekly_report.py` is the independently scalable, durable execution boundary
+for high-volume weekly-report exports. PostgreSQL leases coordinate a single
+paged producer, bounded asynchronous consumers, and a recoverable finalizer.
+Workers can be replicated on hosts that share the job database and private
+artifact volume.
+
+Each worker process admits up to `WEEKLY_REPORT_ACTIVE_JOB_LIMIT` distinct jobs
+(four by default), so a newly submitted job does not wait for an earlier job to
+finish. `WEEKLY_REPORT_WORKER_CONCURRENCY` remains one shared process-wide limit
+across those jobs; adding active jobs does not multiply simultaneous report or
+model calls.
+
+The worker does not expose an HTTP port, schedule jobs, or send Slack messages.
+`apps/weekly_report_bulk_api` is the separate private operator control plane for
+submission, content-free status, cancellation, and verified export download.
+The default development UI reaches that API through the Vite proxy. See the
+weekly-report implementation specification for UI and CLI operation, cleanup,
+capacity evaluation, and remaining benchmark gates.

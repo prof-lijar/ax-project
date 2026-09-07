@@ -39,6 +39,16 @@ services:
     environment:
       LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
       SEARXNG_BASE_URL: http://searxng:8080
+      OPENAI_SUPPORTS_VISION: "${OPENAI_SUPPORTS_VISION:-false}"
+      AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
+      RAG_SERVER_BASE_URL: "${RAG_SERVER_BASE_URL:-http://host.docker.internal:8765}"
+      RAG_SEARCH_TIMEOUT_SECONDS: "${RAG_SEARCH_TIMEOUT_SECONDS:-30}"
+      WEEKLY_REPORT_SOURCE_URL: http://weekly-report-api:8080
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: "${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - chat_attachments:/run/ax-chat:ro
     init: true
     ports:
       - "192.168.0.18:2024:2024"
@@ -56,6 +66,125 @@ services:
     depends_on:
       searxng:
         condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+
+  weekly-report-api:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_api/Dockerfile
+    image: ax-weekly-report-api-dev:local
+    env_file:
+      - ./agents/.env
+    expose:
+      - "8080"
+    init: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 5s
+
+  weekly-report-jobs-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: "${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}"
+      POSTGRES_USER: "${WEEKLY_REPORT_JOB_USER:-ax_bulk}"
+      POSTGRES_PASSWORD: "${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}"
+    volumes:
+      - weekly-report-job-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${WEEKLY_REPORT_JOB_USER:-ax_bulk} -d ${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  weekly-report-worker:
+    build:
+      context: ./agents
+      dockerfile: apps/workers/Dockerfile
+    image: ax-weekly-report-worker-dev:local
+    env_file:
+      - ./agents/.env
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: "${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}"
+      WEEKLY_REPORT_WORKER_CONCURRENCY: "${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}"
+      WEEKLY_REPORT_SOURCE_URL: http://weekly-report-api:8080
+      WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS: "${WEEKLY_REPORT_SOURCE_TIMEOUT_SECONDS:-30}"
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    depends_on:
+      weekly-report-jobs-db:
+        condition: service_healthy
+      weekly-report-api:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  weekly-report-bulk-api:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_bulk_api/Dockerfile
+    image: ax-weekly-report-bulk-api-dev:local
+    environment:
+      WEEKLY_REPORT_JOB_DATABASE_DSN: postgresql://${WEEKLY_REPORT_JOB_USER:-ax_bulk}:${WEEKLY_REPORT_JOB_PASSWORD:-development-only-change-me}@weekly-report-jobs-db:5432/${WEEKLY_REPORT_JOB_DB:-ax_weekly_reports}
+      WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
+      WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES: "${WEEKLY_REPORT_ARTIFACT_MIN_FREE_BYTES:-10737418240}"
+      WEEKLY_REPORT_WORKER_CONCURRENCY: "${WEEKLY_REPORT_WORKER_CONCURRENCY:-32}"
+      WEEKLY_REPORT_STATUS_POLL_SECONDS: "${WEEKLY_REPORT_STATUS_POLL_SECONDS:-2}"
+    volumes:
+      - weekly-report-artifacts:/var/lib/ax/weekly-reports
+    expose:
+      - "8090"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      weekly-report-jobs-db:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5s
+
+  weekly-report-scheduler:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_scheduler/Dockerfile
+    image: ax-weekly-report-scheduler-dev:local
+    environment:
+      WEEKLY_REPORT_BULK_API_URL: http://weekly-report-bulk-api:8090
+      WEEKLY_REPORT_SCHEDULE_MAX_REPORTS: "${WEEKLY_REPORT_SCHEDULE_MAX_REPORTS:-10000}"
+      WEEKLY_REPORT_SCHEDULE_TIMEOUT_SECONDS: "${WEEKLY_REPORT_SCHEDULE_TIMEOUT_SECONDS:-30}"
+      WEEKLY_REPORT_SCHEDULE_ATTEMPTS: "${WEEKLY_REPORT_SCHEDULE_ATTEMPTS:-3}"
+      WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS: "${WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS:-2}"
+    depends_on:
+      weekly-report-bulk-api:
+        condition: service_healthy
+    profiles:
+      - scheduled
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 5s
 
   backend:
     build:
@@ -78,10 +207,13 @@ services:
       NEXGENT_CORS_FRONTEND_PORT: "${FRONTEND_PORT:-5173}"
       NEXGENT_CORS_ORIGIN_REGEX: "${NEXGENT_CORS_ORIGIN_REGEX:-}"
       WATCHFILES_FORCE_POLLING: "${WATCHFILES_FORCE_POLLING:-true}"
+      AX_AGENT_SERVER_URL: http://agent-server:2024
+      AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
+      - chat_attachments:/run/ax-chat
     healthcheck:
       test:
         - CMD
@@ -110,6 +242,9 @@ services:
       CHOKIDAR_USEPOLLING: "${CHOKIDAR_USEPOLLING:-true}"
       VITE_BACKEND_PORT: "${BACKEND_PORT:-8000}"
       VITE_AGENT_SERVER_BASE_URL: http://agent-server:2024
+      VITE_WEEKLY_REPORT_BULK_API_BASE_URL: http://weekly-report-bulk-api:8090
+      VITE_RAG_SERVER_BASE_URL: http://192.168.0.18:8765
+      VITE_SCOUT_API_BASE_URL: http://192.168.0.18:8091
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
@@ -119,6 +254,8 @@ services:
       agent-server:
         condition: service_healthy
       backend:
+        condition: service_healthy
+      weekly-report-bulk-api:
         condition: service_healthy
     healthcheck:
       test:
@@ -136,3 +273,11 @@ services:
 
 volumes:
   frontend_node_modules:
+  weekly-report-job-data:
+  weekly-report-artifacts:
+  chat_attachments:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=256m,uid=10001,gid=10001,mode=0700

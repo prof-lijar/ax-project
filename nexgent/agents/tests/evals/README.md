@@ -16,5 +16,5 @@ reports result diversity, duplicates, latency, and fetch success. It is skipped
 in deterministic CI because no-key upstream engines can throttle or change.
 
 `test_weekly_report_quality.py` is deterministic and always runs. It checks the
-first business workflow's metric grounding, Korean report structure,
+ward-risk prototype's danger-day grounding, Korean report structure,
 personalization, fallback disclosure, and release-gate failure behavior.

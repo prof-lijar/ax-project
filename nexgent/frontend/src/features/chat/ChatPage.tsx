@@ -1,5 +1,18 @@
-import { Bot, RefreshCw, Send, Square, User } from "lucide-react";
 import {
+  Bot,
+  Check,
+  ChevronDown,
+  FileText,
+  LoaderCircle,
+  Paperclip,
+  RefreshCw,
+  Send,
+  Square,
+  User,
+  X
+} from "lucide-react";
+import {
+  type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
   useEffect,
@@ -11,67 +24,273 @@ import {
   AgentServerError,
   agentServerClient
 } from "../../shared/api/agentServerClient";
-import { useAgentServerHealth } from "../../shared/api/queries";
+import { RAG_CHAT_GRAPH_ID } from "../../shared/api/agentCatalogClient";
 import {
+  useAgentCatalog,
+  useAgentServerHealth
+} from "../../shared/api/queries";
+import {
+  type ChatAttachmentSummary,
   type ChatRole,
   useChatStore
 } from "../../shared/state/useChatStore";
+import {
+  getMockAgentRunStageState,
+  MOCK_AGENT_RUN_STAGES,
+  type MockAgentRun,
+  useAgentRunStore
+} from "../../shared/state/useAgentRunStore";
+import { useUiStore } from "../../shared/state/useUiStore";
+import type { AgentDefinition } from "../../shared/types/agents";
 import { ChatMarkdown } from "./ChatMarkdown";
 import styles from "./ChatPage.module.css";
+
+const MAX_ATTACHMENT_COUNT = 5;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
+  "csv",
+  "docx",
+  "jpeg",
+  "jpg",
+  "md",
+  "pdf",
+  "png",
+  "txt",
+  "webp"
+]);
+const ATTACHMENT_ACCEPT =
+  ".pdf,.txt,.md,.csv,.docx,.png,.jpg,.jpeg,.webp," +
+  "application/pdf,text/plain,text/markdown,text/csv," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
+  "image/png,image/jpeg,image/webp";
+const MOCK_SLASH_COMMANDS = [
+  { command: "/a", label: "Action A" },
+  { command: "/b", label: "Action B" },
+  { command: "/c", label: "Action C" }
+] as const;
+
+type MockSlashCommand = (typeof MOCK_SLASH_COMMANDS)[number];
 
 export function ChatPage() {
   const messages = useChatStore((state) => state.messages);
   const appendMessage = useChatStore((state) => state.appendMessage);
   const updateMessage = useChatStore((state) => state.updateMessage);
+  const errorMessage = useChatStore((state) => state.errorMessage);
+  const setErrorMessage = useChatStore((state) => state.setErrorMessage);
+  const mockRunsByAgentId = useAgentRunStore((state) => state.runsByAgentId);
+  const startMockRun = useAgentRunStore((state) => state.startRun);
+  const completeMockRun = useAgentRunStore((state) => state.completeRun);
+  const failMockRun = useAgentRunStore((state) => state.failRun);
+  const cancelMockRun = useAgentRunStore((state) => state.cancelRun);
+  const selectedAgent = useUiStore((state) => state.selectedAgent);
+  const selectAgent = useUiStore((state) => state.selectAgent);
+  const clearSelectedAgent = useUiStore((state) => state.clearSelectedAgent);
+  const pendingAgentRun = useUiStore((state) => state.pendingAgentRun);
+  const clearPendingAgentRun = useUiStore(
+    (state) => state.clearPendingAgentRun
+  );
   const healthQuery = useAgentServerHealth();
+  const catalogQuery = useAgentCatalog();
   const [draft, setDraft] = useState("");
-  const [isSending, setIsSending] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isChatSending, setIsChatSending] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
     null
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const requestInFlightRef = useRef(false);
+  const isRagAgentSelected = usesRagChat(selectedAgent?.graphId ?? null);
+  const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
+  const [highlightedSlashCommandIndex, setHighlightedSlashCommandIndex] =
+    useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null); // Added for file clip
+  const composerRef = useRef<HTMLFormElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const agentSelectorRef = useRef<HTMLDetailsElement | null>(null);
+  const chatControllerRef = useRef<AbortController | null>(null);
+  const activeMockRunRef = useRef<{ agentId: string; runId: string } | null>(
+    null
+  );
+  const handledAgentRunRef = useRef<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const latestMessageContent = messages[messages.length - 1]?.content;
+  const isTranscriptBusy = isChatSending;
+  const mockRuns = Object.values(mockRunsByAgentId);
+  const pendingExecution = mockRuns
+    .filter(
+      (execution) =>
+        !messages.some(
+          (message) => message.id === execution.assistantMessageId
+        )
+    )
+    .sort((left, right) => right.startedAt - left.startedAt)[0] ?? null;
+  const executionUpdateKey = mockRuns
+    .map(
+      (execution) =>
+        `${execution.agentId}:${execution.activeStageIndex}:${execution.status}`
+    )
+    .join("|");
+  const slashQuery = getSlashQuery(draft);
+  const filteredSlashCommands =
+    slashQuery === null
+      ? []
+      : MOCK_SLASH_COMMANDS.filter(({ command }) =>
+          command.slice(1).startsWith(slashQuery)
+        );
+  const slashMenuIsOpen = slashQuery !== null && !slashMenuDismissed;
+
+  useEffect(() => {
+    if (!isRagAgentSelected || selectedFiles.length === 0) {
+      return;
+    }
+    setSelectedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [isRagAgentSelected, selectedFiles.length]);
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({
-      behavior: isSending ? "auto" : "smooth"
+      behavior: isTranscriptBusy ? "auto" : "smooth"
     });
-  }, [messages.length, latestMessageContent, isSending, errorMessage, notice]);
+  }, [
+    messages.length,
+    latestMessageContent,
+    isTranscriptBusy,
+    errorMessage,
+    notice,
+    executionUpdateKey
+  ]);
 
   useEffect(
     () => () => {
-      abortControllerRef.current?.abort();
+      chatControllerRef.current?.abort();
     },
     []
   );
 
-  async function sendMessage(event?: FormEvent) {
-    event?.preventDefault();
-    const message = draft.trim();
-    if (!message || requestInFlightRef.current) {
+  useEffect(() => {
+    function closeAgentSelectorOnOutsideClick(event: PointerEvent) {
+      const selector = agentSelectorRef.current;
+      if (
+        !selector?.open ||
+        !(event.target instanceof Node) ||
+        selector.contains(event.target)
+      ) {
+        return;
+      }
+      selector.open = false;
+    }
+
+    function closeAgentSelectorOnEscape(event: globalThis.KeyboardEvent) {
+      const selector = agentSelectorRef.current;
+      if (!selector?.open || event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      selector.open = false;
+      selector.querySelector<HTMLElement>("summary")?.focus();
+    }
+
+    document.addEventListener("pointerdown", closeAgentSelectorOnOutsideClick);
+    document.addEventListener("keydown", closeAgentSelectorOnEscape);
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        closeAgentSelectorOnOutsideClick
+      );
+      document.removeEventListener("keydown", closeAgentSelectorOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!slashMenuIsOpen) {
       return;
     }
 
-    requestInFlightRef.current = true;
-    setIsSending(true);
+    function closeSlashMenuOnOutsideClick(event: PointerEvent) {
+      const composer = composerRef.current;
+      if (
+        !composer ||
+        !(event.target instanceof Node) ||
+        composer.contains(event.target)
+      ) {
+        return;
+      }
+      setSlashMenuDismissed(true);
+    }
+
+    document.addEventListener("pointerdown", closeSlashMenuOnOutsideClick);
+    return () =>
+      document.removeEventListener(
+        "pointerdown",
+        closeSlashMenuOnOutsideClick
+      );
+  }, [slashMenuIsOpen]);
+
+  useEffect(() => {
+    if (!pendingAgentRun || pendingAgentRun.agentId !== selectedAgent?.id) {
+      return;
+    }
+    if (handledAgentRunRef.current === pendingAgentRun.requestId) {
+      return;
+    }
+
+    handledAgentRunRef.current = pendingAgentRun.requestId;
+    clearPendingAgentRun();
+    setErrorMessage(`${selectedAgent.name} does not have a live Chat runner yet.`);
+  }, [clearPendingAgentRun, pendingAgentRun, selectedAgent]);
+
+  async function sendMessage(event?: FormEvent) {
+    event?.preventDefault();
+    const message = draft.trim();
+    if (!message) {
+      return;
+    }
+
+    if (chatControllerRef.current) {
+      return;
+    }
+    const controller = new AbortController();
+    chatControllerRef.current = controller;
+    setIsChatSending(true);
     setErrorMessage(null);
     setNotice(null);
     setDraft("");
-    appendMessage(createMessage("user", message));
+    const files = isRagAgentSelected ? [] : selectedFiles;
+    setSelectedFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    const userMessage = createMessage(
+      "user",
+      message,
+      files.map(toAttachmentSummary)
+    );
+    appendMessage(userMessage);
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
     const assistantMessageId = createMessageId();
+
+    const mockRun =
+      selectedAgent?.graphId !== RAG_CHAT_GRAPH_ID && selectedAgent
+        ? {
+            agentId: selectedAgent.id,
+            runId: startMockRun({
+              agentId: selectedAgent.id,
+              agentName: selectedAgent.name,
+              assistantMessageId,
+              prompt: message
+            })
+          }
+        : null;
+    activeMockRunRef.current = mockRun;
+
     let assistantMessageStarted = false;
 
     try {
-      const response = await agentServerClient.streamChat(message, {
+      const streamOptions = {
         signal: controller.signal,
-        onResponse: (partialResponse) => {
+        onResponse: (partialResponse: string) => {
           if (!assistantMessageStarted) {
             if (!partialResponse) {
               return;
@@ -87,7 +306,13 @@ export function ChatPage() {
           }
           updateMessage(assistantMessageId, partialResponse);
         }
-      });
+      };
+      const response = isRagAgentSelected
+        ? await agentServerClient.streamRagChat(message, streamOptions)
+        : await agentServerClient.streamChat(message, {
+            ...streamOptions,
+            files
+          });
       if (!assistantMessageStarted) {
         appendMessage({
           id: assistantMessageId,
@@ -95,10 +320,19 @@ export function ChatPage() {
           content: response
         });
       }
+      if (mockRun) {
+        completeMockRun(mockRun.agentId, mockRun.runId);
+      }
     } catch (error) {
       if (error instanceof AgentServerError && error.code === "cancelled") {
+        if (mockRun) {
+          cancelMockRun(mockRun.agentId, mockRun.runId);
+        }
         setNotice("Response cancelled. You can send another message.");
       } else {
+        if (mockRun) {
+          failMockRun(mockRun.agentId, mockRun.runId);
+        }
         setErrorMessage(
           error instanceof Error
             ? error.message
@@ -107,14 +341,52 @@ export function ChatPage() {
         void healthQuery.refetch();
       }
     } finally {
-      abortControllerRef.current = null;
-      requestInFlightRef.current = false;
+      if (
+        mockRun &&
+        activeMockRunRef.current?.runId === mockRun.runId
+      ) {
+        activeMockRunRef.current = null;
+      }
+      if (chatControllerRef.current === controller) {
+        chatControllerRef.current = null;
+      }
       setStreamingMessageId(null);
-      setIsSending(false);
+      setIsChatSending(false);
     }
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (slashMenuIsOpen && !event.nativeEvent.isComposing) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (filteredSlashCommands.length > 0) {
+          const direction = event.key === "ArrowDown" ? 1 : -1;
+          setHighlightedSlashCommandIndex((currentIndex) =>
+            (currentIndex + direction + filteredSlashCommands.length) %
+            filteredSlashCommands.length
+          );
+        }
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlashMenuDismissed(true);
+        return;
+      }
+
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        const highlightedCommand =
+          filteredSlashCommands[highlightedSlashCommandIndex] ??
+          filteredSlashCommands[0];
+        if (highlightedCommand) {
+          selectSlashCommand(highlightedCommand);
+        }
+        return;
+      }
+    }
+
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
@@ -125,8 +397,62 @@ export function ChatPage() {
     }
   }
 
-  function cancelRequest() {
-    abortControllerRef.current?.abort();
+  function handleDraftChange(value: string) {
+    setDraft(value);
+    setSlashMenuDismissed(false);
+    setHighlightedSlashCommandIndex(0);
+  }
+
+  function selectSlashCommand(command: MockSlashCommand) {
+    setDraft(`${command.command} `);
+    setSlashMenuDismissed(true);
+    setHighlightedSlashCommandIndex(0);
+    window.requestAnimationFrame(() => composerInputRef.current?.focus());
+  }
+
+  function cancelChatRequest() {
+    const activeMockRun = activeMockRunRef.current;
+    if (activeMockRun) {
+      cancelMockRun(activeMockRun.agentId, activeMockRun.runId);
+    }
+    chatControllerRef.current?.abort();
+  }
+
+  function chooseAgent(agent: { id: string; name: string } | null) {
+    const catalogAgent = agent
+      ? (catalogQuery.data ?? []).find((item) => item.id === agent.id)
+      : null;
+    if (catalogAgent) {
+      selectAgent(catalogAgent);
+    } else {
+      clearSelectedAgent();
+    }
+    if (agentSelectorRef.current) {
+      agentSelectorRef.current.open = false;
+    }
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const incoming = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (incoming.length === 0) {
+      return;
+    }
+
+    const files = deduplicateFiles([...selectedFiles, ...incoming]);
+    const validationError = validateSelectedFiles(files);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+    setSelectedFiles(files);
+    setErrorMessage(null);
+  }
+
+  function removeSelectedFile(fileToRemove: File) {
+    setSelectedFiles((files) =>
+      files.filter((file) => attachmentKey(file) !== attachmentKey(fileToRemove))
+    );
   }
 
   return (
@@ -170,48 +496,85 @@ export function ChatPage() {
       <section
         className={styles.transcript}
         aria-label="Chat transcript"
-        aria-busy={isSending}
+        aria-busy={isTranscriptBusy}
       >
         <div className={styles.messageColumn}>
-          {messages.length === 0 && !isSending ? (
+          {messages.length === 0 && !isTranscriptBusy ? (
             <div className={styles.emptyState}>
               <Bot size={28} />
               <h2>How can AX help?</h2>
               <p>Your transcript stays in this app until the page is reloaded.</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <article
-                className={
-                  message.role === "user"
-                    ? styles.userMessage
-                    : styles.assistantMessage
-                }
-                key={message.id}
-              >
-                <span className={styles.avatar} aria-hidden>
-                  {message.role === "user" ? <User size={17} /> : <Bot size={17} />}
-                </span>
-                <div>
-                  <strong className={styles.speaker}>
-                    {message.role === "user" ? "You" : "AX"}
-                  </strong>
-                  {message.role === "user" ? (
-                    <p className={styles.plainText}>{message.content}</p>
-                  ) : (
-                    <>
-                      <ChatMarkdown content={message.content} />
-                      {streamingMessageId === message.id && (
-                        <span className={styles.streamCursor} aria-hidden />
-                      )}
-                    </>
-                  )}
-                </div>
-              </article>
-            ))
+            messages.map((message) => {
+              const messageExecution =
+                message.role === "assistant"
+                  ? mockRuns.find(
+                      (execution) =>
+                        execution.assistantMessageId === message.id
+                    ) ?? null
+                  : null;
+
+              return (
+                <article
+                  className={
+                    message.role === "user"
+                      ? styles.userMessage
+                      : styles.assistantMessage
+                  }
+                  key={message.id}
+                >
+                  <span className={styles.avatar} aria-hidden>
+                    {message.role === "user" ? <User size={17} /> : <Bot size={17} />}
+                  </span>
+                  <div>
+                    <strong className={styles.speaker}>
+                      {message.role === "user"
+                        ? "You"
+                        : messageExecution?.agentName ?? "AX"}
+                    </strong>
+                    {message.role === "user" ? (
+                      <>
+                        <p className={styles.plainText}>{message.content}</p>
+                        {message.attachments && message.attachments.length > 0 && (
+                          <AttachmentSummaryList attachments={message.attachments} />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {messageExecution && (
+                          <MockExecutionTrace progress={messageExecution} />
+                        )}
+                        <ChatMarkdown content={message.content} />
+                        {streamingMessageId === message.id && (
+                          <span className={styles.streamCursor} aria-hidden />
+                        )}
+                        {messageExecution && (
+                          <ExecutionCompletion progress={messageExecution} />
+                        )}
+                      </>
+                    )}
+                  </div>
+                </article>
+              );
+            })
           )}
 
-          {isSending && !streamingMessageId && (
+          {pendingExecution && (
+            <article className={styles.assistantMessage} aria-live="polite">
+              <span className={styles.avatar} aria-hidden>
+                <Bot size={17} />
+              </span>
+              <div>
+                <strong className={styles.speaker}>
+                  {pendingExecution.agentName}
+                </strong>
+                <MockExecutionTrace progress={pendingExecution} />
+              </div>
+            </article>
+          )}
+
+          {isChatSending && !streamingMessageId && (
             <article className={styles.assistantMessage} aria-live="polite">
               <span className={styles.avatar} aria-hidden>
                 <Bot size={17} />
@@ -225,7 +588,7 @@ export function ChatPage() {
 
           {errorMessage && (
             <p className={styles.error} role="alert">
-              {errorMessage} Check the server and try sending the message again.
+              {errorMessage}
             </p>
           )}
           {notice && (
@@ -238,20 +601,191 @@ export function ChatPage() {
       </section>
 
       <footer className={styles.composerArea}>
-        <form className={styles.composer} onSubmit={sendMessage}>
+        <div className={styles.composerMode}>
+          <details className={styles.agentSelector} ref={agentSelectorRef}>
+            <summary aria-label="Choose an agent for Chat">
+              <Bot size={16} aria-hidden />
+              <span>{selectedAgent?.name ?? "AX Chat"}</span>
+              <ChevronDown size={14} aria-hidden />
+            </summary>
+            <div
+              className={styles.agentSelectorMenu}
+              role="listbox"
+              aria-label="Available agents"
+            >
+              <button
+                className={
+                  selectedAgent
+                    ? styles.agentSelectorOption
+                    : styles.agentSelectorOptionSelected
+                }
+                type="button"
+                role="option"
+                aria-selected={!selectedAgent}
+                onClick={() => chooseAgent(null)}
+              >
+                <span>
+                  <strong>No agent</strong>
+                  <small>Normal AX Chat</small>
+                </span>
+                {!selectedAgent && <Check size={15} aria-hidden />}
+              </button>
+
+              {catalogQuery.isLoading && (
+                <small className={styles.agentSelectorMessage}>
+                  Loading agents…
+                </small>
+              )}
+              {catalogQuery.isError && (
+                <small className={styles.agentSelectorMessage}>
+                  Agent catalog unavailable.
+                </small>
+              )}
+              {getChatCapableAgents(catalogQuery.data ?? []).map((agent) => {
+                const isSelected = selectedAgent?.id === agent.id;
+                return (
+                  <button
+                    className={
+                      isSelected
+                        ? styles.agentSelectorOptionSelected
+                        : styles.agentSelectorOption
+                    }
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    key={agent.id}
+                    onClick={() => chooseAgent(agent)}
+                  >
+                    <span>
+                      <strong>{agent.name}</strong>
+                      <small>{agent.role}</small>
+                    </span>
+                    {isSelected && <Check size={15} aria-hidden />}
+                  </button>
+                );
+              })}
+            </div>
+          </details>
+        </div>
+        <form
+          className={styles.composer}
+          ref={composerRef}
+          onSubmit={sendMessage}
+        >
+          {slashMenuIsOpen && (
+            <div
+              className={styles.slashCommandMenu}
+              id="slash-command-menu"
+              role="listbox"
+              aria-label="Slash commands"
+            >
+              <small className={styles.slashCommandMenuLabel}>Commands</small>
+              {filteredSlashCommands.length > 0 ? (
+                <div className={styles.slashCommandList}>
+                  {filteredSlashCommands.map((command, index) => {
+                    const isHighlighted =
+                      index === highlightedSlashCommandIndex;
+                    return (
+                      <button
+                        className={
+                          isHighlighted
+                            ? styles.slashCommandOptionHighlighted
+                            : styles.slashCommandOption
+                        }
+                        id={`slash-command-${command.command.slice(1)}`}
+                        key={command.command}
+                        type="button"
+                        role="option"
+                        aria-selected={isHighlighted}
+                        onMouseEnter={() =>
+                          setHighlightedSlashCommandIndex(index)
+                        }
+                        onClick={() => selectSlashCommand(command)}
+                      >
+                        <code>{command.command}</code>
+                        <span>{command.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <small className={styles.slashCommandEmpty}>
+                  No commands found
+                </small>
+              )}
+            </div>
+          )}
+
+          <input
+            ref={fileInputRef}
+            className={styles.fileInput}
+            type="file"
+            accept={ATTACHMENT_ACCEPT}
+            multiple
+            disabled={isRagAgentSelected}
+            onChange={handleFileChange}
+          />
+
+          {selectedFiles.length > 0 && (
+            <div className={styles.attachmentList} aria-label="Selected attachments">
+              {selectedFiles.map((file) => (
+                <div className={styles.attachment} key={attachmentKey(file)}>
+                  <FileText size={16} />
+                  <span title={file.name}>{file.name}</span>
+                  <small>{formatFileSize(file.size)}</small>
+                  <button
+                    type="button"
+                    onClick={() => removeSelectedFile(file)}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            className={styles.attachButton}
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label={
+              isRagAgentSelected
+                ? "Attachments are unavailable for RAG Agent"
+                : "Attach file"
+            }
+            disabled={isRagAgentSelected}
+          >
+            <Paperclip size={18} />
+          </button>
+
           <textarea
+            ref={composerInputRef}
             aria-label="Message AX"
+            aria-autocomplete="list"
+            aria-controls={slashMenuIsOpen ? "slash-command-menu" : undefined}
+            aria-expanded={slashMenuIsOpen}
+            aria-activedescendant={
+              slashMenuIsOpen && filteredSlashCommands.length > 0
+                ? `slash-command-${
+                    filteredSlashCommands[
+                      highlightedSlashCommandIndex
+                    ]?.command.slice(1) ?? filteredSlashCommands[0].command.slice(1)
+                  }`
+                : undefined
+            }
             placeholder="Message AX"
-            rows={2}
+            rows={1}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => handleDraftChange(event.target.value)}
             onKeyDown={handleComposerKeyDown}
           />
-          {isSending ? (
+
+          {isChatSending ? (
             <button
               className={styles.cancelButton}
               type="button"
-              onClick={cancelRequest}
+              onClick={cancelChatRequest}
               aria-label="Cancel response"
             >
               <Square size={16} fill="currentColor" />
@@ -267,19 +801,170 @@ export function ChatPage() {
             </button>
           )}
         </form>
-        <small>Enter to send · Shift+Enter for a new line</small>
+        <small>
+          {isRagAgentSelected
+            ? "Enter to send · Shift+Enter for a new line · RAG Agent is text-only"
+            : "Enter to send · Shift+Enter for a new line · Up to 5 files / 25 MB"}
+        </small>
       </footer>
     </div>
   );
 }
 
+export function usesRagChat(graphId: string | null): boolean {
+  return graphId === RAG_CHAT_GRAPH_ID;
+}
+
+export function getChatCapableAgents(agents: AgentDefinition[]) {
+  return agents.filter((agent) => agent.canRunInChat);
+}
+
+function MockExecutionTrace({
+  progress
+}: {
+  progress: MockAgentRun;
+}) {
+  return (
+    <section
+      className={styles.mockExecution}
+      aria-label={`Frontend-only mock execution for ${progress.agentName}`}
+      aria-live="polite"
+    >
+      <header className={styles.mockExecutionHeader}>
+        <small title="Simulated frontend events">Mock execution</small>
+      </header>
+      <ol className={styles.mockStageList}>
+        {MOCK_AGENT_RUN_STAGES.map((stage, index) => {
+          const stageState = getMockAgentRunStageState(progress, index);
+          if (stageState === "pending") {
+            return null;
+          }
+          const StageIcon =
+            stageState === "completed"
+              ? Check
+              : LoaderCircle;
+
+          return (
+            <li className={styles[`mockStage${stageState}`]} key={stage}>
+              <StageIcon size={15} aria-hidden />
+              <span>{stage}{stageState === "active" ? "…" : ""}</span>
+            </li>
+          );
+        })}
+      </ol>
+      {progress.status === "cancelled" && (
+        <small className={styles.mockExecutionStopped}>
+          Mock execution stopped before completion.
+        </small>
+      )}
+      {progress.status === "failed" && (
+        <small className={styles.mockExecutionStopped}>
+          Mock execution failed before completion.
+        </small>
+      )}
+    </section>
+  );
+}
+
+function ExecutionCompletion({
+  progress
+}: {
+  progress: MockAgentRun;
+}) {
+  if (progress.status !== "completed" || progress.durationSeconds === null) {
+    return null;
+  }
+
+  return (
+    <div className={styles.mockExecutionComplete} role="status">
+      <Check size={15} aria-hidden />
+      <span>Completed in {progress.durationSeconds.toFixed(1)} sec</span>
+    </div>
+  );
+}
+
+function getSlashQuery(value: string): string | null {
+  const match = value.match(/^\/([^\s]*)$/);
+  return match ? match[1].toLocaleLowerCase() : null;
+}
+
 let messageSequence = 0;
 
-function createMessage(role: ChatRole, content: string) {
+function AttachmentSummaryList({
+  attachments
+}: {
+  attachments: ChatAttachmentSummary[];
+}) {
+  return (
+    <ul className={styles.messageAttachments} aria-label="Message attachments">
+      {attachments.map((attachment) => (
+        <li key={`${attachment.name}:${attachment.size}`}>
+          <FileText size={14} aria-hidden />
+          <span title={attachment.name}>{attachment.name}</span>
+          <small>{formatFileSize(attachment.size)}</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function validateSelectedFiles(files: File[]) {
+  if (files.length > MAX_ATTACHMENT_COUNT) {
+    return `Attach no more than ${MAX_ATTACHMENT_COUNT} files.`;
+  }
+  for (const file of files) {
+    const extension = file.name.split(".").pop()?.toLocaleLowerCase() ?? "";
+    if (!ACCEPTED_ATTACHMENT_EXTENSIONS.has(extension)) {
+      return `${file.name} is not a supported attachment type.`;
+    }
+    if (file.size === 0) {
+      return `${file.name} is empty.`;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      return `${file.name} exceeds the 10 MB per-file limit.`;
+    }
+  }
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    return "Attachments exceed the 25 MB total limit.";
+  }
+  return null;
+}
+
+function deduplicateFiles(files: File[]) {
+  return Array.from(
+    new Map(files.map((file) => [attachmentKey(file), file])).values()
+  );
+}
+
+function attachmentKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function toAttachmentSummary(file: File): ChatAttachmentSummary {
+  return { name: file.name, size: file.size, type: file.type };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.ceil(bytes / 1024)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createMessage(
+  role: ChatRole,
+  content: string,
+  attachments?: ChatAttachmentSummary[]
+) {
   return {
     id: createMessageId(),
     role,
-    content
+    content,
+    ...(attachments && attachments.length > 0 ? { attachments } : {})
   };
 }
 

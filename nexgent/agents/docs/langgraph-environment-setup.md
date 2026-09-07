@@ -30,7 +30,7 @@ Sources:
 - Initial graph: deterministic provider-neutral node; no model API key is
   required.
 - Local server:
-  `langgraph dev --host 192.168.0.18 --port 2024 --no-browser`, using the
+  `langgraph dev --host 192.168.0.18 --port 2024 --no-browser --n-jobs-per-worker 4`, using the
   in-memory Agent Server mode for development on the trusted LAN.
 - Production hosting and persistence: intentionally deferred. The later
   architecture phase must choose LangSmith Cloud, self-hosted Agent Server, or
@@ -60,7 +60,7 @@ uv sync --dev
 uv run pytest
 uv run python -c 'from workflows.smoke import graph; print(graph.invoke({"message": "hello"}))'
 uv run langgraph --help
-uv run langgraph dev --host 192.168.0.18 --port 2024 --no-browser
+uv run langgraph dev --host 192.168.0.18 --port 2024 --no-browser --n-jobs-per-worker 4
 ```
 
 The development server binds to `192.168.0.18:2024`, making it reachable from

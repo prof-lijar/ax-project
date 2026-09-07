@@ -1,0 +1,23 @@
+name: nexgent-rag
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
+    environment:
+      POSTGRES_DB: nextgent
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${RAG_POSTGRES_PASSWORD:?RAG_POSTGRES_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - rag_postgres_data:/var/lib/postgresql/data
+      - ./sql/001-init-rag.sql:/docker-entrypoint-initdb.d/001-init-rag.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  rag_postgres_data:
+    name: nexgent-rag-postgres-data

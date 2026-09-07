@@ -107,9 +107,6 @@
 }
 
 .tableHeader,
-.taskRow,
-.approvalRow,
-.activityRow,
 .settingRow {
   display: grid;
   gap: 12px;
@@ -126,9 +123,6 @@
   text-transform: uppercase;
 }
 
-.taskRow,
-.approvalRow,
-.activityRow,
 .settingRow {
   width: 100%;
   min-height: 58px;
@@ -139,21 +133,6 @@
   color: var(--color-text);
   background: var(--color-surface);
   text-align: left;
-}
-
-.taskRow,
-.tableHeaderTasks {
-  grid-template-columns: 58px minmax(220px, 1.5fr) 100px 100px minmax(150px, 0.8fr) minmax(130px, 0.7fr);
-}
-
-.approvalRow,
-.tableHeaderApprovals {
-  grid-template-columns: 88px minmax(260px, 1.7fr) minmax(160px, 0.7fr) minmax(120px, 0.6fr) 88px;
-}
-
-.activityRow,
-.tableHeaderActivity {
-  grid-template-columns: 82px minmax(240px, 1.4fr) 110px 120px;
 }
 
 .settingRow {
@@ -192,19 +171,6 @@
   grid-column: 1 / -1;
 }
 
-.priority {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  background: var(--color-neutral-soft);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 @media (max-width: 980px) {
   .header {
     align-items: stretch;
@@ -215,9 +181,6 @@
     display: none;
   }
 
-  .taskRow,
-  .approvalRow,
-  .activityRow,
   .settingRow {
     grid-template-columns: 1fr;
   }

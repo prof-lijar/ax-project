@@ -23,6 +23,7 @@ def test_settings_accept_requested_environment_names_without_exposing_key() -> N
         "http://model.internal:8000/v1/chat/completions"
     )
     assert settings.model == "gemma-4-31b"
+    assert settings.supports_vision is False
     assert "secret-token" not in repr(settings)
 
 
@@ -30,6 +31,28 @@ def test_settings_report_missing_environment() -> None:
     with pytest.raises(ModelConfigurationError, match="OPENAI_API_KEY"):
         OpenAICompatibleSettings.from_env(
             {"URL": "http://model.internal:8000/v1", "MODEL": "gemma-4-31b"}
+        )
+
+
+def test_settings_require_explicit_valid_vision_flag() -> None:
+    settings = OpenAICompatibleSettings.from_env(
+        {
+            "URL": "http://model.internal:8000/v1",
+            "MODEL": "vision-model",
+            "OPENAI_API_KEY": "secret-token",
+            "OPENAI_SUPPORTS_VISION": "true",
+        }
+    )
+    assert settings.supports_vision is True
+
+    with pytest.raises(ModelConfigurationError, match="must be a boolean"):
+        OpenAICompatibleSettings.from_env(
+            {
+                "URL": "http://model.internal:8000/v1",
+                "MODEL": "vision-model",
+                "OPENAI_API_KEY": "secret-token",
+                "OPENAI_SUPPORTS_VISION": "sometimes",
+            }
         )
 
 
@@ -77,6 +100,149 @@ async def test_chat_model_streams_openai_compatible_response() -> None:
         "temperature": 0.7,
         "stream": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_chat_model_requests_json_schema_and_returns_usage() -> None:
+    observed: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "model": "gemma-4-31b",
+                "choices": [
+                    {
+                        "message": {"content": '{"headline":"ok"}'},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 4},
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    model = OpenAICompatibleChatModel(
+        OpenAICompatibleSettings(
+            base_url="http://model.internal:8000/v1",
+            model="gemma-4-31b",
+            api_key="secret-token",
+            max_attempts=1,
+        ),
+        client=client,
+    )
+    try:
+        result = await model.complete_structured(
+            [{"role": "user", "content": "write"}],
+            response_schema={"type": "object"},
+            schema_name="weekly_narrative",
+        )
+    finally:
+        await client.aclose()
+
+    assert result.text == '{"headline":"ok"}'
+    assert result.prompt_tokens == 12
+    assert result.completion_tokens == 4
+    assert observed["payload"]["stream"] is False
+    assert observed["payload"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "weekly_narrative",
+            "schema": {"type": "object"},
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_model_sends_validated_multimodal_content_parts() -> None:
+    observed: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=(
+                b'data: {"choices":[{"delta":{"content":"seen"}}]}\n\ndata: [DONE]\n\n'
+            ),
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    model = OpenAICompatibleChatModel(
+        OpenAICompatibleSettings(
+            base_url="http://model.internal:8000/v1",
+            model="vision-model",
+            api_key="secret-token",
+            max_attempts=1,
+            supports_vision=True,
+        ),
+        client=client,
+    )
+    image_url = "data:image/png;base64,aW1hZ2U="
+    try:
+        response = await model.complete(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is shown?"},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ]
+        )
+    finally:
+        await client.aclose()
+
+    assert response == "seen"
+    assert observed["payload"] == {
+        "model": "vision-model",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is shown?"},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            }
+        ],
+        "max_tokens": 500,
+        "temperature": 0.7,
+        "stream": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_chat_model_rejects_image_content_when_vision_is_disabled() -> None:
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: None))
+    model = OpenAICompatibleChatModel(
+        OpenAICompatibleSettings(
+            base_url="http://model.internal:8000/v1",
+            model="text-model",
+            api_key="secret-token",
+            max_attempts=1,
+        ),
+        client=client,
+    )
+
+    try:
+        with pytest.raises(ValueError, match="vision-capable"):
+            await model.complete(
+                [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "data:image/png;base64,aW1hZ2U="},
+                            }
+                        ],
+                    }
+                ]
+            )
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.asyncio

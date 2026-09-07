@@ -1,8 +1,9 @@
 """Pydantic contracts crossing package, process, or persistence boundaries."""
 
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from ipaddress import ip_address
+from math import isclose
 from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -61,6 +62,69 @@ class ArtifactRef(ContractModel):
     version: str | None = None
 
 
+_DOCUMENT_MEDIA_TYPES = frozenset({"text/plain", "text/markdown", "text/csv"})
+_IMAGE_MEDIA_TYPES = frozenset({"image/png", "image/jpeg", "image/webp"})
+
+
+class ChatAttachmentRef(ContractModel):
+    """Reference to one gateway-normalized, transient chat attachment."""
+
+    attachment_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    filename: str = Field(min_length=1, max_length=255)
+    kind: Literal["document", "image"]
+    media_type: str = Field(min_length=1, max_length=128)
+    uri: str = Field(min_length=1, max_length=4_096)
+    byte_size: int = Field(ge=1, le=10 * 1024 * 1024)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("filename")
+    @classmethod
+    def validate_safe_filename(cls, value: str) -> str:
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("filename must be a basename")
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("filename must not contain control characters")
+        return value
+
+    @field_validator("uri")
+    @classmethod
+    def validate_local_file_uri(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "file"
+            or parsed.netloc not in {"", "localhost"}
+            or not parsed.path.startswith("/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("uri must be an absolute local file URI")
+        return value
+
+    @model_validator(mode="after")
+    def validate_media_type_for_kind(self) -> "ChatAttachmentRef":
+        allowed = (
+            _DOCUMENT_MEDIA_TYPES if self.kind == "document" else _IMAGE_MEDIA_TYPES
+        )
+        if self.media_type not in allowed:
+            raise ValueError(f"media_type is not supported for {self.kind} attachments")
+        return self
+
+
+class ChatErrorPayload(ContractModel):
+    """Safe error included in chat custom events and terminal graph state."""
+
+    code: Literal[
+        "attachment_invalid",
+        "attachment_not_found",
+        "attachment_too_large",
+        "attachment_integrity_error",
+        "attachment_unreadable",
+        "vision_not_supported",
+    ]
+    message: str = Field(min_length=1, max_length=500)
+    filename: str | None = Field(default=None, min_length=1, max_length=255)
+
+
 class ToolRequest(ContractModel):
     tool_name: str = Field(min_length=1, max_length=128)
     arguments: dict[str, Any] = Field(default_factory=dict)
@@ -74,6 +138,37 @@ class ToolResult(ContractModel):
     output: Any = None
     error_code: str | None = None
     retryable: bool = False
+
+
+class McpToolDefinition(ContractModel):
+    """Normalized metadata for one tool discovered from an MCP server."""
+
+    server_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    name: str = Field(min_length=1, max_length=128)
+    title: str | None = Field(default=None, max_length=512)
+    description: str | None = Field(default=None, max_length=8_000)
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any] | None = None
+    risk: Literal["read", "write", "destructive"] | None = None
+
+    @field_validator("input_schema")
+    @classmethod
+    def validate_input_schema(cls, value: dict[str, Any]) -> dict[str, Any]:
+        schema_type = value.get("type")
+        if schema_type not in {None, "object"}:
+            raise ValueError("MCP tool input schema must describe an object")
+        return value
+
+
+class McpToolCallResult(ContractModel):
+    """Normalized, explicitly untrusted result returned by a remote MCP tool."""
+
+    server_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    tool_name: str = Field(min_length=1, max_length=128)
+    content: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    structured_content: Any = None
+    is_error: bool = False
+    content_is_untrusted: Literal[True] = True
 
 
 _DOMAIN_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
@@ -214,6 +309,9 @@ class WeeklyReportRequest(ContractModel):
 
     week_start: date
     timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
+    ward_ids: list[int] | None = Field(default=None, min_length=1, max_length=25)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
+    limit: int = Field(default=25, ge=1, le=100)
 
     @field_validator("week_start")
     @classmethod
@@ -230,6 +328,23 @@ class WeeklyReportRequest(ContractModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
         return value
+
+    @field_validator("ward_ids")
+    @classmethod
+    def validate_ward_ids(cls, values: list[int] | None) -> list[int] | None:
+        if values is None:
+            return None
+        if any(value < 1 for value in values):
+            raise ValueError("ward_ids must contain positive integers")
+        if len(values) != len(set(values)):
+            raise ValueError("ward_ids must be unique")
+        return sorted(values)
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> "WeeklyReportRequest":
+        if self.ward_ids is not None and self.cursor is not None:
+            raise ValueError("ward_ids and cursor are mutually exclusive")
+        return self
 
     @property
     def week_end(self) -> date:
@@ -330,6 +445,627 @@ class WeeklyReportBatchResult(ContractModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
         return self
+
+
+class WardWeeklyMetricSnapshot(ContractModel):
+    """Deterministic metrics for one ward and one seven-day period."""
+
+    covered_days: int = Field(default=0, ge=0, le=7)
+    daily_summary_count: int = Field(default=0, ge=0)
+    device_count: int = Field(default=0, ge=0)
+    temperature_avg: float | None = None
+    temperature_min: float | None = None
+    temperature_max: float | None = None
+    temperature_count: int = Field(default=0, ge=0)
+    humidity_avg: float | None = None
+    humidity_min: float | None = None
+    humidity_max: float | None = None
+    humidity_count: int = Field(default=0, ge=0)
+    environment_observed_days: int | None = Field(default=None, ge=0, le=7)
+    temperature_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    humidity_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    environment_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    low_temperature_days: int | None = Field(default=None, ge=0, le=7)
+    cool_temperature_days: int | None = Field(default=None, ge=0, le=7)
+    high_temperature_days: int | None = Field(default=None, ge=0, le=7)
+    low_humidity_days: int | None = Field(default=None, ge=0, le=7)
+    high_humidity_days: int | None = Field(default=None, ge=0, le=7)
+    humidity_at_or_above_70_days: int | None = Field(default=None, ge=0, le=7)
+    light_avg: float | None = None
+    light_min: float | None = None
+    light_max: float | None = None
+    light_count: int = Field(default=0, ge=0)
+    light_on_time_minutes_avg: float | None = None
+    movement_count_avg: float | None = None
+    remote_control_count_avg: float | None = None
+    movement_count_total: float | None = Field(default=None, ge=0)
+    remote_control_count_total: float | None = Field(default=None, ge=0)
+    device_good_count: int | None = Field(default=None, ge=0)
+    device_power_count: int | None = Field(default=None, ge=0)
+    device_position_count: int | None = Field(default=None, ge=0)
+    wake_up_time_avg: time | None = None
+    sleep_time_avg: time | None = None
+    night_awake_count_avg: float | None = None
+    risk_detected_count: int = Field(default=0, ge=0)
+    risk_resolved_count: int = Field(default=0, ge=0)
+    risk_score_avg: float | None = None
+    danger_days: int = Field(default=0, ge=0, le=7)
+    dispatch_request_count: int = Field(default=0, ge=0)
+    unresolved_dispatch_count: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_environment_day_counts(self) -> "WardWeeklyMetricSnapshot":
+        count_fields = (
+            "environment_observed_days",
+            "temperature_out_of_range_days",
+            "humidity_out_of_range_days",
+            "environment_out_of_range_days",
+            "low_temperature_days",
+            "high_temperature_days",
+            "low_humidity_days",
+            "high_humidity_days",
+        )
+        values = {field: getattr(self, field) for field in count_fields}
+        supplemental = (
+            self.cool_temperature_days,
+            self.humidity_at_or_above_70_days,
+        )
+        if all(value is None for value in values.values()):
+            if any(value is not None for value in supplemental):
+                raise ValueError(
+                    "supplemental environment counts require base day counts"
+                )
+            return self
+        if any(value is None for value in values.values()):
+            raise ValueError("environment day counts must be provided together")
+
+        observed = self.environment_observed_days
+        temperature = self.temperature_out_of_range_days
+        humidity = self.humidity_out_of_range_days
+        environment = self.environment_out_of_range_days
+        assert observed is not None
+        assert temperature is not None
+        assert humidity is not None
+        assert environment is not None
+        if observed == 0:
+            raise ValueError("available environment day counts require observed days")
+        if any(value > observed for value in values.values() if value is not None):
+            raise ValueError("environment day counts must not exceed observed days")
+        if not max(temperature, humidity) <= environment <= temperature + humidity:
+            raise ValueError(
+                "combined environment departures must match component days"
+            )
+        if any(
+            value is not None and value > temperature
+            for value in (self.low_temperature_days, self.high_temperature_days)
+        ):
+            raise ValueError("temperature direction days must be departure days")
+        if any(
+            value is not None and value > humidity
+            for value in (self.low_humidity_days, self.high_humidity_days)
+        ):
+            raise ValueError("humidity direction days must be departure days")
+        if any(value is None for value in supplemental) and any(
+            value is not None for value in supplemental
+        ):
+            raise ValueError(
+                "supplemental environment day counts must be provided together"
+            )
+        if any(value is not None and value > observed for value in supplemental):
+            raise ValueError(
+                "supplemental environment day counts must not exceed observed days"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_device_reception_counts(self) -> "WardWeeklyMetricSnapshot":
+        values = (
+            self.device_good_count,
+            self.device_power_count,
+            self.device_position_count,
+        )
+        if all(value is None for value in values):
+            return self
+        if any(value is None for value in values):
+            raise ValueError("device reception counts must be provided together")
+        if self.daily_summary_count == 0:
+            raise ValueError("device reception counts require daily summary rows")
+        if any(
+            value is not None and value > self.daily_summary_count for value in values
+        ):
+            raise ValueError("device reception counts must not exceed source rows")
+        if sum(value or 0 for value in values) > self.daily_summary_count:
+            raise ValueError("device reception counts must be mutually exclusive")
+        return self
+
+
+class WardWeeklyMetricDelta(ContractModel):
+    """Current week minus previous week for comparable metrics."""
+
+    covered_days: int = Field(default=0, ge=-7, le=7)
+    temperature_avg: float | None = None
+    humidity_avg: float | None = None
+    light_avg: float | None = None
+    light_on_time_minutes_avg: float | None = None
+    movement_count_avg: float | None = None
+    remote_control_count_avg: float | None = None
+    wake_up_time_minutes: float | None = None
+    sleep_time_minutes: float | None = None
+    night_awake_count_avg: float | None = None
+    risk_detected_count: int = 0
+    risk_resolved_count: int = 0
+    risk_score_avg: float | None = None
+    danger_days: int = Field(ge=-7, le=7)
+    dispatch_request_count: int = 0
+    unresolved_dispatch_count: int = 0
+
+
+class WardWeeklyMetrics(ContractModel):
+    """Grounded weekly danger-day comparison for one ward."""
+
+    ward_id: int = Field(ge=1)
+    display_name: str = Field(min_length=1, max_length=256)
+    week_start: date
+    week_end: date
+    current: WardWeeklyMetricSnapshot
+    previous: WardWeeklyMetricSnapshot
+    delta: WardWeeklyMetricDelta
+
+    @model_validator(mode="after")
+    def validate_period_and_delta(self) -> "WardWeeklyMetrics":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        integer_fields = (
+            "covered_days",
+            "risk_detected_count",
+            "risk_resolved_count",
+            "danger_days",
+            "dispatch_request_count",
+            "unresolved_dispatch_count",
+        )
+        for field_name in integer_fields:
+            expected = getattr(self.current, field_name) - getattr(
+                self.previous, field_name
+            )
+            if getattr(self.delta, field_name) != expected:
+                raise ValueError(
+                    f"{field_name} delta must match current minus previous"
+                )
+        float_fields = (
+            "temperature_avg",
+            "humidity_avg",
+            "light_avg",
+            "light_on_time_minutes_avg",
+            "movement_count_avg",
+            "remote_control_count_avg",
+            "night_awake_count_avg",
+            "risk_score_avg",
+        )
+        for field_name in float_fields:
+            _validate_optional_delta(
+                field_name,
+                getattr(self.current, field_name),
+                getattr(self.previous, field_name),
+                getattr(self.delta, field_name),
+            )
+        _validate_optional_delta(
+            "wake_up_time_minutes",
+            _clock_minutes(self.current.wake_up_time_avg),
+            _clock_minutes(self.previous.wake_up_time_avg),
+            self.delta.wake_up_time_minutes,
+        )
+        _validate_optional_delta(
+            "sleep_time_minutes",
+            _clock_minutes(self.current.sleep_time_avg),
+            _clock_minutes(self.previous.sleep_time_avg),
+            self.delta.sleep_time_minutes,
+        )
+        return self
+
+
+def _clock_minutes(value: time | None) -> float | None:
+    if value is None:
+        return None
+    return (value.hour * 3600 + value.minute * 60 + value.second) / 60
+
+
+def _validate_optional_delta(
+    field_name: str,
+    current: float | None,
+    previous: float | None,
+    actual: float | None,
+) -> None:
+    if current is None or previous is None:
+        if actual is not None:
+            raise ValueError(f"{field_name} delta must be unavailable")
+        return
+    expected = current - previous
+    if actual is None or not isclose(actual, expected, rel_tol=1e-9, abs_tol=1e-9):
+        raise ValueError(f"{field_name} delta must match current minus previous")
+
+
+class WeeklyNarrative(ContractModel):
+    """Validated human-facing Korean prose generated from allowlisted facts."""
+
+    headline: str = Field(min_length=1, max_length=160)
+    analysis_text: str = Field(default="", max_length=500)
+    observations: list[str] = Field(default_factory=list, max_length=3)
+    suggestions: list[str] = Field(default_factory=list, max_length=3)
+
+
+class NarrativeGenerationMetadata(ContractModel):
+    prompt_version: str = Field(min_length=1, max_length=64)
+    model: str | None = Field(default=None, max_length=256)
+    validation_status: Literal["passed", "fallback"]
+    fallback_reason: str | None = Field(default=None, max_length=256)
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+    latency_ms: int | None = Field(default=None, ge=0)
+
+
+class SkippedWard(ContractModel):
+    ward_id: int = Field(ge=1)
+    reason: Literal["not_found", "source_error"]
+
+
+class _WeeklyReportTemplateModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+WeeklyReportSectionStatus = Literal[
+    "GOOD",
+    "CAUTION",
+    "RISK",
+    "자료 없음",
+    "판정 불가",
+]
+
+
+class WeeklyReportPeriod(_WeeklyReportTemplateModel):
+    """Inclusive display period for the frontend report template."""
+
+    start_date: date
+    end_date: date
+    display_value: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_seven_day_period(self) -> "WeeklyReportPeriod":
+        if self.end_date != self.start_date + timedelta(days=6):
+            raise ValueError("weekly report display period must contain seven days")
+        return self
+
+
+class WeeklyReportBasicInfo(_WeeklyReportTemplateModel):
+    subscriber_name: str = Field(min_length=1, max_length=256)
+    week_label: str = Field(min_length=1, max_length=64)
+    period: WeeklyReportPeriod
+    risk_score: int | None = Field(default=None, ge=0, le=100)
+    risk_score_display: str = Field(min_length=1, max_length=32)
+    status: Literal["GOOD", "CAUTION", "RISK", "자료 없음"]
+    status_description: str = Field(min_length=1, max_length=500)
+
+
+class WeeklyReportComparisonMetrics(_WeeklyReportTemplateModel):
+    current_week: float | None = Field(default=None, ge=0)
+    current_week_display: str = Field(min_length=1, max_length=64)
+    previous_week: float | None = Field(default=None, ge=0)
+    previous_week_display: str = Field(min_length=1, max_length=64)
+    comparison_percent: float | None = Field(default=None, ge=0)
+    comparison_display: str = Field(min_length=1, max_length=64)
+
+
+class WeeklyReportComparisonSection(_WeeklyReportTemplateModel):
+    title: Literal["활동감지", "리모컨 이용"]
+    status: WeeklyReportSectionStatus
+    metrics: WeeklyReportComparisonMetrics
+
+
+class WeeklyReportActivitySection(_WeeklyReportTemplateModel):
+    title: Literal["생활 활동"] = "생활 활동"
+    descriptions: list[str] = Field(min_length=1, max_length=2)
+    tag: str = Field(min_length=1, max_length=128)
+    activity_detection: WeeklyReportComparisonSection
+    remote_control_usage: WeeklyReportComparisonSection
+
+    @model_validator(mode="after")
+    def validate_signal_identity(self) -> "WeeklyReportActivitySection":
+        if self.activity_detection.title != "활동감지":
+            raise ValueError("activity_detection title must be 활동감지")
+        if self.remote_control_usage.title != "리모컨 이용":
+            raise ValueError("remote_control_usage title must be 리모컨 이용")
+        return self
+
+
+class WeeklyReportEnvironmentMetrics(_WeeklyReportTemplateModel):
+    observed_days: int | None = Field(default=None, ge=0, le=7)
+    temperature_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    humidity_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    environment_out_of_range_days: int | None = Field(default=None, ge=0, le=7)
+    temperature_max: float | None = None
+    temperature_min: float | None = None
+    humidity_max: float | None = None
+    humidity_min: float | None = None
+    observed_days_display: str = Field(min_length=1, max_length=32)
+    temperature_out_of_range_days_display: str = Field(min_length=1, max_length=32)
+    humidity_out_of_range_days_display: str = Field(min_length=1, max_length=32)
+    environment_out_of_range_days_display: str = Field(min_length=1, max_length=32)
+    temperature_max_display: str = Field(min_length=1, max_length=32)
+    temperature_min_display: str = Field(min_length=1, max_length=32)
+    humidity_max_display: str = Field(min_length=1, max_length=32)
+    humidity_min_display: str = Field(min_length=1, max_length=32)
+
+
+class WeeklyReportEnvironmentSection(_WeeklyReportTemplateModel):
+    title: Literal["실내 환경"] = "실내 환경"
+    status: WeeklyReportSectionStatus
+    description: str = Field(min_length=1, max_length=500)
+    tag: str = Field(min_length=1, max_length=128)
+    metrics: WeeklyReportEnvironmentMetrics
+
+
+class WeeklyReportDeviceMetrics(_WeeklyReportTemplateModel):
+    normal_reception_days: int = Field(ge=0, le=7)
+    other_count: int | None = Field(default=None, ge=0)
+    power_check_days: int = Field(ge=0, le=7)
+    position_count: int | None = Field(default=None, ge=0)
+    current_covered_days: int = Field(ge=0, le=7)
+    previous_covered_days: int = Field(ge=0, le=7)
+    current_device_count: int = Field(ge=0)
+    previous_device_count: int = Field(ge=0)
+    normal_reception_days_display: str = Field(min_length=1, max_length=32)
+    other_count_display: str = Field(min_length=1, max_length=32)
+    power_check_days_display: str = Field(min_length=1, max_length=32)
+    position_count_display: str = Field(min_length=1, max_length=32)
+    current_covered_days_display: str = Field(min_length=1, max_length=32)
+    previous_covered_days_display: str = Field(min_length=1, max_length=32)
+    current_device_count_display: str = Field(min_length=1, max_length=32)
+    previous_device_count_display: str = Field(min_length=1, max_length=32)
+
+
+class WeeklyReportDeviceSection(_WeeklyReportTemplateModel):
+    title: Literal["기기 상태"] = "기기 상태"
+    status: WeeklyReportSectionStatus
+    description: str = Field(min_length=1, max_length=500)
+    tag: str = Field(min_length=1, max_length=128)
+    metrics: WeeklyReportDeviceMetrics
+
+
+class WeeklyReportRiskMetrics(_WeeklyReportTemplateModel):
+    detected_count: int = Field(ge=0)
+    resolved_count: int = Field(ge=0)
+    previous_detected_count: int = Field(ge=0)
+    previous_resolved_count: int = Field(ge=0)
+    detected_count_display: str = Field(min_length=1, max_length=32)
+    resolved_count_display: str = Field(min_length=1, max_length=32)
+    previous_counts_display: str = Field(min_length=1, max_length=64)
+
+
+class WeeklyReportRiskSection(_WeeklyReportTemplateModel):
+    title: Literal["위험 관리"] = "위험 관리"
+    status: Literal["위험 감지 없음", "위험 감지 기록 있음"]
+    description: str = Field(min_length=1, max_length=500)
+    metrics: WeeklyReportRiskMetrics
+
+
+class WeeklyReportGuardianAction(_WeeklyReportTemplateModel):
+    title: str = Field(min_length=1, max_length=256)
+    description: str = Field(min_length=1, max_length=500)
+    tag: str = Field(min_length=1, max_length=128)
+    template_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class WeeklyReportGuardianActions(_WeeklyReportTemplateModel):
+    title: Literal["보호자 행동 제안"] = "보호자 행동 제안"
+    items: list[WeeklyReportGuardianAction] = Field(default_factory=list, max_length=3)
+    empty_message: str | None = Field(default=None, min_length=1, max_length=500)
+    template_id: Literal["GUI_GOOD_01"] | None = None
+
+    @model_validator(mode="after")
+    def validate_content(self) -> "WeeklyReportGuardianActions":
+        if bool(self.items) == bool(self.empty_message):
+            raise ValueError("guardian actions require either items or an empty message")
+        if self.items and self.template_id is not None:
+            raise ValueError("guardian action items cannot use an empty template ID")
+        if self.empty_message and self.template_id is None:
+            raise ValueError("empty guardian actions require GUI_GOOD_01")
+        return self
+
+
+class WeeklyReportTemplateData(_WeeklyReportTemplateModel):
+    """Frontend-ready JSON representation kept alongside legacy Markdown."""
+
+    template_version: Literal["weekly-report-v5"] = "weekly-report-v5"
+    title: Literal["주간 생활 리포트"] = "주간 생활 리포트"
+    basic_info: WeeklyReportBasicInfo
+    weekly_summary: str = Field(min_length=1, max_length=1_000)
+    generation_notice: str | None = Field(default=None, min_length=1, max_length=256)
+    living_activity: WeeklyReportActivitySection
+    indoor_environment: WeeklyReportEnvironmentSection
+    device_status: WeeklyReportDeviceSection
+    risk_management: WeeklyReportRiskSection
+    guardian_actions: WeeklyReportGuardianActions
+
+
+class WardWeeklyReport(ContractModel):
+    ward_id: int = Field(ge=1)
+    display_name: str = Field(min_length=1, max_length=256)
+    metrics: WardWeeklyMetrics
+    narrative: WeeklyNarrative
+    template_data: WeeklyReportTemplateData
+    markdown: str = Field(min_length=1, max_length=40_000)
+    generation_mode: Literal["llm", "template_fallback"]
+    generation: NarrativeGenerationMetadata
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "WardWeeklyReport":
+        if (
+            self.ward_id != self.metrics.ward_id
+            or self.display_name != self.metrics.display_name
+            or self.display_name != self.template_data.basic_info.subscriber_name
+        ):
+            raise ValueError("report identity must match ward metrics identity")
+        return self
+
+
+class WardWeeklyReportBatchResult(ContractModel):
+    status: Literal["completed"]
+    week_start: date
+    week_end: date
+    timezone: str = Field(min_length=1, max_length=128)
+    reports: list[WardWeeklyReport] = Field(default_factory=list, max_length=25)
+    skipped: list[SkippedWard] = Field(default_factory=list, max_length=25)
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_batch(self) -> "WardWeeklyReportBatchResult":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        ward_ids = [report.ward_id for report in self.reports]
+        if len(ward_ids) != len(set(ward_ids)):
+            raise ValueError("reports must contain unique wards")
+        if ward_ids != sorted(ward_ids):
+            raise ValueError("reports must be sorted by ward_id")
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return self
+
+
+class WeeklyReportSourceResponse(ContractModel):
+    """Private FastAPI response consumed by the weekly-report workflow."""
+
+    week_start: date
+    week_end: date
+    timezone: str = Field(min_length=1, max_length=128)
+    items: list[WardWeeklyMetrics] = Field(default_factory=list, max_length=100)
+    skipped: list[SkippedWard] = Field(default_factory=list, max_length=100)
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_period(self) -> "WeeklyReportSourceResponse":
+        if self.week_end != self.week_start + timedelta(days=7):
+            raise ValueError("week_end must be seven days after week_start")
+        return self
+
+
+WeeklyReportBulkJobState = Literal[
+    "pending",
+    "preparing",
+    "running",
+    "finalizing",
+    "completed",
+    "partial",
+    "failed",
+    "cancelling",
+    "cancelled",
+    "expired",
+]
+
+
+class WeeklyReportBulkJobRequest(ContractModel):
+    """Operator request for one resumable bulk weekly-report export."""
+
+    week_start: date
+    timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
+    max_reports: int = Field(default=10_000, ge=1, le=10_000)
+    cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+
+    @field_validator("week_start")
+    @classmethod
+    def validate_monday(cls, value: date) -> date:
+        if value.weekday() != 0:
+            raise ValueError("week_start must be a Monday")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return value
+
+
+class WeeklyReportBulkFailure(ContractModel):
+    ward_id: int | None = Field(default=None, ge=1)
+    error_code: str = Field(min_length=1, max_length=128)
+    attempts: int = Field(default=0, ge=0, le=3)
+
+
+class WeeklyReportBulkJobStatus(ContractModel):
+    """Content-free progress and terminal metadata for a bulk job."""
+
+    job_id: UUID
+    status: WeeklyReportBulkJobState
+    week_start: date
+    timezone: str = Field(min_length=1, max_length=128)
+    max_reports: int = Field(ge=1, le=10_000)
+    discovered_count: int = Field(default=0, ge=0, le=10_000)
+    pending_count: int = Field(default=0, ge=0, le=10_000)
+    running_count: int = Field(default=0, ge=0, le=10_000)
+    completed_count: int = Field(default=0, ge=0, le=10_000)
+    fallback_count: int = Field(default=0, ge=0, le=10_000)
+    failed_count: int = Field(default=0, ge=0, le=10_000)
+    producer_done: bool = False
+    selection_truncated: bool = False
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    warnings: list[str] = Field(default_factory=list, max_length=100)
+    export: ArtifactRef | None = None
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "WeeklyReportBulkJobStatus":
+        terminal = self.completed_count + self.failed_count
+        if terminal + self.pending_count + self.running_count > self.discovered_count:
+            raise ValueError("bulk job item counts exceed discovered_count")
+        if self.fallback_count > self.completed_count:
+            raise ValueError("fallback_count must not exceed completed_count")
+        return self
+
+
+class WeeklyReportBulkJobList(ContractModel):
+    """Newest-first, content-free bulk jobs visible to an operator."""
+
+    jobs: list[WeeklyReportBulkJobStatus] = Field(default_factory=list, max_length=100)
+
+
+class WeeklyReportBulkRuntime(ContractModel):
+    """Safe runtime limits displayed before a bulk job is submitted."""
+
+    max_reports: Literal[10_000] = 10_000
+    source_page_size: Literal[100] = 100
+    worker_concurrency: int = Field(ge=1, le=512)
+    status_poll_seconds: float = Field(default=2.0, ge=0.5, le=30)
+
+
+class WeeklyReportBulkManifest(ContractModel):
+    """Machine-readable manifest embedded in the temporary ZIP export."""
+
+    job_id: UUID
+    request: WeeklyReportBulkJobRequest
+    status: Literal["completed", "partial", "cancelled"]
+    report_count: int = Field(ge=0, le=10_000)
+    fallback_count: int = Field(ge=0, le=10_000)
+    failures: list[WeeklyReportBulkFailure] = Field(
+        default_factory=list, max_length=10_000
+    )
+    selection_truncated: bool = False
+    next_cursor: str | None = Field(default=None, max_length=2_000)
+    prompt_version: str = Field(min_length=1, max_length=64)
+    model: str | None = Field(default=None, max_length=256)
+    reports_jsonl_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    created_at: datetime
 
 
 class Handoff(ContractModel):

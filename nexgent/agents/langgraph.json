@@ -3,6 +3,7 @@
   "graphs": {
     "agent": "./workflows/smoke/graph.py:graph",
     "chat": "./workflows/chat/graph.py:graph",
+    "rag_chat": "./workflows/rag_chat/graph.py:graph",
     "ansimk_weekly_reporter": "./workflows/weekly_report/graph.py:graph"
   },
   "env": ".env"

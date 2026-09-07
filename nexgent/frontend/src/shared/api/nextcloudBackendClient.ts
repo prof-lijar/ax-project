@@ -14,6 +14,10 @@ const BACKEND_URL = configuredBackendUrl
   ? configuredBackendUrl.replace(/\/$/, "")
   : defaultBackendUrl();
 
+export function backendUrl(path: string) {
+  return `${BACKEND_URL}${path}`;
+}
+
 interface BackendNextcloudFileItem {
   path: string;
   name: string;
@@ -55,7 +59,7 @@ function defaultBackendUrl() {
 
 export async function getBrowserNextcloudStatus(): Promise<NextcloudStatus> {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/nextcloud/capabilities`);
+    const response = await fetch(backendUrl("/api/nextcloud/capabilities"));
     if (!response.ok) {
       return {
         ok: false,

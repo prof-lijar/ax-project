@@ -12,6 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
+    AX_CHAT_ARTIFACT_ROOT=/run/ax-chat \
     PATH="/opt/venv/bin:${PATH}"
 
 RUN apt-get update \
@@ -22,7 +23,8 @@ RUN apt-get update \
         libreoffice-writer \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 nexgent \
-    && useradd --system --uid 10001 --gid nexgent --create-home nexgent
+    && useradd --system --uid 10001 --gid nexgent --create-home nexgent \
+    && install --directory --owner=nexgent --group=nexgent --mode=0700 /run/ax-chat
 
 WORKDIR /app
 

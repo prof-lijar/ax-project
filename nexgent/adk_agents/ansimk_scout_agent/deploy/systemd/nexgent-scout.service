@@ -1,0 +1,38 @@
+[Unit]
+Description=Nexgent AnsimK Scout API
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=exec
+User=nextor-ai-02
+Group=nextor-ai-02
+WorkingDirectory=/home/nextor-ai-02/nextor_ai/ax-project/nexgent/adk_agents/ansimk_scout_agent
+
+Environment="HOME=/home/nextor-ai-02"
+Environment="PATH=/home/nextor-ai-02/nextor_ai/ax-project/nexgent/adk_agents/ansimk_scout_agent/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/nexgent/internal-openai.env
+EnvironmentFile=/etc/nexgent/nexgent-scout.env
+
+ExecStartPre=/usr/bin/test -x /home/nextor-ai-02/nextor_ai/ax-project/nexgent/adk_agents/ansimk_scout_agent/.venv/bin/uvicorn
+ExecStart=/home/nextor-ai-02/nextor_ai/ax-project/nexgent/adk_agents/ansimk_scout_agent/.venv/bin/uvicorn app.fast_api_app:app --host 0.0.0.0 --port 8091 --workers 1
+
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=240s
+KillSignal=SIGTERM
+
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nexgent-scout
+
+[Install]
+WantedBy=multi-user.target

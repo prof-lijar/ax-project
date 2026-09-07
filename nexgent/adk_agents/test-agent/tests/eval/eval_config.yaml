@@ -1,0 +1,7 @@
+metrics_to_run:
+  - expected_tool_call
+
+custom_metrics:
+  - name: expected_tool_call
+    execution: local
+    custom_function_file: tool_call_metric.py

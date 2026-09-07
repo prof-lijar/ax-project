@@ -26,4 +26,5 @@ expressed as deterministic application routing. Planned workflows are
 `risk_monitoring`, `call_recommendation`, and `device_management` remain planned.
 `weekly_report` is implemented as the manually triggered
 `ansimk_weekly_reporter` batch graph with deterministic calculations, bounded
-per-user subgraphs, Korean model-written narrative, and template fallback.
+per-ward subgraphs, a private FastAPI/raw-PostgreSQL source, warm Korean
+model-written narrative, strict validation, and template fallback.

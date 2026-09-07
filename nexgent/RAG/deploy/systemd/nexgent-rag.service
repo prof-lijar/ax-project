@@ -1,0 +1,37 @@
+[Unit]
+Description=Nexgent host RAG API
+Wants=network-online.target
+After=network-online.target docker.service nvidia-persistenced.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=exec
+User=nextor-ai-02
+Group=nextor-ai-02
+WorkingDirectory=/home/nextor-ai-02/nextor_ai/ax-project/nexgent/RAG
+
+Environment="HOME=/home/nextor-ai-02"
+Environment="PATH=/home/nextor-ai-02/nextor_ai/ax-project/nexgent/RAG/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+ExecStartPre=/usr/bin/test -x /home/nextor-ai-02/nextor_ai/ax-project/nexgent/RAG/.venv/bin/uvicorn
+ExecStartPre=/usr/bin/test -r /home/nextor-ai-02/nextor_ai/ax-project/nexgent/RAG/.env
+ExecStart=/home/nextor-ai-02/nextor_ai/ax-project/nexgent/RAG/.venv/bin/uvicorn rag_server:app --host 0.0.0.0 --port 8765 --no-access-log
+
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nexgent-rag
+
+[Install]
+WantedBy=multi-user.target

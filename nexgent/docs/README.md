@@ -19,10 +19,18 @@ This documentation set defines the product architecture before implementation be
 - [Desktop App Status](08-implementation/desktop-app-status.md): implementation state, run commands, validation, and known gaps.
 - [Document Viewer](08-implementation/document-viewer.md): NextCloud file preview behavior, supported formats, LibreOffice setup, and validation.
 - [Docker Development Stack](08-implementation/docker-development-stack.md): dated implementation record for the FastAPI and Vite Compose stack, configuration, operation, validation, and remaining runtime check.
+- [Docker Production Server Stack](08-implementation/docker-production-stack.md): separate stable server for tested releases, non-conflicting ports, immutable frontend/backend images, shared temporary credential values, operations, validation, and runtime boundaries.
 - [Dashboard Content Scrolling](08-implementation/dashboard-content-scrolling.md): app-shell sizing fix that keeps left-navigation section content scrollable within the desktop window.
 - [Frontend Section Routing](08-implementation/frontend-section-routing.md): stable URL paths, direct-load behavior, and browser-history synchronization for sidebar sections.
 - [Agent Server Chat](08-implementation/agent-server-chat.md): Workspace replacement, streamed AX chatbot client, session transcript, networking, and validation.
-- [Agents Management Interface](08-implementation/agents-management-interface.md): read-only LangGraph agent catalog, Weekly Reporter preview, inspector UX, routing, and integration boundary.
+- [RAG Chat Agent](../agents/docs/rag-chat-agent.md): dedicated Chat-page agent,
+  read-only Top-5 grounding, streamed OpenAI-compatible generation,
+  deterministic sources, completed Phase 1 live validation, and current limits.
+- [Chat File Attachments](08-implementation/chat-file-attachments.md): transient multi-file upload, document extraction, multimodal model input, security boundaries, and validation.
+- [Agents Management Interface](08-implementation/agents-management-interface.md): agent catalog, bulk-only Weekly Reporter entry, inspector UX, routing, and integration boundaries.
+- [AnsimK Scout Agent Frontend POC](08-implementation/ansimk-scout-agent-frontend-poc.md): Agents-page workbench, direct browser-to-standalone-Scout API routing, authoritative run timing, exact-origin CORS, validated report rendering, and operational network limits.
+- [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): bulk-only `/agents/1` job submission, throughput monitoring, cancellation, verified export, fixed Monday 03:00 KST cron submission with a local-only schedule editor preview, private runtime path, and the retired Quick Preview boundary.
+- [RAG UI Integration](../RAG/docs/rag-ui-integration.md): sidebar and `/rag` page integration, direct browser-to-RAG API routing, RAG Chat validation, and the systemd-managed host RAG lifecycle.
 
 ## Stage-One Definition
 

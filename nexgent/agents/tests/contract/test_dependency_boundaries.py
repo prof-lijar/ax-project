@@ -29,3 +29,23 @@ def test_shared_packages_do_not_depend_on_apps_or_workflows() -> None:
 
 def test_workflows_do_not_depend_on_apps() -> None:
     assert _forbidden_imports(ROOT / "workflows", {"apps"}) == []
+
+
+def test_slack_sdk_is_used_only_inside_shared_integration() -> None:
+    violations: list[str] = []
+    for source_root in (ROOT / "apps", ROOT / "workflows", ROOT / "packages"):
+        for path in source_root.rglob("*.py"):
+            if path.is_relative_to(ROOT / "packages" / "integrations"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                names: list[str] = []
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = [node.module]
+                if any(name.split(".", maxsplit=1)[0] == "slack_sdk" for name in names):
+                    violations.append(
+                        f"{path.relative_to(ROOT)}:{node.lineno} imports Slack SDK"
+                    )
+    assert violations == []
