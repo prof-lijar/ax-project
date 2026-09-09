@@ -6,6 +6,7 @@ import type { WeeklyReportBulkJobStatus } from "../../shared/api/weeklyReportBul
 import {
   calculateBulkProgress,
   RunStatusIndicator,
+  parseWardIds,
   parseBulkReportLimit
 } from "./BulkWeeklyReportPanel";
 
@@ -79,5 +80,25 @@ describe("Run Agent completion", () => {
     const markup = renderToStaticMarkup(createElement(RunStatusIndicator, { job: { ...job, status: "finalizing" } }));
     expect(markup).toContain("Packaging");
     expect(markup).toContain("loader-circle");
+  });
+});
+
+
+describe("selected ward inputs", () => {
+  it("accepts comma-separated IDs with spaces", () => {
+    expect(parseWardIds("23, 45 ,56")).toEqual([23, 45, 56]);
+    expect(parseWardIds("56,23,45")).toEqual([23, 45, 56]);
+  });
+  it("leaves blank input in automatic selection mode", () => {
+    expect(parseWardIds(" ")).toBeUndefined();
+  });
+  it.each(["0", "-23", "23,23", "23,,45", "23,", "abc", "1.5", "1e3", "23 45", "9007199254740992"])(
+    "rejects invalid selection %s without automatic fallback", (input) => {
+      expect(parseWardIds(input)).toBeNull();
+    }
+  );
+  it("accepts 25 IDs and rejects 26", () => {
+    expect(parseWardIds(Array.from({ length: 25 }, (_, i) => i + 1).join(","))).toHaveLength(25);
+    expect(parseWardIds(Array.from({ length: 26 }, (_, i) => i + 1).join(","))).toBeNull();
   });
 });

@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [Weekly Reporter Selected-Ward Tests](08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
+
 - [Weekly Report Five-ZIP Retention](08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
 
 - [Weekly Reporter UI ZIP-only tests](08-implementation/weekly-reporter-ui-zip-only.md): export-only UI generation, preserved scheduled storage, validation, and rollout.

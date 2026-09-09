@@ -50,6 +50,7 @@ export interface WeeklyReportBulkJobStatus {
 }
 
 export interface SubmitWeeklyReportBulkJob {
+  ward_ids?: number[];
   week_start: string;
   timezone: string;
   max_reports: number;

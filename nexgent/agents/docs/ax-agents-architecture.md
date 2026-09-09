@@ -1375,3 +1375,15 @@ Cleanup runs after execution and every 30 seconds in the worker admission loop,
 including startup. Failures are retried without failing generation. The manual
 `cleanup-exports` command shares this policy. No schema migration is needed.
 See [implementation and verification limits](../../docs/08-implementation/weekly-report-five-zip-retention.md).
+
+
+## Selected-ward ZIP-only tests (2026-09-09)
+
+The bulk request optionally carries up to 25 unique positive `ward_ids`. It
+normalizes the report count to the selection and requires report persistence
+to be disabled and the cursor omitted. The UI exposes this as an optional
+comma-separated field. The worker uses the existing source explicit-ID path,
+validates result membership, and resumes only unstaged IDs. Missing IDs become
+source warnings without substituting other wards. Existing bulk discovery,
+scheduled storage, job tracking, and five-ZIP retention remain in place.
+See [selected-ward implementation and validation](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md).

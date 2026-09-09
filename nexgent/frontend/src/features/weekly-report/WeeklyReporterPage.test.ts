@@ -22,6 +22,8 @@ describe("Weekly Reporter page", () => {
     );
     expect(markup).toContain("Test report generation");
     expect(markup).toContain("Run Agent");
+    expect(markup).toContain("Ward IDs (optional)");
+    expect(markup).toContain("23, 45, 56");
     expect(markup).toContain("All available reports, up to 10,000 per run.");
     expect(markup).not.toContain("Quick preview");
     expect(markup).not.toContain("ansimk_weekly_reporter");

@@ -6,7 +6,11 @@ from datetime import date
 from uuid import UUID
 
 import pytest
-from ax_contracts import WeeklyReportBulkJobRequest, WeeklyReportSourceResponse
+from ax_contracts import (
+    WeeklyReportBulkJobRequest,
+    WeeklyReportRequest,
+    WeeklyReportSourceResponse,
+)
 from ax_persistence import (
     BulkItemRecord,
     BulkStoreError,
@@ -646,3 +650,117 @@ async def test_item_becomes_failed_after_three_leased_attempts() -> None:
     items = await store.list_items(job.job_id)
     assert items[0].status == "failed"
     assert items[0].attempt_count == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", [False, True])
+async def test_selected_wards_generate_only_requested_reports_without_storage(tmp_path, missing):
+    class SelectedSource(MockWeeklyReportSourceRepository):
+        def __init__(self):
+            self.requests = []
+
+        async def load(self, request):
+            self.requests.append(request)
+            response = await super().load(request)
+            if missing:
+                return response.model_copy(update={
+                    "items": [item for item in response.items if item.ward_id != 45],
+                })
+            return response
+
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3), ward_ids=[56, 23, 45],
+        persist_reports=False, idempotency_key="selected-ward-test",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND, request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    source = SelectedSource()
+    status = await WeeklyReportBulkRunner(
+        store, artifacts, source, FakeModel(), FailingWeeklyReportStore(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+
+    assert status.status == "completed"
+    assert status.max_reports == 3
+    assert status.completed_count == (2 if missing else 3)
+    assert len(source.requests) == 1
+    assert source.requests[0].ward_ids == [23, 45, 56]
+    assert source.requests[0].cursor is None
+    assert status.next_cursor is None
+    assert status.selection_truncated is False
+    assert status.export is not None
+    with zipfile.ZipFile(artifacts.local_path(status.export.uri)) as archive:
+        ids = {json.loads(line)["ward_id"] for line in archive.read("reports.jsonl").splitlines()}
+        assert ids == ({23, 56} if missing else {23, 45, 56})
+        assert json.loads(archive.read("manifest.json"))["request"]["persist_reports"] is False
+    if missing:
+        assert "ward-45:requested_ward_unavailable" in status.warnings
+
+
+@pytest.mark.asyncio
+async def test_selected_wards_reject_unrequested_source_items(tmp_path):
+    class WrongSource(MockWeeklyReportSourceRepository):
+        async def load(self, request):
+            return await super().load(request.model_copy(update={"ward_ids": [101]}))
+
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3), ward_ids=[23],
+        persist_reports=False, idempotency_key="wrong-selected-ward",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND, request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    status = await WeeklyReportBulkRunner(
+        store, artifacts, WrongSource(), FakeModel(), FailingWeeklyReportStore(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+    assert status.status == "failed"
+    assert status.discovered_count == 0
+    assert status.export is None
+
+
+@pytest.mark.asyncio
+async def test_selected_wards_resume_after_a_partially_staged_selection(tmp_path):
+    requests = []
+
+    class RecordingSource(MockWeeklyReportSourceRepository):
+        async def load(self, request):
+            requests.append(request)
+            return await super().load(request)
+
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3), ward_ids=[23, 45, 56],
+        persist_reports=False, idempotency_key="resume-selected-wards",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND, request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    source = await MockWeeklyReportSourceRepository().load(WeeklyReportRequest(
+        week_start=request.week_start, ward_ids=[23],
+    ))
+    artifact = artifacts.write_json(
+        job.job_id, "inputs/23.json", source.items[0].model_dump(mode="json"),
+    )
+    await store.stage_items(job.job_id, [BulkItemRecord(
+        job_id=job.job_id, item_key=f"{23:020d}",
+        payload_uri=artifact.uri, payload_checksum=artifact.sha256,
+    )], None)
+    status = await WeeklyReportBulkRunner(
+        store, artifacts, RecordingSource(), FakeModel(), FailingWeeklyReportStore(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+    assert status.status == "completed"
+    assert status.completed_count == 3
+    assert len(requests) == 1
+    assert requests[0].ward_ids == [45, 56]
+    assert {int(item.item_key) for item in await store.list_items(job.job_id)} == {23, 45, 56}

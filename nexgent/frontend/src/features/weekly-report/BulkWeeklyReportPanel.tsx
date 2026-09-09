@@ -34,6 +34,7 @@ export function BulkWeeklyReportPanel() {
   const [reportLimitInput, setReportLimitInput] = useState(
     String(DEFAULT_BULK_REPORT_LIMIT)
   );
+  const [wardIdsInput, setWardIdsInput] = useState("");
   const [approved, setApproved] = useState(false);
   const [runtime, setRuntime] = useState<WeeklyReportBulkRuntime | null>(null);
   const [jobs, setJobs] = useState<WeeklyReportBulkJobStatus[]>([]);
@@ -44,7 +45,8 @@ export function BulkWeeklyReportPanel() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const reportLimit = parseBulkReportLimit(reportLimitInput);
+  const wardIds = parseWardIds(wardIdsInput);
+  const reportLimit = wardIds === null ? null : wardIds?.length ?? parseBulkReportLimit(reportLimitInput);
   const weekStartIsValid = isMonday(weekStart);
   const activeJobId =
     selectedJob && !isBulkJobTerminal(selectedJob.status)
@@ -140,6 +142,7 @@ export function BulkWeeklyReportPanel() {
         week_start: weekStart,
         timezone,
         max_reports: reportLimit,
+        ...(wardIds ? { ward_ids: wardIds } : {}),
         idempotency_key: createIdempotencyKey(weekStart)
       });
       setSelectedJob(job);
@@ -239,6 +242,28 @@ export function BulkWeeklyReportPanel() {
           </label>
 
           <label>
+            <span>Ward IDs (optional)</span>
+            <div className={styles.fieldControl}>
+              <Users size={16} aria-hidden />
+              <input
+                type="text"
+                placeholder="23, 45, 56"
+                value={wardIdsInput}
+                onChange={(event) => setWardIdsInput(event.target.value)}
+                aria-invalid={wardIds === null}
+                aria-describedby="ward-ids-help"
+              />
+            </div>
+            <small id="ward-ids-help" className={wardIds === null ? styles.fieldError : undefined}>
+              {wardIds === null
+                ? "Enter up to 25 unique positive whole-number IDs, separated by commas."
+                : wardIds
+                  ? `Only these ${wardIds.length} wards will be requested. ZIP only; no report database save.`
+                  : "Leave blank for automatic selection, or enter up to 25 ward IDs."}
+            </small>
+          </label>
+
+          <label>
             <span>Maximum reports</span>
             <div className={styles.fieldControl}>
               <Files size={16} aria-hidden />
@@ -248,7 +273,8 @@ export function BulkWeeklyReportPanel() {
                 max="10000"
                 step="1"
                 inputMode="numeric"
-                value={reportLimitInput}
+                disabled={wardIdsInput.trim().length > 0}
+                value={wardIds ? String(wardIds.length) : reportLimitInput}
                 onChange={(event) => setReportLimitInput(event.target.value)}
                 aria-invalid={reportLimit === null}
               />
@@ -256,6 +282,8 @@ export function BulkWeeklyReportPanel() {
             <small className={reportLimit === null ? styles.fieldError : undefined}>
               {reportLimit === null
                 ? "Enter a whole number from 1 to 10,000."
+                : wardIds
+                  ? "Report count matches the selected ward IDs."
                 : reportLimit === 10_000
                   ? "All available reports, up to 10,000 per run."
                   : `${formatNumber(reportLimit)} eligible wards at most.`}
@@ -414,9 +442,10 @@ export function BulkWeeklyReportPanel() {
             )}
 
             {selectedJob.warnings.length > 0 && (
-              <p className={styles.warningCount}>
-                {selectedJob.warnings.length} safe source warning(s) recorded in the job.
-              </p>
+              <details className={styles.warningCount}>
+                <summary>{selectedJob.warnings.length} source warning(s)</summary>
+                <ul>{selectedJob.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+              </details>
             )}
           </section>
         ) : (
@@ -493,6 +522,15 @@ function PipelineStep({ complete, active, label }: { complete: boolean; active: 
       <span>{label}</span>
     </div>
   );
+}
+
+export function parseWardIds(value: string): number[] | undefined | null {
+  if (!value.trim()) return undefined;
+  const tokens = value.split(",").map((token) => token.trim());
+  if (tokens.length > 25 || tokens.some((token) => !/^\d+$/.test(token))) return null;
+  const ids = tokens.map(Number);
+  if (ids.some((id) => !Number.isSafeInteger(id) || id < 1) || new Set(ids).size !== ids.length) return null;
+  return ids.sort((a, b) => a - b);
 }
 
 export function parseBulkReportLimit(value: string): number | null {

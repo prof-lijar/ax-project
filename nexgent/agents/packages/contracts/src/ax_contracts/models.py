@@ -9,7 +9,14 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 SCHEMA_VERSION = "1"
 
@@ -971,6 +978,7 @@ class WeeklyReportBulkJobRequest(ContractModel):
     week_start: date
     timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
     max_reports: int = Field(default=10_000, ge=1, le=10_000)
+    ward_ids: list[StrictInt] | None = Field(default=None, min_length=1, max_length=25)
     persist_reports: bool = Field(default=True, strict=True)
     cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
     idempotency_key: str = Field(
@@ -994,6 +1002,22 @@ class WeeklyReportBulkJobRequest(ContractModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
         return value
+
+
+    @field_validator("ward_ids")
+    @classmethod
+    def validate_ward_ids(cls, values: list[int] | None) -> list[int] | None:
+        return WeeklyReportRequest.validate_ward_ids(values)
+
+    @model_validator(mode="after")
+    def validate_selected_wards(self) -> "WeeklyReportBulkJobRequest":
+        if self.ward_ids is not None:
+            if self.cursor is not None:
+                raise ValueError("ward_ids and cursor are mutually exclusive")
+            if self.persist_reports:
+                raise ValueError("selected-ward test runs require persist_reports=false")
+            self.max_reports = len(self.ward_ids)
+        return self
 
 
 class WeeklyReportBulkFailure(ContractModel):

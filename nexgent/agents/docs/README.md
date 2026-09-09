@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Weekly Reporter Selected-Ward Tests](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
+
 - [Weekly Report Five-ZIP Retention](../../docs/08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
 
 - [Weekly Reporter UI ZIP-only tests](../../docs/08-implementation/weekly-reporter-ui-zip-only.md): per-job persistence control for browser test exports.

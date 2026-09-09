@@ -76,3 +76,5 @@ docker compose down
 ```
 
 See [weekly report terminal commands](apps/workers/README.md#generate-weekly-reports-and-save-to-the-database) for database-saving generation, 100-report tests, status checks, and continuation beyond 10,000 reports.
+
+For ZIP-only reports for specific wards, enter comma-separated IDs such as `23, 45, 56` in the optional **Ward IDs** field at `/agents/1`, then choose **Run Agent**. See [selected-ward test runs](../docs/08-implementation/weekly-reporter-selected-ward-tests.md) for the 25-ID limit and rollout steps.

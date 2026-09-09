@@ -199,10 +199,19 @@ class WeeklyReportBulkRunner:
                 )
                 await self.store.request_cancel(job_id)
                 return
+            selected_ids = None
+            if request.ward_ids is not None:
+                selected_ids = [
+                    ward_id for ward_id in request.ward_ids
+                    if f"{ward_id:020d}" not in seen_item_keys
+                ]
+                if not selected_ids:
+                    break
             page_request = WeeklyReportRequest(
                 week_start=request.week_start,
                 timezone=request.timezone,
-                cursor=cursor,
+                cursor=None if selected_ids is not None else cursor,
+                ward_ids=selected_ids,
                 limit=min(100, request.max_reports - discovered),
             )
             source = WeeklyReportSourceResponse.model_validate(
@@ -246,6 +255,14 @@ class WeeklyReportBulkRunner:
             warnings.extend(
                 f"ward-{item.ward_id}:{item.reason}" for item in source.skipped
             )
+            if selected_ids is not None:
+                returned_ids = {item.ward_id for item in source.items}
+                skipped_ids = {item.ward_id for item in source.skipped}
+                warnings.extend(
+                    f"ward-{ward_id}:requested_ward_unavailable"
+                    for ward_id in selected_ids
+                    if ward_id not in returned_ids | skipped_ids
+                )
             next_cursor = source.next_cursor
             await self.store.stage_items(job_id, staged, next_cursor)
             discovered += len(staged)
@@ -521,6 +538,11 @@ class WeeklyReportBulkRunner:
         ):
             raise ValueError("weekly-report source returned a mismatched period")
         ward_ids = [item.ward_id for item in source.items]
+        if request.ward_ids is not None and (
+            not set(ward_ids).issubset(request.ward_ids)
+            or source.next_cursor is not None
+        ):
+            raise ValueError("weekly-report source returned wards outside the selection")
         if ward_ids != sorted(set(ward_ids)):
             raise ValueError(
                 "weekly-report source returned duplicate or unordered wards"

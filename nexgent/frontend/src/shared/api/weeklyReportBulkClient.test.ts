@@ -143,3 +143,16 @@ it("preserves caller cancellation and clears the deadline", async () => {
     vi.useRealTimers();
   }
 });
+
+
+it("submits selected wards with report persistence disabled", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(job), { status: 201 }));
+  vi.stubGlobal("fetch", fetchMock);
+  await weeklyReportBulkClient.submit({
+    week_start: "2026-08-31", timezone: "Asia/Seoul", max_reports: 3,
+    ward_ids: [23, 45, 56], idempotency_key: "selected-ward-ui-test"
+  });
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+    ward_ids: [23, 45, 56], max_reports: 3, persist_reports: false
+  });
+});
