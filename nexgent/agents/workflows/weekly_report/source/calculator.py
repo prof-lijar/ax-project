@@ -282,21 +282,25 @@ def _device_reception_counts(rows: list[dict[str, Any]]) -> dict[str, int | None
     for row in rows:
         values = tuple(row[field] for field in position_fields)
         good_values = tuple(row[field] for field in good_fields)
-        is_good = all(value is not None and float(value) != 0 for value in good_values)
+        # Low positive counts must not be swallowed by the non-zero GOOD rule.
+        is_position = (
+            sum(value is not None and 0 <= float(value) <= 10 for value in values)
+            >= 2
+        )
         is_power = (
-            not is_good
+            not is_position
             and values[0] is None
             and values[1] is None
             and values[2] is None
         )
+        is_good = (
+            not is_position
+            and not is_power
+            and all(value is not None and float(value) != 0 for value in good_values)
+        )
         good_count += int(is_good)
         power_count += int(is_power)
-        position_count += int(
-            not is_good
-            and not is_power
-            and sum(value is not None and 0 <= float(value) <= 10 for value in values)
-            >= 2
-        )
+        position_count += int(is_position)
 
     return {
         "device_good_count": good_count,

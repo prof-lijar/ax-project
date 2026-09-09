@@ -234,11 +234,10 @@ and `movement_count` together:
 - `device_power`: `temperature_count`, `humidity_count`, and `light_count` are
   all null; remote-control and movement values do not participate in power
   classification;
-- `device_position`: after excluding both `device_good` and `device_power`, at
-  least two of the five values are numeric and inside 0–10 inclusive.
+- `device_position`: at least two of the five values are numeric and inside 0–10 inclusive.
 
-Classify each row through the mutually exclusive `device_good`, `device_power`,
-then `device_position` if/else-if order and count occurrences across the current
+As revised on 2026-09-09, classify each row through the mutually exclusive
+`device_position`, `device_power`, then `device_good` if/else-if order and count occurrences across the current
 week. At weekly status selection, at least two power occurrences select
 `CAUTION/device_power`; otherwise at least two position occurrences select
 `CAUTION/device_position`; otherwise at least one good occurrence selects
@@ -260,7 +259,7 @@ Render these exact description/summary pairs:
   `생활 정보가 들어오지 않은 날이 있었어요. 기기 전원이 잘 연결되어 있는지 확인해 주세요.` /
   `전원 확인`;
 - `CAUTION/device_position`:
-  `일부 생활 정보가 평소보다 적게 들어온 날이 있었어요. 기기가 제자리에 있는지 확인해 주세요.` /
+  `일부 생활 정보가 적게 들어온 날이 있었어요. 기기가 제자리에 있는지 확인해 주세요.` /
   `위치 확인`.
 
 Render the uppercase status, exact approved Korean description, and short tag

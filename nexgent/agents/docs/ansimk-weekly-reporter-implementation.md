@@ -401,12 +401,13 @@ without delegating interpretation to the model.
 
 The device-data reception section evaluates `temperature_count`,
 `humidity_count`, `light_count`, `remote_control_count`, and `movement_count`
-on each raw row. Non-null/non-zero temperature, humidity, light, and movement
-values form a good occurrence; remote-control count does not participate in
-GOOD classification. Null temperature, humidity, and light counts form a power
-occurrence regardless of activity values. After good and power rows are
-excluded, any row with at least two of all five values from 0 through 10 forms
-a position occurrence. The categories are mutually exclusive.
+on each raw device-day row. At least two numeric counts in 0–10 inclusive
+form a position occurrence, including rows with all-positive counts. Check
+position first, then power (null temperature, humidity, and light), then good
+(non-null/non-zero temperature, humidity, light, and movement). Null values
+do not count as low. These categories remain mutually exclusive. The position
+result uses `일부 생활 정보가 적게 들어온 날이 있었어요. 기기가 제자리에 있는지 확인해 주세요.`
+and tag `위치 확인`.
 Two repeated occurrences produce `CAUTION`, with power taking weekly
 precedence; otherwise one or more good occurrences produce `GOOD`. Good
 occurrences do not need to equal every source row. Unmatched rows are rendered

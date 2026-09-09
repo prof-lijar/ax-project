@@ -95,9 +95,9 @@ def test_calculator_matches_weighted_and_linear_average_semantics() -> None:
     assert metrics.current.low_humidity_days == 0
     assert metrics.current.high_humidity_days == 0
     assert metrics.current.humidity_at_or_above_70_days == 0
-    assert metrics.current.device_good_count == 2
+    assert metrics.current.device_good_count == 0
     assert metrics.current.device_power_count == 0
-    assert metrics.current.device_position_count == 0
+    assert metrics.current.device_position_count == 2
     assert metrics.current.wake_up_time_avg == time(8)
     assert metrics.current.covered_days == 2
     assert metrics.current.risk_detected_count == 2
@@ -238,7 +238,7 @@ def test_environment_values_strictly_inside_recommended_ranges_are_not_departure
     assert counts["environment_out_of_range_days"] == 0
 
 
-def test_device_reception_calculation_excludes_power_from_position() -> None:
+def test_device_reception_calculation_prioritizes_low_counts() -> None:
     counts = _device_reception_counts(
         [
             {
@@ -273,9 +273,9 @@ def test_device_reception_calculation_excludes_power_from_position() -> None:
     )
 
     assert counts == {
-        "device_good_count": 2,
-        "device_power_count": 2,
-        "device_position_count": 0,
+        "device_good_count": 1,
+        "device_power_count": 1,
+        "device_position_count": 2,
     }
 
 
@@ -349,7 +349,7 @@ def test_device_position_range_is_inclusive_and_null_is_not_low() -> None:
     assert counts["device_position_count"] == 1
 
 
-def test_device_reception_rows_follow_good_power_position_else_if_order() -> None:
+def test_device_reception_rows_check_position_before_power_and_good() -> None:
     counts = _device_reception_counts(
         [
             {
@@ -377,9 +377,9 @@ def test_device_reception_rows_follow_good_power_position_else_if_order() -> Non
     )
 
     assert counts == {
-        "device_good_count": 1,
-        "device_power_count": 1,
-        "device_position_count": 1,
+        "device_good_count": 0,
+        "device_power_count": 0,
+        "device_position_count": 3,
     }
 
 
