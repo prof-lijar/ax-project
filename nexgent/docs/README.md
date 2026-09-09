@@ -1,10 +1,21 @@
 # AX Project Documentation
 
+- [Weekly Report Five-ZIP Retention](08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
+
+- [Weekly Reporter UI ZIP-only tests](08-implementation/weekly-reporter-ui-zip-only.md): export-only UI generation, preserved scheduled storage, validation, and rollout.
+
 AX Project is a Linux desktop application built with Tauri. Its first stage is a human-in-the-loop command center for always-on agents: people approve, assign, inspect, redirect, and learn from agent work without losing control of execution.
 
 This documentation set defines the product architecture before implementation begins.
 
 ## Document Map
+
+- [Weekly Report Ward/Week Uniqueness](08-implementation/weekly-report-ward-week-uniqueness.md): existing update-on-conflict behavior, PostgreSQL regression coverage, and remaining database verification.
+- [Weekly Reporter 01:00 KST Schedule](08-implementation/weekly-reporter-schedule-0100-kst.md): Monday scheduler time change from 03:00 to 01:00 Asia/Seoul and rollout commands.
+
+- [Weekly Reporter Run Agent](08-implementation/weekly-reporter-run-agent.md): bulk run action, status indicator, fixed completion timing, validation, and report limits.
+
+- [Scout ADK Compose Integration](scout-adk-compose-integration.md): automatic Scout startup, same-origin frontend proxy, environment configuration, persistence, and migration limits.
 
 - [Vision](00-overview/vision.md): product intent, operating principles, and stage-one scope.
 - [Architecture Decisions](00-overview/architecture-decisions.md): early technical decisions and tradeoffs.

@@ -74,3 +74,5 @@ Stop it with:
 ```bash
 docker compose down
 ```
+
+See [weekly report terminal commands](apps/workers/README.md#generate-weekly-reports-and-save-to-the-database) for database-saving generation, 100-report tests, status checks, and continuation beyond 10,000 reports.

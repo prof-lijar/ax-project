@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
 import httpx
 import pytest
@@ -21,7 +22,8 @@ def build_service(tmp_path):
 
 @pytest.mark.asyncio
 async def test_bulk_api_submits_lists_reads_and_cancels_jobs(tmp_path) -> None:
-    app = create_app(service=build_service(tmp_path))
+    service = build_service(tmp_path)
+    app = create_app(service=service)
     async with app.router.lifespan_context(app), httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -39,11 +41,14 @@ async def test_bulk_api_submits_lists_reads_and_cancels_jobs(tmp_path) -> None:
                 "week_start": "2026-08-03",
                 "max_reports": 10_000,
                 "idempotency_key": "ui-weekly-2026-08-03",
+                "persist_reports": False,
             },
         )
         assert created.status_code == 201
         job = created.json()
         assert job["status"] == "pending"
+        stored = await service.store.get_job(UUID(job["job_id"]))
+        assert stored.request["persist_reports"] is False
         assert job["max_reports"] == 10_000
 
         listed = (await client.get("/v1/weekly-report/bulk/jobs")).json()

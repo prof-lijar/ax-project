@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -27,6 +27,8 @@ class ScoutSettings:
     max_redirects: int = 3
     max_response_bytes: int = 1_048_576
     max_extracted_characters: int = 12_000
+    slack_bot_token: str | None = field(default=None, repr=False)
+    slack_channel_id: str | None = None
 
     @classmethod
     def from_env(cls) -> ScoutSettings:
@@ -38,6 +40,8 @@ class ScoutSettings:
             api_key=_clean_env("OPENAI_API_KEY"),
             model=_clean_env("SCOUT_MODEL"),
             output_root=output_root.resolve(),
+            slack_bot_token=_clean_env("SCOUT_SLACK_BOT_TOKEN"),
+            slack_channel_id=_clean_env("SCOUT_SLACK_CHANNEL_ID"),
         )
 
     @property

@@ -12,6 +12,7 @@ from .runtime import (
     WEEKLY_REPORT_BULK_JOB_KIND,
     WeeklyReportBulkRunner,
     bulk_job_status,
+    cleanup_weekly_report_exports,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "WeeklyReportStorageUnavailable",
     "WeeklyReportStore",
     "bulk_job_status",
+    "cleanup_weekly_report_exports",
 ]

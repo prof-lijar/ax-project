@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from app.models import FetchedPage, ScoutRunRequest, SearchResult
@@ -13,6 +14,7 @@ from app.services.run_service import (
     ScoutRunService,
     _build_research_prompt,
 )
+from app.services.slack import SlackNotifier
 from app.tools.scout import ScoutWebToolset
 
 
@@ -114,6 +116,7 @@ def build_service(
     executor: ControlledToolCallingExecutor | None = None,
     provider: RecordingProvider | None = None,
     fetcher: RecordingFetcher | None = None,
+    slack_notifier: SlackNotifier | None = None,
 ) -> tuple[
     ScoutRunService,
     ControlledToolCallingExecutor,
@@ -140,6 +143,7 @@ def build_service(
         artifact_store=artifact_store,
         agent_executor=executor,
         toolset_factory=create_toolset,
+        slack_notifier=slack_notifier,
     )
     return service, executor, provider, fetcher
 
@@ -286,3 +290,106 @@ async def test_search_and_fetch_failures_are_safe_tool_responses(tmp_path: Path)
     assert fetch_result["error_code"] == "url_not_in_search_results"
     log_text = (tmp_path / "runs" / run_id / "execution.jsonl").read_text()
     assert "secret" not in log_text
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_reason"),
+    [
+        ("ok", "accepted"),
+        ("rejected", "api_error"),
+        ("429", "rate_limited"),
+        ("500", "http_error"),
+        ("timeout", "timeout"),
+        ("invalid", "transport_or_response_error"),
+    ],
+)
+async def test_slack_delivery_preserves_success_and_safe_logs(
+    tmp_path: Path, outcome: str, expected_reason: str
+) -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        run_dir = next((tmp_path / "runs").iterdir())
+        assert (run_dir / "report.md").exists()
+        assert (
+            json.loads((run_dir / "execution.jsonl").read_text().splitlines()[-1])["phase"]
+            == "run_succeeded"
+        )
+        assert request.url == "https://slack.com/api/chat.postMessage"
+        assert request.headers["Authorization"] == "Bearer secret-token"
+        payload = json.loads(request.content)
+        assert payload["channel"] == "C123"
+        assert "&lt;!channel&gt;" in payload["text"]
+        assert "<!channel>" not in payload["text"]
+        assert payload["mrkdwn"] is True
+        assert payload["unfurl_links"] is False
+        if outcome == "timeout":
+            raise httpx.ReadTimeout("secret-timeout")
+        if outcome == "invalid":
+            return httpx.Response(200, text="secret-response")
+        return httpx.Response(
+            int(outcome) if outcome.isdigit() else 200,
+            json={"ok": outcome == "ok", "error": "secret-upstream"},
+        )
+
+    notifier = SlackNotifier("secret-token", "C123", transport=httpx.MockTransport(handler))
+    service, _, _, fetcher = build_service(tmp_path, slack_notifier=notifier)
+    result = await service.run(ScoutRunRequest(topic="Example <!channel> research"))
+    assert result.status == "success"
+    assert fetcher.closed
+    assert len(calls) == 1
+    log = (tmp_path / result.log_artifact).read_text()
+    event = json.loads(log.splitlines()[-1])
+    assert event["phase"] == ("slack_delivery_sent" if outcome == "ok" else "slack_delivery_failed")
+    assert event["reason"] == expected_reason
+    assert "secret" not in log
+    if outcome == "ok":
+        text = json.loads(calls[0].content)["text"]
+        assert "*Scout Report*" in text
+        assert "*Sources*" in text
+        assert "<https://a.example/article|Evidence>" in text
+
+
+@pytest.mark.parametrize(
+    ("token", "channel", "status"),
+    [(None, None, "skipped"), ("secret", None, "failed"), (None, "C123", "failed")],
+)
+async def test_slack_missing_configuration_never_calls_network(tmp_path, token, channel, status):
+    def handler(request):
+        pytest.fail("Unconfigured Slack must not make a request")
+
+    service, _, _, _ = build_service(
+        tmp_path,
+        slack_notifier=SlackNotifier(token, channel, transport=httpx.MockTransport(handler)),
+    )
+    result = await service.run(ScoutRunRequest(topic="Example research"))
+    event = json.loads((tmp_path / result.log_artifact).read_text().splitlines()[-1])
+    assert event["phase"] == f"slack_delivery_{status}"
+
+
+async def test_invalid_research_is_never_sent_to_slack(tmp_path):
+    def handler(request):
+        pytest.fail("Failed research must never be delivered")
+
+    service, _, _, _ = build_service(
+        tmp_path,
+        executor=ControlledToolCallingExecutor(cite_unfetched=True),
+        slack_notifier=SlackNotifier("secret", "C123", transport=httpx.MockTransport(handler)),
+    )
+    with pytest.raises(ScoutRunFailedError):
+        await service.run(ScoutRunRequest(topic="Example research"))
+
+
+async def test_slack_audit_failure_does_not_fail_research(tmp_path, monkeypatch):
+    notifier = SlackNotifier(None, None)
+    service, _, _, _ = build_service(tmp_path, slack_notifier=notifier)
+    original = ArtifactStore.append_event
+
+    def append_event(self, run_id, phase, **metadata):
+        if phase.startswith("slack_delivery_"):
+            raise OSError("secret-storage-error")
+        original(self, run_id, phase, **metadata)
+
+    monkeypatch.setattr(ArtifactStore, "append_event", append_event)
+    assert (await service.run(ScoutRunRequest(topic="Example research"))).status == "success"

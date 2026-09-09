@@ -197,3 +197,11 @@
   .runPanel { border-right: 0; border-bottom: 1px solid var(--color-border); }
   .jobHeading { display: grid; }
 }
+
+.statusBadge { display: inline-flex; align-items: center; gap: 6px; }
+.statusActive { color: var(--color-primary); background: var(--color-blue-soft); }
+.statusWarning { color: var(--color-red); background: var(--color-red-soft); }
+.progressMeta { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .spin, .stepActive { animation: none; }
+}

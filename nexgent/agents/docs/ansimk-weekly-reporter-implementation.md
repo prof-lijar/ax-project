@@ -4,6 +4,16 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Update: selective database recovery (2026-09-08)
+
+Operator recovery supports `--write --skip-not-null`: bounded batch savepoints
+fall back to individual row savepoints only for NOT NULL violations (23502).
+Valid rows commit together; other errors still roll back. Output identifies
+skipped ward IDs and columns; exit code 2 indicates skipped rows, including
+all-skipped runs. Regular bulk finalization retains atomic storage. See
+[database recovery](weekly-report-database-recovery.md) for commands and status
+semantics. No source/model calls or queue status changes occur in recovery.
+
 ## Update: Fixed Weekly Cron Scheduler
 
 Date: 2026-09-04
@@ -631,3 +641,21 @@ displays this limitation before submission.
   deployment release gates.
 - Deployment checks require Ruff, pytest, LangGraph validation, Compose config,
   and a live readiness check with operator-supplied secrets.
+
+
+## Database recovery — 2026-09-08
+
+Completed bulk artifacts can be recovered into the report table using the
+[operator recovery command](weekly-report-database-recovery.md). It verifies
+terminal job state, expected count, checksums, ward identity, and reporting week
+before using the existing transactional upsert; it does not regenerate reports.
+
+## Explicit insert timestamps (2026-09-08)
+
+Production recovery identified `created_at` NOT NULL failures for all 6,437
+reports. The writer now supplies `NOW()` for both `created_at` and `updated_at`
+on INSERT, without depending on table defaults. Conflicting ward/week updates
+preserve `created_at` and refresh `updated_at`. This applies to regular bulk
+finalization and recovery, and requires rebuilding the worker image. No table
+alteration or report regeneration is required. Retry recovery with `--write`
+after rebuilding; `--skip-not-null` remains optional for other rejected rows.

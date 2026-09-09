@@ -100,7 +100,7 @@ export const weeklyReportBulkClient = {
       await request("/v1/weekly-report/bulk/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, persist_reports: false }),
         signal: options.signal
       })
     );
@@ -151,9 +151,19 @@ export function isBulkJobTerminal(status: WeeklyReportBulkJobState) {
 }
 
 async function request(path: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  init.signal?.addEventListener("abort", abort, { once: true });
+  if (init.signal?.aborted) controller.abort();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 30_000);
   try {
     const response = await fetch(apiUrl(path), {
       ...init,
+      signal: controller.signal,
       headers: { Accept: "application/json", ...init.headers }
     });
     if (!response.ok) {
@@ -164,6 +174,9 @@ async function request(path: string, init: RequestInit = {}) {
     }
     return JSON.parse(await response.text()) as unknown;
   } catch (error) {
+    if (timedOut) {
+      throw new WeeklyReportBulkClientError("The bulk request timed out. Please try again.");
+    }
     if (error instanceof WeeklyReportBulkClientError) {
       throw error;
     }
@@ -176,6 +189,9 @@ async function request(path: string, init: RequestInit = {}) {
     throw new WeeklyReportBulkClientError(
       "Unable to reach the Weekly Reporter bulk service."
     );
+  } finally {
+    clearTimeout(timeout);
+    init.signal?.removeEventListener("abort", abort);
   }
 }
 

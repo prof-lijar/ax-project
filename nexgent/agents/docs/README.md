@@ -1,5 +1,13 @@
 # Documentation map
 
+- [Weekly Report Five-ZIP Retention](../../docs/08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
+
+- [Weekly Reporter UI ZIP-only tests](../../docs/08-implementation/weekly-reporter-ui-zip-only.md): per-job persistence control for browser test exports.
+
+- [Weekly-report database recovery](weekly-report-database-recovery.md): verified artifact recovery without regeneration, including explicit insert timestamps, opt-in NOT NULL row skipping, and partial-write results.
+
+- [Weekly-report bulk polling reliability](weekly-report-bulk-polling.md): serialized browser polling, request deadlines, failure backoff, and regression validation.
+
 - [AX agents architecture](ax-agents-architecture.md): authoritative modular
   package, runtime, API, security, deployment, and verification design.
 - [AX agents module guide](ax-agents-module-guide.md): responsibilities,

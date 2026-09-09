@@ -18,9 +18,11 @@ INSERT INTO ansimk.resources_ward_weekly_report (
     week_end_date,
     weekly_score,
     weekly_status,
-    report_data
+    report_data,
+    created_at,
+    updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW())
 ON CONFLICT (ward_id, week_start_date) DO UPDATE SET
     week_end_date = EXCLUDED.week_end_date,
     weekly_score = EXCLUDED.weekly_score,
@@ -88,14 +90,10 @@ class WeeklyReportStorageSettings:
                 ),
                 batch_size=int(values.get("WEEKLY_REPORT_STORAGE_BATCH_SIZE", "500")),
                 connect_timeout_seconds=float(
-                    values.get(
-                        "WEEKLY_REPORT_STORAGE_CONNECT_TIMEOUT_SECONDS", "10"
-                    )
+                    values.get("WEEKLY_REPORT_STORAGE_CONNECT_TIMEOUT_SECONDS", "10")
                 ),
                 command_timeout_seconds=float(
-                    values.get(
-                        "WEEKLY_REPORT_STORAGE_COMMAND_TIMEOUT_SECONDS", "120"
-                    )
+                    values.get("WEEKLY_REPORT_STORAGE_COMMAND_TIMEOUT_SECONDS", "120")
                 ),
             )
         except WeeklyReportStorageConfigurationError:
@@ -151,6 +149,19 @@ class WeeklyReportStore(Protocol):
     ) -> int: ...
 
 
+@dataclass(frozen=True, slots=True)
+class WeeklyReportStorageRejection:
+    ward_id: int
+    column: str | None
+    sqlstate: str = "23502"
+
+
+@dataclass(frozen=True, slots=True)
+class WeeklyReportStorageResult:
+    written_count: int
+    skipped: tuple[WeeklyReportStorageRejection, ...]
+
+
 class AsyncpgWeeklyReportStore:
     """Atomically upsert one generated bulk job in bounded DB batches."""
 
@@ -168,9 +179,7 @@ class AsyncpgWeeklyReportStore:
                 max_size=self.settings.max_pool_size,
                 timeout=self.settings.connect_timeout_seconds,
                 command_timeout=self.settings.command_timeout_seconds,
-                server_settings={
-                    "application_name": "ax_weekly_report_storage_writer"
-                },
+                server_settings={"application_name": "ax_weekly_report_storage_writer"},
             )
         except (asyncpg.PostgresError, OSError, TimeoutError) as exc:
             raise WeeklyReportStorageUnavailable(
@@ -194,12 +203,55 @@ class AsyncpgWeeklyReportStore:
     async def upsert_reports(
         self, reports: AsyncIterable[WeeklyReportStorageRecord]
     ) -> int:
+        result = await self._upsert_reports(reports, skip_not_null=False)
+        return result.written_count
+
+    async def upsert_reports_skipping_not_null(
+        self, reports: AsyncIterable[WeeklyReportStorageRecord]
+    ) -> WeeklyReportStorageResult:
+        """Operator recovery only: skip SQLSTATE 23502 and disclose rejected wards."""
+        return await self._upsert_reports(reports, skip_not_null=True)
+
+    async def _upsert_reports(
+        self,
+        reports: AsyncIterable[WeeklyReportStorageRecord],
+        *,
+        skip_not_null: bool,
+    ) -> WeeklyReportStorageResult:
         if self._pool is None:
             raise WeeklyReportStorageUnavailable(
                 "weekly-report PostgreSQL storage pool is not started"
             )
         stored_count = 0
+        skipped: list[WeeklyReportStorageRejection] = []
         pending: list[tuple[object, ...]] = []
+
+        async def write_batch(connection: asyncpg.Connection) -> int:
+            if not skip_not_null:
+                await connection.executemany(_UPSERT_REPORT_SQL, pending)
+                return len(pending)
+            try:
+                # Nested transactions are savepoints. Roll back the failed batch
+                # before isolating its rows, keeping the outer transaction usable.
+                async with connection.transaction():
+                    await connection.executemany(_UPSERT_REPORT_SQL, pending)
+                return len(pending)
+            except asyncpg.NotNullViolationError:
+                pass
+            written = 0
+            for parameters in pending:
+                try:
+                    async with connection.transaction():
+                        await connection.executemany(_UPSERT_REPORT_SQL, [parameters])
+                    written += 1
+                except asyncpg.NotNullViolationError as exc:
+                    skipped.append(
+                        WeeklyReportStorageRejection(
+                            ward_id=int(parameters[0]), column=exc.column_name
+                        )
+                    )
+            return written
+
         try:
             async with (
                 self._pool.acquire() as connection,
@@ -208,17 +260,15 @@ class AsyncpgWeeklyReportStore:
                 async for report in reports:
                     pending.append(report.sql_parameters())
                     if len(pending) == self.settings.batch_size:
-                        await connection.executemany(_UPSERT_REPORT_SQL, pending)
-                        stored_count += len(pending)
+                        stored_count += await write_batch(connection)
                         pending.clear()
                 if pending:
-                    await connection.executemany(_UPSERT_REPORT_SQL, pending)
-                    stored_count += len(pending)
+                    stored_count += await write_batch(connection)
         except (asyncpg.PostgresError, OSError, TimeoutError) as exc:
             raise WeeklyReportStorageUnavailable(
                 "weekly-report PostgreSQL upsert failed"
             ) from exc
-        return stored_count
+        return WeeklyReportStorageResult(stored_count, tuple(skipped))
 
 
 __all__ = [

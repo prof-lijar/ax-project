@@ -1,6 +1,39 @@
 name: nexgent-prod
 
 services:
+  scout:
+    build:
+      context: ./adk_agents/ansimk_scout_agent
+    env_file:
+      # Local defaults/Slack settings first; host-managed model credentials win.
+      - path: ./adk_agents/ansimk_scout_agent/.env
+        required: false
+      - path: /etc/nexgent/internal-openai.env
+        required: false
+      - path: /etc/nexgent/nexgent-scout.env
+        required: false
+    environment:
+      SCOUT_OUTPUT_ROOT: /app/var
+    volumes:
+      - scout-reports:/app/var
+    expose:
+      - "8091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 240s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/live', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
   searxng:
     image: searxng/searxng:2026.7.17-81c9c2386@sha256:252cfb5b348809167f5519970ca3457711e723afc76179a662b1c720cbbc1dd3
     user: "977:977"
@@ -222,12 +255,14 @@ services:
       args:
         VITE_BACKEND_PORT: "${PROD_BACKEND_PORT:-8001}"
         VITE_RAG_SERVER_BASE_URL: "${VITE_RAG_SERVER_BASE_URL:-http://192.168.0.18:8765}"
-        VITE_SCOUT_API_BASE_URL: "${VITE_SCOUT_API_BASE_URL:-http://192.168.0.18:8091}"
+        VITE_SCOUT_API_BASE_URL: /scout-api
     image: nexgent-frontend-prod:local
     init: true
     ports:
       - "${PROD_FRONTEND_PORT:-5174}:8080"
     depends_on:
+      scout:
+        condition: service_healthy
       agent-server:
         condition: service_healthy
       backend:
@@ -250,6 +285,7 @@ services:
     stop_grace_period: 5s
 
 volumes:
+  scout-reports:
   weekly-report-job-data:
   weekly-report-artifacts:
   chat_attachments:

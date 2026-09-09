@@ -1,7 +1,7 @@
 # Weekly Report Scheduler
 
 This private cron service submits one durable Weekly Reporter bulk job every
-Monday at 03:00 in `Asia/Seoul`. The cron expression is `0 3 * * 1`.
+Monday at 01:00 in `Asia/Seoul`. The cron expression is `0 1 * * 1`.
 
 Each run targets the previous fully completed Monday-through-Sunday period and
 requests up to 10,000 reports by default. The idempotency key is derived from

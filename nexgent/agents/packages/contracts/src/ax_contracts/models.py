@@ -971,6 +971,7 @@ class WeeklyReportBulkJobRequest(ContractModel):
     week_start: date
     timezone: str = Field(default="Asia/Seoul", min_length=1, max_length=128)
     max_reports: int = Field(default=10_000, ge=1, le=10_000)
+    persist_reports: bool = Field(default=True, strict=True)
     cursor: str | None = Field(default=None, min_length=1, max_length=2_000)
     idempotency_key: str = Field(
         min_length=8,

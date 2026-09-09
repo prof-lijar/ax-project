@@ -6,7 +6,7 @@ import asyncio
 import json
 from collections import Counter
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID, uuid4
@@ -66,6 +66,12 @@ class BulkJobStore(Protocol):
     ) -> BulkJobRecord: ...
     async def get_job(self, job_id: UUID) -> BulkJobRecord: ...
     async def list_jobs(self, job_kind: str, limit: int = 20) -> list[BulkJobRecord]: ...
+    async def export_cleanup_jobs(
+        self, job_kind: str, keep: int
+    ) -> list[BulkJobRecord]: ...
+
+    async def clear_export(self, job_id: UUID, export_uri: str) -> None: ...
+
     async def next_job(
         self,
         job_kind: str,
@@ -268,6 +274,43 @@ class AsyncpgBulkJobStore:
         except asyncpg.PostgresError as exc:
             raise BulkStoreError("bulk jobs could not be loaded") from exc
         return [_job(row) for row in rows]
+
+    async def export_cleanup_jobs(
+        self, job_kind: str, keep: int
+    ) -> list[BulkJobRecord]:
+        if keep < 1:
+            raise ValueError("export retention must be positive")
+        try:
+            rows = await self._required_pool().fetch(
+                """
+                SELECT * FROM ax_bulk_jobs
+                WHERE job_kind=$1
+                  AND status IN ('completed','partial','failed','cancelled','expired')
+                  AND job_id NOT IN (
+                      SELECT job_id FROM ax_bulk_jobs
+                      WHERE job_kind=$1 AND export_uri IS NOT NULL
+                        AND status IN ('completed','partial','failed','cancelled','expired')
+                      ORDER BY updated_at DESC, job_id DESC LIMIT $2
+                  )
+                """,
+                job_kind,
+                keep,
+            )
+        except asyncpg.PostgresError as exc:
+            raise BulkStoreError("bulk export cleanup candidates could not be loaded") from exc
+        return [_job(row) for row in rows]
+
+    async def clear_export(self, job_id: UUID, export_uri: str) -> None:
+        # Preserve completion time and outcome when retiring only a download.
+        await self._execute(
+            """
+            UPDATE ax_bulk_jobs SET export_uri=NULL,export_checksum=NULL
+            WHERE job_id=$1 AND export_uri=$2
+              AND status IN ('completed','partial','failed','cancelled','expired')
+            """,
+            job_id,
+            export_uri,
+        )
 
     async def next_job(
         self,
@@ -607,6 +650,31 @@ class InMemoryBulkJobStore:
             raise ValueError("bulk job list limit must be between 1 and 100")
         jobs = [job for job in self.jobs.values() if job.job_kind == job_kind]
         return sorted(jobs, key=lambda job: job.created_at, reverse=True)[:limit]
+
+    async def export_cleanup_jobs(
+        self, job_kind: str, keep: int
+    ) -> list[BulkJobRecord]:
+        if keep < 1:
+            raise ValueError("export retention must be positive")
+        terminal = [
+            job for job in self.jobs.values()
+            if job.job_kind == job_kind
+            and job.status in {"completed", "partial", "failed", "cancelled", "expired"}
+        ]
+        exports = sorted(
+            (job for job in terminal if job.export_uri is not None),
+            key=lambda job: (job.updated_at, job.job_id), reverse=True,
+        )
+        retained = {job.job_id for job in exports[:keep]}
+        return [job for job in terminal if job.job_id not in retained]
+
+    async def clear_export(self, job_id: UUID, export_uri: str) -> None:
+        async with self._lock:
+            job = await self.get_job(job_id)
+            if job.export_uri == export_uri and job.status in {
+                "completed", "partial", "failed", "cancelled", "expired"
+            }:
+                self.jobs[job_id] = replace(job, export_uri=None, export_checksum=None)
 
     async def next_job(
         self,

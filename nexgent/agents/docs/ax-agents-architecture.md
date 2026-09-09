@@ -9,6 +9,16 @@ agent runtime, graph orchestration, tools, APIs, persistence, deployment,
 security, or evaluation. `AGENTS.md` requires contributors and agents to read
 it before implementation and update it when architecture changes.
 
+## Update: selective database recovery (2026-09-08)
+
+Operator recovery supports `--write --skip-not-null`: bounded batch savepoints
+fall back to individual row savepoints only for NOT NULL violations (23502).
+Valid rows commit together; other errors still roll back. Output identifies
+skipped ward IDs and columns; exit code 2 indicates skipped rows, including
+all-skipped runs. Regular bulk finalization retains atomic storage. See
+[database recovery](weekly-report-database-recovery.md) for commands and status
+semantics. No source/model calls or queue status changes occur in recovery.
+
 ## Implementation status
 
 The baseline described here is implemented as of 2026-08-05:
@@ -93,6 +103,19 @@ Nextcloud link, deduplication/versioning, or production Hybrid retrieval. See
 and deployment details.
 
 ## Weekly-report bulk execution (2026-08-20)
+
+Database recovery update on 2026-09-08: an operator-only recovery command reads
+a terminal job and checksum-verified completed artifacts, then reuses the
+existing atomic report writer without source/model calls or queue-state changes.
+See [database recovery](weekly-report-database-recovery.md) for guards and commands.
+
+
+Browser polling reliability update on 2026-09-08: the bulk panel awaits each
+status request before scheduling another, backs off failures to 30 seconds,
+and stops on terminal status or cleanup. Bulk JSON requests have a 30-second
+deadline with caller cancellation. See [polling reliability](weekly-report-bulk-polling.md)
+for implementation and validation.
+
 
 The manual `ansimk_weekly_reporter` LangGraph remains the compatibility path
 for interactive batches of at most twenty-five reports. High-volume generation
@@ -1318,3 +1341,37 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   data-retention and redaction policy is approved.
 - Concrete tenant model, identity provider, database HA strategy, and model
   vendor remain application decisions, but must not violate these boundaries.
+
+## Explicit insert timestamps (2026-09-08)
+
+Production recovery identified `created_at` NOT NULL failures for all 6,437
+reports. The writer now supplies `NOW()` for both `created_at` and `updated_at`
+on INSERT, without depending on table defaults. Conflicting ward/week updates
+preserve `created_at` and refresh `updated_at`. This applies to regular bulk
+finalization and recovery, and requires rebuilding the worker image. No table
+alteration or report regeneration is required. Retry recovery with `--write`
+after rebuilding; `--skip-not-null` remains optional for other rejected rows.
+
+
+## UI report exports without report-table writes (2026-09-09)
+
+The bulk request now carries a strict `persist_reports` boolean, defaulting
+to true for existing scheduled/CLI requests and older jobs. The frontend
+submission adapter always sends false for UI test generation. The control API
+stores the flag with the job; finalization checks it before report-table
+UPSERTs while always producing the ZIP. Job tracking and private artifact
+retention are unchanged. See [implementation and validation](../../docs/08-implementation/weekly-reporter-ui-zip-only.md).
+
+
+## Weekly Report ZIP retention (2026-09-09)
+
+The weekly report worker retains the five latest published terminal ZIPs per
+shared store, ordered by completion timestamp and job ID. A generic job-store
+query selects older terminal exports; a job-scoped artifact deletion removes
+only `weekly-reports.zip`, then clears the download URI/checksum without
+changing outcome or completion time. Terminal failed-job orphan ZIPs are also
+removed. Active jobs, report-table rows, and report recovery artifacts remain.
+Cleanup runs after execution and every 30 seconds in the worker admission loop,
+including startup. Failures are retried without failing generation. The manual
+`cleanup-exports` command shares this policy. No schema migration is needed.
+See [implementation and verification limits](../../docs/08-implementation/weekly-report-five-zip-retention.md).

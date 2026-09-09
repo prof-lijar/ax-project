@@ -155,6 +155,10 @@ class WeeklyReportBulkRunner:
         finally:
             cancellation.cancel()
             await asyncio.gather(cancellation, return_exceptions=True)
+        try:
+            await cleanup_weekly_report_exports(self.store, self.artifacts)
+        except Exception:  # noqa: BLE001 - retention must not fail generated reports
+            _LOG.exception("weekly report ZIP cleanup failed; retry on worker sweep")
         status = await bulk_job_status(self.store, job_id)
         _LOG.info(
             "bulk job finished",
@@ -467,17 +471,18 @@ class WeeklyReportBulkRunner:
         export = await asyncio.to_thread(
             self.artifacts.write_file, job_id, "weekly-reports.zip", write_zip
         )
-        stored_count = await self.report_store.upsert_reports(
-            self._storage_records(completed, read_report)
-        )
-        if stored_count != len(completed):
-            raise WeeklyReportStorageUnavailable(
-                "weekly-report storage count did not match generated reports"
+        if request.persist_reports:
+            stored_count = await self.report_store.upsert_reports(
+                self._storage_records(completed, read_report)
             )
-        _LOG.info(
-            "weekly reports stored",
-            extra={"job_id": str(job_id), "stored_count": stored_count},
-        )
+            if stored_count != len(completed):
+                raise WeeklyReportStorageUnavailable(
+                    "weekly-report storage count did not match generated reports"
+                )
+            _LOG.info(
+                "weekly reports stored",
+                extra={"job_id": str(job_id), "stored_count": stored_count},
+            )
         await self.store.finish_job(
             job_id,
             status=terminal_status,
@@ -520,6 +525,21 @@ class WeeklyReportBulkRunner:
             raise ValueError(
                 "weekly-report source returned duplicate or unordered wards"
             )
+
+
+async def cleanup_weekly_report_exports(
+    store: BulkJobStore, artifacts: LocalBulkArtifactStore
+) -> int:
+    """Keep the five newest terminal exports; preserve reports and active work."""
+    removed = 0
+    for job in await store.export_cleanup_jobs(WEEKLY_REPORT_BULK_JOB_KIND, keep=5):
+        # Delete first: failed filesystem operations remain eligible for retry.
+        removed += await asyncio.to_thread(
+            artifacts.remove_file, job.job_id, "weekly-reports.zip"
+        )
+        if job.export_uri is not None:
+            await store.clear_export(job.job_id, job.export_uri)
+    return removed
 
 
 async def bulk_job_status(

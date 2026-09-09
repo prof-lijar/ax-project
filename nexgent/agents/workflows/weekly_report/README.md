@@ -291,3 +291,8 @@ information. It is intentionally not a graph node, so a LangGraph retry cannot
 silently duplicate a Slack side effect. Setup and the manual end-to-end command
 are documented in
 `docs/slack-outbound-messaging.md`.
+
+Operator recovery can skip reports rejected by NOT NULL constraints with
+`--write --skip-not-null`; regular bulk finalization remains atomic. See
+[recovery instructions](../../docs/weekly-report-database-recovery.md) for
+counts, exit codes, and deployment commands.

@@ -1,5 +1,13 @@
 # ansimk_scout_agent
 
+## Docker startup (2026-09-07)
+
+From the Nexgent root, `docker compose up -d --build` now starts Scout alongside
+the application. The frontend routes through `/scout-api` to the internal Scout
+container. Configure this directory's `.env`; reports persist in a Docker volume.
+See [Compose setup and verification](../../docs/scout-adk-compose-integration.md).
+The direct host/systemd instructions below remain available for standalone use.
+
 Standalone Google ADK backend POC for bounded public-web research. The public
 FastAPI contract accepts a topic, optional keywords, and optional subordinate
 research guidance, produces a grounded Markdown report, and saves deterministic
@@ -30,6 +38,9 @@ Final Markdown
 Deterministic validation and persistence
       +---- report.md
       +---- execution.jsonl
+      |
+      v
+Optional Slack channel delivery (application service)
 ```
 
 The Agent formulates queries, searches, chooses searched URLs to fetch, inspects
@@ -196,6 +207,16 @@ schedule audit behavior are documented in
 ## Deferred
 
 - recurring/cron scheduling and schedule update/reschedule
-- Slack notification
 - durable Scout run queues, Run Now status polling, and retention management
 - production search ranking or source-authority scoring
+
+## Slack report delivery
+
+Set `SCOUT_SLACK_BOT_TOKEN` and `SCOUT_SLACK_CHANNEL_ID` in `.env` (or the
+service environment), then restart the Scout process. The bot needs `chat:write`
+and channel membership. Every successful API research run sends its validated,
+saved report to this channel. Both variables blank disables delivery.
+
+Slack failures do not fail research. Check `slack_delivery_sent`,
+`slack_delivery_failed`, or `slack_delivery_skipped` in `execution.jsonl`.
+See [Slack configuration and operations](docs/scout-slack-report-delivery.md).

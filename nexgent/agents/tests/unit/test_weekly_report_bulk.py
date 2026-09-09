@@ -473,6 +473,43 @@ async def test_bulk_runner_does_not_complete_when_report_storage_fails(
 
 
 @pytest.mark.asyncio
+async def test_export_only_job_completes_without_calling_report_storage(tmp_path) -> None:
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 8, 3),
+        max_reports=1,
+        idempotency_key="ui-export-only-job",
+        persist_reports=False,
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND,
+        request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    status = await WeeklyReportBulkRunner(
+        store,
+        artifacts,
+        MockWeeklyReportSourceRepository(),
+        FakeModel(),
+        FailingWeeklyReportStore(),
+        poll_seconds=0.001,
+    ).run(job.job_id, concurrency=1)
+
+    assert status.status == "completed"
+    assert status.completed_count == 1
+    assert status.export is not None
+    with zipfile.ZipFile(artifacts.local_path(status.export.uri)) as archive:
+        assert archive.testzip() is None
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["request"]["persist_reports"] is False
+        assert len(archive.read("reports.jsonl").splitlines()) == 1
+        names = archive.namelist()
+        assert len([name for name in names if name.startswith("reports/")]) == 1
+        assert len([name for name in names if name.startswith("json/")]) == 1
+
+
+@pytest.mark.asyncio
 async def test_bulk_runner_falls_back_when_one_model_item_times_out(tmp_path) -> None:
     store = InMemoryBulkJobStore()
     artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
