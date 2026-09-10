@@ -25,9 +25,9 @@ describe("RagPage embedding UI", () => {
   it("renders the initial file-only embedding state", () => {
     const markup = embeddingMarkup();
 
-    expect(markup).toContain("Embed a source document");
+    expect(markup).toContain("Add to your knowledge");
     expect(markup).toContain("File upload");
-    expect(markup).toContain("Direct text");
+    expect(markup).toContain("Paste text");
     expect(markup).toContain("Supported: UTF-8 TXT, UTF-8 MD, DOCX, and PDF.");
     expect(markup).toContain("Scanned PDF pages use automatic OCR.");
     expect(markup).toContain("Images embedded in DOCX are not OCRed.");
@@ -37,11 +37,9 @@ describe("RagPage embedding UI", () => {
     expect(markup).toContain('value="500"');
     expect(markup).toContain('min="100"');
     expect(markup).toContain('max="1000"');
-    expect(markup).toContain(
-      "Natural boundaries may produce shorter chunks."
-    );
+    expect(markup).toContain("Natural boundaries may produce shorter chunks.");
     expect(markup).toContain('type="submit" disabled=""');
-    expect(markup).not.toContain("Document embedded successfully");
+    expect(markup).not.toContain("Source added to knowledge");
   });
 
   it("renders direct text, optional title, and blank-source validation", () => {
@@ -83,16 +81,16 @@ describe("RagPage embedding UI", () => {
         selectedFile: new File(["text"], "notes.txt"),
         isPending: true
       })
-    ).toContain("Embedding document…");
+    ).toContain("Adding to knowledge…");
     expect(embeddingMarkup({ result: embedResponse() })).toContain(
-      "Document embedded successfully"
+      "Source added to knowledge"
     );
     expect(
       embeddingMarkup({ fileError: "Choose a TXT, MD, DOCX, or PDF file." })
     ).toContain('role="alert"');
-    expect(embeddingMarkup({ apiError: new Error("PDF has no extractable text.") })).toContain(
-      "PDF has no extractable text."
-    );
+    expect(
+      embeddingMarkup({ apiError: new Error("PDF has no extractable text.") })
+    ).toContain("PDF has no extractable text.");
   });
 
   it("validates whole-number maximum chunk sizes from 100 to 1000", () => {
@@ -114,7 +112,9 @@ describe("RagPage embedding UI", () => {
   });
 
   it("renders compact embedding metrics, chunk spans, overlap, and truncation", () => {
-    const markup = renderToStaticMarkup(<EmbedResult result={embedResponse(true)} />);
+    const markup = renderToStaticMarkup(
+      <EmbedResult result={embedResponse(true)} />
+    );
 
     expect(markup).toContain("Processing summary");
     expect(markup).toContain("Source");
@@ -162,7 +162,9 @@ describe("RAG data administration UI", () => {
     expect(closed).not.toContain("Delete all RAG data?");
     expect(open).toContain('role="dialog"');
     expect(open).toContain("Delete all RAG data?");
-    expect(open).toContain("The database structure itself will remain unchanged.");
+    expect(open).toContain(
+      "The database structure itself will remain unchanged."
+    );
     expect(open).toContain("Documents: 2 · Embedding chunks: 80");
     expect(open).toContain("Type <strong>DELETE</strong> to confirm");
   });
@@ -237,7 +239,9 @@ describe("RAG data administration UI", () => {
       })
     );
     const failure = renderToStaticMarkup(
-      ragDataPanel({ deleteError: new Error("Unable to empty the RAG database.") })
+      ragDataPanel({
+        deleteError: new Error("Unable to empty the RAG database.")
+      })
     );
 
     expect(success).toContain("RAG database emptied successfully.");
@@ -284,10 +288,12 @@ describe("RagPage tabs and search UI", () => {
     expect(searchMarkup({ query: "질문", topKIsValid: false })).toContain(
       "Enter a whole number from 1 to 20."
     );
-    expect(searchMarkup({ query: "질문", isPending: true })).toContain("Searching…");
-    expect(searchMarkup({ apiError: new Error("RAG server unavailable") })).toContain(
-      "RAG server unavailable"
+    expect(searchMarkup({ query: "질문", isPending: true })).toContain(
+      "Searching…"
     );
+    expect(
+      searchMarkup({ apiError: new Error("RAG server unavailable") })
+    ).toContain("RAG server unavailable");
   });
 
   it("preserves server rank order, similarity semantics, and context line breaks", () => {
@@ -313,7 +319,9 @@ describe("RagPage tabs and search UI", () => {
     });
 
     expect(markup.indexOf("Rank 1")).toBeLessThan(markup.indexOf("Rank 2"));
-    expect(markup.indexOf("첫 줄\n둘째 줄")).toBeLessThan(markup.indexOf("다음 결과"));
+    expect(markup.indexOf("첫 줄\n둘째 줄")).toBeLessThan(
+      markup.indexOf("다음 결과")
+    );
     expect(markup).toContain("Cosine similarity: 0.8");
     expect(markup).toContain("Source: project.md");
     expect(markup).toContain("Type: File");
@@ -355,7 +363,9 @@ function embeddingMarkup(
   );
 }
 
-function searchMarkup(overrides: Partial<Parameters<typeof SearchPanel>[0]> = {}) {
+function searchMarkup(
+  overrides: Partial<Parameters<typeof SearchPanel>[0]> = {}
+) {
   return renderToStaticMarkup(
     <SearchPanel
       query=""
@@ -420,7 +430,10 @@ function findElementOrNull(
     if (predicate(child)) {
       return child;
     }
-    const nested = findElementOrNull(child.props.children as ReactNode, predicate);
+    const nested = findElementOrNull(
+      child.props.children as ReactNode,
+      predicate
+    );
     if (nested) {
       return nested;
     }
@@ -512,3 +525,49 @@ function searchResult(
     ...provenance
   };
 }
+
+describe("Knowledge workflow refinements", () => {
+  it("keeps indexing configuration and processing metrics behind disclosure controls", () => {
+    const markup = embeddingMarkup({ result: embedResponse() });
+    expect(markup).toContain("<summary>Indexing options</summary>");
+    expect(markup).toContain("<summary>Processing details</summary>");
+    expect(markup).toContain("searchable passages added");
+    expect(markup).not.toContain("<details open");
+  });
+  it("does not report success when the current source has an error", () => {
+    const markup = embeddingMarkup({
+      result: embedResponse(),
+      fileError: "Unsupported file"
+    });
+    expect(markup).not.toContain("Source added to knowledge");
+    expect(markup).not.toContain("Processing summary");
+    expect(markup).toContain("Unsupported file");
+  });
+  it("keeps the displayed results associated with the submitted query", () => {
+    const markup = searchMarkup({
+      query: "new draft",
+      searchedQuery: "previous query",
+      results: [searchResult(1, 0.6, "a passage")]
+    });
+    expect(markup).toContain("previous query");
+    expect(markup).toContain("1 matching passage");
+    expect(markup).toContain("<summary>Match details</summary>");
+  });
+  it("prevents deletion while another knowledge operation is pending", () => {
+    const panel = ragDataPanel({
+      operationsPending: true,
+      isConfirmationOpen: true,
+      confirmation: "DELETE"
+    });
+    const open = findElement(
+      panel,
+      (element) => elementText(element.props.children) === "Empty database"
+    );
+    const remove = findElement(
+      panel,
+      (element) => elementText(element.props.children) === "Delete all data"
+    );
+    expect(open.props.disabled).toBe(true);
+    expect(remove.props.disabled).toBe(true);
+  });
+});
