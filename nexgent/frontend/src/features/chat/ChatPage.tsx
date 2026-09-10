@@ -1,974 +1,431 @@
-import {
-  Bot,
-  Check,
-  ChevronDown,
-  FileText,
-  LoaderCircle,
-  Paperclip,
-  RefreshCw,
-  Send,
-  Square,
-  User,
-  X
-} from "lucide-react";
-import {
-  type ChangeEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  useEffect,
-  useRef,
-  useState
-} from "react";
-
-import {
-  AgentServerError,
-  agentServerClient
-} from "../../shared/api/agentServerClient";
+import { Check, ChevronDown, Menu, Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { RAG_CHAT_GRAPH_ID } from "../../shared/api/agentCatalogClient";
 import {
   useAgentCatalog,
   useAgentServerHealth
 } from "../../shared/api/queries";
 import {
-  type ChatAttachmentSummary,
-  type ChatRole,
+  type ChatMessage,
   useChatStore
 } from "../../shared/state/useChatStore";
-import {
-  getMockAgentRunStageState,
-  MOCK_AGENT_RUN_STAGES,
-  type MockAgentRun,
-  useAgentRunStore
-} from "../../shared/state/useAgentRunStore";
 import { useUiStore } from "../../shared/state/useUiStore";
 import type { AgentDefinition } from "../../shared/types/agents";
-import { ChatMarkdown } from "./ChatMarkdown";
+import { ChatComposer } from "./ChatComposer";
+import { ChatTranscript } from "./ChatTranscript";
+import { ConversationList } from "./ConversationList";
+import { createChatRunner } from "./chatRunner";
 import styles from "./ChatPage.module.css";
 
-const MAX_ATTACHMENT_COUNT = 5;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
-  "csv",
-  "docx",
-  "jpeg",
-  "jpg",
-  "md",
-  "pdf",
-  "png",
-  "txt",
-  "webp"
-]);
-const ATTACHMENT_ACCEPT =
-  ".pdf,.txt,.md,.csv,.docx,.png,.jpg,.jpeg,.webp," +
-  "application/pdf,text/plain,text/markdown,text/csv," +
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document," +
-  "image/png,image/jpeg,image/webp";
-const MOCK_SLASH_COMMANDS = [
-  { command: "/a", label: "Action A" },
-  { command: "/b", label: "Action B" },
-  { command: "/c", label: "Action C" }
-] as const;
-
-type MockSlashCommand = (typeof MOCK_SLASH_COMMANDS)[number];
-
-export function ChatPage() {
-  const messages = useChatStore((state) => state.messages);
-  const appendMessage = useChatStore((state) => state.appendMessage);
-  const updateMessage = useChatStore((state) => state.updateMessage);
-  const errorMessage = useChatStore((state) => state.errorMessage);
-  const setErrorMessage = useChatStore((state) => state.setErrorMessage);
-  const mockRunsByAgentId = useAgentRunStore((state) => state.runsByAgentId);
-  const startMockRun = useAgentRunStore((state) => state.startRun);
-  const completeMockRun = useAgentRunStore((state) => state.completeRun);
-  const failMockRun = useAgentRunStore((state) => state.failRun);
-  const cancelMockRun = useAgentRunStore((state) => state.cancelRun);
-  const selectedAgent = useUiStore((state) => state.selectedAgent);
-  const selectAgent = useUiStore((state) => state.selectAgent);
-  const clearSelectedAgent = useUiStore((state) => state.clearSelectedAgent);
-  const pendingAgentRun = useUiStore((state) => state.pendingAgentRun);
-  const clearPendingAgentRun = useUiStore(
-    (state) => state.clearPendingAgentRun
-  );
-  const healthQuery = useAgentServerHealth();
-  const catalogQuery = useAgentCatalog();
-  const [draft, setDraft] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [isChatSending, setIsChatSending] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
-    null
-  );
-  const [notice, setNotice] = useState<string | null>(null);
-  const isRagAgentSelected = usesRagChat(selectedAgent?.graphId ?? null);
-  const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
-  const [highlightedSlashCommandIndex, setHighlightedSlashCommandIndex] =
-    useState(0);
-  const fileInputRef = useRef<HTMLInputElement | null>(null); // Added for file clip
-  const composerRef = useRef<HTMLFormElement | null>(null);
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const agentSelectorRef = useRef<HTMLDetailsElement | null>(null);
-  const chatControllerRef = useRef<AbortController | null>(null);
-  const activeMockRunRef = useRef<{ agentId: string; runId: string } | null>(
-    null
-  );
-  const handledAgentRunRef = useRef<string | null>(null);
-  const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
-  const latestMessageContent = messages[messages.length - 1]?.content;
-  const isTranscriptBusy = isChatSending;
-  const mockRuns = Object.values(mockRunsByAgentId);
-  const pendingExecution = mockRuns
-    .filter(
-      (execution) =>
-        !messages.some(
-          (message) => message.id === execution.assistantMessageId
-        )
-    )
-    .sort((left, right) => right.startedAt - left.startedAt)[0] ?? null;
-  const executionUpdateKey = mockRuns
-    .map(
-      (execution) =>
-        `${execution.agentId}:${execution.activeStageIndex}:${execution.status}`
-    )
-    .join("|");
-  const slashQuery = getSlashQuery(draft);
-  const filteredSlashCommands =
-    slashQuery === null
-      ? []
-      : MOCK_SLASH_COMMANDS.filter(({ command }) =>
-          command.slice(1).startsWith(slashQuery)
-        );
-  const slashMenuIsOpen = slashQuery !== null && !slashMenuDismissed;
-
-  useEffect(() => {
-    if (!isRagAgentSelected || selectedFiles.length === 0) {
-      return;
-    }
-    setSelectedFiles([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, [isRagAgentSelected, selectedFiles.length]);
-
-  useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({
-      behavior: isTranscriptBusy ? "auto" : "smooth"
-    });
-  }, [
-    messages.length,
-    latestMessageContent,
-    isTranscriptBusy,
-    errorMessage,
-    notice,
-    executionUpdateKey
-  ]);
-
-  useEffect(
-    () => () => {
-      chatControllerRef.current?.abort();
-    },
-    []
-  );
-
-  useEffect(() => {
-    function closeAgentSelectorOnOutsideClick(event: PointerEvent) {
-      const selector = agentSelectorRef.current;
-      if (
-        !selector?.open ||
-        !(event.target instanceof Node) ||
-        selector.contains(event.target)
-      ) {
-        return;
-      }
-      selector.open = false;
-    }
-
-    function closeAgentSelectorOnEscape(event: globalThis.KeyboardEvent) {
-      const selector = agentSelectorRef.current;
-      if (!selector?.open || event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      selector.open = false;
-      selector.querySelector<HTMLElement>("summary")?.focus();
-    }
-
-    document.addEventListener("pointerdown", closeAgentSelectorOnOutsideClick);
-    document.addEventListener("keydown", closeAgentSelectorOnEscape);
-    return () => {
-      document.removeEventListener(
-        "pointerdown",
-        closeAgentSelectorOnOutsideClick
-      );
-      document.removeEventListener("keydown", closeAgentSelectorOnEscape);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!slashMenuIsOpen) {
-      return;
-    }
-
-    function closeSlashMenuOnOutsideClick(event: PointerEvent) {
-      const composer = composerRef.current;
-      if (
-        !composer ||
-        !(event.target instanceof Node) ||
-        composer.contains(event.target)
-      ) {
-        return;
-      }
-      setSlashMenuDismissed(true);
-    }
-
-    document.addEventListener("pointerdown", closeSlashMenuOnOutsideClick);
-    return () =>
-      document.removeEventListener(
-        "pointerdown",
-        closeSlashMenuOnOutsideClick
-      );
-  }, [slashMenuIsOpen]);
-
-  useEffect(() => {
-    if (!pendingAgentRun || pendingAgentRun.agentId !== selectedAgent?.id) {
-      return;
-    }
-    if (handledAgentRunRef.current === pendingAgentRun.requestId) {
-      return;
-    }
-
-    handledAgentRunRef.current = pendingAgentRun.requestId;
-    clearPendingAgentRun();
-    setErrorMessage(`${selectedAgent.name} does not have a live Chat runner yet.`);
-  }, [clearPendingAgentRun, pendingAgentRun, selectedAgent]);
-
-  async function sendMessage(event?: FormEvent) {
-    event?.preventDefault();
-    const message = draft.trim();
-    if (!message) {
-      return;
-    }
-
-    if (chatControllerRef.current) {
-      return;
-    }
-    const controller = new AbortController();
-    chatControllerRef.current = controller;
-    setIsChatSending(true);
-    setErrorMessage(null);
-    setNotice(null);
-    setDraft("");
-    const files = isRagAgentSelected ? [] : selectedFiles;
-    setSelectedFiles([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    const userMessage = createMessage(
-      "user",
-      message,
-      files.map(toAttachmentSummary)
-    );
-    appendMessage(userMessage);
-
-    const assistantMessageId = createMessageId();
-
-    const mockRun =
-      selectedAgent?.graphId !== RAG_CHAT_GRAPH_ID && selectedAgent
-        ? {
-            agentId: selectedAgent.id,
-            runId: startMockRun({
-              agentId: selectedAgent.id,
-              agentName: selectedAgent.name,
-              assistantMessageId,
-              prompt: message
-            })
-          }
-        : null;
-    activeMockRunRef.current = mockRun;
-
-    let assistantMessageStarted = false;
-
-    try {
-      const streamOptions = {
-        signal: controller.signal,
-        onResponse: (partialResponse: string) => {
-          if (!assistantMessageStarted) {
-            if (!partialResponse) {
-              return;
-            }
-            assistantMessageStarted = true;
-            appendMessage({
-              id: assistantMessageId,
-              role: "assistant",
-              content: partialResponse
-            });
-            setStreamingMessageId(assistantMessageId);
-            return;
-          }
-          updateMessage(assistantMessageId, partialResponse);
-        }
-      };
-      const response = isRagAgentSelected
-        ? await agentServerClient.streamRagChat(message, streamOptions)
-        : await agentServerClient.streamChat(message, {
-            ...streamOptions,
-            files
-          });
-      if (!assistantMessageStarted) {
-        appendMessage({
-          id: assistantMessageId,
-          role: "assistant",
-          content: response
-        });
-      }
-      if (mockRun) {
-        completeMockRun(mockRun.agentId, mockRun.runId);
-      }
-    } catch (error) {
-      if (error instanceof AgentServerError && error.code === "cancelled") {
-        if (mockRun) {
-          cancelMockRun(mockRun.agentId, mockRun.runId);
-        }
-        setNotice("Response cancelled. You can send another message.");
-      } else {
-        if (mockRun) {
-          failMockRun(mockRun.agentId, mockRun.runId);
-        }
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "The Agent Server could not complete the request."
-        );
-        void healthQuery.refetch();
-      }
-    } finally {
-      if (
-        mockRun &&
-        activeMockRunRef.current?.runId === mockRun.runId
-      ) {
-        activeMockRunRef.current = null;
-      }
-      if (chatControllerRef.current === controller) {
-        chatControllerRef.current = null;
-      }
-      setStreamingMessageId(null);
-      setIsChatSending(false);
-    }
-  }
-
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (slashMenuIsOpen && !event.nativeEvent.isComposing) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        if (filteredSlashCommands.length > 0) {
-          const direction = event.key === "ArrowDown" ? 1 : -1;
-          setHighlightedSlashCommandIndex((currentIndex) =>
-            (currentIndex + direction + filteredSlashCommands.length) %
-            filteredSlashCommands.length
-          );
-        }
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setSlashMenuDismissed(true);
-        return;
-      }
-
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        const highlightedCommand =
-          filteredSlashCommands[highlightedSlashCommandIndex] ??
-          filteredSlashCommands[0];
-        if (highlightedCommand) {
-          selectSlashCommand(highlightedCommand);
-        }
-        return;
-      }
-    }
-
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
-      event.preventDefault();
-      void sendMessage();
-    }
-  }
-
-  function handleDraftChange(value: string) {
-    setDraft(value);
-    setSlashMenuDismissed(false);
-    setHighlightedSlashCommandIndex(0);
-  }
-
-  function selectSlashCommand(command: MockSlashCommand) {
-    setDraft(`${command.command} `);
-    setSlashMenuDismissed(true);
-    setHighlightedSlashCommandIndex(0);
-    window.requestAnimationFrame(() => composerInputRef.current?.focus());
-  }
-
-  function cancelChatRequest() {
-    const activeMockRun = activeMockRunRef.current;
-    if (activeMockRun) {
-      cancelMockRun(activeMockRun.agentId, activeMockRun.runId);
-    }
-    chatControllerRef.current?.abort();
-  }
-
-  function chooseAgent(agent: { id: string; name: string } | null) {
-    const catalogAgent = agent
-      ? (catalogQuery.data ?? []).find((item) => item.id === agent.id)
-      : null;
-    if (catalogAgent) {
-      selectAgent(catalogAgent);
-    } else {
-      clearSelectedAgent();
-    }
-    if (agentSelectorRef.current) {
-      agentSelectorRef.current.open = false;
-    }
-  }
-
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const incoming = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (incoming.length === 0) {
-      return;
-    }
-
-    const files = deduplicateFiles([...selectedFiles, ...incoming]);
-    const validationError = validateSelectedFiles(files);
-    if (validationError) {
-      setErrorMessage(validationError);
-      return;
-    }
-    setSelectedFiles(files);
-    setErrorMessage(null);
-  }
-
-  function removeSelectedFile(fileToRemove: File) {
-    setSelectedFiles((files) =>
-      files.filter((file) => attachmentKey(file) !== attachmentKey(fileToRemove))
-    );
-  }
-
-  return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1>AX Chat</h1>
-          <p>Ask one question at a time.</p>
-        </div>
-        <div className={styles.health} aria-live="polite">
-          <span
-            className={
-              healthQuery.isPending
-                ? styles.statusChecking
-                : healthQuery.isError
-                  ? styles.statusOffline
-                  : styles.statusOnline
-            }
-            aria-hidden
-          />
-          <span>
-            {healthQuery.isPending
-              ? "Checking server"
-              : healthQuery.isError
-                ? "Server unavailable"
-                : "Server available"}
-          </span>
-          {healthQuery.isError && (
-            <button
-              type="button"
-              onClick={() => void healthQuery.refetch()}
-              disabled={healthQuery.isFetching}
-            >
-              <RefreshCw size={14} />
-              Retry
-            </button>
-          )}
-        </div>
-      </header>
-
-      <section
-        className={styles.transcript}
-        aria-label="Chat transcript"
-        aria-busy={isTranscriptBusy}
-      >
-        <div className={styles.messageColumn}>
-          {messages.length === 0 && !isTranscriptBusy ? (
-            <div className={styles.emptyState}>
-              <Bot size={28} />
-              <h2>How can AX help?</h2>
-              <p>Your transcript stays in this app until the page is reloaded.</p>
-            </div>
-          ) : (
-            messages.map((message) => {
-              const messageExecution =
-                message.role === "assistant"
-                  ? mockRuns.find(
-                      (execution) =>
-                        execution.assistantMessageId === message.id
-                    ) ?? null
-                  : null;
-
-              return (
-                <article
-                  className={
-                    message.role === "user"
-                      ? styles.userMessage
-                      : styles.assistantMessage
-                  }
-                  key={message.id}
-                >
-                  <span className={styles.avatar} aria-hidden>
-                    {message.role === "user" ? <User size={17} /> : <Bot size={17} />}
-                  </span>
-                  <div>
-                    <strong className={styles.speaker}>
-                      {message.role === "user"
-                        ? "You"
-                        : messageExecution?.agentName ?? "AX"}
-                    </strong>
-                    {message.role === "user" ? (
-                      <>
-                        <p className={styles.plainText}>{message.content}</p>
-                        {message.attachments && message.attachments.length > 0 && (
-                          <AttachmentSummaryList attachments={message.attachments} />
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {messageExecution && (
-                          <MockExecutionTrace progress={messageExecution} />
-                        )}
-                        <ChatMarkdown content={message.content} />
-                        {streamingMessageId === message.id && (
-                          <span className={styles.streamCursor} aria-hidden />
-                        )}
-                        {messageExecution && (
-                          <ExecutionCompletion progress={messageExecution} />
-                        )}
-                      </>
-                    )}
-                  </div>
-                </article>
-              );
-            })
-          )}
-
-          {pendingExecution && (
-            <article className={styles.assistantMessage} aria-live="polite">
-              <span className={styles.avatar} aria-hidden>
-                <Bot size={17} />
-              </span>
-              <div>
-                <strong className={styles.speaker}>
-                  {pendingExecution.agentName}
-                </strong>
-                <MockExecutionTrace progress={pendingExecution} />
-              </div>
-            </article>
-          )}
-
-          {isChatSending && !streamingMessageId && (
-            <article className={styles.assistantMessage} aria-live="polite">
-              <span className={styles.avatar} aria-hidden>
-                <Bot size={17} />
-              </span>
-              <div>
-                <strong className={styles.speaker}>AX</strong>
-                <p className={styles.thinking}>Thinking…</p>
-              </div>
-            </article>
-          )}
-
-          {errorMessage && (
-            <p className={styles.error} role="alert">
-              {errorMessage}
-            </p>
-          )}
-          {notice && (
-            <p className={styles.notice} role="status">
-              {notice}
-            </p>
-          )}
-          <div ref={scrollAnchorRef} />
-        </div>
-      </section>
-
-      <footer className={styles.composerArea}>
-        <div className={styles.composerMode}>
-          <details className={styles.agentSelector} ref={agentSelectorRef}>
-            <summary aria-label="Choose an agent for Chat">
-              <Bot size={16} aria-hidden />
-              <span>{selectedAgent?.name ?? "AX Chat"}</span>
-              <ChevronDown size={14} aria-hidden />
-            </summary>
-            <div
-              className={styles.agentSelectorMenu}
-              role="listbox"
-              aria-label="Available agents"
-            >
-              <button
-                className={
-                  selectedAgent
-                    ? styles.agentSelectorOption
-                    : styles.agentSelectorOptionSelected
-                }
-                type="button"
-                role="option"
-                aria-selected={!selectedAgent}
-                onClick={() => chooseAgent(null)}
-              >
-                <span>
-                  <strong>No agent</strong>
-                  <small>Normal AX Chat</small>
-                </span>
-                {!selectedAgent && <Check size={15} aria-hidden />}
-              </button>
-
-              {catalogQuery.isLoading && (
-                <small className={styles.agentSelectorMessage}>
-                  Loading agents…
-                </small>
-              )}
-              {catalogQuery.isError && (
-                <small className={styles.agentSelectorMessage}>
-                  Agent catalog unavailable.
-                </small>
-              )}
-              {getChatCapableAgents(catalogQuery.data ?? []).map((agent) => {
-                const isSelected = selectedAgent?.id === agent.id;
-                return (
-                  <button
-                    className={
-                      isSelected
-                        ? styles.agentSelectorOptionSelected
-                        : styles.agentSelectorOption
-                    }
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    key={agent.id}
-                    onClick={() => chooseAgent(agent)}
-                  >
-                    <span>
-                      <strong>{agent.name}</strong>
-                      <small>{agent.role}</small>
-                    </span>
-                    {isSelected && <Check size={15} aria-hidden />}
-                  </button>
-                );
-              })}
-            </div>
-          </details>
-        </div>
-        <form
-          className={styles.composer}
-          ref={composerRef}
-          onSubmit={sendMessage}
-        >
-          {slashMenuIsOpen && (
-            <div
-              className={styles.slashCommandMenu}
-              id="slash-command-menu"
-              role="listbox"
-              aria-label="Slash commands"
-            >
-              <small className={styles.slashCommandMenuLabel}>Commands</small>
-              {filteredSlashCommands.length > 0 ? (
-                <div className={styles.slashCommandList}>
-                  {filteredSlashCommands.map((command, index) => {
-                    const isHighlighted =
-                      index === highlightedSlashCommandIndex;
-                    return (
-                      <button
-                        className={
-                          isHighlighted
-                            ? styles.slashCommandOptionHighlighted
-                            : styles.slashCommandOption
-                        }
-                        id={`slash-command-${command.command.slice(1)}`}
-                        key={command.command}
-                        type="button"
-                        role="option"
-                        aria-selected={isHighlighted}
-                        onMouseEnter={() =>
-                          setHighlightedSlashCommandIndex(index)
-                        }
-                        onClick={() => selectSlashCommand(command)}
-                      >
-                        <code>{command.command}</code>
-                        <span>{command.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <small className={styles.slashCommandEmpty}>
-                  No commands found
-                </small>
-              )}
-            </div>
-          )}
-
-          <input
-            ref={fileInputRef}
-            className={styles.fileInput}
-            type="file"
-            accept={ATTACHMENT_ACCEPT}
-            multiple
-            disabled={isRagAgentSelected}
-            onChange={handleFileChange}
-          />
-
-          {selectedFiles.length > 0 && (
-            <div className={styles.attachmentList} aria-label="Selected attachments">
-              {selectedFiles.map((file) => (
-                <div className={styles.attachment} key={attachmentKey(file)}>
-                  <FileText size={16} />
-                  <span title={file.name}>{file.name}</span>
-                  <small>{formatFileSize(file.size)}</small>
-                  <button
-                    type="button"
-                    onClick={() => removeSelectedFile(file)}
-                    aria-label={`Remove ${file.name}`}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <button
-            className={styles.attachButton}
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label={
-              isRagAgentSelected
-                ? "Attachments are unavailable for RAG Agent"
-                : "Attach file"
-            }
-            disabled={isRagAgentSelected}
-          >
-            <Paperclip size={18} />
-          </button>
-
-          <textarea
-            ref={composerInputRef}
-            aria-label="Message AX"
-            aria-autocomplete="list"
-            aria-controls={slashMenuIsOpen ? "slash-command-menu" : undefined}
-            aria-expanded={slashMenuIsOpen}
-            aria-activedescendant={
-              slashMenuIsOpen && filteredSlashCommands.length > 0
-                ? `slash-command-${
-                    filteredSlashCommands[
-                      highlightedSlashCommandIndex
-                    ]?.command.slice(1) ?? filteredSlashCommands[0].command.slice(1)
-                  }`
-                : undefined
-            }
-            placeholder="Message AX"
-            rows={1}
-            value={draft}
-            onChange={(event) => handleDraftChange(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-          />
-
-          {isChatSending ? (
-            <button
-              className={styles.cancelButton}
-              type="button"
-              onClick={cancelChatRequest}
-              aria-label="Cancel response"
-            >
-              <Square size={16} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              className={styles.sendButton}
-              type="submit"
-              disabled={!draft.trim()}
-              aria-label="Send message"
-            >
-              <Send size={17} />
-            </button>
-          )}
-        </form>
-        <small>
-          {isRagAgentSelected
-            ? "Enter to send · Shift+Enter for a new line · RAG Agent is text-only"
-            : "Enter to send · Shift+Enter for a new line · Up to 5 files / 25 MB"}
-        </small>
-      </footer>
-    </div>
-  );
-}
-
-export function usesRagChat(graphId: string | null): boolean {
+export function usesRagChat(graphId: string | null) {
   return graphId === RAG_CHAT_GRAPH_ID;
 }
-
 export function getChatCapableAgents(agents: AgentDefinition[]) {
   return agents.filter((agent) => agent.canRunInChat);
 }
-
-function MockExecutionTrace({
-  progress
-}: {
-  progress: MockAgentRun;
-}) {
-  return (
-    <section
-      className={styles.mockExecution}
-      aria-label={`Frontend-only mock execution for ${progress.agentName}`}
-      aria-live="polite"
-    >
-      <header className={styles.mockExecutionHeader}>
-        <small title="Simulated frontend events">Mock execution</small>
-      </header>
-      <ol className={styles.mockStageList}>
-        {MOCK_AGENT_RUN_STAGES.map((stage, index) => {
-          const stageState = getMockAgentRunStageState(progress, index);
-          if (stageState === "pending") {
-            return null;
-          }
-          const StageIcon =
-            stageState === "completed"
-              ? Check
-              : LoaderCircle;
-
-          return (
-            <li className={styles[`mockStage${stageState}`]} key={stage}>
-              <StageIcon size={15} aria-hidden />
-              <span>{stage}{stageState === "active" ? "…" : ""}</span>
-            </li>
-          );
-        })}
-      </ol>
-      {progress.status === "cancelled" && (
-        <small className={styles.mockExecutionStopped}>
-          Mock execution stopped before completion.
-        </small>
-      )}
-      {progress.status === "failed" && (
-        <small className={styles.mockExecutionStopped}>
-          Mock execution failed before completion.
-        </small>
-      )}
-    </section>
+const starters = [
+  { label: "Draft a message", prompt: "Help me draft a message about " },
+  {
+    label: "Summarize text",
+    prompt: "Summarize the key points of this text:\n\n"
+  },
+  { label: "Plan next steps", prompt: "Help me plan the next steps for " }
+];
+export function ChatPage() {
+  const { conversations, activeId, activeRequest, patchChat, chooseAgent } =
+    useChatStore();
+  const conversation = conversations.find((c) => c.id === activeId)!;
+  const selectedAgent = useUiStore((state) => state.selectedAgent);
+  const health = useAgentServerHealth();
+  const catalog = useAgentCatalog();
+  const [runner] = useState(createChatRunner);
+  const [wide, setWide] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1120px)").matches
   );
-}
+  const [sidebarOpen, setSidebarOpen] = useState(wide);
+  const [replaceAction, setReplaceAction] = useState<null | {
+    draft: string;
+    files: File[];
+    notice: string | null;
+    recovery: boolean;
+  }>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const selectorRef = useRef<HTMLDetailsElement>(null);
 
-function ExecutionCompletion({
-  progress
-}: {
-  progress: MockAgentRun;
-}) {
-  if (progress.status !== "completed" || progress.durationSeconds === null) {
-    return null;
+  useEffect(() => () => runner.stop(), [runner]);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1120px)");
+    const changed = () => {
+      setWide(query.matches);
+      setSidebarOpen(query.matches);
+    };
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  }, []);
+  useEffect(() => {
+    // The existing Agents entry point hands its selection to Chat via useUiStore.
+    const state = useChatStore.getState();
+    state.chooseAgent(state.activeId, selectedAgent);
+    const pending = useUiStore.getState().pendingAgentRun;
+    if (pending) {
+      useUiStore.getState().clearPendingAgentRun();
+      state.patchChat(state.activeId, {
+        notice: "Choose a co-worker available in Chat to send a message."
+      });
+    }
+  }, [selectedAgent]);
+  useEffect(() => {
+    setReplaceAction(null);
+  }, [activeId]);
+  useEffect(() => {
+    if (!sidebarOpen || wide) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const background = [
+      mainRef.current,
+      document
+        .querySelector('nav[aria-label="Primary navigation"]')
+        ?.closest("aside")
+    ].filter(
+      (element): element is HTMLElement => element instanceof HTMLElement
+    );
+    const newlyInert = background.filter(
+      (element) => !element.hasAttribute("inert")
+    );
+    newlyInert.forEach((element) => element.setAttribute("inert", ""));
+    sidebarRef.current?.querySelector<HTMLElement>("button")?.focus();
+    function trap(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSidebarOpen(false);
+      }
+      if (event.key !== "Tab") return;
+      const elements = sidebarRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input, [tabindex="0"]'
+      );
+      if (!elements?.length) return;
+      const first = elements[0],
+        last = elements[elements.length - 1];
+      if (!sidebarRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", trap);
+    return () => {
+      document.removeEventListener("keydown", trap);
+      newlyInert.forEach((element) => element.removeAttribute("inert"));
+      previous?.focus();
+    };
+  }, [sidebarOpen, wide]);
+  useEffect(() => {
+    function outside(event: PointerEvent) {
+      if (
+        selectorRef.current?.open &&
+        event.target instanceof Node &&
+        !selectorRef.current.contains(event.target)
+      )
+        selectorRef.current.open = false;
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape" && selectorRef.current?.open) {
+        selectorRef.current.open = false;
+        selectorRef.current.querySelector("summary")?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, []);
+  function syncSelection() {
+    const state = useChatStore.getState();
+    useUiStore.setState({
+      selectedAgent:
+        state.conversations.find((c) => c.id === state.activeId)?.agent ?? null
+    });
   }
-
+  function focusComposer() {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+  function selectChat(id: string) {
+    useChatStore.getState().selectChat(id);
+    syncSelection();
+    if (!wide) setSidebarOpen(false);
+  }
+  function newChat() {
+    useChatStore.getState().newChat(conversation.agent);
+    syncSelection();
+    if (!wide) setSidebarOpen(false);
+    focusComposer();
+  }
+  function deleteChat(id: string) {
+    if (activeRequest?.conversationId === id) runner.stop();
+    useChatStore.getState().deleteChat(id);
+    syncSelection();
+    requestAnimationFrame(() =>
+      sidebarRef.current
+        ?.querySelector<HTMLElement>('[aria-current="page"]')
+        ?.focus()
+    );
+  }
+  function selectAgent(agent: AgentDefinition | null) {
+    chooseAgent(activeId, agent);
+    useUiStore.setState({ selectedAgent: agent });
+    if (selectorRef.current) selectorRef.current.open = false;
+    focusComposer();
+  }
+  function applyDraft(action: NonNullable<typeof replaceAction>) {
+    const textOnly = usesRagChat(conversation.agent?.graphId ?? null);
+    patchChat(activeId, {
+      draft: action.draft,
+      files: textOnly ? [] : action.files,
+      notice:
+        textOnly && action.files.length
+          ? "Prompt restored. RAG Agent supports text only; files were not restored."
+          : action.notice,
+      ...(action.recovery ? { error: null, recovery: null } : {})
+    });
+    setReplaceAction(null);
+    focusComposer();
+  }
+  function requestDraft(action: NonNullable<typeof replaceAction>) {
+    if (conversation.draft || conversation.files.length)
+      setReplaceAction(action);
+    else applyDraft(action);
+  }
+  function reuse(message: ChatMessage) {
+    requestDraft({
+      draft: message.content,
+      files: [],
+      notice: message.attachments?.length
+        ? "Prompt reused. Reattach any files you need."
+        : null,
+      recovery: false
+    });
+  }
   return (
-    <div className={styles.mockExecutionComplete} role="status">
-      <Check size={15} aria-hidden />
-      <span>Completed in {progress.durationSeconds.toFixed(1)} sec</span>
+    <div className={styles.page}>
+      {sidebarOpen && (
+        <>
+          {!wide && (
+            <button
+              className={styles.drawerBackdrop}
+              aria-label="Close chat list"
+              tabIndex={-1}
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+          <aside
+            ref={sidebarRef}
+            id="chat-conversations"
+            className={`${styles.sidebar} ${!wide ? styles.sidebarDrawer : ""}`}
+            role={!wide ? "dialog" : undefined}
+            aria-modal={!wide ? true : undefined}
+            aria-label="Chat conversations"
+          >
+            <ConversationList
+              onSelect={selectChat}
+              onNew={newChat}
+              onDelete={deleteChat}
+              onClose={() => {
+                setSidebarOpen(false);
+                toggleRef.current?.focus();
+              }}
+            />
+          </aside>
+        </>
+      )}
+      <div className={styles.chatMain} ref={mainRef}>
+        <header className={styles.header}>
+          <button
+            ref={toggleRef}
+            className={styles.iconButton}
+            aria-label="Toggle chat list"
+            title="Toggle chat list"
+            aria-expanded={sidebarOpen}
+            aria-controls="chat-conversations"
+            onClick={() => setSidebarOpen((open) => !open)}
+          >
+            <Menu size={19} />
+          </button>
+          <details className={styles.agentSelector} ref={selectorRef}>
+            <summary aria-label="Choose a co-worker for Chat">
+              <span>{conversation.agent?.name ?? "AX Chat"}</span>
+              <ChevronDown size={15} />
+            </summary>
+            <div className={styles.agentSelectorMenu}>
+              <small>Chat with</small>
+              <button
+                onClick={() => selectAgent(null)}
+                aria-pressed={!conversation.agent}
+              >
+                <span>
+                  AX Chat<small>General questions and files</small>
+                </span>
+                {!conversation.agent && <Check size={15} />}
+              </button>
+              {getChatCapableAgents(catalog.data ?? []).map((agent) => (
+                <button
+                  key={agent.id}
+                  aria-pressed={conversation.agent?.id === agent.id}
+                  onClick={() => selectAgent(agent)}
+                >
+                  <span>
+                    {agent.name}
+                    <small>{agent.role}</small>
+                  </span>
+                  {conversation.agent?.id === agent.id && <Check size={15} />}
+                </button>
+              ))}
+              {catalog.isPending && <p>Loading co-workers…</p>}
+              {catalog.isError && (
+                <p>
+                  Couldn't load co-workers.{" "}
+                  <button onClick={() => void catalog.refetch()}>Retry</button>
+                </p>
+              )}
+            </div>
+          </details>
+          <span className={styles.headerSpacer} />
+          {health.isError && (
+            <div className={styles.healthWarning}>
+              <span>Connection unavailable</span>
+              <button
+                className={styles.iconButton}
+                aria-label="Retry connection"
+                title="Retry connection"
+                disabled={health.isFetching}
+                onClick={() => void health.refetch()}
+              >
+                <RefreshCw size={15} />
+              </button>
+            </div>
+          )}
+          <button
+            className={styles.iconButton}
+            aria-label="New chat"
+            title="New chat"
+            onClick={newChat}
+          >
+            <Plus size={20} />
+          </button>
+        </header>
+        <div
+          className={`${styles.conversationBody} ${!conversation.messages.length ? styles.emptyBody : ""}`}
+        >
+          {conversation.messages.length ? (
+            <ChatTranscript
+              key={activeId}
+              conversation={conversation}
+              onReuse={reuse}
+            />
+          ) : (
+            <div className={styles.welcome}>
+              <h1>How can I help?</h1>
+              <div className={styles.starters}>
+                {starters.map((starter) => (
+                  <button
+                    key={starter.label}
+                    onClick={() =>
+                      requestDraft({
+                        draft: starter.prompt,
+                        files: [],
+                        notice: null,
+                        recovery: false
+                      })
+                    }
+                  >
+                    {starter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className={styles.composerDock}>
+            {conversation.error && (
+              <div className={styles.error} role="alert">
+                <span>{conversation.error}</span>
+                {conversation.recovery && (
+                  <button
+                    onClick={() =>
+                      requestDraft({
+                        draft: conversation.recovery!.prompt,
+                        files: conversation.recovery!.files,
+                        notice: "Prompt restored. Review it before sending.",
+                        recovery: true
+                      })
+                    }
+                  >
+                    Restore prompt
+                  </button>
+                )}
+                <button
+                  className={styles.iconButton}
+                  aria-label="Dismiss error"
+                  onClick={() => patchChat(activeId, { error: null })}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            {conversation.notice && (
+              <div className={styles.notice} role="status">
+                <span>{conversation.notice}</span>
+                <button
+                  className={styles.iconButton}
+                  aria-label="Dismiss notice"
+                  onClick={() => patchChat(activeId, { notice: null })}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+            {replaceAction && (
+              <div className={styles.notice}>
+                <span>Replace your current draft and attachments?</span>
+                <button onClick={() => applyDraft(replaceAction)}>
+                  Replace
+                </button>
+                <button onClick={() => setReplaceAction(null)}>
+                  Keep draft
+                </button>
+              </div>
+            )}
+            <ChatComposer
+              conversation={conversation}
+              inputRef={inputRef}
+              onSend={() => {
+                if (conversation.agent && !conversation.agent.canRunInChat) {
+                  patchChat(activeId, {
+                    error:
+                      "This co-worker isn't available in Chat. Choose AX Chat or RAG Agent."
+                  });
+                  return;
+                }
+                void runner.send(activeId);
+                focusComposer();
+              }}
+              onStop={runner.stop}
+              onOpenRunning={() => {
+                if (activeRequest) selectChat(activeRequest.conversationId);
+              }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
-}
-
-function getSlashQuery(value: string): string | null {
-  const match = value.match(/^\/([^\s]*)$/);
-  return match ? match[1].toLocaleLowerCase() : null;
-}
-
-let messageSequence = 0;
-
-function AttachmentSummaryList({
-  attachments
-}: {
-  attachments: ChatAttachmentSummary[];
-}) {
-  return (
-    <ul className={styles.messageAttachments} aria-label="Message attachments">
-      {attachments.map((attachment) => (
-        <li key={`${attachment.name}:${attachment.size}`}>
-          <FileText size={14} aria-hidden />
-          <span title={attachment.name}>{attachment.name}</span>
-          <small>{formatFileSize(attachment.size)}</small>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function validateSelectedFiles(files: File[]) {
-  if (files.length > MAX_ATTACHMENT_COUNT) {
-    return `Attach no more than ${MAX_ATTACHMENT_COUNT} files.`;
-  }
-  for (const file of files) {
-    const extension = file.name.split(".").pop()?.toLocaleLowerCase() ?? "";
-    if (!ACCEPTED_ATTACHMENT_EXTENSIONS.has(extension)) {
-      return `${file.name} is not a supported attachment type.`;
-    }
-    if (file.size === 0) {
-      return `${file.name} is empty.`;
-    }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      return `${file.name} exceeds the 10 MB per-file limit.`;
-    }
-  }
-  const totalBytes = files.reduce((total, file) => total + file.size, 0);
-  if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-    return "Attachments exceed the 25 MB total limit.";
-  }
-  return null;
-}
-
-function deduplicateFiles(files: File[]) {
-  return Array.from(
-    new Map(files.map((file) => [attachmentKey(file), file])).values()
-  );
-}
-
-function attachmentKey(file: File) {
-  return `${file.name}:${file.size}:${file.lastModified}`;
-}
-
-function toAttachmentSummary(file: File): ChatAttachmentSummary {
-  return { name: file.name, size: file.size, type: file.type };
-}
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${Math.ceil(bytes / 1024)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function createMessage(
-  role: ChatRole,
-  content: string,
-  attachments?: ChatAttachmentSummary[]
-) {
-  return {
-    id: createMessageId(),
-    role,
-    content,
-    ...(attachments && attachments.length > 0 ? { attachments } : {})
-  };
-}
-
-function createMessageId() {
-  messageSequence += 1;
-  return `${Date.now()}-${messageSequence}`;
 }
