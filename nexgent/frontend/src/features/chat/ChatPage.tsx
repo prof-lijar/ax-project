@@ -14,7 +14,7 @@ import type { AgentDefinition } from "../../shared/types/agents";
 import { ChatComposer } from "./ChatComposer";
 import { ChatTranscript } from "./ChatTranscript";
 import { ConversationList } from "./ConversationList";
-import { createChatRunner } from "./chatRunner";
+import type { ChatRunner } from "./chatRunner";
 import styles from "./ChatPage.module.css";
 
 export function usesRagChat(graphId: string | null) {
@@ -31,14 +31,13 @@ const starters = [
   },
   { label: "Plan next steps", prompt: "Help me plan the next steps for " }
 ];
-export function ChatPage() {
+export function ChatPage({ runner }: { runner: ChatRunner }) {
   const { conversations, activeId, activeRequest, patchChat, chooseAgent } =
     useChatStore();
   const conversation = conversations.find((c) => c.id === activeId)!;
   const selectedAgent = useUiStore((state) => state.selectedAgent);
   const health = useAgentServerHealth();
   const catalog = useAgentCatalog();
-  const [runner] = useState(createChatRunner);
   const [wide, setWide] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -57,7 +56,6 @@ export function ChatPage() {
   const mainRef = useRef<HTMLDivElement>(null);
   const selectorRef = useRef<HTMLDetailsElement>(null);
 
-  useEffect(() => () => runner.stop(), [runner]);
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1120px)");
     const changed = () => {

@@ -6,7 +6,9 @@ import { RAG_CHAT_GRAPH_ID } from "../../shared/api/agentCatalogClient";
 import { chatId, useChatStore } from "../../shared/state/useChatStore";
 import { toAttachmentSummary } from "./chatAttachments";
 
-// The owner stays mounted while switching conversations. Every callback is scoped
+export type ChatRunner = ReturnType<typeof createChatRunner>;
+
+// The app owns this runner across menu changes. Every callback is scoped
 // to its request, so cancellation/deletion cannot resurrect a stale response.
 export function createChatRunner(client = agentServerClient) {
   let active: {

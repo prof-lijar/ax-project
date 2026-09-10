@@ -12,7 +12,7 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
-- [Chat Session UI Upgrade](08-implementation/chat-session-ui-upgrade.md): session conversations, composer and transcript UX, streaming isolation, HTTP-compatible copy actions, and validation.
+- [Chat Session UI Upgrade](08-implementation/chat-session-ui-upgrade.md): session conversations, composer and transcript UX, background replies across menus, HTTP-compatible copy actions, and validation.
 
 - [Workspace Top Bar Removal](08-implementation/workspace-top-bar-removal.md): shared search/Pause header removal, full-height content layout, Settings placeholder, and validation limits.
 

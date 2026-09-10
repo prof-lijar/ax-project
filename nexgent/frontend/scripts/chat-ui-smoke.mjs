@@ -44,14 +44,17 @@ await context.addInitScript(() => {
       options.body instanceof FormData
         ? options.body.get("prompt")
         : JSON.parse(options.body).question;
-    window.chatSmoke.requests.push({
+    const request = {
       url,
       prompt,
       files:
         options.body instanceof FormData
           ? options.body.getAll("files").map((file) => file.name)
-          : []
-    });
+          : [],
+      finished: false,
+      aborted: false
+    };
+    window.chatSmoke.requests.push(request);
     const encoder = new TextEncoder();
     let timer;
     return new Response(
@@ -73,6 +76,7 @@ await context.addInitScript(() => {
               timer = setTimeout(next, config.delay ?? 30);
             } else {
               closed = true;
+              request.finished = true;
               if (config.fail)
                 controller.error(new Error("Test connection lost"));
               else {
@@ -86,6 +90,7 @@ await context.addInitScript(() => {
             }
           }
           options.signal?.addEventListener("abort", () => {
+            request.aborted = true;
             clearTimeout(timer);
             if (!closed) {
               closed = true;
@@ -284,7 +289,7 @@ try {
   await noOverflow();
   await page.screenshot({ path: `${artifacts}/chat-conversation-1440.png` });
 
-  // Stop and section navigation retain partial replies without late updates.
+  // Explicit Stop preserves partial output; section navigation preserves drafts.
   await configure({ chunks: ["Keep partial", "Discard later"], delay: 500 });
   await input().fill("Stop this reply");
   await send().click();
@@ -399,23 +404,32 @@ try {
   await page
     .getByRole("button", { name: "Working notes", exact: true })
     .click();
+  // A response completes while Chat is unmounted, then renders on return.
+  const beforeNavigation = await requestCount();
   await configure({
-    chunks: ["Navigation partial", "Navigation late"],
+    chunks: ["Navigation partial", "\n\nNavigation complete"],
     delay: 500
   });
   await input().fill("Leave during reply");
   await send().click();
   await page.getByText("Navigation partial", { exact: true }).waitFor();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("heading", { name: "Coming Soon" }).waitFor();
+  await page.waitForFunction(() => window.chatSmoke.requests.at(-1).finished);
+  assert.equal(
+    await page.evaluate(() => window.chatSmoke.requests.at(-1).aborted),
+    false
+  );
   await page.getByRole("link", { name: "Chat", exact: true }).click();
-  await page.getByText("Navigation partial", { exact: true }).waitFor();
+  await page.getByText("Navigation complete", { exact: true }).waitFor();
   assert.equal(
     await page.getByRole("button", { name: "Stop response" }).count(),
     0
   );
   assert.equal(
-    await page.getByText("Navigation late", { exact: true }).count(),
-    0
+    await requestCount(),
+    beforeNavigation + 1,
+    "Returning must not restart the request"
   );
 
   // Native clipboard rejection falls back to selection-based copy.
@@ -430,7 +444,7 @@ try {
     .click();
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
-    "Navigation partial"
+    "Navigation partial\n\nNavigation complete"
   );
   assert.equal(
     await page
@@ -474,6 +488,43 @@ try {
       exact: true
     })
     .waitFor();
+
+  // Returning mid-stream reconnects Stop to the same request; browser history
+  // and another menu must not create a second runner or cancel the first.
+  await configure({
+    chunks: ["Still responding", "Should be cancelled"],
+    delay: 1500
+  });
+  await input().fill("Return before completion");
+  await send().click();
+  await page.getByText("Still responding", { exact: true }).waitFor();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.goBack();
+  await page.getByRole("button", { name: "Stop response" }).waitFor();
+  assert.equal(
+    await page.evaluate(() => window.chatSmoke.requests.at(-1).aborted),
+    false
+  );
+  await page.getByRole("button", { name: "Stop response" }).click();
+  assert.equal(
+    await page.evaluate(() => window.chatSmoke.requests.at(-1).aborted),
+    true
+  );
+  assert.equal(
+    await page.getByText("Should be cancelled", { exact: true }).count(),
+    0
+  );
+
+  // Failures occurring off-screen remain recoverable when returning to Chat.
+  await configure({ chunks: ["Background partial"], delay: 500, fail: true });
+  await input().fill("Background failure");
+  await send().click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.waitForFunction(() => window.chatSmoke.requests.at(-1).finished);
+  await page.getByRole("link", { name: "Chat", exact: true }).click();
+  await page.getByRole("button", { name: "Restore prompt" }).waitFor();
+  await page.getByRole("button", { name: "Restore prompt" }).click();
+  assert.equal(await input().inputValue(), "Background failure");
 
   for (const width of [1024, 760]) {
     await page.setViewportSize({ width, height: 900 });

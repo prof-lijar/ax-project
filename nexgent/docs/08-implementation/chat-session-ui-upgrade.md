@@ -2,6 +2,42 @@
 
 Date: 2026-09-10
 
+## Update: Continue replies across application menus
+
+Date: 2026-09-10
+
+Switching from Chat to another application menu previously unmounted ChatPage
+and aborted its active request. The request coordinator now belongs to App and
+is passed into ChatPage. Chat can unmount normally while the same request keeps
+updating its original conversation in the session store. Returning displays
+partial or completed output without starting a second request; Stop remains
+connected to that request. Errors occurring off-screen retain prompt recovery.
+
+This replaces the original stop-on-section-navigation behavior. Explicit Stop,
+deleting the generating conversation, and app teardown still cancel the request.
+Reloading/closing the app still ends the frontend session. No backend or API
+changes were made.
+
+Validation for this update:
+
+- `npm run build`: passed.
+- `npm test`: 23 files, 243 tests passed.
+- The documented browser smoke command passed, including completion while
+  Settings is open, returning through browser history mid-stream and pressing
+  Stop, no duplicate requests after returning, and failure recovery after a
+  background request fails. Existing cross-conversation, copy, attachment, and
+  responsive checks also passed.
+- Standard Cargo check still encountered the pre-existing stale permission-file
+  path. `CARGO_TARGET_DIR=/tmp/nexgent-chat-ux-cargo cargo check --offline
+  --manifest-path src-tauri/Cargo.toml` passed.
+- The required npm audit still reports the two existing moderate Vitest findings
+  described below. No dependencies changed.
+
+Live-service and packaged Tauri checks remain unverified. Run
+`npm run dev -- --host 127.0.0.1` with the configured services, send a message,
+switch to Settings during generation, and return to verify the completed reply.
+Use `npm run tauri:dev` for the same check in the desktop webview.
+
 ## Implemented experience
 
 Chat now uses a centered welcome composer, a bottom composer once messages exist, a readable 780px transcript column, and a collapsible session conversation list. The application navigation remains in place. The removed global search/Pause toolbar is not restored; Chat has compact local navigation and co-worker controls.
@@ -18,9 +54,9 @@ Chat now uses a centered welcome composer, a bottom composer once messages exist
 
 ## Architecture and boundaries
 
-`useChatStore` owns session conversations and their UI state. A Chat-level request coordinator captures the conversation ID, assistant-message ID, co-worker, prompt, and files at submission. Every callback updates that captured conversation, never the currently selected conversation. Replies keep their original speaker label.
+`useChatStore` owns session conversations and their UI state. An app-level request coordinator captures the conversation ID, assistant-message ID, co-worker, prompt, and files at submission. Every callback updates that captured conversation, never the currently selected conversation. Replies keep their original speaker label.
 
-Only one request can run at a time. Switching conversations within Chat lets it continue in its original conversation; other composers remain editable and link to the responding chat. Stop, deletion of a generating chat, and leaving the Chat section abort the request. Partial output is retained unless its conversation is deleted. Invalidated callbacks cannot overwrite a newer request or recreate a deleted conversation.
+Only one request can run at a time. Switching conversations within Chat lets it continue in its original conversation; other composers remain editable and link to the responding chat. Stop, deletion of a generating chat, and app teardown abort the request. Switching application menus keeps the request running. Partial output is retained unless its conversation is deleted. Invalidated callbacks cannot overwrite a newer request or recreate a deleted conversation.
 
 A failed request retains its original prompt/files for explicit recovery without overwriting newer typing. New submissions replace that recovery state. Deleting a conversation releases its stored file references. No files or messages are written to local storage.
 
