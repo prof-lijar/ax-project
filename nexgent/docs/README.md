@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Workspace Top Bar Removal](08-implementation/workspace-top-bar-removal.md): shared search/Pause header removal, full-height content layout, Settings placeholder, and validation limits.
+
 - [Weekly Report Ward/Week Uniqueness](08-implementation/weekly-report-ward-week-uniqueness.md): existing update-on-conflict behavior, PostgreSQL regression coverage, and remaining database verification.
 - [Weekly Reporter 01:00 KST Schedule](08-implementation/weekly-reporter-schedule-0100-kst.md): Monday scheduler time change from 03:00 to 01:00 Asia/Seoul and rollout commands.
 

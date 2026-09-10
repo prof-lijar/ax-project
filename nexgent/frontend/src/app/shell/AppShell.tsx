@@ -1,7 +1,3 @@
-import {
-  PauseCircle,
-  Search
-} from "lucide-react";
 import type { PropsWithChildren } from "react";
 
 import { navItems } from "../routes";
@@ -12,8 +8,6 @@ import styles from "./AppShell.module.css";
 
 export function AppShell({ children }: PropsWithChildren) {
   const activeSection = useUiStore((state) => state.activeSection);
-  const search = useUiStore((state) => state.search);
-  const setSearch = useUiStore((state) => state.setSearch);
   const healthQuery = useSystemHealth();
   const chatIsActive = activeSection === "chat";
   const systemIsGood =
@@ -71,26 +65,7 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
       </aside>
 
-      <main className={chatIsActive ? styles.mainChat : styles.main}>
-        {!chatIsActive && <header className={styles.commandStrip}>
-          <label className={styles.searchBox}>
-            <Search size={18} aria-hidden />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search your workspace"
-              aria-label="Search"
-            />
-          </label>
-
-          <div className={styles.actions}>
-            <button className={styles.secondaryButton} type="button">
-              <PauseCircle size={18} />
-              <span>Pause</span>
-            </button>
-          </div>
-        </header>}
-
+      <main className={styles.main}>
         <section className={chatIsActive ? styles.chatContent : styles.content}>
           {children}
         </section>
