@@ -20,7 +20,7 @@ Date: 2026-09-04
 
 `apps/weekly_report_scheduler` is a new independently deployable cron service.
 Its container timezone is fixed to `Asia/Seoul`, and BusyBox cron executes the
-submission command with `0 3 * * 1`: every Monday at 03:00 KST. The command
+submission command with `0 1 * * 1`: every Monday at 01:00 KST. The command
 selects the previous fully completed Monday-through-Sunday reporting period
 and submits a maximum 10,000-report job to the existing private bulk API.
 
@@ -31,7 +31,8 @@ week. Structured logs contain only content-free attempt, status, week, and job
 metadata. The scheduler has no database credentials and neither generates
 reports nor calls the model itself.
 
-The stable-server Compose topology starts the service by default and owns the
+The production Compose topology (`../compose.prod.yaml`) starts the service
+by default and owns the
 automatic schedule. Agent-only and complete development topologies include it
 behind the opt-in `scheduled` profile, preventing duplicate weekly generation
 when environments share external source, writer, or model systems. Every

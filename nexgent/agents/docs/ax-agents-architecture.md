@@ -235,16 +235,18 @@ has no first-party frontend caller.
 
 Weekly Reporter cron scheduling update on 2026-09-04: the independently
 deployable `apps/weekly_report_scheduler` service runs BusyBox cron at
-`0 3 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
+`0 1 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
 calculates the previous fully completed Monday-through-Sunday period and
 submits up to 10,000 reports through the private bulk control API. It never
 accesses PostgreSQL or the model directly. A period-derived idempotency key
 prevents retry duplicates, transient delivery retries are bounded, responses
 are size-limited and validated, and logs contain only schedule/job metadata.
-The stable-server Compose topology starts the service by default and is the
+The production Compose topology (`../compose.prod.yaml`) starts the service
+by default and is the
 single automatic schedule owner. Agent-only and root development Compose keep
 the same service behind the opt-in `scheduled` profile so concurrently running
-environments cannot duplicate work against shared external systems. Every
+environments avoid duplicate work against shared external systems. Keep the
+`scheduled` profile disabled in development when production scheduling is enabled. Every
 enabled scheduler depends on bulk-API readiness.
 
 The `/agents/1` schedule card now identifies the configured server cron while
@@ -1311,7 +1313,7 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 - The weekly reporter now calculates broad raw weekly metadata and produces
   validated warm Korean summaries. Manual submission remains available, and a
   fixed Compose cron service submits the previous completed week every Monday
-  at 03:00 `Asia/Seoul`. Cron has bounded request retries but no durable
+  at 01:00 `Asia/Seoul`. Cron has bounded request retries but no durable
   missed-run catch-up or editable schedule record. Durable bulk finalization
   persists rendered frontend JSON; interactive compatibility runs remain
   non-writing. An operator can explicitly deliver a completed batch to an

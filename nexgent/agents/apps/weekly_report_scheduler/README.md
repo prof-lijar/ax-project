@@ -25,7 +25,11 @@ The schedule and reporting timezone are intentionally fixed to
 `Asia/Seoul`. Changing the schedule requires a reviewed crontab and image
 deployment; the current frontend controls do not reconfigure this service.
 
-The stable-server Compose stack starts this service by default and is the
+The production Compose stack (`../compose.prod.yaml`) starts this service by
+default and is the
 single automatic schedule owner. Development and agent-only Compose stacks
 place it behind the `scheduled` profile to avoid duplicate weekly generation
 when multiple environments share the same source, writer, or model systems.
+
+Keep the `scheduled` profile disabled in development when production scheduling
+is enabled. Production should be the only automatic schedule owner.

@@ -57,8 +57,9 @@ docker compose logs -f agent-server
 The local `agents/compose.yaml` starts the Agent Server and its private weekly
 report source service, durable bulk-job database, worker, and private bulk
 control API. Its weekly cron scheduler is opt-in through the `scheduled`
-profile; the stable-server stack owns the automatic schedule by default. The
-scheduler submits the previous completed week every Monday at 03:00
+profile; the production stack (`../compose.prod.yaml`) owns the automatic schedule
+by default. The
+scheduler submits the previous completed week every Monday at 01:00
 `Asia/Seoul`, and its week-derived idempotency key makes bounded delivery
 retries safe. Set the weekly-report PostgreSQL connection from `.env.example`
 before using that workflow. In the parent stack, open `/agents/1` to submit and

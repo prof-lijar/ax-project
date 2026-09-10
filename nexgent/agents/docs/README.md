@@ -109,7 +109,7 @@
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   bulk-only `/agents/1` execution with durable 1–10,000 report job control,
   throughput monitoring, cancellation, verified export, an explicitly
-  non-persistent schedule editor preview, and a fixed Monday 03:00
+  non-persistent schedule editor preview, and a fixed Monday 01:00
   `Asia/Seoul` cron service that idempotently submits the previous completed
   week through the private bulk API; the former Quick Preview and Chat
   execution paths are retired.
