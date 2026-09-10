@@ -9,6 +9,16 @@ agent runtime, graph orchestration, tools, APIs, persistence, deployment,
 security, or evaluation. `AGENTS.md` requires contributors and agents to read
 it before implementation and update it when architecture changes.
 
+## Update: selective database recovery (2026-09-08)
+
+Operator recovery supports `--write --skip-not-null`: bounded batch savepoints
+fall back to individual row savepoints only for NOT NULL violations (23502).
+Valid rows commit together; other errors still roll back. Output identifies
+skipped ward IDs and columns; exit code 2 indicates skipped rows, including
+all-skipped runs. Regular bulk finalization retains atomic storage. See
+[database recovery](weekly-report-database-recovery.md) for commands and status
+semantics. No source/model calls or queue status changes occur in recovery.
+
 ## Implementation status
 
 The baseline described here is implemented as of 2026-08-05:
@@ -93,6 +103,19 @@ Nextcloud link, deduplication/versioning, or production Hybrid retrieval. See
 and deployment details.
 
 ## Weekly-report bulk execution (2026-08-20)
+
+Database recovery update on 2026-09-08: an operator-only recovery command reads
+a terminal job and checksum-verified completed artifacts, then reuses the
+existing atomic report writer without source/model calls or queue-state changes.
+See [database recovery](weekly-report-database-recovery.md) for guards and commands.
+
+
+Browser polling reliability update on 2026-09-08: the bulk panel awaits each
+status request before scheduling another, backs off failures to 30 seconds,
+and stops on terminal status or cleanup. Bulk JSON requests have a 30-second
+deadline with caller cancellation. See [polling reliability](weekly-report-bulk-polling.md)
+for implementation and validation.
+
 
 The manual `ansimk_weekly_reporter` LangGraph remains the compatibility path
 for interactive batches of at most twenty-five reports. High-volume generation
@@ -212,16 +235,18 @@ has no first-party frontend caller.
 
 Weekly Reporter cron scheduling update on 2026-09-04: the independently
 deployable `apps/weekly_report_scheduler` service runs BusyBox cron at
-`0 3 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
+`0 1 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
 calculates the previous fully completed Monday-through-Sunday period and
 submits up to 10,000 reports through the private bulk control API. It never
 accesses PostgreSQL or the model directly. A period-derived idempotency key
 prevents retry duplicates, transient delivery retries are bounded, responses
 are size-limited and validated, and logs contain only schedule/job metadata.
-The stable-server Compose topology starts the service by default and is the
+The production Compose topology (`../compose.prod.yaml`) starts the service
+by default and is the
 single automatic schedule owner. Agent-only and root development Compose keep
 the same service behind the opt-in `scheduled` profile so concurrently running
-environments cannot duplicate work against shared external systems. Every
+environments avoid duplicate work against shared external systems. Keep the
+`scheduled` profile disabled in development when production scheduling is enabled. Every
 enabled scheduler depends on bulk-API readiness.
 
 The `/agents/1` schedule card now identifies the configured server cron while
@@ -1288,7 +1313,7 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 - The weekly reporter now calculates broad raw weekly metadata and produces
   validated warm Korean summaries. Manual submission remains available, and a
   fixed Compose cron service submits the previous completed week every Monday
-  at 03:00 `Asia/Seoul`. Cron has bounded request retries but no durable
+  at 01:00 `Asia/Seoul`. Cron has bounded request retries but no durable
   missed-run catch-up or editable schedule record. Durable bulk finalization
   persists rendered frontend JSON; interactive compatibility runs remain
   non-writing. An operator can explicitly deliver a completed batch to an
@@ -1318,3 +1343,49 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   data-retention and redaction policy is approved.
 - Concrete tenant model, identity provider, database HA strategy, and model
   vendor remain application decisions, but must not violate these boundaries.
+
+## Explicit insert timestamps (2026-09-08)
+
+Production recovery identified `created_at` NOT NULL failures for all 6,437
+reports. The writer now supplies `NOW()` for both `created_at` and `updated_at`
+on INSERT, without depending on table defaults. Conflicting ward/week updates
+preserve `created_at` and refresh `updated_at`. This applies to regular bulk
+finalization and recovery, and requires rebuilding the worker image. No table
+alteration or report regeneration is required. Retry recovery with `--write`
+after rebuilding; `--skip-not-null` remains optional for other rejected rows.
+
+
+## UI report exports without report-table writes (2026-09-09)
+
+The bulk request now carries a strict `persist_reports` boolean, defaulting
+to true for existing scheduled/CLI requests and older jobs. The frontend
+submission adapter always sends false for UI test generation. The control API
+stores the flag with the job; finalization checks it before report-table
+UPSERTs while always producing the ZIP. Job tracking and private artifact
+retention are unchanged. See [implementation and validation](../../docs/08-implementation/weekly-reporter-ui-zip-only.md).
+
+
+## Weekly Report ZIP retention (2026-09-09)
+
+The weekly report worker retains the five latest published terminal ZIPs per
+shared store, ordered by completion timestamp and job ID. A generic job-store
+query selects older terminal exports; a job-scoped artifact deletion removes
+only `weekly-reports.zip`, then clears the download URI/checksum without
+changing outcome or completion time. Terminal failed-job orphan ZIPs are also
+removed. Active jobs, report-table rows, and report recovery artifacts remain.
+Cleanup runs after execution and every 30 seconds in the worker admission loop,
+including startup. Failures are retried without failing generation. The manual
+`cleanup-exports` command shares this policy. No schema migration is needed.
+See [implementation and verification limits](../../docs/08-implementation/weekly-report-five-zip-retention.md).
+
+
+## Selected-ward ZIP-only tests (2026-09-09)
+
+The bulk request optionally carries up to 25 unique positive `ward_ids`. It
+normalizes the report count to the selection and requires report persistence
+to be disabled and the cursor omitted. The UI exposes this as an optional
+comma-separated field. The worker uses the existing source explicit-ID path,
+validates result membership, and resumes only unstaged IDs. Missing IDs become
+source warnings without substituting other wards. Existing bulk discovery,
+scheduled storage, job tracking, and five-ZIP retention remain in place.
+See [selected-ward implementation and validation](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md).

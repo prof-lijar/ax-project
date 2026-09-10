@@ -128,4 +128,4 @@ def test_crontab_runs_every_monday_at_three_in_container_time() -> None:
         / "crontab"
     ).read_text()
 
-    assert any(line.startswith("0 3 * * 1 ") for line in crontab.splitlines())
+    assert any(line.startswith("0 1 * * 1 ") for line in crontab.splitlines())

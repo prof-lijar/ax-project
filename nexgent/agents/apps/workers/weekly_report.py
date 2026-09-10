@@ -30,6 +30,7 @@ from workflows.weekly_report.bulk import (
     WeeklyReportBulkRunner,
     WeeklyReportStorageSettings,
     bulk_job_status,
+    cleanup_weekly_report_exports,
 )
 from workflows.weekly_report.tools import get_weekly_report_source_repository
 
@@ -108,6 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     export = commands.add_parser("export", help="copy a completed private ZIP")
     export.add_argument("job_id", type=UUID)
     export.add_argument("destination", type=Path)
+    commands.add_parser("cleanup-exports", help="keep only the five latest ZIP exports")
     commands.add_parser("cleanup", help="expire artifacts past their retention time")
     capacity = commands.add_parser("capacity", help="evaluate an observed load run")
     capacity.add_argument("--reports", type=int, required=True)
@@ -156,6 +158,10 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             destination.chmod(0o600)
             print(destination)
             return 0
+        if args.command == "cleanup-exports":
+            removed = await cleanup_weekly_report_exports(store, artifacts)
+            print(json.dumps({"deleted_zip_count": removed, "retained_zip_limit": 5}))
+            return 0
         if args.command == "cleanup":
             expired = await store.expire_jobs(utc_now())
             for job_id in expired:
@@ -190,6 +196,7 @@ async def run_command(args: argparse.Namespace, settings: WorkerSettings) -> int
             active_job_limit=settings.active_job_limit,
             item_concurrency=settings.concurrency,
             poll_seconds=settings.poll_seconds,
+            artifacts=artifacts,
         )
         return 0
     finally:
@@ -205,6 +212,7 @@ async def _serve_jobs(
     active_job_limit: int,
     item_concurrency: int,
     poll_seconds: float,
+    artifacts: LocalBulkArtifactStore | None = None,
 ) -> None:
     """Admit distinct jobs concurrently and recover each task independently."""
 
@@ -214,9 +222,16 @@ async def _serve_jobs(
     retry_not_before: dict[UUID, float] = {}
     logger = logging.getLogger(__name__)
     loop = asyncio.get_running_loop()
+    next_cleanup = 0.0
     try:
         while True:
             now = loop.time()
+            if artifacts is not None and now >= next_cleanup:
+                try:
+                    await cleanup_weekly_report_exports(store, artifacts)
+                except Exception:
+                    logger.exception("weekly report ZIP cleanup failed; will retry")
+                next_cleanup = loop.time() + 30
             retry_not_before = {
                 job_id: retry_at
                 for job_id, retry_at in retry_not_before.items()

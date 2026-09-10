@@ -1,5 +1,15 @@
 # Documentation map
 
+- [Weekly Reporter Selected-Ward Tests](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
+
+- [Weekly Report Five-ZIP Retention](../../docs/08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
+
+- [Weekly Reporter UI ZIP-only tests](../../docs/08-implementation/weekly-reporter-ui-zip-only.md): per-job persistence control for browser test exports.
+
+- [Weekly-report database recovery](weekly-report-database-recovery.md): verified artifact recovery without regeneration, including explicit insert timestamps, opt-in NOT NULL row skipping, and partial-write results.
+
+- [Weekly-report bulk polling reliability](weekly-report-bulk-polling.md): serialized browser polling, request deadlines, failure backoff, and regression validation.
+
 - [AX agents architecture](ax-agents-architecture.md): authoritative modular
   package, runtime, API, security, deployment, and verification design.
 - [AX agents module guide](ax-agents-module-guide.md): responsibilities,
@@ -99,7 +109,7 @@
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   bulk-only `/agents/1` execution with durable 1–10,000 report job control,
   throughput monitoring, cancellation, verified export, an explicitly
-  non-persistent schedule editor preview, and a fixed Monday 03:00
+  non-persistent schedule editor preview, and a fixed Monday 01:00
   `Asia/Seoul` cron service that idempotently submits the previous completed
   week through the private bulk API; the former Quick Preview and Chat
   execution paths are retired.

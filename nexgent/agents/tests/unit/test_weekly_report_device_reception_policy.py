@@ -1,5 +1,7 @@
 from datetime import date
+from itertools import combinations
 
+import pytest
 from ax_contracts import WardWeeklyMetrics
 
 from workflows.weekly_report.domain.derived_metrics import build_fact_package
@@ -9,6 +11,7 @@ from workflows.weekly_report.domain.device_reception_policy import (
     device_reception_status_label,
     device_reception_summary,
 )
+from workflows.weekly_report.source.calculator import _device_reception_counts
 from workflows.weekly_report.tools.source_repository import _mock_delta, _snapshot
 
 
@@ -58,7 +61,7 @@ def test_device_position_uses_exact_approved_copy() -> None:
     assert assessment.status == "CAUTION"
     assert assessment.kind == "device_position"
     assert device_reception_description(assessment) == (
-        "일부 생활 정보가 평소보다 적게 들어온 날이 있었어요. "
+        "일부 생활 정보가 적게 들어온 날이 있었어요. "
         "기기가 제자리에 있는지 확인해 주세요."
     )
     assert device_reception_summary(assessment) == "위치 확인"
@@ -157,3 +160,54 @@ def test_device_reception_fact_package_includes_significant_power_count() -> Non
     assert "기기 상태" in facts.allowed_topics
     assert "기기 전원 확인이 필요해요" in facts.suggested_actions
     assert not any("3회" in fact for fact in facts.facts)
+
+
+@pytest.mark.parametrize(
+    "low_fields",
+    list(
+        combinations(
+            (
+                "temperature_count",
+                "humidity_count",
+                "light_count",
+                "remote_control_count",
+                "movement_count",
+            ),
+            2,
+        )
+    ),
+)
+@pytest.mark.parametrize("low_value", [0, 1, 10])
+@pytest.mark.parametrize("occurrences", [1, 2, 3])
+def test_low_counts_reach_weekly_position_caution(
+    low_fields: tuple[str, str],
+    low_value: int,
+    occurrences: int,
+) -> None:
+    normal = dict.fromkeys(
+        (
+            "temperature_count",
+            "humidity_count",
+            "light_count",
+            "remote_control_count",
+            "movement_count",
+        ),
+        20,
+    )
+    low = normal | dict.fromkeys(low_fields, low_value)
+    counts = _device_reception_counts(
+        [low] * occurrences + [normal] * (7 - occurrences)
+    )
+    snapshot = _snapshot(101, current=True).model_copy(update=counts)
+    assessment = assess_device_reception(snapshot)
+
+    assert assessment.position_count == occurrences
+    assert assessment.other_count == 0
+    assert assessment.status == ("CAUTION" if occurrences >= 2 else "GOOD")
+    if occurrences >= 2:
+        assert assessment.kind == "device_position"
+        assert device_reception_description(assessment) == (
+            "일부 생활 정보가 적게 들어온 날이 있었어요. "
+            "기기가 제자리에 있는지 확인해 주세요."
+        )
+        assert device_reception_summary(assessment) == "위치 확인"

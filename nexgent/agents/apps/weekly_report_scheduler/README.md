@@ -1,7 +1,7 @@
 # Weekly Report Scheduler
 
 This private cron service submits one durable Weekly Reporter bulk job every
-Monday at 03:00 in `Asia/Seoul`. The cron expression is `0 3 * * 1`.
+Monday at 01:00 in `Asia/Seoul`. The cron expression is `0 1 * * 1`.
 
 Each run targets the previous fully completed Monday-through-Sunday period and
 requests up to 10,000 reports by default. The idempotency key is derived from
@@ -25,7 +25,11 @@ The schedule and reporting timezone are intentionally fixed to
 `Asia/Seoul`. Changing the schedule requires a reviewed crontab and image
 deployment; the current frontend controls do not reconfigure this service.
 
-The stable-server Compose stack starts this service by default and is the
+The production Compose stack (`../compose.prod.yaml`) starts this service by
+default and is the
 single automatic schedule owner. Development and agent-only Compose stacks
 place it behind the `scheduled` profile to avoid duplicate weekly generation
 when multiple environments share the same source, writer, or model systems.
+
+Keep the `scheduled` profile disabled in development when production scheduling
+is enabled. Production should be the only automatic schedule owner.

@@ -22,10 +22,11 @@ import {
   type WeeklyReportBulkJobStatus,
   type WeeklyReportBulkRuntime
 } from "../../shared/api/weeklyReportBulkClient";
+import { pollWeeklyReportJob } from "./pollWeeklyReportJob";
 import styles from "./BulkWeeklyReportPanel.module.css";
 
 const TIMEZONES = ["Asia/Seoul", "UTC", "America/New_York", "Europe/London"];
-const DEFAULT_BULK_REPORT_LIMIT = 1_000;
+const DEFAULT_BULK_REPORT_LIMIT = 10_000;
 
 export function BulkWeeklyReportPanel() {
   const [weekStart, setWeekStart] = useState(getLatestMonday);
@@ -33,6 +34,7 @@ export function BulkWeeklyReportPanel() {
   const [reportLimitInput, setReportLimitInput] = useState(
     String(DEFAULT_BULK_REPORT_LIMIT)
   );
+  const [wardIdsInput, setWardIdsInput] = useState("");
   const [approved, setApproved] = useState(false);
   const [runtime, setRuntime] = useState<WeeklyReportBulkRuntime | null>(null);
   const [jobs, setJobs] = useState<WeeklyReportBulkJobStatus[]>([]);
@@ -43,7 +45,8 @@ export function BulkWeeklyReportPanel() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const reportLimit = parseBulkReportLimit(reportLimitInput);
+  const wardIds = parseWardIds(wardIdsInput);
+  const reportLimit = wardIds === null ? null : wardIds?.length ?? parseBulkReportLimit(reportLimitInput);
   const weekStartIsValid = isMonday(weekStart);
   const activeJobId =
     selectedJob && !isBulkJobTerminal(selectedJob.status)
@@ -81,9 +84,11 @@ export function BulkWeeklyReportPanel() {
   }, []);
 
   useEffect(() => {
+    if (!activeJobId) return;
+    setNow(Date.now());
     const interval = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [activeJobId]);
 
   useEffect(() => {
     const stopActiveJob = () => {
@@ -100,34 +105,18 @@ export function BulkWeeklyReportPanel() {
   }, []);
 
   useEffect(() => {
-    if (!selectedJob || isBulkJobTerminal(selectedJob.status)) {
-      return;
-    }
-    const controller = new AbortController();
-    const refresh = async () => {
-      try {
-        const updated = await weeklyReportBulkClient.status(selectedJob.job_id, {
-          signal: controller.signal
-        });
+    if (!activeJobId) return;
+    return pollWeeklyReportJob(
+      activeJobId,
+      (runtime?.status_poll_seconds ?? 2) * 1_000,
+      (updated) => {
         setSelectedJob(updated);
         setJobs((current) => upsertJob(current, updated));
         setErrorMessage(null);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setErrorMessage(errorText(error));
-        }
-      }
-    };
-    const interval = window.setInterval(
-      () => void refresh(),
-      (runtime?.status_poll_seconds ?? 2) * 1_000
+      },
+      (error) => setErrorMessage(errorText(error))
     );
-    void refresh();
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-    };
-  }, [runtime?.status_poll_seconds, selectedJob?.job_id, selectedJob?.status]);
+  }, [runtime?.status_poll_seconds, activeJobId]);
 
   const metrics = useMemo(
     () => calculateBulkProgress(selectedJob, now),
@@ -139,7 +128,10 @@ export function BulkWeeklyReportPanel() {
       reportLimit === null ||
       !weekStartIsValid ||
       !approved ||
-      isSubmitting
+      isSubmitting ||
+      isLoading ||
+      !runtime ||
+      activeJobId !== null
     ) {
       return;
     }
@@ -150,6 +142,7 @@ export function BulkWeeklyReportPanel() {
         week_start: weekStart,
         timezone,
         max_reports: reportLimit,
+        ...(wardIds ? { ward_ids: wardIds } : {}),
         idempotency_key: createIdempotencyKey(weekStart)
       });
       setSelectedJob(job);
@@ -211,8 +204,8 @@ export function BulkWeeklyReportPanel() {
         <div className={styles.identity}>
           <span aria-hidden><ServerCog size={20} /></span>
           <div>
-            <strong>Durable bulk run</strong>
-            <small>Resumable · up to 10,000 reports</small>
+            <strong>Test report generation</strong>
+            <small>ZIP export only · reports are not saved to the database</small>
           </div>
         </div>
 
@@ -249,6 +242,28 @@ export function BulkWeeklyReportPanel() {
           </label>
 
           <label>
+            <span>Ward IDs (optional)</span>
+            <div className={styles.fieldControl}>
+              <Users size={16} aria-hidden />
+              <input
+                type="text"
+                placeholder="23, 45, 56"
+                value={wardIdsInput}
+                onChange={(event) => setWardIdsInput(event.target.value)}
+                aria-invalid={wardIds === null}
+                aria-describedby="ward-ids-help"
+              />
+            </div>
+            <small id="ward-ids-help" className={wardIds === null ? styles.fieldError : undefined}>
+              {wardIds === null
+                ? "Enter up to 25 unique positive whole-number IDs, separated by commas."
+                : wardIds
+                  ? `Only these ${wardIds.length} wards will be requested. ZIP only; no report database save.`
+                  : "Leave blank for automatic selection, or enter up to 25 ward IDs."}
+            </small>
+          </label>
+
+          <label>
             <span>Maximum reports</span>
             <div className={styles.fieldControl}>
               <Files size={16} aria-hidden />
@@ -258,7 +273,8 @@ export function BulkWeeklyReportPanel() {
                 max="10000"
                 step="1"
                 inputMode="numeric"
-                value={reportLimitInput}
+                disabled={wardIdsInput.trim().length > 0}
+                value={wardIds ? String(wardIds.length) : reportLimitInput}
                 onChange={(event) => setReportLimitInput(event.target.value)}
                 aria-invalid={reportLimit === null}
               />
@@ -266,7 +282,11 @@ export function BulkWeeklyReportPanel() {
             <small className={reportLimit === null ? styles.fieldError : undefined}>
               {reportLimit === null
                 ? "Enter a whole number from 1 to 10,000."
-                : `${formatNumber(reportLimit)} eligible wards at most.`}
+                : wardIds
+                  ? "Report count matches the selected ward IDs."
+                : reportLimit === 10_000
+                  ? "All available reports, up to 10,000 per run."
+                  : `${formatNumber(reportLimit)} eligible wards at most.`}
             </small>
           </label>
 
@@ -293,6 +313,7 @@ export function BulkWeeklyReportPanel() {
             type="submit"
             disabled={
               isSubmitting ||
+              activeJobId !== null ||
               isLoading ||
               runtime === null ||
               reportLimit === null ||
@@ -300,10 +321,8 @@ export function BulkWeeklyReportPanel() {
               !approved
             }
           >
-            {isSubmitting ? <LoaderCircle className={styles.spin} size={17} /> : <Play size={17} />}
-            {reportLimit === null
-              ? "Choose report count"
-              : `Start ${formatNumber(reportLimit)}-report job`}
+            {isSubmitting || activeJobId ? <LoaderCircle className={styles.spin} size={17} aria-hidden /> : <Play size={17} aria-hidden />}
+            {isSubmitting ? "Starting…" : activeJobId ? "Running…" : "Run Agent"}
           </button>
         </form>
 
@@ -344,7 +363,7 @@ export function BulkWeeklyReportPanel() {
           <section className={styles.currentJob} aria-live="polite">
             <div className={styles.jobHeading}>
               <div>
-                <span className={styles.statusBadge}>{statusLabel(selectedJob.status)}</span>
+                <RunStatusIndicator job={selectedJob} />
                 <h2>{formatNumber(selectedJob.max_reports)}-report run</h2>
                 <code>{selectedJob.job_id}</code>
               </div>
@@ -379,6 +398,7 @@ export function BulkWeeklyReportPanel() {
             <div
               className={styles.progressTrack}
               role="progressbar"
+              aria-label="Report generation progress"
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={metrics.percent}
@@ -415,10 +435,17 @@ export function BulkWeeklyReportPanel() {
               />
             </div>
 
-            {selectedJob.warnings.length > 0 && (
-              <p className={styles.warningCount}>
-                {selectedJob.warnings.length} safe source warning(s) recorded in the job.
+            {selectedJob.selection_truncated && (
+              <p className={styles.warningCount} role="status">
+                The report limit was reached. More wards are available; this run does not include all reports.
               </p>
+            )}
+
+            {selectedJob.warnings.length > 0 && (
+              <details className={styles.warningCount}>
+                <summary>{selectedJob.warnings.length} source warning(s)</summary>
+                <ul>{selectedJob.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+              </details>
             )}
           </section>
         ) : (
@@ -435,7 +462,7 @@ export function BulkWeeklyReportPanel() {
         <section className={styles.recentJobs}>
           <div className={styles.sectionHeading}>
             <strong>Recent runs</strong>
-            <small>Newest first · stored in the job database</small>
+            <small>Newest first · only the latest 5 ZIP files are kept</small>
           </div>
           {jobs.length === 0 ? (
             <p>No durable runs yet.</p>
@@ -446,6 +473,7 @@ export function BulkWeeklyReportPanel() {
                   className={job.job_id === selectedJob?.job_id ? styles.jobSelected : styles.jobRow}
                   type="button"
                   key={job.job_id}
+                  disabled={isSubmitting || (activeJobId !== null && job.job_id !== activeJobId)}
                   onClick={() => setSelectedJob(job)}
                 >
                   <span>
@@ -466,6 +494,21 @@ export function BulkWeeklyReportPanel() {
   );
 }
 
+export function RunStatusIndicator({ job }: { job: WeeklyReportBulkJobStatus }) {
+  const active = !isBulkJobTerminal(job.status);
+  const successful = job.status === "completed";
+  const Icon = active ? LoaderCircle : successful ? CheckCircle2 : AlertTriangle;
+  return (
+    <span
+      className={`${styles.statusBadge} ${active ? styles.statusActive : successful ? "" : styles.statusWarning}`}
+      role="status"
+    >
+      <Icon size={13} className={active ? styles.spin : undefined} aria-hidden />
+      {statusLabel(job.status)}
+    </span>
+  );
+}
+
 function Metric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return <div><dt>{icon}{label}</dt><dd>{value}</dd></div>;
 }
@@ -479,6 +522,15 @@ function PipelineStep({ complete, active, label }: { complete: boolean; active: 
       <span>{label}</span>
     </div>
   );
+}
+
+export function parseWardIds(value: string): number[] | undefined | null {
+  if (!value.trim()) return undefined;
+  const tokens = value.split(",").map((token) => token.trim());
+  if (tokens.length > 25 || tokens.some((token) => !/^\d+$/.test(token))) return null;
+  const ids = tokens.map(Number);
+  if (ids.some((id) => !Number.isSafeInteger(id) || id < 1) || new Set(ids).size !== ids.length) return null;
+  return ids.sort((a, b) => a - b);
 }
 
 export function parseBulkReportLimit(value: string): number | null {
@@ -499,14 +551,17 @@ export function calculateBulkProgress(
     return { percent: 0, elapsedSeconds: 0, reportsPerSecond: 0, etaLabel: "—" };
   }
   const startedAt = Date.parse(job.created_at);
-  const elapsedSeconds = Number.isFinite(startedAt)
-    ? Math.max(0, Math.floor((now - startedAt) / 1_000))
+  const endedAt = isBulkJobTerminal(job.status) ? Date.parse(job.updated_at) : now;
+  const elapsedSeconds = Number.isFinite(startedAt) && Number.isFinite(endedAt)
+    ? Math.max(0, Math.floor((endedAt - startedAt) / 1_000))
     : 0;
   const terminalCount = job.completed_count + job.failed_count;
-  const target = Math.max(job.max_reports, 1);
-  const percent = Math.min(100, Math.floor((terminalCount / target) * 100));
+  const target = job.producer_done ? job.discovered_count : job.max_reports;
+  const percent = target > 0
+    ? Math.min(100, Math.floor((terminalCount / target) * 100))
+    : job.status === "completed" ? 100 : 0;
   const reportsPerSecond = elapsedSeconds > 0 ? terminalCount / elapsedSeconds : 0;
-  const remaining = Math.max(0, job.max_reports - terminalCount);
+  const remaining = Math.max(0, target - terminalCount);
   const etaSeconds = reportsPerSecond > 0 ? remaining / reportsPerSecond : null;
   return {
     percent,

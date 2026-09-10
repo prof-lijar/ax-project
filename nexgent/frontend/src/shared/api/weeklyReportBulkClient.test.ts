@@ -49,6 +49,7 @@ describe("weeklyReportBulkClient", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/weekly-report-bulk-api/v1/weekly-report/bulk/jobs");
     expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toMatchObject({ persist_reports: false });
   });
 
   it("loads runtime limits and recent jobs", async () => {
@@ -106,5 +107,52 @@ describe("weeklyReportBulkClient", () => {
     expect(isBulkJobTerminal("running")).toBe(false);
     expect(isBulkJobTerminal("completed")).toBe(true);
     expect(isBulkJobTerminal("cancelled")).toBe(true);
+  });
+});
+
+it("aborts a stalled status request after 30 seconds", async () => {
+  vi.useFakeTimers();
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal("fetch", vi.fn((_url, init) => new Promise((_resolve, reject) => {
+    signal = init.signal;
+    signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+  })));
+  try {
+    const result = expect(weeklyReportBulkClient.status(job.job_id)).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(30_000);
+    await result;
+    expect(signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("preserves caller cancellation and clears the deadline", async () => {
+  vi.useFakeTimers();
+  const controller = new AbortController();
+  vi.stubGlobal("fetch", vi.fn((_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+  })));
+  try {
+    const result = expect(weeklyReportBulkClient.status(job.job_id, { signal: controller.signal })).rejects.toThrow("cancelled");
+    controller.abort();
+    await result;
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+
+it("submits selected wards with report persistence disabled", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(job), { status: 201 }));
+  vi.stubGlobal("fetch", fetchMock);
+  await weeklyReportBulkClient.submit({
+    week_start: "2026-08-31", timezone: "Asia/Seoul", max_reports: 3,
+    ward_ids: [23, 45, 56], idempotency_key: "selected-ward-ui-test"
+  });
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+    ward_ids: [23, 45, 56], max_reports: 3, persist_reports: false
   });
 });

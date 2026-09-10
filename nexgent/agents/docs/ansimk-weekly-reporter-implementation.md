@@ -4,13 +4,23 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Update: selective database recovery (2026-09-08)
+
+Operator recovery supports `--write --skip-not-null`: bounded batch savepoints
+fall back to individual row savepoints only for NOT NULL violations (23502).
+Valid rows commit together; other errors still roll back. Output identifies
+skipped ward IDs and columns; exit code 2 indicates skipped rows, including
+all-skipped runs. Regular bulk finalization retains atomic storage. See
+[database recovery](weekly-report-database-recovery.md) for commands and status
+semantics. No source/model calls or queue status changes occur in recovery.
+
 ## Update: Fixed Weekly Cron Scheduler
 
 Date: 2026-09-04
 
 `apps/weekly_report_scheduler` is a new independently deployable cron service.
 Its container timezone is fixed to `Asia/Seoul`, and BusyBox cron executes the
-submission command with `0 3 * * 1`: every Monday at 03:00 KST. The command
+submission command with `0 1 * * 1`: every Monday at 01:00 KST. The command
 selects the previous fully completed Monday-through-Sunday reporting period
 and submits a maximum 10,000-report job to the existing private bulk API.
 
@@ -21,7 +31,8 @@ week. Structured logs contain only content-free attempt, status, week, and job
 metadata. The scheduler has no database credentials and neither generates
 reports nor calls the model itself.
 
-The stable-server Compose topology starts the service by default and owns the
+The production Compose topology (`../compose.prod.yaml`) starts the service
+by default and owns the
 automatic schedule. Agent-only and complete development topologies include it
 behind the opt-in `scheduled` profile, preventing duplicate weekly generation
 when environments share external source, writer, or model systems. Every
@@ -391,12 +402,13 @@ without delegating interpretation to the model.
 
 The device-data reception section evaluates `temperature_count`,
 `humidity_count`, `light_count`, `remote_control_count`, and `movement_count`
-on each raw row. Non-null/non-zero temperature, humidity, light, and movement
-values form a good occurrence; remote-control count does not participate in
-GOOD classification. Null temperature, humidity, and light counts form a power
-occurrence regardless of activity values. After good and power rows are
-excluded, any row with at least two of all five values from 0 through 10 forms
-a position occurrence. The categories are mutually exclusive.
+on each raw device-day row. At least two numeric counts in 0–10 inclusive
+form a position occurrence, including rows with all-positive counts. Check
+position first, then power (null temperature, humidity, and light), then good
+(non-null/non-zero temperature, humidity, light, and movement). Null values
+do not count as low. These categories remain mutually exclusive. The position
+result uses `일부 생활 정보가 적게 들어온 날이 있었어요. 기기가 제자리에 있는지 확인해 주세요.`
+and tag `위치 확인`.
 Two repeated occurrences produce `CAUTION`, with power taking weekly
 precedence; otherwise one or more good occurrences produce `GOOD`. Good
 occurrences do not need to equal every source row. Unmatched rows are rendered
@@ -631,3 +643,21 @@ displays this limitation before submission.
   deployment release gates.
 - Deployment checks require Ruff, pytest, LangGraph validation, Compose config,
   and a live readiness check with operator-supplied secrets.
+
+
+## Database recovery — 2026-09-08
+
+Completed bulk artifacts can be recovered into the report table using the
+[operator recovery command](weekly-report-database-recovery.md). It verifies
+terminal job state, expected count, checksums, ward identity, and reporting week
+before using the existing transactional upsert; it does not regenerate reports.
+
+## Explicit insert timestamps (2026-09-08)
+
+Production recovery identified `created_at` NOT NULL failures for all 6,437
+reports. The writer now supplies `NOW()` for both `created_at` and `updated_at`
+on INSERT, without depending on table defaults. Conflicting ward/week updates
+preserve `created_at` and refresh `updated_at`. This applies to regular bulk
+finalization and recovery, and requires rebuilding the worker image. No table
+alteration or report regeneration is required. Retry recovery with `--write`
+after rebuilding; `--skip-not-null` remains optional for other rejected rows.

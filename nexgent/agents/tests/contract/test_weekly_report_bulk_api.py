@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
 import httpx
 import pytest
@@ -21,7 +22,8 @@ def build_service(tmp_path):
 
 @pytest.mark.asyncio
 async def test_bulk_api_submits_lists_reads_and_cancels_jobs(tmp_path) -> None:
-    app = create_app(service=build_service(tmp_path))
+    service = build_service(tmp_path)
+    app = create_app(service=service)
     async with app.router.lifespan_context(app), httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -39,11 +41,14 @@ async def test_bulk_api_submits_lists_reads_and_cancels_jobs(tmp_path) -> None:
                 "week_start": "2026-08-03",
                 "max_reports": 10_000,
                 "idempotency_key": "ui-weekly-2026-08-03",
+                "persist_reports": False,
             },
         )
         assert created.status_code == 201
         job = created.json()
         assert job["status"] == "pending"
+        stored = await service.store.get_job(UUID(job["job_id"]))
+        assert stored.request["persist_reports"] is False
         assert job["max_reports"] == 10_000
 
         listed = (await client.get("/v1/weekly-report/bulk/jobs")).json()
@@ -118,3 +123,41 @@ async def test_bulk_api_downloads_only_verified_terminal_export(tmp_path) -> Non
     assert response.headers["content-length"] != "0"
     assert "attachment;" in response.headers["content-disposition"]
     assert response.content.startswith(b"PK")
+
+
+@pytest.mark.asyncio
+async def test_bulk_api_preserves_explicit_ward_selection(tmp_path):
+    service = build_service(tmp_path)
+    app = create_app(service=service)
+    async with app.router.lifespan_context(app), httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post("/v1/weekly-report/bulk/jobs", json={
+            "week_start": "2026-08-31", "ward_ids": [56, 23, 45],
+            "persist_reports": False, "idempotency_key": "selected-ward-api",
+        })
+    assert response.status_code == 201
+    assert response.json()["max_reports"] == 3
+    job = await service.store.get_job(UUID(response.json()["job_id"]))
+    assert job.request["ward_ids"] == [23, 45, 56]
+    assert job.request["persist_reports"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("override", [
+    {"ward_ids": []}, {"ward_ids": [23, 23]}, {"ward_ids": [0]},
+    {"ward_ids": [-1]}, {"ward_ids": [1.5]}, {"ward_ids": [True]},
+    {"ward_ids": ["23"]}, {"ward_ids": list(range(1, 27))},
+    {"persist_reports": True}, {"cursor": "unexpected-cursor"},
+])
+async def test_bulk_api_rejects_invalid_selected_ward_requests(tmp_path, override):
+    app = create_app(service=build_service(tmp_path))
+    async with app.router.lifespan_context(app), httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post("/v1/weekly-report/bulk/jobs", json={
+            "week_start": "2026-08-31", "ward_ids": [23],
+            "persist_reports": False, "idempotency_key": "invalid-selected-ward-api",
+            **override,
+        })
+    assert response.status_code == 422

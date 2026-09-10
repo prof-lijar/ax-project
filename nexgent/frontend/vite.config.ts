@@ -11,6 +11,12 @@ export default defineConfig(({ mode }) => {
     env.VITE_WEEKLY_REPORT_BULK_API_BASE_URL?.trim() ||
     "http://127.0.0.1:8090";
   const serviceProxy = {
+    "/scout-api": {
+      target: env.SCOUT_PROXY_TARGET?.trim() || "http://127.0.0.1:8091",
+      changeOrigin: true,
+      proxyTimeout: 240_000,
+      rewrite: (path: string) => path.replace(/^\/scout-api/, "")
+    },
     "/agent-server": {
       target: agentServerTarget,
       changeOrigin: true,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from app.agent import create_scout_agent
 from app.config import ScoutSettings
 from app.models import ScoutRunFailure, ScoutRunRequest, ScoutRunResponse
 from app.services.persistence import ArtifactStore
+from app.services.slack import SlackNotifier
 from app.tools.scout import ScoutWebToolset
 from app.tools.web import DdgsSearchProvider, FetchLimits, WebFetcher
 
@@ -142,6 +144,7 @@ class ScoutRunService:
         settings: ScoutSettings | None = None,
         utc_now: UtcNow | None = None,
         monotonic: Monotonic | None = None,
+        slack_notifier: SlackNotifier | None = None,
     ) -> None:
         self._artifact_store = artifact_store
         self._agent_executor = agent_executor
@@ -149,6 +152,7 @@ class ScoutRunService:
         self._settings = settings
         self._utc_now = utc_now or _utc_now
         self._monotonic = monotonic or time.monotonic
+        self._slack_notifier = slack_notifier
 
     def is_ready(self) -> bool:
         return self._settings is None or self._settings.is_model_ready
@@ -208,7 +212,7 @@ class ScoutRunService:
                 successful_fetch_count=len(fetched_urls),
                 **terminal_metadata,
             )
-            return ScoutRunResponse(
+            result = ScoutRunResponse(
                 run_id=run_id,
                 status="success",
                 started_at=started_at,
@@ -250,6 +254,22 @@ class ScoutRunService:
                     await toolset.aclose()
                 except Exception:
                     pass
+
+        # Research has already succeeded. Delivery or audit failures must not
+        # turn the persisted successful run into an HTTP 502 or trigger research again.
+        if self._slack_notifier is not None:
+            try:
+                delivery = await self._slack_notifier.send(result)
+                self._artifact_store.append_event(
+                    run_id,
+                    f"slack_delivery_{delivery.status}",
+                    reason=delivery.reason,
+                )
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "Slack delivery or audit failed", extra={"run_id": run_id}
+                )
+        return result
 
 
 def _duration_ms(started: float, completed: float) -> int:
@@ -295,4 +315,5 @@ def build_default_run_service(settings: ScoutSettings) -> ScoutRunService:
         agent_executor=AdkResearchAgentExecutor(settings),
         toolset_factory=create_toolset,
         settings=settings,
+        slack_notifier=SlackNotifier(settings.slack_bot_token, settings.slack_channel_id),
     )

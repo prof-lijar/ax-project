@@ -130,6 +130,19 @@ class LocalBulkArtifactStore:
             raise ArtifactStoreError("bulk artifact is unavailable") from exc
         return StoredArtifact(path.as_uri(), digest.hexdigest(), size)
 
+    def remove_file(self, job_id: UUID, name: str) -> bool:
+        """Remove one job-root artifact; missing files are safe to retry."""
+        if not name or Path(name).name != name or name in {".", ".."}:
+            raise ArtifactStoreError("bulk artifact name is invalid")
+        path = self._job_directory(job_id, create=False) / name
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            raise ArtifactStoreError("bulk artifact could not be removed") from exc
+        return True
+
     def remove_job(self, job_id: UUID) -> None:
         directory = self._job_directory(job_id, create=False)
         if not directory.exists():

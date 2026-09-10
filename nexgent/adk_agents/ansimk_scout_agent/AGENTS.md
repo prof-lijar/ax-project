@@ -20,8 +20,13 @@ layout. It intentionally does not expose the generated raw ADK or A2A routes.
   successfully fetched URL tracking, and safe execution events.
 - Deterministic application services own report validation, report persistence,
   and execution logging. Persistence must never become an Agent tool.
-- Do not add Docker, browser automation, recursive crawling, scheduling, or
-  notifications in this POC. The standalone Scheduling API remains a separate
+- Slack delivery is an optional deterministic application service after a
+  successful persisted run, authorized on 2026-09-07. It must not become an
+  Agent tool, and delivery failures must not fail completed research.
+- Docker packaging and Nexgent Compose integration are authorized as of
+  2026-09-07. Keep secrets out of images and reports in persistent storage.
+- Do not add browser automation, recursive crawling, or internal
+  scheduling in this POC. The standalone Scheduling API remains a separate
   component; it is not a Scout Agent tool or an internal Scout scheduling
   implementation.
 

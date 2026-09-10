@@ -85,14 +85,13 @@ copy. Missing count-based other/position display values render as `0`; their
 structured raw values remain null and do not affect deterministic status
 calculation.
 
-The device-data reception section evaluates the approved count columns on each
-raw device-day row. Rows whose temperature, humidity, light, and movement
-counts are all non-null and non-zero are good; remote-control count does not
-participate in GOOD classification. A row whose temperature, humidity, and
-light counts are all null is a power occurrence regardless of its activity
-values. After excluding good and power, at least two of all five values in
-0–10 is a position occurrence. These row categories are mutually exclusive. Two repeated power or
-position occurrences produce the matching `CAUTION` result with power-first
+The device-data reception section evaluates the approved count columns
+on each raw device-day row. At least two numeric counts in 0–10 inclusive
+form a position occurrence, including rows with all-positive counts. Check
+position first, then power (null temperature, humidity, and light), then good
+(non-null/non-zero temperature, humidity, light, and movement). Null values
+do not count as low. These categories remain mutually exclusive.
+Two repeated power or position occurrences produce the matching `CAUTION` result with power-first
 weekly precedence. Otherwise one or more good occurrences produce `GOOD`; good
 occurrences do not need to equal every source row. Rows matching none of the
 three row rules appear as the neutral `기타 수신 패턴` count and do not override
@@ -291,3 +290,8 @@ information. It is intentionally not a graph node, so a LangGraph retry cannot
 silently duplicate a Slack side effect. Setup and the manual end-to-end command
 are documented in
 `docs/slack-outbound-messaging.md`.
+
+Operator recovery can skip reports rejected by NOT NULL constraints with
+`--write --skip-not-null`; regular bulk finalization remains atomic. See
+[recovery instructions](../../docs/weekly-report-database-recovery.md) for
+counts, exit codes, and deployment commands.

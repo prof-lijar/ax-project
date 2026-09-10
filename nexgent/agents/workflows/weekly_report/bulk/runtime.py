@@ -155,6 +155,10 @@ class WeeklyReportBulkRunner:
         finally:
             cancellation.cancel()
             await asyncio.gather(cancellation, return_exceptions=True)
+        try:
+            await cleanup_weekly_report_exports(self.store, self.artifacts)
+        except Exception:  # noqa: BLE001 - retention must not fail generated reports
+            _LOG.exception("weekly report ZIP cleanup failed; retry on worker sweep")
         status = await bulk_job_status(self.store, job_id)
         _LOG.info(
             "bulk job finished",
@@ -195,10 +199,19 @@ class WeeklyReportBulkRunner:
                 )
                 await self.store.request_cancel(job_id)
                 return
+            selected_ids = None
+            if request.ward_ids is not None:
+                selected_ids = [
+                    ward_id for ward_id in request.ward_ids
+                    if f"{ward_id:020d}" not in seen_item_keys
+                ]
+                if not selected_ids:
+                    break
             page_request = WeeklyReportRequest(
                 week_start=request.week_start,
                 timezone=request.timezone,
-                cursor=cursor,
+                cursor=None if selected_ids is not None else cursor,
+                ward_ids=selected_ids,
                 limit=min(100, request.max_reports - discovered),
             )
             source = WeeklyReportSourceResponse.model_validate(
@@ -242,6 +255,14 @@ class WeeklyReportBulkRunner:
             warnings.extend(
                 f"ward-{item.ward_id}:{item.reason}" for item in source.skipped
             )
+            if selected_ids is not None:
+                returned_ids = {item.ward_id for item in source.items}
+                skipped_ids = {item.ward_id for item in source.skipped}
+                warnings.extend(
+                    f"ward-{ward_id}:requested_ward_unavailable"
+                    for ward_id in selected_ids
+                    if ward_id not in returned_ids | skipped_ids
+                )
             next_cursor = source.next_cursor
             await self.store.stage_items(job_id, staged, next_cursor)
             discovered += len(staged)
@@ -467,17 +488,18 @@ class WeeklyReportBulkRunner:
         export = await asyncio.to_thread(
             self.artifacts.write_file, job_id, "weekly-reports.zip", write_zip
         )
-        stored_count = await self.report_store.upsert_reports(
-            self._storage_records(completed, read_report)
-        )
-        if stored_count != len(completed):
-            raise WeeklyReportStorageUnavailable(
-                "weekly-report storage count did not match generated reports"
+        if request.persist_reports:
+            stored_count = await self.report_store.upsert_reports(
+                self._storage_records(completed, read_report)
             )
-        _LOG.info(
-            "weekly reports stored",
-            extra={"job_id": str(job_id), "stored_count": stored_count},
-        )
+            if stored_count != len(completed):
+                raise WeeklyReportStorageUnavailable(
+                    "weekly-report storage count did not match generated reports"
+                )
+            _LOG.info(
+                "weekly reports stored",
+                extra={"job_id": str(job_id), "stored_count": stored_count},
+            )
         await self.store.finish_job(
             job_id,
             status=terminal_status,
@@ -516,10 +538,30 @@ class WeeklyReportBulkRunner:
         ):
             raise ValueError("weekly-report source returned a mismatched period")
         ward_ids = [item.ward_id for item in source.items]
+        if request.ward_ids is not None and (
+            not set(ward_ids).issubset(request.ward_ids)
+            or source.next_cursor is not None
+        ):
+            raise ValueError("weekly-report source returned wards outside the selection")
         if ward_ids != sorted(set(ward_ids)):
             raise ValueError(
                 "weekly-report source returned duplicate or unordered wards"
             )
+
+
+async def cleanup_weekly_report_exports(
+    store: BulkJobStore, artifacts: LocalBulkArtifactStore
+) -> int:
+    """Keep the five newest terminal exports; preserve reports and active work."""
+    removed = 0
+    for job in await store.export_cleanup_jobs(WEEKLY_REPORT_BULK_JOB_KIND, keep=5):
+        # Delete first: failed filesystem operations remain eligible for retry.
+        removed += await asyncio.to_thread(
+            artifacts.remove_file, job.job_id, "weekly-reports.zip"
+        )
+        if job.export_uri is not None:
+            await store.clear_export(job.job_id, job.export_uri)
+    return removed
 
 
 async def bulk_job_status(
