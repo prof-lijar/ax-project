@@ -92,3 +92,45 @@ request directory is removed in all three cases.
   messages.
 - Malware scanning and durable attachment audit storage are not included in
   this transient local-development implementation.
+
+
+## Update: Enable vision for the verified vLLM model
+
+Date: 2026-09-10
+
+The project-root `nexgent/.env` now sets `OPENAI_SUPPORTS_VISION=true`.
+This file contains only the non-secret capability setting. Both development
+and production Compose files interpolate it into the Agent Server environment;
+that explicit environment entry overrides `agents/.env`. Shell environment
+variables or an explicitly selected Compose environment file can override the
+project-root default.
+
+Validation:
+
+- A direct authenticated request to the configured `gemma-4-31b` vLLM endpoint
+  returned HTTP 200 and correctly described a generated PNG's red, green, blue,
+  and yellow quadrants. The request used image_url content and
+  `chat_template_kwargs: {"enable_thinking": false}`; no model credentials were
+  printed or committed.
+- Both `docker compose --env-file .env -f compose.yaml config --quiet` and
+  `docker compose --env-file .env -f compose.prod.yaml config --quiet` exited 0.
+  The restricted environment emitted stream-fd warnings. Parsed configuration
+  output independently confirmed the Agent Server vision value is `true` in
+  both stacks without printing other environment values.
+- No frontend, backend API, or model-client code changed in this configuration
+  update. The direct model probe does not establish full application upload
+  success.
+
+Apply to the development service from `nexgent/`:
+
+```bash
+docker compose up -d --no-deps --force-recreate agent-server
+docker compose exec agent-server printenv OPENAI_SUPPORTS_VISION
+```
+
+For production, use `docker compose -f compose.prod.yaml` for both commands.
+A plain restart does not load changed container environment values. Service
+recreation was not performed as part of this commit task. Remaining verification:
+run the commands above, confirm `true`, then upload a PNG with a description
+question at `/chat` and verify the streamed answer. The direct probe's
+thinking option was not added to the application request configuration.
