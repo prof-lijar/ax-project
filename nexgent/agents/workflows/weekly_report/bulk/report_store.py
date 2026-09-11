@@ -11,6 +11,9 @@ from typing import Protocol
 import asyncpg
 from ax_contracts import WardWeeklyReport
 
+from workflows.weekly_report.sync.outbox import enqueue
+from workflows.weekly_report.sync.settings import production_enabled
+
 _UPSERT_REPORT_SQL = """
 INSERT INTO ansimk.resources_ward_weekly_report (
     ward_id,
@@ -48,6 +51,7 @@ class WeeklyReportStorageSettings:
     batch_size: int = 500
     connect_timeout_seconds: float = 10.0
     command_timeout_seconds: float = 120.0
+    enqueue_sync: bool = False
 
     def __post_init__(self) -> None:
         if not self.dsn:
@@ -78,6 +82,7 @@ class WeeklyReportStorageSettings:
         values = os.environ if environ is None else environ
         try:
             return cls(
+                enqueue_sync=production_enabled(values, "WEEKLY_REPORT_SYNC_ENQUEUE"),
                 dsn=(
                     values.get("WEEKLY_REPORT_STORAGE_DATABASE_DSN", "")
                     or values.get("ANSIMK_DATABASE_DSN", "")
@@ -222,6 +227,10 @@ class AsyncpgWeeklyReportStore:
             raise WeeklyReportStorageUnavailable(
                 "weekly-report PostgreSQL storage pool is not started"
             )
+        if skip_not_null and self.settings.enqueue_sync:
+            raise WeeklyReportStorageConfigurationError(
+                "partial recovery cannot enqueue production delivery; use atomic recovery"
+            )
         stored_count = 0
         skipped: list[WeeklyReportStorageRejection] = []
         pending: list[tuple[object, ...]] = []
@@ -229,6 +238,8 @@ class AsyncpgWeeklyReportStore:
         async def write_batch(connection: asyncpg.Connection) -> int:
             if not skip_not_null:
                 await connection.executemany(_UPSERT_REPORT_SQL, pending)
+                if self.settings.enqueue_sync:
+                    await enqueue(connection, pending)
                 return len(pending)
             try:
                 # Nested transactions are savepoints. Roll back the failed batch

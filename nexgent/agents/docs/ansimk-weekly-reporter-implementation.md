@@ -661,3 +661,27 @@ preserve `created_at` and refresh `updated_at`. This applies to regular bulk
 finalization and recovery, and requires rebuilding the worker image. No table
 alteration or report regeneration is required. Retry recovery with `--write`
 after rebuilding; `--skip-not-null` remains optional for other rejected rows.
+
+## Production database delivery (2026-09-11)
+
+The production-only sync overlay extends local report storage with an atomic
+outbox and runs an independent delivery worker through an SSH forwarder. The
+writer queues immutable report payloads only with explicit production flags;
+UI ZIP-only requests never enqueue. Production inserts use the ward/week key,
+accept identical content, and block different content without replacing it.
+Local acknowledgements follow target commit; leases and bounded retries recover
+interruptions. Per-report delivery status is separate from bulk generation.
+See [production delivery](weekly-report-production-sync.md) for the local schema
+migration, verified identity/TLS prerequisites, commands, tests, and activation.
+
+Sync `check` and `dry-run` verify database/schema readiness without writes,
+including when no deliveries exist. Missing outbox columns, target tables, or
+the required immediate ward/week unique index fail the check.
+
+
+Operator historical migration is available through
+[`playground/weekly-reporter/migrate.sh`](../playground/weekly-reporter/README.md).
+It previews by default and explicitly updates all matching ward/week reports
+with `--write`, preserving production `created_at` and refreshing `updated_at`
+even for identical content, independently of conservative outbox delivery. Live migration
+is pending credentials and connection verification.

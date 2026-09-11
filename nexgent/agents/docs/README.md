@@ -123,3 +123,12 @@
   separate stable server for tested releases, with isolated ports and volumes,
   immutable web/backend containers, and the currently shared application-level
   Agent Server implementation.
+
+- [Weekly-report production delivery](weekly-report-production-sync.md):
+  transactional local outbox, production-only sync worker, private SSH transport,
+  conservative conflict handling, retries, read-only readiness checks, deployment,
+  and recovery.
+
+- [Historical weekly-report migration](../playground/weekly-reporter/README.md):
+  manual local-to-production preview and atomic ward/week upserts, updating all
+  matches while preserving production creation timestamps.
