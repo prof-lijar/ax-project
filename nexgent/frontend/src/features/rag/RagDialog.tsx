@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-/** Keeps deletion confirmation isolated from the surrounding workspace. */
+/** Isolates modal drawers and confirmations, preserving keyboard focus. */
 export function RagDialog({
   children,
   pending,
@@ -22,7 +22,10 @@ export function RagDialog({
     const root = document.getElementById("root");
     const wasInert = root?.hasAttribute("inert");
     root?.setAttribute("inert", "");
-    container.current?.querySelector<HTMLInputElement>("input")?.focus();
+    const initial = container.current?.querySelector<HTMLElement>(
+      'input:not([type="file"]):not(:disabled), textarea:not(:disabled), button:not(:disabled)'
+    );
+    (initial ?? container.current)?.focus();
     function keydown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -30,15 +33,23 @@ export function RagDialog({
       }
       if (event.key !== "Tab") return;
       const focusable = container.current?.querySelectorAll<HTMLElement>(
-        "input:not(:disabled), button:not(:disabled)"
+        'input:not([type="file"]):not(:disabled), textarea:not(:disabled), button:not(:disabled), summary, a[href], select:not(:disabled)'
       );
       if (!focusable?.length) {
         event.preventDefault();
         container.current?.focus();
         return;
       }
-      const first = focusable[0],
-        last = focusable[focusable.length - 1];
+      const visible = Array.from(focusable).filter(
+        (element) => element.getClientRects().length > 0
+      );
+      const first = visible[0],
+        last = visible[visible.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        container.current?.focus();
+        return;
+      }
       if (
         !container.current?.contains(document.activeElement) ||
         (!event.shiftKey && document.activeElement === last)

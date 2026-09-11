@@ -53,6 +53,8 @@ This documentation set defines the product architecture before implementation be
 - [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): bulk-only `/agents/1` job submission, throughput monitoring, cancellation, verified export, fixed Monday 03:00 KST cron submission with a local-only schedule editor preview, private runtime path, and the retired Quick Preview boundary.
 - [RAG UI Integration](../RAG/docs/rag-ui-integration.md): sidebar and `/rag` page integration, direct browser-to-RAG API routing, RAG Chat validation, and the systemd-managed host RAG lifecycle.
 
+- [RAG Knowledge Search Workspace](08-implementation/rag-knowledge-search-workspace.md): search-first RAG redesign, source drawer, passage inspector, API boundaries, and validation.
+
 ## Stage-One Definition
 
 Stage one does not need full autonomous execution. It needs the durable product foundation:

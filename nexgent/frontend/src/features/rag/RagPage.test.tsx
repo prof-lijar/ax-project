@@ -14,7 +14,6 @@ import {
   isSupportedRagFile,
   parseMaxChunkTokens,
   parseTopK,
-  RagTabs,
   RagDataPanel,
   SearchPanel
 } from "./RagPage";
@@ -251,24 +250,7 @@ describe("RAG data administration UI", () => {
   });
 });
 
-describe("RagPage tabs and search UI", () => {
-  it("marks Embedding initially and Search when selected", () => {
-    const select = vi.fn();
-    const embedding = renderToStaticMarkup(
-      <RagTabs activeTab="embedding" onSelect={select} />
-    );
-    const search = renderToStaticMarkup(
-      <RagTabs activeTab="search" onSelect={select} />
-    );
-
-    expect(embedding).toContain('id="rag-embedding-tab"');
-    expect(embedding).toContain('aria-selected="true"');
-    expect(search).toContain('id="rag-search-tab"');
-    expect(search.indexOf('id="rag-search-tab"')).toBeLessThan(
-      search.lastIndexOf('aria-selected="true"')
-    );
-  });
-
+describe("RagPage search workspace", () => {
   it("uses top_k 5 by default and validates whole numbers from 1 to 20", () => {
     const markup = searchMarkup();
 
@@ -318,15 +300,15 @@ describe("RagPage tabs and search UI", () => {
       }
     });
 
-    expect(markup.indexOf("Rank 1")).toBeLessThan(markup.indexOf("Rank 2"));
+    expect(markup.indexOf(">01<")).toBeLessThan(markup.indexOf(">02<"));
     expect(markup.indexOf("첫 줄\n둘째 줄")).toBeLessThan(
       markup.indexOf("다음 결과")
     );
-    expect(markup).toContain("Cosine similarity: 0.8");
-    expect(markup).toContain("Source: project.md");
-    expect(markup).toContain("Type: File");
-    expect(markup).toContain("Chunk: 3");
-    expect(markup).toContain("Source unavailable — legacy row");
+    expect(markup).toContain("<dt>Cosine similarity</dt><dd>0.8</dd>");
+    expect(markup).toContain("project.md");
+    expect(markup).toContain("File · Passage 3");
+    expect(markup).toContain("<dt>Passage</dt><dd>3</dd>");
+    expect(markup).toContain("Source details unavailable");
     expect(markup).not.toContain("confidence");
     expect(markup).not.toContain("accuracy");
     expect(markup).toContain("Server processing time");
@@ -551,7 +533,7 @@ describe("Knowledge workflow refinements", () => {
     });
     expect(markup).toContain("previous query");
     expect(markup).toContain("1 matching passage");
-    expect(markup).toContain("<summary>Match details</summary>");
+    expect(markup).toContain("<summary>Source details</summary>");
   });
   it("prevents deletion while another knowledge operation is pending", () => {
     const panel = ragDataPanel({

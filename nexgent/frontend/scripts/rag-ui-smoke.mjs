@@ -145,7 +145,10 @@ await page.route("**/rag/v1/**", async (route) => {
 });
 const add = () =>
   page.getByRole("button", { name: "Add to knowledge", exact: true });
-const tab = (name) => page.getByRole("tab", { name, exact: true });
+const openSource = () =>
+  page.getByRole("button", { name: "Add source", exact: true }).click();
+const closeSource = () =>
+  page.getByRole("button", { name: "Close add source" }).click();
 const search = () => page.getByRole("button", { name: "Search", exact: true });
 const query = () =>
   page.getByRole("searchbox", {
@@ -167,60 +170,64 @@ try {
     .getByLabel("Knowledge summary")
     .getByText("80", { exact: true })
     .waitFor();
+  await noOverflow();
+  assert.equal(await page.getByRole("tab").count(), 0);
+  await page.screenshot({
+    path: `${artifacts}/knowledge-search-empty-1440.png`
+  });
+  await openSource();
   assert.equal(await add().isDisabled(), true);
+  await page.screenshot({ path: `${artifacts}/knowledge-add-1440.png` });
+  await page.keyboard.press("Escape");
   assert.equal(
     await page
-      .getByRole("button", { name: "Empty database", exact: true })
-      .isVisible(),
-    false
+      .getByRole("button", { name: "Add source", exact: true })
+      .evaluate((el) => el === document.activeElement),
+    true
   );
-  await noOverflow();
-  await page.screenshot({ path: `${artifacts}/knowledge-add-1440.png` });
-  await tab("Add knowledge").focus();
-  await page.keyboard.press("ArrowRight");
-  await page.getByRole("heading", { name: "Find useful passages" }).waitFor();
   assert.equal(
-    await tab("Search knowledge").evaluate(
-      (element) => element === document.activeElement
-    ),
+    await page.getByRole("spinbutton", { name: "Passage limit" }).isVisible(),
     true
   );
   await query().fill("handover");
-  await page.getByRole("spinbutton", { name: "Top results" }).fill("0");
+  await page.getByRole("spinbutton", { name: "Passage limit" }).fill("0");
   assert.equal(await search().isDisabled(), true);
-  await page.getByRole("spinbutton", { name: "Top results" }).fill("5");
+  await page.getByRole("spinbutton", { name: "Passage limit" }).fill("5");
   await query().press("Enter");
   await page
     .getByRole("heading", { name: "team-handbook.pdf", exact: true })
     .waitFor();
   assert.equal(requests.at(-1).query, "handover");
   assert.equal(requests.at(-1).topK, "5");
+  await page.getByText("Source details", { exact: true }).click();
+  await page.getByText("0.87", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /02 Source unavailable/ }).click();
   await page
-    .getByRole("button", { name: "Read full passage", exact: true })
-    .click();
-  assert.equal(
-    await page
-      .getByRole("button", { name: "Show less", exact: true })
-      .getAttribute("aria-expanded"),
-    "true"
-  );
-  await page.getByRole("button", { name: "Show less", exact: true }).click();
-  await page.getByText("Match details", { exact: true }).first().click();
-  await page.getByText("Cosine similarity: 0.87", { exact: true }).waitFor();
+    .getByRole("region", { name: "Selected passage" })
+    .getByRole("heading", { name: "Source unavailable" })
+    .waitFor();
+  await page.getByRole("button", { name: /01 team-handbook/ }).click();
   await query().fill("unsent draft");
   await page.getByText("Results for “handover”", { exact: true }).waitFor();
   for (const width of [1440, 1024, 760]) {
     await page.setViewportSize({ width, height: 1000 });
     await noOverflow();
+    await page
+      .getByRole("heading", { name: "Knowledge", exact: true })
+      .scrollIntoViewIfNeeded();
     await page.screenshot({
       path: `${artifacts}/knowledge-search-${width}.png`
     });
   }
+  await page.getByRole("button", { name: "Back to results" }).click();
+  await page.getByRole("button", { name: /02 Source unavailable/ }).click();
+  await page.getByRole("button", { name: "Back to results" }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
   emptySearch = true;
   await search().click();
   await page.getByText("No matching passages", { exact: true }).waitFor();
   emptySearch = false;
-  await tab("Add knowledge").click();
+  await openSource();
   await page.locator('input[type="file"]').setInputFiles({
     name: "image.png",
     mimeType: "image/png",
@@ -265,15 +272,27 @@ try {
   await page
     .getByRole("spinbutton", { name: "Maximum tokens per chunk" })
     .fill("500");
-  await page.getByText("Manage knowledge", { exact: true }).click();
+  await closeSource();
+  await openSource();
+  assert.equal(
+    await page
+      .getByRole("textbox", { name: "Source text", exact: true })
+      .inputValue(),
+    "Review the handover notes."
+  );
+  // Collapsed option controls must not participate in the focus loop.
+  await page.getByRole("button", { name: "Close add source" }).focus();
+  await page.keyboard.press("Shift+Tab");
+  assert.equal(
+    await add().evaluate((el) => el === document.activeElement),
+    true
+  );
   await add().click();
   await page
     .getByRole("button", { name: "Adding to knowledge…", exact: true })
     .waitFor();
   assert.equal(
-    await page
-      .getByRole("button", { name: "Empty database", exact: true })
-      .isDisabled(),
+    await page.getByRole("button", { name: "Close add source" }).isDisabled(),
     true
   );
   await page.getByText("Source added to knowledge", { exact: true }).waitFor();
@@ -295,7 +314,7 @@ try {
     .getByRole("button", { name: "Search your knowledge", exact: true })
     .click();
   await page.getByRole("heading", { name: "Find useful passages" }).waitFor();
-  await tab("Add knowledge").click();
+  await openSource();
   failEmbed = true;
   await add().click();
   await page
@@ -308,6 +327,8 @@ try {
       .inputValue(),
     "Review the handover notes."
   );
+  await closeSource();
+  await page.getByRole("button", { name: "Manage", exact: true }).click();
   // All deletion is mocked. Check exact confirmation, Escape, focus and failure recovery.
   const openDelete = page.getByRole("button", {
     name: "Empty database",
@@ -364,6 +385,8 @@ try {
   await dialog.waitFor({ state: "hidden" });
   await page.getByText(/RAG database emptied successfully/).waitFor();
   assert.equal(await page.locator("#root").getAttribute("inert"), null);
+  await page.getByRole("button", { name: "Add your first source" }).waitFor();
+  await noOverflow();
   assert.deepEqual(errors, [], "No runtime errors");
   console.log(`RAG UI checks passed. Screenshots: ${artifacts}`);
 } catch (error) {

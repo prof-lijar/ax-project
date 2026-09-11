@@ -1,4 +1,7 @@
 import {
+  Plus,
+  ArrowLeft,
+  Settings2,
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
@@ -35,13 +38,13 @@ import {
 import { RagDialog } from "./RagDialog";
 import styles from "./RagPage.module.css";
 
-export type RagTab = "embedding" | "search";
 export type RagInputMode = "file" | "text";
 
 export const RAG_FILE_ACCEPT = ".txt,.md,.docx,.pdf";
 
 export function RagPage() {
-  const [activeTab, setActiveTab] = useState<RagTab>("embedding");
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const [inputMode, setInputMode] = useState<RagInputMode>("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -202,56 +205,113 @@ export function RagPage() {
         </div>
       </header>
 
-      <RagTabs activeTab={activeTab} onSelect={setActiveTab} />
-
-      <div className={styles.workspace}>
-        {activeTab === "embedding" ? (
-          <EmbeddingPanel
-            inputMode={inputMode}
-            selectedFile={selectedFile}
-            fileInputRef={fileInputRef}
-            fileError={fileError}
-            directText={directText}
-            directTextTitle={directTextTitle}
-            maxChunkTokensInput={maxChunkTokensInput}
-            maxChunkTokensIsValid={maxChunkTokens !== null}
-            isPending={embedMutation.isPending}
-            result={embedMutation.data ?? null}
-            apiError={embedMutation.error}
-            onInputModeChange={changeInputMode}
-            onChooseFile={() => fileInputRef.current?.click()}
-            onFileChange={selectFile}
-            onDirectTextChange={(value) => {
-              embedMutation.reset();
-              setDirectText(value);
-            }}
-            onDirectTextTitleChange={(value) => {
-              embedMutation.reset();
-              setDirectTextTitle(value);
-            }}
-            onMaxChunkTokensChange={changeMaxChunkTokens}
-            onSearchKnowledge={() => setActiveTab("search")}
-            onSubmit={submitEmbed}
-          />
-        ) : (
-          <SearchPanel
-            query={query}
-            topKInput={topKInput}
-            topKIsValid={topK !== null}
-            isPending={searchMutation.isPending}
-            apiError={searchMutation.error}
-            results={searchMutation.data?.results ?? null}
-            timing={searchMutation.data?.timing_ms ?? null}
-            searchedQuery={searchMutation.variables?.query}
-            onQueryChange={setQuery}
-            onTopKChange={setTopKInput}
-            onSubmit={submitSearch}
-          />
-        )}
+      <div className={styles.commandBar}>
+        <span>Shared knowledge for your co-workers</span>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            aria-expanded={manageOpen}
+            aria-controls="rag-management"
+            onClick={() => setManageOpen(!manageOpen)}
+          >
+            <Settings2 size={16} /> Manage
+          </button>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => setSourceOpen(true)}
+            disabled={deleteDataMutation.isPending}
+          >
+            <Plus size={17} /> Add source
+          </button>
+        </div>
       </div>
 
-      <details className={styles.management}>
-        <summary>Manage knowledge</summary>
+      <div className={styles.workspace}>
+        {sourceOpen && (
+          <RagDialog
+            pending={embedMutation.isPending}
+            onCancel={() => setSourceOpen(false)}
+          >
+            <div className={styles.drawerBackdrop}>
+              <section
+                className={styles.sourceDrawer}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="rag-embedding-heading"
+              >
+                <div className={styles.drawerTop}>
+                  <span>KNOWLEDGE / ADD SOURCE</span>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    aria-label="Close add source"
+                    disabled={embedMutation.isPending}
+                    onClick={() => setSourceOpen(false)}
+                  >
+                    <X size={19} />
+                  </button>
+                </div>
+                <EmbeddingPanel
+                  inputMode={inputMode}
+                  selectedFile={selectedFile}
+                  fileInputRef={fileInputRef}
+                  fileError={fileError}
+                  directText={directText}
+                  directTextTitle={directTextTitle}
+                  maxChunkTokensInput={maxChunkTokensInput}
+                  maxChunkTokensIsValid={maxChunkTokens !== null}
+                  isPending={embedMutation.isPending}
+                  result={embedMutation.data ?? null}
+                  apiError={embedMutation.error}
+                  onInputModeChange={changeInputMode}
+                  onChooseFile={() => fileInputRef.current?.click()}
+                  onFileChange={selectFile}
+                  onDirectTextChange={(value) => {
+                    embedMutation.reset();
+                    setDirectText(value);
+                  }}
+                  onDirectTextTitleChange={(value) => {
+                    embedMutation.reset();
+                    setDirectTextTitle(value);
+                  }}
+                  onMaxChunkTokensChange={changeMaxChunkTokens}
+                  onSearchKnowledge={() => {
+                    setSourceOpen(false);
+                    requestAnimationFrame(() =>
+                      document.getElementById("rag-query")?.focus()
+                    );
+                  }}
+                  onSubmit={submitEmbed}
+                />
+              </section>
+            </div>
+          </RagDialog>
+        )}
+        <SearchPanel
+          emptyKnowledge={dataStatsQuery.data?.embedding_rows === 0}
+          onAddSource={() => setSourceOpen(true)}
+          query={query}
+          topKInput={topKInput}
+          topKIsValid={topK !== null}
+          isPending={searchMutation.isPending}
+          operationsBlocked={deleteDataMutation.isPending}
+          apiError={searchMutation.error}
+          results={searchMutation.data?.results ?? null}
+          timing={searchMutation.data?.timing_ms ?? null}
+          searchedQuery={searchMutation.variables?.query}
+          onQueryChange={setQuery}
+          onTopKChange={setTopKInput}
+          onSubmit={submitSearch}
+        />
+      </div>
+
+      <div
+        id="rag-management"
+        hidden={!manageOpen}
+        className={styles.management}
+      >
         <RagDataPanel
           operationsPending={
             embedMutation.isPending || searchMutation.isPending
@@ -269,7 +329,7 @@ export function RagPage() {
           onCancel={cancelDeleteConfirmation}
           onDelete={deleteAllRagData}
         />
-      </details>
+      </div>
     </section>
   );
 }
@@ -453,64 +513,6 @@ export function isDeleteConfirmationValid(value: string) {
   return value === "DELETE";
 }
 
-export function RagTabs({
-  activeTab,
-  onSelect
-}: {
-  activeTab: RagTab;
-  onSelect: (tab: RagTab) => void;
-}) {
-  return (
-    <div
-      className={styles.tabs}
-      role="tablist"
-      aria-label="Knowledge tasks"
-      onKeyDown={(event) => {
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
-          return;
-        event.preventDefault();
-        const next: RagTab =
-          event.key === "Home"
-            ? "embedding"
-            : event.key === "End"
-              ? "search"
-              : activeTab === "embedding"
-                ? "search"
-                : "embedding";
-        onSelect(next);
-        document.getElementById(`rag-${next}-tab`)?.focus();
-      }}
-    >
-      <button
-        id="rag-embedding-tab"
-        className={activeTab === "embedding" ? styles.tabActive : styles.tab}
-        type="button"
-        role="tab"
-        tabIndex={activeTab === "embedding" ? 0 : -1}
-        aria-selected={activeTab === "embedding"}
-        aria-controls="rag-embedding-panel"
-        onClick={() => onSelect("embedding")}
-      >
-        <Upload size={16} />
-        Add knowledge
-      </button>
-      <button
-        id="rag-search-tab"
-        className={activeTab === "search" ? styles.tabActive : styles.tab}
-        type="button"
-        role="tab"
-        tabIndex={activeTab === "search" ? 0 : -1}
-        aria-selected={activeTab === "search"}
-        aria-controls="rag-search-panel"
-        onClick={() => onSelect("search")}
-      >
-        <Search size={16} />
-        Search knowledge
-      </button>
-    </div>
-  );
-}
-
 export function EmbeddingPanel({
   inputMode,
   selectedFile,
@@ -562,11 +564,10 @@ export function EmbeddingPanel({
     <section
       id="rag-embedding-panel"
       className={styles.panel}
-      role="tabpanel"
-      aria-labelledby="rag-embedding-tab"
+      aria-labelledby="rag-embedding-heading"
     >
       <div className={styles.panelHeading}>
-        <h2>Add to your knowledge</h2>
+        <h2 id="rag-embedding-heading">Add to your knowledge</h2>
         <p>Upload a document or paste text to make it searchable.</p>
       </div>
 
@@ -905,6 +906,9 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 export function SearchPanel({
+  emptyKnowledge = false,
+  onAddSource,
+  operationsBlocked = false,
   query,
   topKInput,
   topKIsValid,
@@ -917,6 +921,9 @@ export function SearchPanel({
   onTopKChange,
   onSubmit
 }: {
+  emptyKnowledge?: boolean;
+  onAddSource?: () => void;
+  operationsBlocked?: boolean;
   query: string;
   topKInput: string;
   topKIsValid: boolean;
@@ -935,21 +942,18 @@ export function SearchPanel({
     <section
       id="rag-search-panel"
       className={styles.panel}
-      role="tabpanel"
-      aria-labelledby="rag-search-tab"
+      aria-labelledby="rag-search-heading"
     >
       <div className={styles.panelHeading}>
-        <h2>Find useful passages</h2>
-        <p>
-          Search your source material. Results are passages from documents, not
-          generated answers.
-        </p>
+        <h2 id="rag-search-heading">Find useful passages</h2>
+        <p>Find the source material behind your team’s work.</p>
       </div>
 
       <form className={styles.searchForm} onSubmit={onSubmit}>
         <label className={styles.queryField}>
           <span>What are you looking for?</span>
           <input
+            id="rag-query"
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
@@ -959,7 +963,7 @@ export function SearchPanel({
         </label>
 
         <label className={styles.topKField}>
-          <span>Top results</span>
+          <span>Passage limit</span>
           <input
             type="number"
             min={MIN_RAG_TOP_K}
@@ -983,7 +987,9 @@ export function SearchPanel({
         <button
           className={styles.primaryButton}
           type="submit"
-          disabled={!query.trim() || !topKIsValid || isPending}
+          disabled={
+            !query.trim() || !topKIsValid || isPending || operationsBlocked
+          }
         >
           <Search size={17} />
           {isPending ? "Searching…" : "Search"}
@@ -1005,8 +1011,29 @@ export function SearchPanel({
       {results === null && !isPending && !error && (
         <div className={styles.empty}>
           <Search size={25} aria-hidden />
-          <strong>Find a passage worth using</strong>
-          <p>Search the documents and text you have added to knowledge.</p>
+          <strong>
+            {emptyKnowledge
+              ? "Build your team’s knowledge"
+              : "Find a passage worth using"}
+          </strong>
+          <p>
+            {emptyKnowledge
+              ? "Add a document or paste notes to give your co-workers a shared source of knowledge."
+              : "Enter a question or topic to explore passages from your sources."}
+          </p>
+          {emptyKnowledge && onAddSource && (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={onAddSource}
+              disabled={operationsBlocked}
+            >
+              <Plus size={16} /> Add your first source
+            </button>
+          )}
+          <small>
+            Search retrieves source passages. Answers are available in Chat.
+          </small>
         </div>
       )}
       {results !== null && !isPending && !error && (
@@ -1025,13 +1052,7 @@ export function SearchPanel({
               <p>Try different words or add a source that covers this topic.</p>
             </div>
           ) : (
-            results.map((result, index) => (
-              <SearchResultCard
-                key={`${result.id}-${index}`}
-                result={result}
-                rank={index + 1}
-              />
-            ))
+            <PassageWorkspace key={searchedQuery} results={results} />
           )}
         </div>
       )}
@@ -1039,53 +1060,130 @@ export function SearchPanel({
   );
 }
 
-export function SearchResultCard({
-  result,
-  rank
-}: {
-  result: RagSearchResult;
-  rank: number;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const isLong = result.context.length > 600;
+export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [reading, setReading] = useState(false);
+  const selected = results[selectedIndex] ?? results[0];
+  const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const readerRef = useRef<HTMLElement>(null);
+  if (!selected) return null;
   return (
-    <article className={styles.result}>
-      <header className={styles.resultHeader}>
-        <span className={styles.resultRank}>Rank {rank}</span>
-        <h3>{result.source_name || "Source unavailable"}</h3>
-        {result.source_type && (
-          <span>{sourceTypeLabel(result.source_type)}</span>
-        )}
-      </header>
-      <p
-        className={`${styles.context} ${isLong && !expanded ? styles.contextCollapsed : ""}`}
+    <div
+      className={`${styles.passageWorkspace} ${reading ? styles.reading : ""}`}
+    >
+      <ol className={styles.passageList} aria-label="Matching passages">
+        {results.map((result, index) => (
+          <li key={`${result.id}-${index}`}>
+            <button
+              type="button"
+              ref={(node) => {
+                rowRefs.current[index] = node;
+              }}
+              className={`${styles.passageRow} ${index === selectedIndex ? styles.selectedPassage : ""}`}
+              aria-pressed={index === selectedIndex}
+              aria-controls="rag-passage-reader"
+              onClick={() => {
+                setSelectedIndex(index);
+                setReading(true);
+                requestAnimationFrame(() => {
+                  readerRef.current?.focus({ preventScroll: true });
+                  if (readerRef.current) readerRef.current.scrollTop = 0;
+                });
+              }}
+            >
+              <span className={styles.passageRank}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className={styles.passageExcerpt}>
+                <strong>{result.source_name || "Source unavailable"}</strong>
+                <span>{result.context}</span>
+                <small>
+                  {sourceTypeLabel(result.source_type)}
+                  {result.chunk_index !== null
+                    ? ` · Passage ${result.chunk_index}`
+                    : " · Source details unavailable"}
+                </small>
+              </span>
+              <ArrowRight size={15} aria-hidden />
+            </button>
+          </li>
+        ))}
+      </ol>
+      <section
+        id="rag-passage-reader"
+        ref={readerRef}
+        tabIndex={-1}
+        className={styles.passageReader}
+        aria-label="Selected passage"
       >
-        {result.context}
-      </p>
-      {isLong && (
         <button
           type="button"
-          className={styles.linkButton}
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
+          className={styles.backToResults}
+          onClick={() => {
+            setReading(false);
+            requestAnimationFrame(() =>
+              rowRefs.current[selectedIndex]?.focus()
+            );
+          }}
         >
-          {expanded ? "Show less" : "Read full passage"}
+          <ArrowLeft size={16} /> Back to results
         </button>
-      )}
-      <details className={styles.matchDetails}>
-        <summary>Match details</summary>
-        <span>Cosine similarity: {result.similarity}</span>
-        {result.document_id === null ? (
-          <p>Source unavailable — legacy row</p>
-        ) : (
-          <p className={styles.provenance}>
-            <span>Source: {result.source_name}</span>
-            <span>Type: {sourceTypeLabel(result.source_type)}</span>
-            <span>Chunk: {result.chunk_index}</span>
-          </p>
-        )}
-      </details>
-    </article>
+        <div className={styles.readerEyebrow}>
+          <FileText size={16} /> SOURCE PASSAGE · {selectedIndex + 1} OF{" "}
+          {results.length}
+        </div>
+        <h3>{selected.source_name || "Source unavailable"}</h3>
+        <p className={styles.readerSubtitle}>
+          {sourceTypeLabel(selected.source_type)}
+          {selected.chunk_index !== null
+            ? ` · Passage ${selected.chunk_index}`
+            : ""}
+        </p>
+        <p className={styles.readerContext}>{selected.context}</p>
+        <details className={styles.matchDetails}>
+          <summary>Source details</summary>
+          <dl className={styles.sourceDetails}>
+            <Metric
+              label="Cosine similarity"
+              value={String(selected.similarity)}
+            />
+            <Metric
+              label="Document ID"
+              value={
+                selected.document_id === null
+                  ? "Unavailable — legacy row"
+                  : String(selected.document_id)
+              }
+            />
+            <Metric
+              label="Passage"
+              value={
+                selected.chunk_index === null
+                  ? "Unavailable"
+                  : String(selected.chunk_index)
+              }
+            />
+            <Metric
+              label="Tokens"
+              value={
+                selected.token_count === null
+                  ? "Unavailable"
+                  : String(selected.token_count)
+              }
+            />
+            <Metric
+              label="Source characters"
+              value={
+                selected.source_start_character === null ||
+                selected.source_end_character === null
+                  ? "Unavailable"
+                  : `[${selected.source_start_character}, ${selected.source_end_character})`
+              }
+            />
+          </dl>
+        </details>
+      </section>
+    </div>
   );
 }
 
