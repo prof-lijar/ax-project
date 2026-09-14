@@ -661,3 +661,45 @@ preserve `created_at` and refresh `updated_at`. This applies to regular bulk
 finalization and recovery, and requires rebuilding the worker image. No table
 alteration or report regeneration is required. Retry recovery with `--write`
 after rebuilding; `--skip-not-null` remains optional for other rejected rows.
+
+## Production database delivery (2026-09-11)
+
+The production-only sync overlay extends local report storage with an atomic
+outbox and runs an independent delivery worker through an SSH forwarder. The
+writer queues immutable report payloads only with explicit production flags;
+UI ZIP-only requests never enqueue. Production inserts use the ward/week key,
+accept identical content, and block different content without replacing it.
+Local acknowledgements follow target commit; leases and bounded retries recover
+interruptions. Per-report delivery status is separate from bulk generation.
+See [production delivery](weekly-report-production-sync.md) for the local schema
+migration, verified identity/TLS prerequisites, commands, tests, and activation.
+
+Sync `check` and `dry-run` verify database/schema readiness without writes,
+including when no deliveries exist. Missing outbox columns, target tables, or
+the required immediate ward/week unique index fail the check.
+
+
+Operator historical migration is available through
+[`playground/weekly-reporter/migrate.sh`](../playground/weekly-reporter/README.md).
+It previews by default and explicitly updates all matching ward/week reports
+with `--write`, preserving production `created_at` and refreshing `updated_at`
+even for identical content, independently of conservative outbox delivery. Live migration
+is pending credentials and connection verification.
+
+## Scheduled migration after local storage (2026-09-13)
+
+The fixed Monday 01:00 Asia/Seoul cron now runs the scheduler pipeline. It
+submits the previous completed week, polls until the bulk finalizer confirms
+committed local storage (`completed` or `partial`), and executes
+`playground/weekly-reporter/migrate.sh --write --week-start <reporting Monday>`.
+Failed/cancelled generation does not migrate. A saved success receipt prevents
+repeat migration; failure leaves generation and local storage intact. The
+production Compose file directly supplies runtime credential mounts and
+durable state for the scheduler; no additional migration overlay is needed. See [deployment and recovery](../apps/weekly_report_scheduler/README.md).
+
+Validation: 38 focused scheduler, migration, and deployment tests pass. Changed
+Python files pass Ruff; both Compose configurations, LangGraph configuration,
+the weekly-reporter skill validator, and diff whitespace checks pass. The full
+suite stalls in an unrelated async test and did not complete; whole-tree Ruff
+has two existing import/export ordering violations outside this change. The
+scheduler image has not been built or deployed, and no live migration was run.

@@ -8,9 +8,55 @@ requests up to 10,000 reports by default. The idempotency key is derived from
 that period's Monday, so a retried cron invocation resolves to the existing job
 instead of creating duplicate work.
 
-The service calls only the private bulk control API. It does not access either
-PostgreSQL database, execute reports, call the model, or download generated
-content. Submission retries are bounded and log content-free JSON events.
+After submission, the service polls the private bulk control API every 30
+seconds for up to 24 hours. `completed` and `partial` confirm the finalizer has
+committed generated reports to the local database. It then runs
+`playground/weekly-reporter/migrate.sh --write --week-start YYYY-MM-DD`, using
+the submitted reporting Monday, with a one-hour migration deadline. Partial
+jobs migrate the saved reports; failed, cancelled, cancelling, and expired jobs
+do not migrate. The service does not generate reports or call the model.
+
+For example, Monday 2026-09-14 submits the week starting 2026-09-07, then
+migrates with `--week-start 2026-09-07` after local storage succeeds.
+
+The pipeline serializes invocations with a local file lock, and saves a
+per-week success receipt only after migration exits successfully. A rerun
+with a receipt skips submission and migration. Without a receipt, the same
+idempotency key resumes the existing bulk job. If interrupted after target
+commit but before receipt creation, retrying may repeat the upsert and refresh
+`updated_at`; delivery is not exactly-once. There is no automatic restart
+catch-up or migration retry. Failures log a content-free pipeline event and
+exit nonzero; local reports remain saved.
+
+## Production rollout and recovery
+
+Configure `playground/weekly-reporter/.env` using its README and ensure the
+source DSN resolves to the bulk worker's local report database. The scheduler
+image contains the migration scripts and SSH/Python dependencies; credentials
+are mounted read-only at runtime. Do not combine this whole-week migration
+with the optional outbox delivery overlay for the same reports.
+
+From the `agents` folder, deploy the scheduler with its required secret mounts,
+durable receipts, and SSH known-host volume:
+
+```bash
+docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-scheduler
+```
+
+The production Compose file includes the migration mounts directly. The agent-only
+`compose.yaml` includes them under its existing opt-in `scheduled` profile.
+
+To resume an interrupted or failed migration for a specific reporting week:
+
+```bash
+docker compose -f ../compose.prod.yaml exec weekly-report-scheduler python -m apps.weekly_report_scheduler.pipeline --week-start 2026-09-07
+```
+
+This does not regenerate a retained existing job. Inspect target state before
+retrying an uncertain commit. Retain `/var/lib/ax/weekly-report-scheduler`
+across container replacement; `WEEKLY_REPORT_SCHEDULE_STATE_ROOT` can override
+that directory for local execution. A failed generation job requires the
+existing generation/storage recovery procedure before manual migration.
 
 Configuration:
 

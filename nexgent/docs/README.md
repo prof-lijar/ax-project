@@ -12,6 +12,14 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [RAG Knowledge Workspace Refinement](08-implementation/rag-knowledge-workspace-refinement.md): clearer upload/search flows, source passages, keyboard interactions, deletion safeguards, and validation.
+
+- [Agents Co-worker Catalog Refinement](08-implementation/agents-coworker-catalog-refinement.md): clearer co-worker cards, local search, workspace/Chat actions, responsive states, and validation.
+
+- [Chat Session UI Upgrade](08-implementation/chat-session-ui-upgrade.md): session conversations, composer and transcript UX, background replies across menus, HTTP-compatible copy actions, and validation.
+
+- [Workspace Top Bar Removal](08-implementation/workspace-top-bar-removal.md): shared search/Pause header removal, full-height content layout, Settings placeholder, and validation limits.
+
 - [Weekly Report Ward/Week Uniqueness](08-implementation/weekly-report-ward-week-uniqueness.md): existing update-on-conflict behavior, PostgreSQL regression coverage, and remaining database verification.
 - [Weekly Reporter 01:00 KST Schedule](08-implementation/weekly-reporter-schedule-0100-kst.md): Monday scheduler time change from 03:00 to 01:00 Asia/Seoul and rollout commands.
 
@@ -44,6 +52,8 @@ This documentation set defines the product architecture before implementation be
 - [AnsimK Scout Agent Frontend POC](08-implementation/ansimk-scout-agent-frontend-poc.md): Agents-page workbench, direct browser-to-standalone-Scout API routing, authoritative run timing, exact-origin CORS, validated report rendering, and operational network limits.
 - [Weekly Reporter Frontend Workbench](08-implementation/weekly-reporter-test-route.md): bulk-only `/agents/1` job submission, throughput monitoring, cancellation, verified export, fixed Monday 03:00 KST cron submission with a local-only schedule editor preview, private runtime path, and the retired Quick Preview boundary.
 - [RAG UI Integration](../RAG/docs/rag-ui-integration.md): sidebar and `/rag` page integration, direct browser-to-RAG API routing, RAG Chat validation, and the systemd-managed host RAG lifecycle.
+
+- [RAG Knowledge Search Workspace](08-implementation/rag-knowledge-search-workspace.md): search-first RAG redesign, source drawer, passage inspector, API boundaries, and validation.
 
 ## Stage-One Definition
 

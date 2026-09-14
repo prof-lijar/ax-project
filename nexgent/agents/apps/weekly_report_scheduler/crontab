@@ -1,4 +1,4 @@
 SHELL=/bin/sh
 PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 
-0 1 * * 1 cd /app && /usr/local/bin/python -m apps.weekly_report_scheduler.submit >> /proc/1/fd/1 2>> /proc/1/fd/2
+0 1 * * 1 cd /app && /usr/local/bin/python -m apps.weekly_report_scheduler.pipeline >> /proc/1/fd/1 2>> /proc/1/fd/2

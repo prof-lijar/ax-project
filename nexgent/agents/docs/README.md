@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Weekly reporter schedule and migration](../apps/weekly_report_scheduler/README.md):
+  Monday 01:00 Seoul generation, migration after committed local storage using
+  the reporting Monday, production mounts, receipts, and recovery.
+
 - [Weekly Reporter Selected-Ward Tests](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
 
 - [Weekly Report Five-ZIP Retention](../../docs/08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
@@ -123,3 +127,12 @@
   separate stable server for tested releases, with isolated ports and volumes,
   immutable web/backend containers, and the currently shared application-level
   Agent Server implementation.
+
+- [Weekly-report production delivery](weekly-report-production-sync.md):
+  transactional local outbox, production-only sync worker, private SSH transport,
+  conservative conflict handling, retries, read-only readiness checks, deployment,
+  and recovery.
+
+- [Historical weekly-report migration](../playground/weekly-reporter/README.md):
+  manual local-to-production preview and atomic ward/week upserts, updating all
+  matches while preserving production creation timestamps.

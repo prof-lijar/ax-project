@@ -121,8 +121,7 @@
   color: var(--color-red);
 }
 
-.main,
-.mainChat {
+.main {
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -130,82 +129,7 @@
 }
 
 .main {
-  grid-template-rows: 64px minmax(0, 1fr);
-}
-
-.mainChat {
   grid-template-rows: minmax(0, 1fr);
-}
-
-.commandStrip {
-  display: flex;
-  gap: var(--space-4);
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  padding: 10px 24px;
-  background: var(--color-canvas);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.searchBox {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  min-width: 180px;
-  max-width: 480px;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-soft);
-  background: var(--color-surface);
-}
-
-.searchBox:focus-within {
-  border-color: #458fff;
-}
-
-.searchBox input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  color: var(--color-text);
-  background: transparent;
-  font-size: 14px;
-}
-
-.searchBox input::placeholder {
-  color: var(--color-text-soft);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-width: max-content;
-}
-
-.secondaryButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 40px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.secondaryButton {
-  gap: 8px;
-  padding: 0 16px;
-  border-radius: var(--radius-lg);
-}
-
-.secondaryButton {
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  background: var(--color-surface);
 }
 
 .content {
@@ -261,15 +185,6 @@
 }
 
 @media (max-width: 760px) {
-  .secondaryButton span {
-    display: none;
-  }
-
-  .secondaryButton {
-    width: 40px;
-    padding: 0;
-  }
-
   .content {
     padding: 28px 20px 40px;
   }

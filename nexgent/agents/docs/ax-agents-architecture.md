@@ -1389,3 +1389,62 @@ validates result membership, and resumes only unstaged IDs. Missing IDs become
 source warnings without substituting other wards. Existing bulk discovery,
 scheduled storage, job tracking, and five-ZIP retention remain in place.
 See [selected-ward implementation and validation](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md).
+
+## Production weekly-report delivery (2026-09-11)
+
+An opt-in production Compose overlay adds a deterministic sync worker and an
+SSH forwarding container. The production report writer atomically saves an
+immutable, checksummed delivery payload to a local report-database outbox in
+the same transaction as report storage. Explicit production enqueue flags
+exclude default development writers; ZIP-only UI requests remain non-writing.
+The separate bulk-job database and graph state do not carry delivery payloads.
+
+A leased per-report worker inserts into the private target database, accepts
+identical replays, and blocks conflicting content without overwrites. Bounded
+retries, lease-token acknowledgements, and target-commit-before-local-ack ordering
+recover process and network failures independently of generation. Delivery is
+at-least-once and per-report atomic, not a whole-week distributed transaction.
+Same ward identity was operator-confirmed. Local migration, scoped credentials,
+verified SSH forwarding and target TLS are required before activation. See
+[production delivery](weekly-report-production-sync.md) for deployment,
+permissions, status/dry-run/retry commands, and verification limits.
+
+Read-only sync readiness checks now validate both database connections, outbox
+columns, target tables, and the immediate ward/week unique index. The `check`
+command and every `dry-run` perform this validation even with an empty queue;
+no probe rows or lease mutations are used. Target write permissions remain a
+deployment verification step.
+
+
+## Operator historical report migration (2026-09-11)
+
+`playground/weekly-reporter/migrate.sh` provides an explicit local-to-production
+report copy, separate from outbox delivery. Preview uses read-only transactions;
+`--write` upserts by ward/week in one target transaction with a report-table
+write lock. Source snapshots are read-only; target IDs and existing creation
+timestamps are preserved, every matching row is updated (including identical
+content) with a refreshed `updated_at`, and missing target
+wards abort the operation. All weeks are selected unless `--week-start` is set.
+The original manual entry point leaves the outbox unchanged. See the [operator instructions](../playground/weekly-reporter/README.md).
+Seven isolated unit cases and shell/lint checks pass; live database behavior
+and SSH connectivity have not been verified.
+
+## Scheduled post-storage migration (2026-09-13)
+
+The Monday 01:00 Asia/Seoul scheduler now owns submission, bounded status
+polling, and a subsequent invocation of the existing playground migration
+script. It waits for `completed` or `partial`, which follow local report
+storage commit, then passes `--write --week-start` with the original report
+week's Monday. Failed/cancelled jobs never trigger migration. This changes
+the scheduler's deployment boundary: its image includes SSH and database
+client dependencies, while the production Compose file mounts local source and
+migration settings read-only plus durable receipt and known-host volumes.
+
+A file lock serializes migration invocations sharing the tunnel port. A
+per-week receipt suppresses completed reruns; absent receipts reuse the
+existing bulk idempotency key. Polling is bounded to 24 hours and migration
+to one hour. Operator resume accepts an explicit reporting Monday. Process
+interruption after target commit but before receipt persistence can repeat
+upserts; no automatic catch-up is promised. Generation status stays independent
+of migration failure, and the separate outbox overlay must not deliver the
+same reports concurrently. See [scheduler operations](../apps/weekly_report_scheduler/README.md).

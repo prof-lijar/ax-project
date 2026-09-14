@@ -1,0 +1,72 @@
+# Production overlay. From nexgent/:
+# docker compose -f compose.prod.yaml -f agents/compose.weekly-report-sync.prod.yaml ...
+# Apply local migration 002 BEFORE starting the updated generation worker.
+services:
+  weekly-report-worker:
+    environment:
+      WEEKLY_REPORT_DEPLOYMENT: production
+      WEEKLY_REPORT_SYNC_ENQUEUE: "true"
+
+  weekly-report-sync-tunnel:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_tunnel/Dockerfile
+    environment:
+      WEEKLY_REPORT_SSH_HOST: ${WEEKLY_REPORT_SSH_HOST:?required}
+      WEEKLY_REPORT_SSH_USER: ${WEEKLY_REPORT_SSH_USER:?required}
+      WEEKLY_REPORT_SSH_PORT: ${WEEKLY_REPORT_SSH_PORT:-22}
+      WEEKLY_REPORT_TARGET_HOST: ${WEEKLY_REPORT_TARGET_HOST:?required}
+      WEEKLY_REPORT_TARGET_PORT: ${WEEKLY_REPORT_TARGET_PORT:-5432}
+    networks:
+      weekly-report-sync-transport:
+        aliases:
+          - ${WEEKLY_REPORT_TARGET_HOST:?required}
+    volumes:
+      - ${WEEKLY_REPORT_SSH_KEY_FILE:-/etc/nexgent/weekly-report-sync-key}:/run/secrets/ssh_key:ro
+      - ${WEEKLY_REPORT_SSH_KNOWN_HOSTS_FILE:-/etc/nexgent/weekly-report-sync-known-hosts}:/run/secrets/known_hosts:ro
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, "nc -z -w 2 127.0.0.1 15432"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  weekly-report-sync:
+    build:
+      context: ./agents
+      dockerfile: apps/workers/Dockerfile
+    image: ax-weekly-report-worker-prod:local
+    command: ["/app/.venv/bin/python", "-m", "apps.workers.weekly_report_sync", "serve"]
+    env_file:
+      - ${WEEKLY_REPORT_SYNC_ENV_FILE:-/etc/nexgent/weekly-report-sync.env}
+    environment:
+      WEEKLY_REPORT_DEPLOYMENT: production
+      WEEKLY_REPORT_SYNC_ENABLED: "true"
+      # Operator confirmed identical local and production ward identities.
+      WEEKLY_REPORT_SYNC_WARD_IDS_VERIFIED: "true"
+      PYTHONDONTWRITEBYTECODE: "1"
+    networks:
+      - default
+      - weekly-report-sync-transport
+    volumes:
+      - ${WEEKLY_REPORT_SYNC_CA_FILE:-/etc/nexgent/weekly-report-prod-ca.crt}:/run/secrets/prod_db_ca.crt:ro
+    depends_on:
+      weekly-report-sync-tunnel:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 75s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  weekly-report-sync-transport:
+    # Only the tunnel and sync worker join this bridge; no published DB port.
+    # Egress is required for the tunnel's SSH connection.
+    driver: bridge
