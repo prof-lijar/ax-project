@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Chat session memory](chat-session-memory.md): per-conversation LangGraph threads, bounded history, streaming, session lifetime, and verification.
+
 - [Weekly reporter schedule and migration](../apps/weekly_report_scheduler/README.md):
   Monday 01:00 Seoul generation, migration after committed local storage using
   the reporting Monday, production mounts, receipts, and recovery.

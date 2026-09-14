@@ -18,6 +18,7 @@ export interface ChatMessage {
 }
 export interface ChatConversation {
   id: string;
+  sessionId: string;
   title: string;
   renamed: boolean;
   messages: ChatMessage[];
@@ -35,11 +36,20 @@ let sequence = 0;
 export function chatId() {
   return `chat-${Date.now()}-${++sequence}`;
 }
+// getRandomValues also works on the trusted LAN HTTP development origin.
+function newSessionId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 export function createConversation(
   agent: AgentDefinition | null = null
 ): ChatConversation {
   return {
     id: chatId(),
+    sessionId: newSessionId(),
     title: "New chat",
     renamed: false,
     messages: [],

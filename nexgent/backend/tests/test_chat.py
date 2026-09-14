@@ -7,6 +7,7 @@ from tempfile import SpooledTemporaryFile
 from uuid import uuid4
 
 import httpx
+import pytest
 from app.chat.agent_server import open_agent_stream
 from app.chat.attachments import (
     _normalize_document,
@@ -485,3 +486,108 @@ def test_stale_cleanup_removes_only_owned_expired_directories(tmp_path):
     assert not stale.exists()
     assert fresh.exists()
     assert unrelated.exists()
+
+
+@pytest.mark.parametrize("with_attachment", [False, True])
+def test_session_run_uses_thread_and_resets_transient_state(tmp_path, with_attachment):
+    session_id = uuid4()
+    captured = {}
+
+    async def handler(request):
+        captured["path"] = request.url.path
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200, headers={"Content-Type": "text/event-stream"}, content=b""
+        )
+
+    attachments = ()
+    if with_attachment:
+        attachments = (
+            ChatAttachmentRef(
+                attachment_id=str(uuid4()),
+                filename="notes.txt",
+                kind="document",
+                media_type="text/plain",
+                uri=(tmp_path / "notes.txt").as_uri(),
+                byte_size=4,
+                sha256="0" * 64,
+            ),
+        )
+
+    async def exercise():
+        upstream = await open_agent_stream(
+            "follow up",
+            attachments,
+            _settings(tmp_path),
+            session_id=session_id,
+            transport=httpx.MockTransport(handler),
+        )
+        await upstream.close()
+
+    asyncio.run(exercise())
+    assert captured["path"] == f"/threads/{session_id}/runs/stream"
+    assert captured["payload"] == {
+        "assistant_id": "chat",
+        "input": {
+            "message": "follow up",
+            "attachments": [a.model_dump() for a in attachments],
+            "response": "",
+            "error": None,
+        },
+        "stream_mode": ["custom"],
+        "on_disconnect": "cancel",
+        "if_not_exists": "create",
+        "multitask_strategy": "reject",
+    }
+
+
+def test_busy_session_returns_retryable_conflict(tmp_path):
+    async def handler(request):
+        return httpx.Response(409)
+
+    async def exercise():
+        with _raises_chat_error("chat_session_busy"):
+            await open_agent_stream(
+                "next",
+                (),
+                _settings(tmp_path),
+                session_id=uuid4(),
+                transport=httpx.MockTransport(handler),
+            )
+
+    asyncio.run(exercise())
+
+
+def test_route_validates_and_forwards_session_id(monkeypatch, tmp_path):
+    import app.chat.router as chat_router
+    from app.main import create_app
+
+    monkeypatch.setenv("AX_CHAT_ARTIFACT_ROOT", str(tmp_path))
+    session_id = uuid4()
+    captured = []
+
+    async def fake_open(prompt, attachments, settings, **kwargs):
+        captured.append(kwargs["session_id"])
+        return _FakeUpstream([b'event: custom\ndata: {"response_complete":"ok"}\n\n'])
+
+    monkeypatch.setattr(chat_router, "open_agent_stream", fake_open)
+    response = asyncio.run(
+        _request(
+            create_app(),
+            "POST",
+            "/api/chat/stream",
+            data={"prompt": "hello", "session_id": str(session_id)},
+        )
+    )
+    assert response.status_code == 200
+    assert captured == [session_id]
+    response = asyncio.run(
+        _request(
+            create_app(),
+            "POST",
+            "/api/chat/stream",
+            data={"prompt": "hello", "session_id": "../../other"},
+        )
+    )
+    assert response.status_code == 422
+    assert captured == [session_id]

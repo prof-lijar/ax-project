@@ -122,6 +122,9 @@ async def test_chat_graph_calls_configured_model(
     assert await graph.ainvoke({"message": " hello "}) == {
         "message": " hello ",
         "response": "model response",
+        "attachments": [],
+        "error": None,
+        "history": [{"user": "hello", "assistant": "model response"}],
     }
 
 
@@ -145,10 +148,14 @@ async def test_chat_graph_emits_safe_response_deltas(
     assert [data for mode, data in events if mode == "custom"] == [
         {"response_delta": "model"},
         {"response_delta": " response"},
+        {"response_complete": "model response"},
     ]
     assert [data for mode, data in events if mode == "values"][-1] == {
         "message": " hello ",
         "response": "model response",
+        "attachments": [],
+        "error": None,
+        "history": [{"user": "hello", "assistant": "model response"}],
     }
 
 

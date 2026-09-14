@@ -1322,8 +1322,9 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   environment ranges are product-approved deterministic presentation rules;
   the weekly-summary model receives neither numeric score nor report-facing
   overall/basic-information values. The
-  model-backed chat workflow remains a
-  one-turn path and does not yet compose the reusable web research tools. Chat
+  model-backed chat workflow now supports bounded per-thread session history
+  (see the 2026-09-14 update) and does not yet compose the reusable web research
+  tools. Chat
   attachments are transient and cannot be referenced by later turns;
   scanned-PDF OCR and durable or multi-host artifact storage remain outside the
   agent runtime.
@@ -1448,3 +1449,28 @@ interruption after target commit but before receipt persistence can repeat
 upserts; no automatic catch-up is promised. Generation status stays independent
 of migration failure, and the separate outbox overlay must not deliver the
 same reports concurrently. See [scheduler operations](../apps/weekly_report_scheduler/README.md).
+
+
+## Chat session memory (2026-09-14)
+
+Normal Chat conversations now carry random UUID session IDs from the ephemeral
+frontend store through the backend's validated multipart `session_id` field.
+The backend creates/reuses Agent Server threads with `if_not_exists=create`,
+rejects concurrent runs on the same thread, and preserves disconnect
+cancellation. Requests without a session and the RAG Chat path remain stateless.
+
+Agent Server owns checkpointing. The Chat graph retains only a bounded recent
+suffix of successful user/assistant text pairs (20 turns, 32,000 characters),
+then includes them before the current model input. Failed/cancelled node calls
+do not append history. Every session input resets transient response, error,
+and attachment fields; custom-only streams and unconditional completion events
+prevent prior checkpoint values from appearing as a new reply. Attachment
+content is not retained in history.
+
+The current UI does not restore sessions after refresh or purge server
+checkpoints when deleting a conversation. Runtime storage/retention and the
+existing trusted-LAN access boundary remain deployment responsibilities;
+public thread access requires authenticated ownership checks. No production
+database or cross-session personal memory is added. See
+[Chat session memory](chat-session-memory.md) for contracts, limits, validation,
+and rollout requirements.

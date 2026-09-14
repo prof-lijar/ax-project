@@ -1,6 +1,7 @@
 # Chat workflow
 
-This workflow performs one LLM-backed chat-completion turn. It accepts a
+This workflow performs one LLM-backed chat-completion turn per invocation,
+using bounded prior history when invoked on an Agent Server thread. It accepts a
 non-empty `message` plus up to five optional `ChatAttachmentRef` values and
 returns `response` or a safe attachment `error`. Provider configuration,
 filesystem access, and HTTP behavior remain in `ax-integrations`; this module
@@ -17,3 +18,6 @@ health checks that must not depend on model availability.
 See [the attachment runtime guide](../../docs/chat-attachments.md) for the
 reference schema, storage-root requirements, limits, error event shape, and
 vision capability flag.
+
+See [Chat session memory](../../docs/chat-session-memory.md) for thread wiring,
+history limits, failure semantics, and session lifetime.

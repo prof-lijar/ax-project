@@ -1,4 +1,4 @@
-"""Minimal state for one chat-completion turn."""
+"""Current turn and bounded conversation history, checkpointed per thread."""
 
 from typing import NotRequired, TypedDict
 
@@ -12,8 +12,14 @@ class ChatErrorState(TypedDict):
     filename: NotRequired[str | None]
 
 
+class ChatTurn(TypedDict):
+    user: str
+    assistant: str
+
+
 class ChatState(TypedDict, total=False):
     message: str
     attachments: list[ChatAttachmentRef]
     response: str
-    error: ChatErrorState
+    error: ChatErrorState | None
+    history: list[ChatTurn]

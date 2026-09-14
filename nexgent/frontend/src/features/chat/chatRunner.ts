@@ -87,7 +87,11 @@ export function createChatRunner(client = agentServerClient) {
       };
       const response = rag
         ? await client.streamRagChat(prompt, options)
-        : await client.streamChat(prompt, { ...options, files });
+        : await client.streamChat(prompt, {
+            ...options,
+            files,
+            sessionId: conversation.sessionId
+          });
       if (isCurrent())
         useChatStore
           .getState()

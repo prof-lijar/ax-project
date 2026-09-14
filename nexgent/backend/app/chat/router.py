@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from starlette.responses import StreamingResponse
@@ -18,6 +19,7 @@ router = APIRouter()
     response_class=StreamingResponse,
     responses={
         400: {"model": ChatErrorResponse},
+        409: {"model": ChatErrorResponse},
         413: {"model": ChatErrorResponse},
         415: {"model": ChatErrorResponse},
         502: {"model": ChatErrorResponse},
@@ -28,6 +30,7 @@ async def stream_chat(
     request: Request,
     prompt: Annotated[str | None, Form()] = None,
     files: Annotated[list[UploadFile] | None, File()] = None,
+    session_id: Annotated[UUID | None, Form()] = None,
 ) -> StreamingResponse:
     normalized_prompt = (prompt or "").strip()
     if not normalized_prompt:
@@ -43,6 +46,7 @@ async def stream_chat(
             normalized_prompt,
             batch.attachments,
             settings,
+            **({"session_id": session_id} if session_id is not None else {}),
         )
     except BaseException:
         await batch.cleanup()
