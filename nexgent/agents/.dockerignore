@@ -11,3 +11,9 @@ dist
 build
 *.egg-info
 playground
+!playground/
+playground/*
+!playground/weekly-reporter/
+playground/weekly-reporter/*
+!playground/weekly-reporter/migrate.sh
+!playground/weekly-reporter/migrate.py

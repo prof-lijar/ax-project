@@ -120,7 +120,7 @@ def test_settings_reject_credentials_in_bulk_api_url() -> None:
         )
 
 
-def test_crontab_runs_every_monday_at_three_in_container_time() -> None:
+def test_crontab_runs_every_monday_at_one_in_container_time() -> None:
     crontab = (
         Path(__file__).parents[2]
         / "apps"

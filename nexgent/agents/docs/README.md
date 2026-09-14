@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Weekly reporter schedule and migration](../apps/weekly_report_scheduler/README.md):
+  Monday 01:00 Seoul generation, migration after committed local storage using
+  the reporting Monday, production mounts, receipts, and recovery.
+
 - [Weekly Reporter Selected-Ward Tests](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
 
 - [Weekly Report Five-ZIP Retention](../../docs/08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.

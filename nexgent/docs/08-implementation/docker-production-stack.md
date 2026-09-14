@@ -216,3 +216,26 @@ All services should report healthy before handoff to users.
   time. Changing those values requires rebuilding the frontend image.
 - Docker serves the browser frontend only; it does not package or run the Tauri
   desktop shell.
+
+
+## Weekly reporter migration configuration
+
+Date: 2026-09-13
+
+The production `compose.prod.yaml` now directly mounts `agents/.env` and
+`agents/playground/weekly-reporter/.env` read-only into the scheduler. Named
+volumes retain migration receipts and SSH known hosts, and the scheduler has a
+30-second shutdown grace period. No additional migration Compose overlay is
+needed. The Monday 01:00 Asia/Seoul pipeline waits for committed local reports
+before running migration with the reporting week start date.
+
+From the `agents` directory, update only the scheduler:
+
+```bash
+docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-scheduler
+```
+
+Production Compose validation and five deployment contract tests passed. The
+container has not been rebuilt or deployed and live migration has not been
+run; execute the command above to activate the change. See the scheduler
+README in `agents/apps/weekly_report_scheduler/` for recovery instructions.

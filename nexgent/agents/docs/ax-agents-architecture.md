@@ -1425,6 +1425,26 @@ write lock. Source snapshots are read-only; target IDs and existing creation
 timestamps are preserved, every matching row is updated (including identical
 content) with a refreshed `updated_at`, and missing target
 wards abort the operation. All weeks are selected unless `--week-start` is set.
-No outbox or runtime behavior changes. See the [operator instructions](../playground/weekly-reporter/README.md).
+The original manual entry point leaves the outbox unchanged. See the [operator instructions](../playground/weekly-reporter/README.md).
 Seven isolated unit cases and shell/lint checks pass; live database behavior
 and SSH connectivity have not been verified.
+
+## Scheduled post-storage migration (2026-09-13)
+
+The Monday 01:00 Asia/Seoul scheduler now owns submission, bounded status
+polling, and a subsequent invocation of the existing playground migration
+script. It waits for `completed` or `partial`, which follow local report
+storage commit, then passes `--write --week-start` with the original report
+week's Monday. Failed/cancelled jobs never trigger migration. This changes
+the scheduler's deployment boundary: its image includes SSH and database
+client dependencies, while the production Compose file mounts local source and
+migration settings read-only plus durable receipt and known-host volumes.
+
+A file lock serializes migration invocations sharing the tunnel port. A
+per-week receipt suppresses completed reruns; absent receipts reuse the
+existing bulk idempotency key. Polling is bounded to 24 hours and migration
+to one hour. Operator resume accepts an explicit reporting Monday. Process
+interruption after target commit but before receipt persistence can repeat
+upserts; no automatic catch-up is promised. Generation status stays independent
+of migration failure, and the separate outbox overlay must not deliver the
+same reports concurrently. See [scheduler operations](../apps/weekly_report_scheduler/README.md).

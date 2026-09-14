@@ -4,6 +4,11 @@ This tool copies saved weekly reports from the local database to the live
 production database. Both databases use `ansimk.resources_ward_weekly_report`.
 It transfers existing report data; it does not generate reports or call an LLM.
 
+The Monday scheduler also invokes this script automatically with `--write`
+and `--week-start` set to the report week's Monday after the bulk job confirms
+local storage. See [scheduler deployment and recovery](../../apps/weekly_report_scheduler/README.md)
+for production configuration, saved receipts, and failure handling.
+
 Rows match on `(ward_id, week_start_date)`:
 
 | Production row | Result |
