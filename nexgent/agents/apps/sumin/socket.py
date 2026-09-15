@@ -46,7 +46,7 @@ async def run():
             settings = await settings.discover_identity(
                 SlackFiles(settings.bot_token, http)
             )
-        await pool.fetchval("SELECT 1 FROM sumin.events LIMIT 1")
+        await pool.fetchval("SELECT 1 FROM agent.sumin_events LIMIT 1")
         socket = SlackSocket(
             settings.app_token, settings.bot_token, event_handler(settings, Store(pool))
         )

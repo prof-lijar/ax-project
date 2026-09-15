@@ -21,14 +21,14 @@ async def execute(args):
             print("Sumin schema ready")
         elif args.command == "status":
             rows = await connection.fetch(
-                "SELECT key,status,attempts,error_code,updated_at FROM sumin.events "
+                "SELECT key,status,attempts,error_code,updated_at FROM agent.sumin_events "
                 "ORDER BY created_at DESC LIMIT 50"
             )
             for row in rows:
                 print(dict(row))
         else:
             result = await connection.execute(
-                "UPDATE sumin.events SET status='pending', attempts=0, error_code=NULL, "
+                "UPDATE agent.sumin_events SET status='pending', attempts=0, error_code=NULL, "
                 "available_at=NOW(), updated_at=NOW() WHERE key=$1 AND status='failed'",
                 args.key,
             )

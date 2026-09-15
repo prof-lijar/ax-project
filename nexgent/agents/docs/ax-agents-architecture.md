@@ -1645,3 +1645,19 @@ preserving roots and stable channel names. It runs only once; conflicting
 unique paths abort the transaction. No Nextcloud objects are moved or deleted,
 and completed events are not reset. The operator will clear the old archive
 with consumers stopped before deploying. See Sumin's rollout instructions.
+
+
+## Sumin tables in shared agent schema (2026-09-15)
+
+Sumin persistence moves from `sumin.{events,channels,files,contexts,migrations}`
+to `agent.sumin_{events,channels,files,contexts,migrations}` using the unchanged
+shared DSN. All runtime, readiness and management queries use the new names.
+The startup migration takes a transaction-level advisory lock, rejects
+coexisting source/destination tables, prefixes legacy index names, and moves
+existing tables in place. Rows, grants, constraints, queue statuses and migration
+history are retained; the empty legacy schema is not dropped. Fresh installs
+create only the shared-schema tables. Consumers must be stopped during upgrade.
+The migration role needs table ownership and CREATE on `agent`; runtime roles
+need schema USAGE plus table permissions. Other agent tables and Nextcloud
+objects are unchanged. PostgreSQL regression cases cover preservation,
+idempotence and conflicts; execution requires an isolated test database.

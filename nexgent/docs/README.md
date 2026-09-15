@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Sumin Shared Agent Schema](08-implementation/sumin-shared-agent-schema.md): legacy table migration into `agent.sumin_*`, permissions, rollout, and validation limits.
+
 - [Sumin Single-Workspace Channel Folders](08-implementation/sumin-single-workspace-channel-folders.md): channel-only archive paths, one-time database migration, rollout, and validation.
 
 - [Sumin Unified Compose Startup](08-implementation/sumin-unified-compose-startup.md): standard root Docker startup, shared environment loading, migration ordering, and Socket Mode services.

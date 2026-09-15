@@ -74,7 +74,7 @@ configuration. The retired `SUMIN_SLACK_TEAM_ID`, `SUMIN_SLACK_BOT_USER_ID`, and
    invitations require no settings change or restart. Private channels need
    the manifest's `groups:read` and `groups:history` scopes.
 2. Provide a PostgreSQL database and Nextcloud account. The migration command
-   creates only the workflow-owned `sumin` schema/tables. Use a migration role
+   creates Sumin-prefixed tables in the shared `agent` schema. Use a migration role
    for DDL; API/worker runtime needs table SELECT/INSERT/UPDATE, not database
    administration. With the supplied Compose file the configured role performs
    migration and runtime; production may apply migration separately.
@@ -313,3 +313,32 @@ sudo docker compose up --build -d
 
 Upload new files after startup. Completed events are not backfilled. Mapping
 collisions fail the migration transaction rather than merge channel archives.
+
+
+### Shared agent database schema
+
+Sumin uses the existing `AGENT_DATABASE_DSN` with these tables:
+
+- `agent.sumin_events`: durable tasks, retries and status.
+- `agent.sumin_channels`: channel folder mappings.
+- `agent.sumin_files`: Slack file identifiers and Nextcloud paths.
+- `agent.sumin_contexts`: searchable upload-message context.
+- `agent.sumin_migrations`: applied Sumin data migrations.
+
+The migration moves legacy `sumin` tables in place, preserving rows, grants,
+indexes and constraints. It prefixes legacy index names to avoid collisions
+with other agents. If both legacy and destination tables exist, migration
+fails transactionally rather than merging or overwriting data. The now-empty
+legacy schema is left intact. Repeated migration is safe. The migration role
+must own the legacy tables and have CREATE permission on `agent`; runtime roles
+need USAGE on `agent` and the existing table privileges.
+
+Apply from `nexgent/` with old consumers stopped:
+
+```bash
+sudo docker compose stop sumin-events sumin-worker
+sudo docker compose up --build -d
+```
+
+The migration service runs before the new consumers. No `.env` DSN change is
+required, and this schema move does not change Nextcloud files or paths.

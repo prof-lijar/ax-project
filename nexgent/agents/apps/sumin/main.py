@@ -30,7 +30,7 @@ def create_application():
             settings.database_dsn, min_size=1, max_size=4, command_timeout=10
         ) as pool:
             store.pool = pool
-            await pool.fetchval("SELECT 1 FROM sumin.events LIMIT 1")
+            await pool.fetchval("SELECT 1 FROM agent.sumin_events LIMIT 1")
             yield
 
     return create_app(settings, store, lifespan=lifespan)

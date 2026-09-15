@@ -33,7 +33,7 @@ def create_app(settings: Settings, store: Store, lifespan=None) -> FastAPI:
             raise HTTPException(503, "sumin_identity_unavailable")
         try:
             async with asyncio.timeout(2):
-                await store.pool.fetchval("SELECT 1 FROM sumin.events LIMIT 1")
+                await store.pool.fetchval("SELECT 1 FROM agent.sumin_events LIMIT 1")
         except (asyncpg.PostgresError, OSError, TimeoutError):
             raise HTTPException(503, "sumin_not_ready") from None
         return {"ok": True}
