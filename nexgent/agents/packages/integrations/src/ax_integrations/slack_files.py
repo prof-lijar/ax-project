@@ -3,12 +3,21 @@
 import hashlib
 import hmac
 import json
+import re
 import time
 from urllib.parse import urlsplit
 
 import httpx
+from slack_sdk.web.async_client import AsyncWebClient
 
 from .file_http import FileIntegrationError, bounded_response
+from .slack import (
+    CHANNEL_ID_PATTERN,
+    SlackMessage,
+    SlackMessageResult,
+    SlackService,
+    SlackSettings,
+)
 
 
 def verify_slack_signature(
@@ -34,10 +43,10 @@ class SlackFiles:
         self.http = http
 
     async def info(self, method: str, **params) -> dict:
-        if method not in {"files.info", "conversations.info"}:
+        if method not in {"auth.test", "files.info", "conversations.info"}:
             raise FileIntegrationError("unsupported_slack_method")
         async with self.http.stream(
-            "GET",
+            "POST" if method == "auth.test" else "GET",
             f"https://slack.com/api/{method}",
             params=params,
             headers={"Authorization": f"Bearer {self._token}"},
@@ -48,6 +57,37 @@ class SlackFiles:
         if not isinstance(result, dict) or not result.get("ok"):
             raise FileIntegrationError("slack_api_failed")
         return result
+
+    async def identity(self) -> dict[str, str]:
+        result = await self.info("auth.test")
+        patterns = {
+            "team_id": r"T[A-Z0-9]+",
+            "user_id": r"[UW][A-Z0-9]+",
+            "bot_id": r"B[A-Z0-9]+",
+        }
+        if any(
+            not isinstance(result.get(key), str)
+            or not re.fullmatch(pattern, result[key])
+            for key, pattern in patterns.items()
+        ):
+            raise FileIntegrationError("invalid_slack_bot_identity")
+        return {key: result[key] for key in patterns}
+
+    async def member_channel(self, channel_id: str) -> dict:
+        if not CHANNEL_ID_PATTERN.fullmatch(channel_id):
+            raise FileIntegrationError("channel_not_authorized")
+        channel = (await self.info("conversations.info", channel=channel_id)).get(
+            "channel"
+        )
+        if (
+            not isinstance(channel, dict)
+            or channel.get("id") != channel_id
+            or channel.get("is_member") is not True
+            or channel.get("is_im")
+            or channel.get("is_mpim")
+        ):
+            raise FileIntegrationError("bot_not_channel_member")
+        return channel
 
     async def download(self, url: str, limit: int) -> bytes:
         parsed = urlsplit(url)
@@ -69,3 +109,22 @@ class SlackFiles:
             if response.status_code != 200:
                 raise FileIntegrationError("slack_download_failed")
             return await bounded_response(response, limit)
+
+
+class MemberSlackService:
+    """Reply only after a fresh membership check; retain SlackService's validation/retries."""
+
+    def __init__(self, token: str, slack: SlackFiles, *, client=None):
+        self._token = token
+        self._slack = slack
+        self._client = client or AsyncWebClient(token=token, timeout=10)
+
+    async def send_message(self, message: SlackMessage) -> SlackMessageResult:
+        if message.channel_id is None:
+            raise FileIntegrationError("channel_not_authorized")
+        await self._slack.member_channel(message.channel_id)
+        scoped = SlackService(
+            SlackSettings(bot_token=self._token, default_channel_id=message.channel_id),
+            client=self._client,
+        )
+        return await scoped.send_message(message)

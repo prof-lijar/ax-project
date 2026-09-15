@@ -7,8 +7,8 @@ from html import escape
 from ax_contracts.sumin import SuminTask
 from ax_integrations.file_http import FileIntegrationError
 from ax_integrations.nextcloud import Nextcloud, path_component
-from ax_integrations.slack import SlackMessage, SlackService
-from ax_integrations.slack_files import SlackFiles
+from ax_integrations.slack import SlackMessage
+from ax_integrations.slack_files import MemberSlackService, SlackFiles
 
 from .settings import Settings
 from .store import Store
@@ -86,23 +86,16 @@ class Sumin:
         store: Store,
         slack: SlackFiles,
         cloud: Nextcloud,
-        sender: SlackService,
+        sender: MemberSlackService,
     ):
         self.settings, self.store, self.slack = settings, store, slack
         self.cloud, self.sender = cloud, sender
 
     async def run(self, task: SuminTask) -> str:
-        # Re-authorize durable work so removing a channel stops queued side effects too.
-        if (
-            task.team_id != self.settings.team_id
-            or task.channel_id not in self.settings.channels
-        ):
+        # Re-authorize queued work using current membership, including after removal.
+        if self.settings.team_id is None or task.team_id != self.settings.team_id:
             raise FileIntegrationError("channel_not_authorized")
-        info = (await self.slack.info("conversations.info", channel=task.channel_id))[
-            "channel"
-        ]
-        if info.get("id") != task.channel_id or not info.get("is_member"):
-            raise FileIntegrationError("bot_not_channel_member")
+        info = await self.slack.member_channel(task.channel_id)
         folder = await self.store.folder(
             task.team_id,
             task.channel_id,
@@ -119,7 +112,8 @@ class Sumin:
         if (
             file.get("id") != task.file_id
             or file.get("is_external")
-            or file.get("mode") != "hosted"
+            # Slack also stores editable text uploads as downloadable snippets.
+            or file.get("mode") not in {"hosted", "snippet"}
         ):
             raise FileIntegrationError("unsupported_slack_file")
         if (

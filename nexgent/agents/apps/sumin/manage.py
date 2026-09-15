@@ -10,7 +10,7 @@ import asyncpg
 
 async def execute(args):
     connection = await asyncpg.connect(
-        os.environ["SUMIN_DATABASE_DSN"], command_timeout=30
+        os.environ["AGENT_DATABASE_DSN"], command_timeout=30
     )
     try:
         if args.command == "migrate":

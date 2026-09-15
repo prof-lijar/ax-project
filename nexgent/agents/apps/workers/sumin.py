@@ -3,14 +3,14 @@
 import asyncio
 import logging
 import os
+import ssl
 
 import asyncpg
 import httpx
 from ax_contracts.sumin import SuminTask
 from ax_integrations.file_http import FileIntegrationError
 from ax_integrations.nextcloud import Nextcloud
-from ax_integrations.slack import SlackService, SlackSettings
-from ax_integrations.slack_files import SlackFiles
+from ax_integrations.slack_files import MemberSlackService, SlackFiles
 
 from workflows.sumin.graph import build_graph
 from workflows.sumin.service import Sumin
@@ -37,7 +37,10 @@ async def process_one(store: Store, graph) -> bool:
         error = "sumin_processing_failed"
     await store.finish(row, error)
     logger.info(
-        "sumin_event_finished",
+        "sumin_event_finished key=%s attempt=%s error=%s",
+        row["key"],
+        row["attempts"],
+        error or "none",
         extra={
             "event_key": row["key"],
             "attempt": row["attempts"],
@@ -64,27 +67,33 @@ async def run():
             trust_env=False,
             limits=httpx.Limits(max_connections=4),
         ) as http,
+        httpx.AsyncClient(
+            timeout=60,
+            follow_redirects=False,
+            trust_env=False,
+            limits=httpx.Limits(max_connections=4),
+            verify=(
+                ssl.create_default_context(cafile=settings.nextcloud_ca_bundle)
+                if settings.nextcloud_verify_ssl
+                else False
+            ),
+        ) as cloud_http,
     ):
+        slack = SlackFiles(settings.bot_token, http)
+        async with asyncio.timeout(15):
+            settings = await settings.discover_identity(slack)
         store = Store(pool)
         service = Sumin(
             settings,
             store,
-            SlackFiles(settings.bot_token, http),
+            slack,
             Nextcloud(
                 settings.nextcloud_url,
                 settings.nextcloud_user,
                 settings.nextcloud_password,
-                http,
+                cloud_http,
             ),
-            SlackService(
-                SlackSettings(
-                    bot_token=settings.bot_token,
-                    destinations={
-                        f"channel_{i}": c
-                        for i, c in enumerate(sorted(settings.channels))
-                    },
-                )
-            ),
+            MemberSlackService(settings.bot_token, slack),
         )
         graph = build_graph(service)
         while True:

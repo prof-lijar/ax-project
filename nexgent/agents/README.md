@@ -11,7 +11,8 @@ OpenAI-compatible model endpoint through the shared async integration adapter.
 
 See [Sumin](workflows/sumin/README.md) for automatic Slack upload archiving to
 Nextcloud and channel-scoped file search through mentions. Sumin uses the
-`SUMIN_*` settings in this folder’s `.env` and an opt-in service deployment.
+`SUMIN_*` settings and shared `AGENT_DATABASE_DSN` in this folder’s `.env`.
+The root `nexgent/` Docker Compose command starts Sumin automatically.
 
 ## Quick start
 

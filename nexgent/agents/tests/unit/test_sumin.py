@@ -34,7 +34,6 @@ def settings():
     return Settings(
         team_id=TEAM,
         bot_user_id="U12345678",
-        channels=frozenset({CHANNEL}),
         bot_token="xoxb-test",
         signing_secret="test-secret",
         database_dsn="postgresql://unused",
@@ -120,7 +119,6 @@ def test_normalizes_modern_messages_file_shared_and_mentions(settings):
 @pytest.mark.parametrize(
     "event",
     [
-        {"channel": "COTHER123"},
         {"channel": "D12345678"},
         {"bot_id": "B123"},
         {"user": "U12345678"},
@@ -238,7 +236,15 @@ def service(settings):
 
     async def info(method, **kwargs):
         if method == "conversations.info":
-            return {"channel": {"id": CHANNEL, "name": "finance", "is_member": True}}
+            return {
+                "channel": {
+                    "id": kwargs["channel"],
+                    "name": "finance"
+                    if kwargs["channel"] == CHANNEL
+                    else kwargs["channel"].lower(),
+                    "is_member": True,
+                }
+            }
         return {
             "file": {
                 "id": "F12345678",
@@ -250,6 +256,7 @@ def service(settings):
         }
 
     slack.info.side_effect = info
+    slack.member_channel = lambda channel: SlackFiles.member_channel(slack, channel)
     return Sumin(
         settings,
         FakeStore(),
@@ -259,6 +266,72 @@ def service(settings):
             send_message=AsyncMock(return_value=SimpleNamespace(success=True))
         ),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["hosted", "snippet"])
+@pytest.mark.parametrize("download_field", ["url_private_download", "url_private"])
+async def test_markdown_archive_preserves_bytes_and_replays(
+    settings, mode, download_field
+):
+    agent = service(settings)
+    original_info = agent.slack.info.side_effect
+    content = "# Notes\n\n한글 **Markdown**\n".encode()
+
+    async def info(method, **kwargs):
+        result = await original_info(method, **kwargs)
+        if method == "files.info":
+            result["file"] = {
+                "id": "F12345678",
+                "mode": mode,
+                "is_external": False,
+                "size": len(content),
+                "name": "notes.md",
+                download_field: "https://files.slack.com/test",
+                "preview": "truncated preview must not be archived",
+            }
+        return result
+
+    agent.slack.info.side_effect = info
+    agent.slack.download.return_value = content
+    graph = build_graph(agent)
+    for _ in range(2):
+        result = await graph.ainvoke({"task": task().model_dump()})
+        assert result["result"] == "archived"
+    assert agent.cloud.data[f"Slack/{TEAM}/finance/F12345678--notes.md"] == content
+    assert len(agent.cloud.data) == 2
+    agent.slack.download.assert_awaited_with(
+        "https://files.slack.com/test", settings.max_file_bytes
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"mode": "external"},
+        {"mode": "post"},
+        {"mode": None},
+        {"mode": "unknown"},
+        {"mode": "snippet", "is_external": True},
+        {"mode": "snippet", "id": "F99999999"},
+    ],
+)
+async def test_archive_rejects_unsupported_file_metadata(settings, metadata):
+    agent = service(settings)
+    original_info = agent.slack.info.side_effect
+
+    async def info(method, **kwargs):
+        result = await original_info(method, **kwargs)
+        if method == "files.info":
+            result["file"].update(metadata)
+        return result
+
+    agent.slack.info.side_effect = info
+    with pytest.raises(FileIntegrationError, match="unsupported_slack_file"):
+        await agent.run(task())
+    agent.slack.download.assert_not_awaited()
+    assert not agent.cloud.data
 
 
 @pytest.mark.asyncio
@@ -301,7 +374,7 @@ async def test_archive_resume_duplicate_and_context_search_graph(settings):
 async def test_authority_rechecked_and_channel_mapping_stable(settings):
     agent = service(settings)
     with pytest.raises(FileIntegrationError, match="channel_not_authorized"):
-        await agent.run(task(channel_id="COTHER123"))
+        await agent.run(task(team_id="TOTHER123"))
     agent.slack.info.assert_not_called()
     first = await agent.store.folder(TEAM, CHANNEL, "Slack/finance")
     assert await agent.store.folder(TEAM, CHANNEL, "Slack/new-name") == first
@@ -442,22 +515,36 @@ async def test_webdav_refuses_xml_entities():
 
 def test_env_configuration_isolated_from_existing_slack_settings(settings, monkeypatch):
     values = {
-        "SLACK_TEAM_ID": TEAM,
-        "SLACK_BOT_USER_ID": "U12345678",
-        "SLACK_CHANNEL_IDS": CHANNEL,
         "SLACK_BOT_TOKEN": "xoxb-test",
         "SLACK_SIGNING_SECRET": "secret",
-        "DATABASE_DSN": "postgresql://unused",
         "NEXTCLOUD_URL": "https://cloud.example",
         "NEXTCLOUD_USER": "sumin",
         "NEXTCLOUD_PASSWORD": "secret",
     }
     for key, value in values.items():
         monkeypatch.setenv("SUMIN_" + key, value)
+    monkeypatch.setenv("AGENT_DATABASE_DSN", "postgresql://shared-agent-database")
+    monkeypatch.setenv("SUMIN_DATABASE_DSN", "postgresql://obsolete-database")
+    assert Settings.from_env().database_dsn == "postgresql://shared-agent-database"
     monkeypatch.setenv("SLACK_BOT_TOKEN", "unrelated-token")
     assert Settings.from_env().bot_token == "xoxb-test"
-    monkeypatch.setenv("SUMIN_SLACK_CHANNEL_IDS", "")
-    with pytest.raises(ValueError, match="SUMIN_SLACK_CHANNEL_IDS"):
+    assert Settings.from_env().team_id is None
+    for key in ("SLACK_TEAM_ID", "SLACK_BOT_USER_ID", "SLACK_CHANNEL_IDS"):
+        monkeypatch.setenv("SUMIN_" + key, "obsolete-value-ignored")
+    assert Settings.from_env().team_id is None
+    assert Settings.from_env().bot_user_id is None
+    monkeypatch.delenv("SUMIN_NEXTCLOUD_VERIFY_SSL", raising=False)
+    assert Settings.from_env().nextcloud_verify_ssl is True
+    monkeypatch.setenv("SUMIN_NEXTCLOUD_VERIFY_SSL", "false")
+    assert Settings.from_env().nextcloud_verify_ssl is False
+    monkeypatch.setenv("SUMIN_NEXTCLOUD_VERIFY_SSL", " TRUE ")
+    assert Settings.from_env().nextcloud_verify_ssl is True
+    monkeypatch.setenv("SUMIN_NEXTCLOUD_VERIFY_SSL", "invalid")
+    with pytest.raises(ValueError, match="SUMIN_NEXTCLOUD_VERIFY_SSL"):
+        Settings.from_env()
+    monkeypatch.delenv("SUMIN_NEXTCLOUD_VERIFY_SSL")
+    monkeypatch.delenv("AGENT_DATABASE_DSN")
+    with pytest.raises(ValueError, match="AGENT_DATABASE_DSN is required"):
         Settings.from_env()
 
 
@@ -511,3 +598,224 @@ def test_uploads_attached_to_mentions_are_also_collected(settings):
     )
     assert [task.kind for task in tasks] == ["search", "archive"]
     assert len({task.key for task in tasks}) == 2
+
+
+@pytest.mark.asyncio
+async def test_discovers_workspace_and_bot_identity_from_token(settings):
+    def handler(request):
+        assert request.url.path == "/api/auth.test"
+        assert request.method == "POST"
+        assert request.headers["authorization"] == "Bearer xoxb-test"
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "team_id": TEAM,
+                "user_id": "WNEWBOT123",
+                "bot_id": "B12345678",
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        configured = replace(settings, team_id=None, bot_user_id=None)
+        discovered = await configured.discover_identity(
+            SlackFiles(settings.bot_token, http)
+        )
+        assert discovered.team_id == TEAM and discovered.bot_user_id == "WNEWBOT123"
+        assert configured.team_id is None
+        assert normalize(envelope(user="WNEWBOT123"), discovered) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"ok": False, "error": "secret-provider-response"},
+        {"ok": True, "user_id": "UBOT", "bot_id": "B123"},
+        {"ok": True, "team_id": TEAM, "user_id": "UBOT"},
+        {"ok": True, "team_id": TEAM, "user_id": "invalid", "bot_id": "B123"},
+    ],
+)
+async def test_identity_discovery_rejects_invalid_auth_or_non_bot(result, settings):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=result))
+    ) as http:
+        with pytest.raises(FileIntegrationError) as exc:
+            await settings.discover_identity(SlackFiles(settings.bot_token, http))
+        assert "secret-provider-response" not in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_new_public_and_private_channels_without_config_change(settings):
+    agent = service(settings)
+    for channel in ("CNEWCHAN1", "GPRIVATE1"):
+        work = normalize(envelope(channel=channel), settings)[0]
+        assert work.channel_id == channel
+        assert await agent.run(work) == "archived"
+    assert len(agent.store.folders) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"is_member": False},
+        {"is_member": "true"},
+        {"id": "COTHER123"},
+        {"is_im": True},
+        {"is_mpim": True},
+    ],
+)
+async def test_live_membership_gates_all_outbound_replies(overrides):
+    from ax_integrations.slack import SlackMessage
+    from ax_integrations.slack_files import MemberSlackService
+
+    slack = SimpleNamespace(
+        info=AsyncMock(
+            return_value={
+                "channel": {
+                    "id": CHANNEL,
+                    "is_member": True,
+                    **overrides,
+                }
+            }
+        )
+    )
+    slack.member_channel = lambda channel: SlackFiles.member_channel(slack, channel)
+    client = SimpleNamespace(chat_postMessage=AsyncMock())
+    sender = MemberSlackService("xoxb-test", slack, client=client)
+    with pytest.raises(FileIntegrationError):
+        await sender.send_message(SlackMessage(channel_id=CHANNEL, text="result"))
+    client.chat_postMessage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dynamic_sender_allows_new_channels_but_rechecks_removal():
+    from ax_integrations.slack import SlackMessage
+    from ax_integrations.slack_files import MemberSlackService
+
+    current = {"id": "CNEWCHAN1", "is_member": True}
+    slack = SimpleNamespace(info=AsyncMock(return_value={"channel": current}))
+    slack.member_channel = lambda channel: SlackFiles.member_channel(slack, channel)
+    client = SimpleNamespace(
+        chat_postMessage=AsyncMock(return_value={"ok": True, "ts": "123.456"})
+    )
+    sender = MemberSlackService("xoxb-test", slack, client=client)
+    message = SlackMessage(channel_id="CNEWCHAN1", text="result", thread_ts="123.456")
+    assert (await sender.send_message(message)).success
+    current["is_member"] = False
+    with pytest.raises(FileIntegrationError):
+        await sender.send_message(message)
+    assert client.chat_postMessage.await_count == 1
+    assert slack.info.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_unresolved_identity_refuses_ingress(settings):
+    store = SimpleNamespace(enqueue=AsyncMock())
+    app = create_app(replace(settings, team_id=None, bot_user_id=None), store)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        body, headers = signed(envelope())
+        assert (
+            await client.post("/slack/events", content=body, headers=headers)
+        ).status_code == 503
+        assert (await client.get("/readyz")).status_code == 503
+        store.enqueue.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_api_startup_discovers_identity_before_accepting_events(
+    settings, monkeypatch
+):
+    from contextlib import asynccontextmanager
+
+    from apps.sumin import main
+
+    monkeypatch.setattr(
+        main.Settings,
+        "from_env",
+        lambda: replace(settings, team_id=None, bot_user_id=None),
+    )
+    discover = AsyncMock(return_value=settings)
+    monkeypatch.setattr(main.Settings, "discover_identity", discover)
+    pool = SimpleNamespace(fetchval=AsyncMock(return_value=1))
+
+    @asynccontextmanager
+    async def pool_context(*args, **kwargs):
+        yield pool
+
+    monkeypatch.setattr(main.asyncpg, "create_pool", pool_context)
+    app = main.create_application()
+    assert app.state.settings.team_id is None
+    async with app.router.lifespan_context(app):
+        assert app.state.settings.team_id == TEAM
+        assert app.state.settings.bot_user_id == settings.bot_user_id
+    discover.assert_awaited_once()
+
+
+def test_group_dm_events_are_ignored(settings):
+    assert normalize(envelope(channel="G12345678", channel_type="mpim"), settings) == []
+
+
+@pytest.mark.asyncio
+async def test_sumin_management_uses_shared_agent_database(monkeypatch):
+    from apps.sumin import manage
+
+    monkeypatch.setenv("AGENT_DATABASE_DSN", "postgresql://shared-agent-database")
+    monkeypatch.setenv("SUMIN_DATABASE_DSN", "postgresql://obsolete-database")
+    connection = SimpleNamespace(fetch=AsyncMock(return_value=[]), close=AsyncMock())
+    connect = AsyncMock(return_value=connection)
+    monkeypatch.setattr(manage.asyncpg, "connect", connect)
+    await manage.execute(SimpleNamespace(command="status"))
+    connect.assert_awaited_once_with(
+        "postgresql://shared-agent-database", command_timeout=30
+    )
+    connection.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("verify_ssl", [True, False])
+async def test_worker_nextcloud_tls_setting_is_isolated(
+    settings, monkeypatch, verify_ssl
+):
+    from contextlib import asynccontextmanager
+    from unittest.mock import Mock
+
+    from apps.workers import sumin as worker
+
+    configured = replace(
+        settings, nextcloud_verify_ssl=verify_ssl, nextcloud_ca_bundle="/test/ca.pem"
+    )
+    monkeypatch.setattr(worker.Settings, "from_env", lambda: configured)
+    tls_context = object()
+    create_context = Mock(return_value=tls_context)
+    monkeypatch.setattr(worker.ssl, "create_default_context", create_context)
+    clients = []
+
+    @asynccontextmanager
+    async def client_context(**kwargs):
+        clients.append(kwargs)
+        yield object()
+
+    @asynccontextmanager
+    async def pool_context(*args, **kwargs):
+        yield object()
+
+    class StartupComplete(Exception):
+        pass
+
+    monkeypatch.setattr(worker.httpx, "AsyncClient", client_context)
+    monkeypatch.setattr(worker.asyncpg, "create_pool", pool_context)
+    monkeypatch.setattr(
+        worker.Settings, "discover_identity", AsyncMock(side_effect=StartupComplete)
+    )
+    with pytest.raises(StartupComplete):
+        await worker.run()
+    assert clients[0].get("verify", True) is True
+    assert clients[1]["verify"] is (tls_context if verify_ssl else False)
+    if verify_ssl:
+        create_context.assert_called_once_with(cafile="/test/ca.pem")
+    else:
+        create_context.assert_not_called()

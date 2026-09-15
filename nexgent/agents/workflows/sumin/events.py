@@ -1,13 +1,15 @@
 """Normalize only authorized channel events; ignore bots, edits, DMs and other teams."""
 
 from ax_contracts.sumin import SuminTask
+from ax_integrations.slack import CHANNEL_ID_PATTERN
 
 from .settings import Settings
 
 
 def normalize(payload: dict, settings: Settings) -> list[SuminTask]:
     if (
-        payload.get("type") != "event_callback"
+        settings.team_id is None
+        or payload.get("type") != "event_callback"
         or payload.get("team_id") != settings.team_id
     ):
         return []
@@ -16,7 +18,9 @@ def normalize(payload: dict, settings: Settings) -> list[SuminTask]:
         raise TypeError("invalid Slack event")
     channel = event.get("channel", event.get("channel_id"))
     if (
-        channel not in settings.channels
+        not isinstance(channel, str)
+        or not CHANNEL_ID_PATTERN.fullmatch(channel)
+        or event.get("channel_type") in {"im", "mpim"}
         or event.get("bot_id")
         or event.get("user", event.get("user_id")) == settings.bot_user_id
     ):

@@ -1,4 +1,4 @@
-# Opt-in standalone deployment: docker compose --env-file .env -f compose.sumin.yaml up -d --build
+# Included by nexgent/compose.yaml: run docker compose up --build -d from nexgent/.
 name: ax-sumin
 services:
   sumin-migrate:
@@ -6,29 +6,36 @@ services:
       context: .
       dockerfile: apps/sumin/Dockerfile
     env_file: .env
+    network_mode: host
     command: ["uv", "run", "--no-sync", "python", "-m", "apps.sumin.manage", "migrate"]
     restart: "no"
-  sumin-api:
+  sumin-events:
     build:
       context: .
       dockerfile: apps/sumin/Dockerfile
     env_file: .env
+    network_mode: host
+    command: ["uv", "run", "--no-sync", "python", "-m", "apps.sumin.socket"]
     depends_on:
       sumin-migrate:
         condition: service_completed_successfully
-    ports: ["127.0.0.1:8093:8093"]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "uv", "run", "--no-sync", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8093/readyz', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
   sumin-worker:
     build:
       context: .
       dockerfile: apps/sumin/Dockerfile
     env_file: .env
+    network_mode: host
     command: ["uv", "run", "--no-sync", "python", "-m", "apps.workers.sumin"]
+    environment:
+      SUMIN_NEXTCLOUD_CA_BUNDLE: /run/nextcloud-ca.pem
+    volumes:
+      - type: bind
+        source: ${SUMIN_NEXTCLOUD_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}
+        target: /run/nextcloud-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       sumin-migrate:
         condition: service_completed_successfully

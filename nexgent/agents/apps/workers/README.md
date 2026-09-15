@@ -95,5 +95,5 @@ Active jobs are excluded. See [retention behavior, deployment, and validation](.
 ## Sumin file collection and search
 
 `sumin.py` is a separate leased PostgreSQL consumer for Slack uploads and
-mentions. It runs one bounded task at a time, archives to Nextcloud, and replies
+mentions received by the separate Socket Mode listener. It runs one bounded task at a time, archives to Nextcloud, and replies
 to file searches in the original Slack thread. See [Sumin setup and recovery](../../workflows/sumin/README.md).

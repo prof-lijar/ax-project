@@ -1,8 +1,11 @@
 """Run with uvicorn --factory; configuration is loaded at process startup only."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import asyncpg
+import httpx
+from ax_integrations.slack_files import SlackFiles
 
 from workflows.sumin.settings import Settings
 from workflows.sumin.store import Store
@@ -16,6 +19,13 @@ def create_application():
 
     @asynccontextmanager
     async def lifespan(app):
+        async with httpx.AsyncClient(
+            timeout=10, follow_redirects=False, trust_env=False
+        ) as http:
+            async with asyncio.timeout(15):
+                app.state.settings = await settings.discover_identity(
+                    SlackFiles(settings.bot_token, http)
+                )
         async with asyncpg.create_pool(
             settings.database_dsn, min_size=1, max_size=4, command_timeout=10
         ) as pool:

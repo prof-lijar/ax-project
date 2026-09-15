@@ -1,6 +1,6 @@
 # Documentation map
 
-- [Sumin](../workflows/sumin/README.md): Slack file collection into channel-named Nextcloud folders, mention search, durable event recovery, environment setup, and validation.
+- [Sumin](../workflows/sumin/README.md): Markdown/snippet support, Socket Mode file collection in every joined Slack channel, automatic bot/workspace discovery, channel-named Nextcloud folders, mention search, durable recovery, and shared `AGENT_DATABASE_DSN`, unified root Compose startup, and Nextcloud CA and TLS verification settings.
 
 - [Chat session memory](chat-session-memory.md): per-conversation LangGraph threads, bounded history, streaming, session lifetime, and verification.
 

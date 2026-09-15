@@ -13,11 +13,15 @@ from workflows.sumin.store import Store
 
 
 def create_app(settings: Settings, store: Store, lifespan=None) -> FastAPI:
+    if not settings.signing_secret:
+        raise ValueError("SUMIN_SLACK_SIGNING_SECRET is required for HTTP events")
+
     @asynccontextmanager
     async def empty_lifespan(app):
         yield
 
     app = FastAPI(title="Sumin", lifespan=lifespan or empty_lifespan)
+    app.state.settings = settings
 
     @app.get("/healthz")
     async def health():
@@ -25,6 +29,8 @@ def create_app(settings: Settings, store: Store, lifespan=None) -> FastAPI:
 
     @app.get("/readyz")
     async def ready():
+        if app.state.settings.team_id is None:
+            raise HTTPException(503, "sumin_identity_unavailable")
         try:
             async with asyncio.timeout(2):
                 await store.pool.fetchval("SELECT 1 FROM sumin.events LIMIT 1")
@@ -55,7 +61,9 @@ def create_app(settings: Settings, store: Store, lifespan=None) -> FastAPI:
                 if not isinstance(challenge, str) or len(challenge) > 1000:
                     raise ValueError("invalid challenge")
                 return {"challenge": challenge}
-            tasks = normalize(payload, settings)
+            if app.state.settings.team_id is None:
+                raise HTTPException(503, "sumin_identity_unavailable")
+            tasks = normalize(payload, app.state.settings)
         except (ValueError, KeyError, TypeError, ValidationError):
             raise HTTPException(400, "invalid_slack_event") from None
         if tasks:
