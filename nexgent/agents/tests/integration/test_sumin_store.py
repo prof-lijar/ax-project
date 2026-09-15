@@ -86,7 +86,7 @@ async def test_postgres_dedup_claim_restart_fencing_and_terminal_retry():
                 == "failed"
             )
             assert await store.claim() is None
-            folder = await store.folder(team, work.channel_id, f"Slack/{team}/finance")
+            folder = await store.folder(team, work.channel_id, "Slack/finance")
             assert await store.folder(team, work.channel_id, "renamed") == folder
             with pytest.raises(asyncpg.UniqueViolationError):
                 await store.folder(team, "COTHER123", folder)
@@ -101,3 +101,76 @@ async def test_postgres_dedup_claim_restart_fencing_and_terminal_retry():
             await pool.execute("DELETE FROM sumin.events WHERE key=$1", work.key)
             for table in ("contexts", "files", "channels"):
                 await pool.execute(f"DELETE FROM sumin.{table} WHERE team_id=$1", team)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("archive_root", ["Slack", "Shared/Slack"])
+async def test_channel_folder_migration_preserves_paths_and_runs_once(archive_root):
+    dsn = os.environ.get("SUMIN_TEST_DATABASE_DSN")
+    if not dsn:
+        pytest.skip("SUMIN_TEST_DATABASE_DSN is not configured")
+    connection = await asyncpg.connect(dsn)
+    try:
+        if (
+            "test"
+            not in (await connection.fetchval("SELECT current_database()")).lower()
+        ):
+            pytest.fail("Sumin integration test requires a disposable test database")
+        schema = Path("workflows/sumin/schema.sql").read_text()
+        await connection.execute(schema)
+        transaction = connection.transaction()
+        await transaction.start()
+        try:
+            await connection.execute(
+                "DELETE FROM sumin.migrations WHERE name='channel-folders-v2'"
+            )
+            team = "T" + uuid.uuid4().hex.upper()
+            root = archive_root + "/" + uuid.uuid4().hex
+            old_folder = f"{root}/{team}/original-name"
+            new_folder = f"{root}/original-name"
+            await connection.execute(
+                "INSERT INTO sumin.channels VALUES($1,$2,$3)",
+                team,
+                "C12345678",
+                old_folder,
+            )
+            await connection.execute(
+                "INSERT INTO sumin.files VALUES($1,$2,$3,$4)",
+                team,
+                "C12345678",
+                "F12345678",
+                old_folder + "/F12345678--notes.md",
+            )
+            await connection.execute(schema)
+            assert (
+                await connection.fetchval(
+                    "SELECT folder FROM sumin.channels WHERE team_id=$1", team
+                )
+                == new_folder
+            )
+            assert (
+                await connection.fetchval(
+                    "SELECT path FROM sumin.files WHERE team_id=$1", team
+                )
+                == new_folder + "/F12345678--notes.md"
+            )
+            # A fresh custom root may legitimately contain a workspace ID.
+            await connection.execute(
+                "INSERT INTO sumin.channels VALUES($1,$2,$3)",
+                team,
+                "COTHER123",
+                old_folder,
+            )
+            await connection.execute(schema)
+            assert (
+                await connection.fetchval(
+                    "SELECT folder FROM sumin.channels WHERE team_id=$1 AND channel_id=$2",
+                    team,
+                    "COTHER123",
+                )
+                == old_folder
+            )
+        finally:
+            await transaction.rollback()
+    finally:
+        await connection.close()

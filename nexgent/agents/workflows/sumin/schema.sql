@@ -33,3 +33,32 @@ CREATE TABLE IF NOT EXISTS sumin.contexts (
     message_text text NOT NULL,
     PRIMARY KEY (team_id, channel_id, file_id, event_id)
 );
+
+-- The operator is clearing the old Nextcloud archive. Remap database paths
+-- without deleting files, changing event statuses, or replaying completed work.
+CREATE TABLE IF NOT EXISTS sumin.migrations (
+    name text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT NOW()
+);
+DO $$
+DECLARE
+    mapping record;
+    new_folder text;
+BEGIN
+    LOCK TABLE sumin.migrations IN EXCLUSIVE MODE;
+    IF NOT EXISTS (SELECT 1 FROM sumin.migrations WHERE name='channel-folders-v2') THEN
+        LOCK TABLE sumin.channels, sumin.files IN EXCLUSIVE MODE;
+        FOR mapping IN SELECT * FROM sumin.channels LOOP
+            IF split_part(mapping.folder, '/', -2) = mapping.team_id THEN
+                new_folder := regexp_replace(mapping.folder, '/[^/]+/([^/]+)$', '/\1');
+                UPDATE sumin.files
+                SET path = new_folder || substring(path FROM length(mapping.folder) + 1)
+                WHERE team_id=mapping.team_id AND channel_id=mapping.channel_id
+                    AND left(path, length(mapping.folder) + 1) = mapping.folder || '/';
+                UPDATE sumin.channels SET folder=new_folder
+                WHERE team_id=mapping.team_id AND channel_id=mapping.channel_id;
+            END IF;
+        END LOOP;
+        INSERT INTO sumin.migrations(name) VALUES('channel-folders-v2');
+    END IF;
+END $$;

@@ -298,7 +298,7 @@ async def test_markdown_archive_preserves_bytes_and_replays(
     for _ in range(2):
         result = await graph.ainvoke({"task": task().model_dump()})
         assert result["result"] == "archived"
-    assert agent.cloud.data[f"Slack/{TEAM}/finance/F12345678--notes.md"] == content
+    assert agent.cloud.data["Slack/finance/F12345678--notes.md"] == content
     assert len(agent.cloud.data) == 2
     agent.slack.download.assert_awaited_with(
         "https://files.slack.com/test", settings.max_file_bytes
@@ -346,7 +346,7 @@ async def test_archive_resume_duplicate_and_context_search_graph(settings):
         result = await graph.ainvoke({"task": task().model_dump()})
         assert result["result"] == "archived"
     assert len(agent.cloud.data) == 2  # Replays did not create more files.
-    assert f"Slack/{TEAM}/finance/F12345678--plan.pdf" in agent.cloud.data
+    assert "Slack/finance/F12345678--plan.pdf" in agent.cloud.data
     context = json.loads(
         next(v for k, v in agent.cloud.data.items() if k.endswith(".json"))
     )

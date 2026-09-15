@@ -15,7 +15,7 @@ to an existing or future channel to enable it; no channel list is configured.
   and `app_mention` events. Message events preserve upload text and thread IDs.
   DMs, group DMs, other workspaces, message edits, and bot messages are ignored.
   The worker checks current membership before accessing the channel archive.
-- **Output:** `<root>/<team-id>/<channel-name>/<slack-file-id>--<filename>`.
+- **Output:** `<root>/<channel-name>/<slack-file-id>--<filename>`.
   Missing folders are created. The original channel folder and file paths are
   stored in PostgreSQL, so renames do not fragment existing archives.
 - **Context:** `.sumin-context/<file-id>/<event-id>.json` beside the files keeps
@@ -293,3 +293,23 @@ events will retry normally; terminal failed events require explicit retry via
 Do not reset terminal events until the updated worker is deployed.
 
 See [Slack file modes and authenticated download fields](https://docs.slack.dev/reference/objects/file-object/).
+
+
+### Single-workspace channel folders
+
+Sumin archives this workspace directly under `<root>/<channel-name>/`, for
+example `Slack/nexgent-test/`. Workspace identity is still validated internally.
+The startup migration removes the workspace-ID segment from existing channel
+and file path mappings once, preserving custom roots and original channel names.
+It does not move or delete Nextcloud files or reset completed events. This
+rollout assumes the operator clears the old archive. Stop Sumin before clearing
+Nextcloud, then rebuild from `nexgent/`:
+
+```bash
+sudo docker compose stop sumin-events sumin-worker
+# Clear the old Nextcloud archive, then:
+sudo docker compose up --build -d
+```
+
+Upload new files after startup. Completed events are not backfilled. Mapping
+collisions fail the migration transaction rather than merge channel archives.

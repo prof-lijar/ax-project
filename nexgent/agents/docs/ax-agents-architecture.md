@@ -1633,3 +1633,15 @@ rejected. This corrects the hosted-only gate for editable text uploads without
 changing persistence or deployment boundaries. Regression cases cover UTF-8
 Markdown, both download URL fields, duplicate graph execution, and rejected
 metadata. Failed events require operator retry after worker deployment.
+
+
+## Sumin single-workspace folder layout (2026-09-15)
+
+Archive paths now use `<root>/<channel-name>/<file-id>--<filename>` for the
+operator's single Slack workspace. Workspace IDs remain in event authorization
+and database keys. A transactionally recorded `channel-folders-v2` migration
+removes the legacy workspace segment from existing channel and file mappings,
+preserving roots and stable channel names. It runs only once; conflicting
+unique paths abort the transaction. No Nextcloud objects are moved or deleted,
+and completed events are not reset. The operator will clear the old archive
+with consumers stopped before deploying. See Sumin's rollout instructions.

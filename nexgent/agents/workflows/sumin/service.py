@@ -99,7 +99,7 @@ class Sumin:
         folder = await self.store.folder(
             task.team_id,
             task.channel_id,
-            f"{self.settings.root}/{task.team_id}/{path_component(info['name'])}",
+            f"{self.settings.root}/{path_component(info['name'])}",
         )
         if task.kind == "archive":
             await self.archive(task, folder)
