@@ -1,0 +1,35 @@
+# Opt-in standalone deployment: docker compose --env-file .env -f compose.sumin.yaml up -d --build
+name: ax-sumin
+services:
+  sumin-migrate:
+    build:
+      context: .
+      dockerfile: apps/sumin/Dockerfile
+    env_file: .env
+    command: ["uv", "run", "--no-sync", "python", "-m", "apps.sumin.manage", "migrate"]
+    restart: "no"
+  sumin-api:
+    build:
+      context: .
+      dockerfile: apps/sumin/Dockerfile
+    env_file: .env
+    depends_on:
+      sumin-migrate:
+        condition: service_completed_successfully
+    ports: ["127.0.0.1:8093:8093"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "uv", "run", "--no-sync", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8093/readyz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  sumin-worker:
+    build:
+      context: .
+      dockerfile: apps/sumin/Dockerfile
+    env_file: .env
+    command: ["uv", "run", "--no-sync", "python", "-m", "apps.workers.sumin"]
+    depends_on:
+      sumin-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped

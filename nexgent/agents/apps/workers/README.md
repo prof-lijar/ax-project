@@ -91,3 +91,9 @@ docker compose exec weekly-report-worker \
 This deletes older ZIP files and clears their download links. Saved reports
 in the database, report recovery artifacts, and run history are preserved.
 Active jobs are excluded. See [retention behavior, deployment, and validation](../../../docs/08-implementation/weekly-report-five-zip-retention.md).
+
+## Sumin file collection and search
+
+`sumin.py` is a separate leased PostgreSQL consumer for Slack uploads and
+mentions. It runs one bounded task at a time, archives to Nextcloud, and replies
+to file searches in the original Slack thread. See [Sumin setup and recovery](../../workflows/sumin/README.md).

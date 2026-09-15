@@ -1474,3 +1474,45 @@ public thread access requires authenticated ownership checks. No production
 database or cross-session personal memory is added. See
 [Chat session memory](chat-session-memory.md) for contracts, limits, validation,
 and rollout requirements.
+
+
+## Sumin Slack file archive and discovery (2026-09-14)
+
+`workflows/sumin` owns a deterministic worker-injected LangGraph for file
+collection and mention-driven discovery. Its strict, versioned `SuminTask`
+contract lives in `ax-contracts`; reusable Slack file reads, signature checking,
+bounded HTTP transfers, and Nextcloud WebDAV operations live in
+`ax-integrations`. Existing outbound Slack policy remains the reply boundary.
+No model, cross-workflow supervisor, or generic Chat run registration is added.
+
+The separate `apps/sumin` ingress isolates the publicly routable Slack-signed
+callback from private Agent Server and operator APIs. It verifies signatures
+and request age, restricts workspace/channels, normalizes events, and commits
+them to a workflow-owned PostgreSQL inbox before acknowledging Slack.
+`apps/workers/sumin.py` independently consumes one task at a time, using
+exclusive 360-second leases, token-fenced completion, a 300-second execution
+deadline, and five attempts. An opt-in `compose.sumin.yaml` deploys API, worker,
+and schema migration against an explicitly configured external PostgreSQL.
+All configuration uses `SUMIN_*` keys from `agents/.env`.
+
+Uploads create `<root>/<team-id>/<channel-name>/<file-id>--<filename>` plus
+per-event context JSON containing upload text and Slack provenance IDs.
+PostgreSQL preserves channel/file path mappings and searchable upload text;
+file bytes remain outside graph state in Nextcloud. Conditional uploads verify
+identical replays instead of overwriting collisions. Existing channels retain
+their original folder after rename; reused channel names fail closed.
+
+Mention searches match filenames and upload-message keywords within the
+requesting channel, intersect context matches with live bounded Nextcloud
+listings, and return at most ten authenticated Nextcloud file URLs in the
+original Slack thread. Nextcloud ACL provisioning is operator-owned; the agent
+does not publish shares or copy Slack membership. Historical backfill, file
+content/OCR indexing, cross-channel search, deletion synchronization, and
+automatic retention cleanup remain outside this capability. Archive replay is
+idempotent; Slack replies can repeat after a send/ack crash.
+
+Offline graph, ingress, integration-adapter, and authority tests are provided,
+with an opt-in PostgreSQL concurrency/recovery test. Live credentials are
+deferred by the user. Database/container and Slack/Nextcloud end-to-end checks
+remain deployment gates. See [Sumin](../workflows/sumin/README.md) for the
+contract, limits, acceptance criteria, commands, and operational checkpoints.

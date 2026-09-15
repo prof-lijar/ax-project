@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Sumin](../workflows/sumin/README.md): Slack file collection into channel-named Nextcloud folders, mention search, durable event recovery, environment setup, and validation.
+
 - [Chat session memory](chat-session-memory.md): per-conversation LangGraph threads, bounded history, streaming, session lifetime, and verification.
 
 - [Weekly reporter schedule and migration](../apps/weekly_report_scheduler/README.md):

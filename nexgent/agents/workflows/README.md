@@ -28,3 +28,7 @@ expressed as deterministic application routing. Planned workflows are
 `ansimk_weekly_reporter` batch graph with deterministic calculations, bounded
 per-ward subgraphs, a private FastAPI/raw-PostgreSQL source, warm Korean
 model-written narrative, strict validation, and template fallback.
+
+`Sumin` is implemented in [`sumin/`](sumin/README.md): signed Slack events feed a
+durable worker that archives channel files to Nextcloud and answers mentions
+with current file URLs. Its injected graph is owned by the Slack worker.

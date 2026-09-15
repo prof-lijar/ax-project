@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Sumin Slack-to-Nextcloud Archive](08-implementation/sumin-slack-nextcloud-archive.md): durable Slack upload collection, channel-scoped discovery, operation, validation, and rollout checks.
+
 - [RAG Knowledge Workspace Refinement](08-implementation/rag-knowledge-workspace-refinement.md): clearer upload/search flows, source passages, keyboard interactions, deletion safeguards, and validation.
 
 - [Agents Co-worker Catalog Refinement](08-implementation/agents-coworker-catalog-refinement.md): clearer co-worker cards, local search, workspace/Chat actions, responsive states, and validation.
