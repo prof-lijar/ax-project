@@ -9,6 +9,11 @@ The deterministic smoke graph remains provider-neutral so the runtime can be
 validated without an LLM API key. A separate `chat` graph calls an
 OpenAI-compatible model endpoint through the shared async integration adapter.
 
+See [Sumin](workflows/sumin/README.md) for automatic Slack upload archiving to
+Nextcloud and channel-scoped file search through mentions. Sumin uses the
+`SUMIN_*` settings and shared `AGENT_DATABASE_DSN` in this folder’s `.env`.
+The root `nexgent/` Docker Compose command starts Sumin automatically.
+
 ## Quick start
 
 ```bash

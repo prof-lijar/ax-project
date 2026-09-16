@@ -42,6 +42,7 @@ interface RequestOptions {
 }
 
 interface ChatRequestOptions extends RequestOptions {
+  sessionId?: string;
   files?: readonly File[];
   onResponse?: (response: string) => void;
 }
@@ -80,11 +81,12 @@ export const agentServerClient = {
 
   async streamChat(
     message: string,
-    { files = [], signal, onResponse }: ChatRequestOptions = {}
+    { files = [], sessionId, signal, onResponse }: ChatRequestOptions = {}
   ): Promise<string> {
     try {
       const body = new FormData();
       body.append("prompt", message);
+      if (sessionId) body.append("session_id", sessionId);
       for (const file of files) {
         body.append("files", file, file.name);
       }

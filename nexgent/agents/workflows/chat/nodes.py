@@ -13,6 +13,7 @@ from ax_integrations import (
 from langgraph.config import get_stream_writer
 from pydantic import TypeAdapter, ValidationError
 
+from .memory import bounded_history
 from .state import ChatState
 
 MAX_RESPONSE_TOKENS = 2_048
@@ -64,7 +65,16 @@ async def generate_response(state: ChatState) -> ChatState:
 
     model = get_default_chat_model()
     stream_writer = get_stream_writer()
-    messages: list[ChatMessage] = [{"role": "user", "content": message.strip()}]
+    history = bounded_history(state.get("history", []))
+    messages: list[ChatMessage] = []
+    for turn in history:
+        messages.extend(
+            [
+                {"role": "user", "content": turn["user"]},
+                {"role": "assistant", "content": turn["assistant"]},
+            ]
+        )
+    messages.append({"role": "user", "content": message.strip()})
     if attachments:
         try:
             content = await get_default_attachment_reader().build_user_content(
@@ -76,6 +86,7 @@ async def generate_response(state: ChatState) -> ChatState:
             return _safe_error_result(exc.payload)
         messages = [
             {"role": "system", "content": UNTRUSTED_ATTACHMENT_INSTRUCTION},
+            *messages[:-1],
             {"role": "user", "content": content},
         ]
 
@@ -96,7 +107,15 @@ async def generate_response(state: ChatState) -> ChatState:
             "model returned an empty response",
             retryable=False,
         )
-    if attachments:
-        stream_writer({"response_complete": response})
-        return {"attachments": [], "response": response}
-    return {"response": response}
+    stream_writer({"response_complete": response})
+    return {
+        "attachments": [],
+        "error": None,
+        "response": response,
+        "history": bounded_history(
+            [
+                *history,
+                {"user": message.strip(), "assistant": response},
+            ]
+        ),
+    }

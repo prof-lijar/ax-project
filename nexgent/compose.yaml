@@ -1,5 +1,9 @@
 name: nexgent
 
+include:
+  - path: ./agents/compose.sumin.yaml
+    env_file: ./agents/.env
+
 services:
   scout:
     build:

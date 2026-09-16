@@ -283,3 +283,18 @@ function byteStream(chunks: ArrayLike<number>[]) {
     }
   });
 }
+
+
+it("sends the session ID with the current prompt and no client-owned history", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(
+    'event: custom\ndata: {"response_complete":"remembered"}\n\n',
+    { headers: { "Content-Type": "text/event-stream" } }
+  ));
+  vi.stubGlobal("fetch", fetchMock);
+  const sessionId = "8c3d48cd-ea61-45a0-87ec-2c7c33dbd725";
+  await expect(agentServerClient.streamChat("Follow up", { sessionId })).resolves.toBe("remembered");
+  const body = fetchMock.mock.calls[0][1].body as FormData;
+  expect(body.get("session_id")).toBe(sessionId);
+  expect(body.get("prompt")).toBe("Follow up");
+  expect(body.has("history")).toBe(false);
+});

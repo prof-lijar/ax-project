@@ -1,0 +1,42 @@
+# Included by nexgent/compose.yaml: run docker compose up --build -d from nexgent/.
+name: ax-sumin
+services:
+  sumin-migrate:
+    build:
+      context: .
+      dockerfile: apps/sumin/Dockerfile
+    env_file: .env
+    network_mode: host
+    command: ["uv", "run", "--no-sync", "python", "-m", "apps.sumin.manage", "migrate"]
+    restart: "no"
+  sumin-events:
+    build:
+      context: .
+      dockerfile: apps/sumin/Dockerfile
+    env_file: .env
+    network_mode: host
+    command: ["uv", "run", "--no-sync", "python", "-m", "apps.sumin.socket"]
+    depends_on:
+      sumin-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  sumin-worker:
+    build:
+      context: .
+      dockerfile: apps/sumin/Dockerfile
+    env_file: .env
+    network_mode: host
+    command: ["uv", "run", "--no-sync", "python", "-m", "apps.workers.sumin"]
+    environment:
+      SUMIN_NEXTCLOUD_CA_BUNDLE: /run/nextcloud-ca.pem
+    volumes:
+      - type: bind
+        source: ${SUMIN_NEXTCLOUD_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}
+        target: /run/nextcloud-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      sumin-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped

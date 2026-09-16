@@ -170,3 +170,25 @@ describe("Chat request lifecycle", () => {
     });
   });
 });
+
+
+it("reuses a session for follow-ups and isolates new conversations", async () => {
+  const mock = controlledClient();
+  mock.client.streamChat.mockResolvedValue("reply");
+  const runner = createChatRunner(mock.client);
+  const first = current();
+  await runner.send(first.id);
+  useChatStore.getState().patchChat(first.id, { draft: "Follow up" });
+  await runner.send(first.id);
+  const second = useChatStore.getState().newChat();
+  useChatStore.getState().patchChat(second, { draft: "Separate question" });
+  await runner.send(second);
+  const sessions = mock.client.streamChat.mock.calls.map((call) => call[1]?.sessionId);
+  expect(sessions[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(sessions[1]).toBe(sessions[0]);
+  expect(sessions[2]).not.toBe(sessions[0]);
+  useChatStore.getState().selectChat(first.id);
+  useChatStore.getState().patchChat(first.id, { draft: "Back again" });
+  await runner.send(first.id);
+  expect(mock.client.streamChat.mock.calls[3][1]?.sessionId).toBe(sessions[0]);
+});

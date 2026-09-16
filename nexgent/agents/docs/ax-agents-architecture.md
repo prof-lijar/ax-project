@@ -1322,8 +1322,9 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
   environment ranges are product-approved deterministic presentation rules;
   the weekly-summary model receives neither numeric score nor report-facing
   overall/basic-information values. The
-  model-backed chat workflow remains a
-  one-turn path and does not yet compose the reusable web research tools. Chat
+  model-backed chat workflow now supports bounded per-thread session history
+  (see the 2026-09-14 update) and does not yet compose the reusable web research
+  tools. Chat
   attachments are transient and cannot be referenced by later turns;
   scanned-PDF OCR and durable or multi-host artifact storage remain outside the
   agent runtime.
@@ -1448,3 +1449,215 @@ interruption after target commit but before receipt persistence can repeat
 upserts; no automatic catch-up is promised. Generation status stays independent
 of migration failure, and the separate outbox overlay must not deliver the
 same reports concurrently. See [scheduler operations](../apps/weekly_report_scheduler/README.md).
+
+
+## Chat session memory (2026-09-14)
+
+Normal Chat conversations now carry random UUID session IDs from the ephemeral
+frontend store through the backend's validated multipart `session_id` field.
+The backend creates/reuses Agent Server threads with `if_not_exists=create`,
+rejects concurrent runs on the same thread, and preserves disconnect
+cancellation. Requests without a session and the RAG Chat path remain stateless.
+
+Agent Server owns checkpointing. The Chat graph retains only a bounded recent
+suffix of successful user/assistant text pairs (20 turns, 32,000 characters),
+then includes them before the current model input. Failed/cancelled node calls
+do not append history. Every session input resets transient response, error,
+and attachment fields; custom-only streams and unconditional completion events
+prevent prior checkpoint values from appearing as a new reply. Attachment
+content is not retained in history.
+
+The current UI does not restore sessions after refresh or purge server
+checkpoints when deleting a conversation. Runtime storage/retention and the
+existing trusted-LAN access boundary remain deployment responsibilities;
+public thread access requires authenticated ownership checks. No production
+database or cross-session personal memory is added. See
+[Chat session memory](chat-session-memory.md) for contracts, limits, validation,
+and rollout requirements.
+
+
+## Sumin Slack file archive and discovery (2026-09-14)
+
+`workflows/sumin` owns a deterministic worker-injected LangGraph for file
+collection and mention-driven discovery. Its strict, versioned `SuminTask`
+contract lives in `ax-contracts`; reusable Slack file reads, signature checking,
+bounded HTTP transfers, and Nextcloud WebDAV operations live in
+`ax-integrations`. Existing outbound Slack policy remains the reply boundary.
+No model, cross-workflow supervisor, or generic Chat run registration is added.
+
+The separate `apps/sumin` ingress isolates the publicly routable Slack-signed
+callback from private Agent Server and operator APIs. It verifies signatures
+and request age, restricts workspace/channels, normalizes events, and commits
+them to a workflow-owned PostgreSQL inbox before acknowledging Slack.
+`apps/workers/sumin.py` independently consumes one task at a time, using
+exclusive 360-second leases, token-fenced completion, a 300-second execution
+deadline, and five attempts. An opt-in `compose.sumin.yaml` deploys API, worker,
+and schema migration against an explicitly configured external PostgreSQL.
+All configuration uses `SUMIN_*` keys from `agents/.env`.
+
+Uploads create `<root>/<team-id>/<channel-name>/<file-id>--<filename>` plus
+per-event context JSON containing upload text and Slack provenance IDs.
+PostgreSQL preserves channel/file path mappings and searchable upload text;
+file bytes remain outside graph state in Nextcloud. Conditional uploads verify
+identical replays instead of overwriting collisions. Existing channels retain
+their original folder after rename; reused channel names fail closed.
+
+Mention searches match filenames and upload-message keywords within the
+requesting channel, intersect context matches with live bounded Nextcloud
+listings, and return at most ten authenticated Nextcloud file URLs in the
+original Slack thread. Nextcloud ACL provisioning is operator-owned; the agent
+does not publish shares or copy Slack membership. Historical backfill, file
+content/OCR indexing, cross-channel search, deletion synchronization, and
+automatic retention cleanup remain outside this capability. Archive replay is
+idempotent; Slack replies can repeat after a send/ack crash.
+
+Offline graph, ingress, integration-adapter, and authority tests are provided,
+with an opt-in PostgreSQL concurrency/recovery test. Live credentials are
+deferred by the user. Database/container and Slack/Nextcloud end-to-end checks
+remain deployment gates. See [Sumin](../workflows/sumin/README.md) for the
+contract, limits, acceptance criteria, commands, and operational checkpoints.
+
+
+## Sumin channel membership and discovered identity (2026-09-15)
+
+Sumin now follows bot membership in its configured token's workspace rather
+than a static channel allowlist. API and worker discover validated workspace
+and bot identity with bounded `auth.test` calls at startup. Identity failure
+prevents startup; unsigned requests and other-workspace events remain rejected.
+The `SUMIN_SLACK_TEAM_ID`, `SUMIN_SLACK_BOT_USER_ID`, and
+`SUMIN_SLACK_CHANNEL_IDS` inputs are retired. Existing and future channels
+become eligible when the bot is invited, without restart or configuration edits.
+
+Signed channel events are committed promptly; the worker validates current
+`conversations.info` membership before archive/search execution, so removal
+blocks queued work. A separate reusable member-aware outbound adapter checks
+membership again before each reply and delegates to a request-scoped existing
+Slack sender with a reused client. Static outbound policies for other workflows
+are unchanged. DMs and group DMs are excluded, and membership is not cached.
+Stored workspace/channel identifiers and folder mappings are unchanged; no
+database migration is needed. Tests cover discovery, startup readiness, newly
+joined channels, revoked membership, and safe replies. Live Slack validation
+remains pending operator credentials. See [Sumin operations](../workflows/sumin/README.md).
+
+
+## Shared agent database configuration (2026-09-15)
+
+Sumin's API, worker, and migration/status/retry CLI now read the shared
+`AGENT_DATABASE_DSN` from `agents/.env`. `SUMIN_DATABASE_DSN` is retired with
+no fallback, keeping connection selection unambiguous. Agent-specific Slack
+and Nextcloud settings retain the `SUMIN_*` prefix. This configuration rename
+does not move existing tables or change the database schema; future agents
+may reuse the shared connection with their own table ownership. The isolated
+`SUMIN_TEST_DATABASE_DSN` remains opt-in for disposable integration tests and
+never falls back to the shared runtime database.
+
+
+## Sumin host-local deployment and Nextcloud trust (2026-09-15)
+
+The opt-in Sumin Compose stack uses Linux host networking to reach the existing
+loopback-published PostgreSQL through `AGENT_DATABASE_DSN`. Its HTTP ingress
+binds only 127.0.0.1:8093 and still requires a publicly reachable, Slack-signed
+callback route. The main default Compose stack does not launch Sumin.
+
+The worker now uses separate Slack and Nextcloud HTTP pools. Optional
+`SUMIN_NEXTCLOUD_CA_BUNDLE` selects a trusted PEM file for Nextcloud only; Compose
+mounts it read-only (defaulting to the host system CA bundle). Certificate and
+hostname verification stay enabled. This supports privately issued certificates
+without inheriting the product backend's disabled verification setting.
+See [Sumin troubleshooting](../workflows/sumin/README.md#startup-troubleshooting).
+
+
+## Sumin Socket Mode transport (2026-09-15)
+
+The default Sumin deployment now runs `sumin-events` (`apps.sumin.socket`)
+instead of the HTTP API. It authenticates an outbound WebSocket connection
+using `SUMIN_SLACK_APP_TOKEN` (`xapp-`, `connections:write`); the existing bot
+token still owns identity, file access, and replies. The manifest enables
+Socket Mode and no longer declares a callback URL. Event subscriptions remain
+required. `SUMIN_SLACK_SIGNING_SECRET` is needed only for the retained optional
+HTTP adapter, whose startup rejects a missing secret. No inbound ports are
+exposed in the standalone Compose stack.
+
+`ax-integrations.slack_socket` owns the SDK, bounded receive queue, at most four
+ingress handlers, post-commit acknowledgements, scrubbed transport logs, and
+connection lifecycle. The application injects workflow normalization and
+durable enqueue; provider code never imports workflows. Queue failures and
+overload remain unacknowledged; existing idempotent task keys handle replay.
+Initial connection and disconnected recovery have 30/60-second deadlines;
+Compose restarts failed listeners. The worker, channel membership checks, and
+archive/search policy remain separate from the transport.
+
+The configured database's missing Sumin tables were initialized with the
+idempotent migration. Live checks validated the bot token and host database
+connection. Upload validation remains blocked on listener deployment/app-token
+setup and a valid Nextcloud certificate: the current local self-signed Nginx
+certificate has a hostname mismatch for the configured Tailscale URL.
+
+
+## Sumin unified root Compose startup (2026-09-15)
+
+The default `nexgent/compose.yaml` includes `agents/compose.sumin.yaml` with
+`agents/.env` as the explicit interpolation environment. The standard root
+`sudo docker compose up --build -d` now starts Sumin's migration, Socket Mode
+listener, and worker under the same `nexgent` project, without additional
+files or profiles. Both consumers depend on migration success. Relative build
+and service env-file paths resolve against the included agents directory;
+shared DSN and Nextcloud CA settings remain in `agents/.env`. Existing Linux
+host networking and no-inbound-port behavior are unchanged.
+
+Rendered Compose verification confirmed all three default services, root
+project identity, correct build/env paths, and migration dependencies. The
+separately selected production Compose file is unchanged. Live Docker startup
+still requires operator daemon access, and Slack/Nextcloud setup requirements
+remain in force. See [unified startup](../../docs/08-implementation/sumin-unified-compose-startup.md).
+
+
+## Sumin explicit Nextcloud TLS setting (2026-09-15)
+
+`SUMIN_NEXTCLOUD_VERIFY_SSL` defaults to `true` and accepts only `true` or
+`false` (case insensitive). When false, the worker disables certificate and
+hostname verification only for its Nextcloud HTTP client and ignores the CA
+bundle. Slack retains its separate verified client. The operator requested
+`false` in the local `agents/.env`; the example keeps the verified default.
+The unified Compose env-file supplies this setting on container recreation.
+No database or process boundaries change.
+
+
+## Sumin editable Markdown archives (2026-09-15)
+
+The archive workflow accepts non-external `snippet` files in addition to
+`hosted` files. Both use the existing authenticated, bounded download and
+immutable Nextcloud archive path; snippet preview text is never used as file
+content. Posts, external files, unknown modes, and mismatched file IDs remain
+rejected. This corrects the hosted-only gate for editable text uploads without
+changing persistence or deployment boundaries. Regression cases cover UTF-8
+Markdown, both download URL fields, duplicate graph execution, and rejected
+metadata. Failed events require operator retry after worker deployment.
+
+
+## Sumin single-workspace folder layout (2026-09-15)
+
+Archive paths now use `<root>/<channel-name>/<file-id>--<filename>` for the
+operator's single Slack workspace. Workspace IDs remain in event authorization
+and database keys. A transactionally recorded `channel-folders-v2` migration
+removes the legacy workspace segment from existing channel and file mappings,
+preserving roots and stable channel names. It runs only once; conflicting
+unique paths abort the transaction. No Nextcloud objects are moved or deleted,
+and completed events are not reset. The operator will clear the old archive
+with consumers stopped before deploying. See Sumin's rollout instructions.
+
+
+## Sumin tables in shared agent schema (2026-09-15)
+
+Sumin persistence moves from `sumin.{events,channels,files,contexts,migrations}`
+to `agent.sumin_{events,channels,files,contexts,migrations}` using the unchanged
+shared DSN. All runtime, readiness and management queries use the new names.
+The startup migration takes a transaction-level advisory lock, rejects
+coexisting source/destination tables, prefixes legacy index names, and moves
+existing tables in place. Rows, grants, constraints, queue statuses and migration
+history are retained; the empty legacy schema is not dropped. Fresh installs
+create only the shared-schema tables. Consumers must be stopped during upgrade.
+The migration role needs table ownership and CREATE on `agent`; runtime roles
+need schema USAGE plus table permissions. Other agent tables and Nextcloud
+objects are unchanged. PostgreSQL regression cases cover preservation,
+idempotence and conflicts; execution requires an isolated test database.

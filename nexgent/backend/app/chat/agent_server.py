@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from uuid import UUID
 
 import httpx
 
@@ -23,6 +24,7 @@ async def open_agent_stream(
     settings: ChatSettings,
     *,
     assistant_id: str | None = None,
+    session_id: UUID | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> AgentServerStream:
     timeout = httpx.Timeout(
@@ -37,16 +39,35 @@ async def open_agent_stream(
         graph_input["attachments"] = [
             attachment.model_dump(mode="json") for attachment in attachments
         ]
+    payload: dict[str, object] = {
+        "assistant_id": assistant_id or settings.assistant_id,
+        "input": graph_input,
+        "stream_mode": ["custom"] if attachments else ["custom", "values"],
+        "on_disconnect": "cancel",
+    }
+    path = "/runs/stream"
+    if session_id is not None:
+        path = f"/threads/{session_id}/runs/stream"
+        # Reset transient fields, preserving only server-owned history.
+        graph_input.update(
+            {
+                "attachments": graph_input.get("attachments", []),
+                "response": "",
+                "error": None,
+            }
+        )
+        payload.update(
+            {
+                "stream_mode": ["custom"],
+                "if_not_exists": "create",
+                "multitask_strategy": "reject",
+            }
+        )
     request = client.build_request(
         "POST",
-        f"{settings.agent_server_url}/runs/stream",
+        f"{settings.agent_server_url}{path}",
         headers={"Accept": "text/event-stream"},
-        json={
-            "assistant_id": assistant_id or settings.assistant_id,
-            "input": graph_input,
-            "stream_mode": ["custom"] if attachments else ["custom", "values"],
-            "on_disconnect": "cancel",
-        },
+        json=payload,
     )
     try:
         response = await client.send(request, stream=True)
@@ -57,7 +78,18 @@ async def open_agent_stream(
             "The chat service is temporarily unavailable.",
             status_code=502,
         ) from exc
+    except BaseException:
+        await client.aclose()
+        raise
 
+    if response.status_code == 409 and session_id is not None:
+        await response.aclose()
+        await client.aclose()
+        raise ChatRequestError(
+            "chat_session_busy",
+            "This conversation is still finishing a reply. Please try again shortly.",
+            status_code=409,
+        )
     if response.status_code < 200 or response.status_code >= 300:
         await response.aclose()
         await client.aclose()

@@ -1,4 +1,4 @@
-"""Compiled graph for one LLM-backed chat turn."""
+"""Chat graph; Agent Server supplies the per-thread checkpointer."""
 
 from langgraph.graph import END, START, StateGraph
 

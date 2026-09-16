@@ -55,6 +55,7 @@ from .models import (
     WeeklyReportSourceResponse,
     WeeklyReportTemplateData,
 )
+from .sumin import SuminTask
 
 __all__ = [
     "AgentInput",
@@ -69,6 +70,7 @@ __all__ = [
     "NarrativeGenerationMetadata",
     "RunContext",
     "SkippedWard",
+    "SuminTask",
     "TaskEnvelope",
     "ToolRequest",
     "ToolResult",

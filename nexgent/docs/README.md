@@ -12,6 +12,14 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Sumin Shared Agent Schema](08-implementation/sumin-shared-agent-schema.md): legacy table migration into `agent.sumin_*`, permissions, rollout, and validation limits.
+
+- [Sumin Single-Workspace Channel Folders](08-implementation/sumin-single-workspace-channel-folders.md): channel-only archive paths, one-time database migration, rollout, and validation.
+
+- [Sumin Unified Compose Startup](08-implementation/sumin-unified-compose-startup.md): standard root Docker startup, shared environment loading, migration ordering, and Socket Mode services.
+
+- [Sumin Slack-to-Nextcloud Archive](08-implementation/sumin-slack-nextcloud-archive.md): durable Slack upload collection, channel-scoped discovery, operation, validation, and rollout checks.
+
 - [RAG Knowledge Workspace Refinement](08-implementation/rag-knowledge-workspace-refinement.md): clearer upload/search flows, source passages, keyboard interactions, deletion safeguards, and validation.
 
 - [Agents Co-worker Catalog Refinement](08-implementation/agents-coworker-catalog-refinement.md): clearer co-worker cards, local search, workspace/Chat actions, responsive states, and validation.
