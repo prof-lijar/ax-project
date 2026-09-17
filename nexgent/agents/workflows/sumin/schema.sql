@@ -96,3 +96,8 @@ BEGIN
         INSERT INTO agent.sumin_migrations(name) VALUES('channel-folders-v2');
     END IF;
 END $$;
+
+-- Search metadata: real upload time when available; legacy records remain unknown.
+ALTER TABLE agent.sumin_files ADD COLUMN IF NOT EXISTS original_name text;
+ALTER TABLE agent.sumin_files ADD COLUMN IF NOT EXISTS uploaded_at timestamptz;
+ALTER TABLE agent.sumin_files ADD COLUMN IF NOT EXISTS uploader_id text;

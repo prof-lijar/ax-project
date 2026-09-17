@@ -1661,3 +1661,54 @@ The migration role needs table ownership and CREATE on `agent`; runtime roles
 need schema USAGE plus table permissions. Other agent tables and Nextcloud
 objects are unchanged. PostgreSQL regression cases cover preservation,
 idempotence and conflicts; execution requires an isolated test database.
+
+
+## Sumin mention-search file attachments (2026-09-16)
+
+Mention search now delivers up to ten matching archived files as Slack
+attachments in the original request thread, plus source links. Matching remains
+channel-scoped filename/upload-message keywords against live WebDAV results.
+A bounded Nextcloud download reads each file sequentially, and the member-aware
+Slack adapter checks channel membership before `files_upload_v2`. The manifest
+adds `files:write`; operator reinstall and deployment are required. Original
+file bytes are retained and archive ID prefixes removed from attachment names.
+No content indexing, new persistence, or deletion sync is added. Own-bot events
+remain excluded. Upload failure leaves work retryable; partial delivery may
+repeat on retry, consistent with existing at-least-once Slack replies.
+
+
+## Sumin Korean briefing keyword matching (2026-09-16)
+
+The deterministic query parser normalizes Unicode, ignores common Korean
+request filler, and expands explicit CEO/briefing Korean-English concepts,
+including known Korean particles. Up to eight source tokens expand to at most
+24 search terms used for filename and upload-message matching. Quoted phrases
+remain literal; channel boundaries and live Nextcloud listing remain unchanged.
+No model call, content indexing or temporal filtering is introduced. Regression
+cases cover the reported CEO briefing filename, bot-mention removal, ranking,
+thread delivery and exclusion of another channel's files.
+
+
+## Sumin model-directed discovery (2026-09-16)
+
+Superseding deterministic keyword selection and the bilingual alias patch,
+Sumin now uses the shared OpenAI-compatible model adapter with a workflow-owned
+search skill and validated structured actions. Up to eight actions browse/search
+channel metadata, inspect candidates, verify their live Nextcloud availability,
+and select attachments or ask for clarification. Tools never accept model-owned
+SQL, channels or URLs; only inspected and verified IDs may reach delivery.
+The archive path stays deterministic and model-free. Search metadata includes
+original filenames, upload-message excerpts, uploader IDs and Slack upload times;
+legacy files use clearly labeled first-receipt timestamps where available.
+The migration adds nullable metadata columns without fabricating upload times.
+
+Model calls have 20-second deadlines within the existing 300-second task budget.
+Results are paginated and bounded; invalid actions consume the same finite budget.
+Provider/tool failures are sanitized and use durable retries; no keyword fallback
+hides model failure. Request-scoped search state is rebuilt on retry, preserving
+the existing at-least-once delivery limitation. No conversational memory, file
+content indexing, deletion sync, or additional agent supervisor is introduced.
+Metadata is disclosed only to the configured model endpoint; file bytes and
+credentials are excluded. Tests cover action gating, query scope, temporal
+metadata, missing files, and ambiguous queries. An opt-in synthetic real-model
+evaluation measures Korean/English recent-file selection without Slack writes.

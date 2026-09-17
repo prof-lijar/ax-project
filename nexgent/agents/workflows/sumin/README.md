@@ -1,7 +1,7 @@
 # Sumin
 
 Sumin archives Slack channel uploads in Nextcloud and replies to mentions with
-matching Nextcloud file URLs. Runtime configuration comes from the **agents
+matching Slack file attachments and source Nextcloud links. Runtime configuration comes from the **agents
 folder's `.env`**, using `AGENT_DATABASE_DSN` and the `SUMIN_*` keys in `.env.example`. Credentials can be supplied later; empty required settings fail at startup.
 The workspace and bot user IDs are discovered from the bot token. Invite Sumin
 to an existing or future channel to enable it; no channel list is configured.
@@ -9,8 +9,8 @@ to an existing or future channel to enable it; no channel list is configured.
 ## Behavior and agent contract
 
 - **Owner:** Sumin owns collection and file discovery for one configured Slack
-  workspace and every public/private channel the bot has joined. Its worker runs a deterministic
-  LangGraph; no model or supervisor is needed for this workflow.
+  workspace and every public/private channel the bot has joined. Its worker keeps
+  archiving deterministic and delegates mention search to a bounded model/tool loop.
 - **Input:** authenticated Socket Mode `file_shared`, channel messages containing `files`,
   and `app_mention` events. Message events preserve upload text and thread IDs.
   DMs, group DMs, other workspaces, message edits, and bot messages are ignored.
@@ -21,12 +21,12 @@ to an existing or future channel to enable it; no channel list is configured.
 - **Context:** `.sumin-context/<file-id>/<event-id>.json` beside the files keeps
   the original upload text, uploader, workspace/channel/file/event IDs, message
   timestamp and parent thread timestamp. Full conversation history is not read.
-- **Search:** mention Sumin with a filename or upload-message keyword, such as
-  `@Sumin find "budget.xlsx"` or `@Sumin 예산 파일 찾아줘`. Matching is
-  case-insensitive keyword retrieval over live Nextcloud filenames and indexed
-  upload text. Quoted text is an exact substring. Return at most ten matches in
-  the originating thread. Search stays within that channel's folder, excludes
-  context sidecars, and never returns a stale database-only file URL.
+- **Search:** describe the file naturally, for example `@Sumin 아까 방금 올렸던
+  대표님에게 브리핑 자료 알려줘`. The model browses/searches channel metadata,
+  inspects candidates, reasons across languages and upload times, and verifies
+  selected files in Nextcloud before returning up to ten Slack attachments.
+  Ambiguous requests receive a clarification. File contents are not indexed or
+  sent to the model; metadata and upload-message excerpts are model input.
 - **Authority:** read joined Slack channels/files, create archive folders,
   conditionally upload immutable files/context, and reply to mentions in those
   same channels. Sumin does not create public shares or manage Nextcloud ACLs.
@@ -342,3 +342,78 @@ sudo docker compose up --build -d
 
 The migration service runs before the new consumers. No `.env` DSN change is
 required, and this schema move does not change Nextcloud files or paths.
+
+
+### Search and receive attachments in Slack
+
+Mention Sumin in the channel, for example `@Sumin find budget` or
+`@Sumin find "notes.md"`. It matches filenames and original upload-message
+keywords in that channel's live Nextcloud folder, downloads up to ten matches,
+and uploads copies into the request thread. Returned attachment names omit
+the archive's Slack-file-ID prefix. A summary includes source Nextcloud links.
+A bare mention requests a filename/keyword; no matches produces a clear reply.
+The model reasons over metadata; it does not search inside file contents.
+
+Add **files:write** under **OAuth & Permissions → Bot Token Scopes**, reinstall
+the Slack app, and update `SUMIN_SLACK_BOT_TOKEN` if Slack issues a new token.
+The app still needs `app_mentions:read`, `files:read`, channel read scopes,
+`chat:write`, and the `app_mention` event subscription. Rebuild via
+`sudo docker compose up --build -d` from `nexgent/`.
+
+Downloads enforce `SUMIN_MAX_FILE_BYTES` per file and run sequentially under
+the worker's existing deadline. Membership is rechecked before each Slack
+upload. Missing/unreadable/oversized downloads and failed uploads do not mark
+the search completed. Partial delivery or a crash can repeat attachments on
+retry, like existing at-least-once text replies. Sumin's own bot events are
+ignored to prevent re-archiving its replies. No deletion sync is introduced.
+
+Slack integration uses the SDK's supported
+[files_upload_v2](https://docs.slack.dev/tools/python-slack-sdk/web/#uploading-files)
+flow, not the retired `files.upload` endpoint.
+
+
+
+### Model-directed discovery tools
+
+Search uses the shared model settings already in `agents/.env`:
+`OPENAI_BASE_URL` (or `URL`), `OPENAI_MODEL` (or `MODEL`), and `OPENAI_API_KEY`.
+The configured OpenAI-compatible endpoint must support JSON-schema completions.
+Archive-only work does not call the model. Search fails with a safe error and
+uses the existing retry policy if model configuration or inference fails;
+there is no silent keyword-search fallback.
+
+The workflow-owned search skill in `workflows/sumin/search.py` guides a maximum
+of eight validated model actions, each with a 20-second inference deadline:
+
+- `search_metadata`: recent files or model-chosen keyword alternatives, twenty
+  results per page (offset at most 200). Keyword filtering is an optional tool,
+  not the final relevance decision.
+- `inspect_files`: inspect known candidate IDs and upload-message excerpts.
+- `verify_files`: intersect inspected IDs with the live channel folder.
+- `finish`: return only verified IDs, with a short explanation.
+- `clarify`: ask a question or explain insufficient evidence without attachments.
+
+The model cannot specify a workspace/channel, execute SQL, choose URLs, write
+files, or bypass verification. Code binds tools to the originating task. Prompts
+mark metadata as untrusted; SDK/model bodies and metadata are not logged, and
+inherited LangSmith tracing stays disabled. Metadata is sent to the configured
+model endpoint; file bytes are not. Each request starts a fresh search session;
+clarification replies should mention Sumin and restate the needed details.
+
+`agent.sumin_files` now records original name, uploader ID, and real Slack
+upload time for new archives. Legacy files retain unknown upload time; the
+agent receives first event receipt time as a clearly labeled fallback. It does
+not infer upload recency from filename dates. Schema updates run via the usual
+root Compose migration before worker startup.
+
+Validation:
+
+```bash
+uv run pytest tests/unit/test_sumin_search.py tests/unit/test_sumin.py
+# Optional real-model behavior check: synthetic metadata, no Slack writes.
+SUMIN_RUN_MODEL_EVAL=1 uv run --env-file .env pytest tests/evals/test_sumin_search_model.py
+```
+
+The real-model check covers Korean/English requests and a recent upload whose
+filename date is older than a stale candidate. Unit tests validate orchestration
+and authority, not the reasoning quality of a particular deployed model.

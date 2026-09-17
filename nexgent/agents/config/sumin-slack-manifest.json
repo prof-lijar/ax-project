@@ -19,6 +19,7 @@
         "groups:read",
         "groups:history",
         "files:read",
+        "files:write",
         "chat:write"
       ]
     }

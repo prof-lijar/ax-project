@@ -105,3 +105,54 @@ class Store:
             terms,
         )
         return {row["file_id"] for row in rows}
+
+    async def save_file_metadata(self, task: SuminTask, file: dict) -> None:
+        created = file.get("created")
+        if not isinstance(created, (int, float)) or not 0 < created < 4102444800:
+            created = None
+        await self.pool.execute(
+            "UPDATE agent.sumin_files SET original_name=$4, uploaded_at=to_timestamp($5), "
+            "uploader_id=$6 WHERE team_id=$1 AND channel_id=$2 AND file_id=$3",
+            task.team_id,
+            task.channel_id,
+            task.file_id,
+            (file.get("name") or file.get("title") or task.file_id)[:500],
+            created,
+            file.get("user") or task.user_id,
+        )
+
+    async def search_metadata(
+        self, task: SuminTask, terms: list[str], offset: int
+    ) -> list[dict]:
+        rows = await self.pool.fetch(
+            """SELECT f.file_id, split_part(f.path,'/',-1) AS archive_name,
+                COALESCE(f.original_name,split_part(f.path,'/',-1)) AS filename,
+                f.uploaded_at, f.uploader_id, e.first_seen_at, c.upload_context
+            FROM agent.sumin_files f
+            CROSS JOIN LATERAL (
+                SELECT string_agg(message_text, E'\\n') AS upload_context FROM (
+                    SELECT left(message_text,400) AS message_text
+                    FROM agent.sumin_contexts
+                    WHERE team_id=f.team_id AND channel_id=f.channel_id AND file_id=f.file_id
+                    ORDER BY event_id LIMIT 3
+                ) context_rows
+            ) c
+            LEFT JOIN LATERAL (
+                SELECT min(created_at) AS first_seen_at FROM agent.sumin_events
+                WHERE payload->>'team_id'=f.team_id AND payload->>'channel_id'=f.channel_id
+                    AND payload->>'file_id'=f.file_id
+            ) e ON true
+            WHERE f.team_id=$1 AND f.channel_id=$2 AND c.upload_context IS NOT NULL
+                AND (cardinality($3::text[])=0 OR EXISTS (
+                    SELECT 1 FROM unnest($3::text[]) term
+                    WHERE strpos(lower(COALESCE(f.original_name,f.path)),lower(term))>0
+                        OR strpos(lower(c.upload_context),lower(term))>0
+                ))
+            ORDER BY COALESCE(f.uploaded_at,e.first_seen_at) DESC NULLS LAST, f.file_id
+            LIMIT 21 OFFSET $4""",
+            task.team_id,
+            task.channel_id,
+            terms,
+            offset,
+        )
+        return [dict(row) for row in rows]

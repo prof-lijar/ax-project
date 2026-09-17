@@ -8,6 +8,7 @@ import time
 from urllib.parse import urlsplit
 
 import httpx
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from .file_http import FileIntegrationError, bounded_response
@@ -128,3 +129,22 @@ class MemberSlackService:
             client=self._client,
         )
         return await scoped.send_message(message)
+
+    async def upload_file(
+        self, *, channel_id: str, thread_ts: str, filename: str, data: bytes
+    ) -> None:
+        if not re.fullmatch(r"\d+\.\d+", thread_ts):
+            raise FileIntegrationError("invalid_slack_thread")
+        await self._slack.member_channel(channel_id)
+        try:
+            result = await self._client.files_upload_v2(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                filename=filename,
+                title=filename,
+                file=data,
+            )
+        except SlackApiError:
+            raise FileIntegrationError("slack_file_upload_failed") from None
+        if not result.get("ok"):
+            raise FileIntegrationError("slack_file_upload_failed")

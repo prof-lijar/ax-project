@@ -97,6 +97,12 @@ class Nextcloud:
         elif code not in {201, 204}:
             raise FileIntegrationError("nextcloud_upload_failed")
 
+    async def download(self, path: str, limit: int) -> bytes:
+        code, data = await self.request("GET", path, limit=limit)
+        if code != 200:
+            raise FileIntegrationError("nextcloud_download_failed")
+        return data
+
     async def list_files(self, folder: str) -> list[CloudFile]:
         code, body = await self.request(
             "PROPFIND",

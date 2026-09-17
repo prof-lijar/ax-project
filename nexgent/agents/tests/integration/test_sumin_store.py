@@ -98,6 +98,24 @@ async def test_postgres_dedup_claim_restart_fencing_and_terminal_retry():
             assert await store.match_context(work, ["budget"]) == {work.file_id}
             other = work.model_copy(update={"channel_id": "COTHER123"})
             assert await store.match_context(other, ["budget"]) == set()
+            await store.save_file_metadata(
+                work,
+                {
+                    "name": "CEO_Briefing.pdf",
+                    "created": 1789549200,
+                    "user": "U12345678",
+                },
+            )
+            metadata = await store.search_metadata(work, [], 0)
+            assert metadata[0]["filename"] == "CEO_Briefing.pdf"
+            assert metadata[0]["uploaded_at"].timestamp() == 1789549200
+            assert metadata[0]["first_seen_at"] is not None
+            assert metadata[0]["upload_context"] == "Quarterly budget"
+            assert await store.search_metadata(other, [], 0) == []
+            assert await store.search_metadata(work, ["unrelated"], 0) == []
+            assert (await store.search_metadata(work, ["briefing"], 0))[0][
+                "file_id"
+            ] == work.file_id
         finally:
             await pool.execute("DELETE FROM agent.sumin_events WHERE key=$1", work.key)
             for table in ("contexts", "files", "channels"):
@@ -138,7 +156,7 @@ async def test_channel_folder_migration_preserves_paths_and_runs_once(archive_ro
                 old_folder,
             )
             await connection.execute(
-                "INSERT INTO agent.sumin_files VALUES($1,$2,$3,$4)",
+                "INSERT INTO agent.sumin_files(team_id,channel_id,file_id,path) VALUES($1,$2,$3,$4)",
                 team,
                 "C12345678",
                 "F12345678",
@@ -233,7 +251,7 @@ async def test_shared_schema_migration_preserves_records_and_rejects_conflicts(
                 "INSERT INTO sumin.channels VALUES($1,$2,$3)", team, "C12345678", folder
             )
             await connection.execute(
-                "INSERT INTO sumin.files VALUES($1,$2,$3,$4)",
+                "INSERT INTO sumin.files(team_id,channel_id,file_id,path) VALUES($1,$2,$3,$4)",
                 team,
                 "C12345678",
                 "F12345678",

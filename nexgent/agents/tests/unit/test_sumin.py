@@ -11,7 +11,7 @@ import httpx
 import pytest
 from ax_contracts.sumin import SuminTask
 from ax_integrations.file_http import FileIntegrationError
-from ax_integrations.nextcloud import CloudFile, Nextcloud, path_component
+from ax_integrations.nextcloud import CloudFile, Nextcloud
 from ax_integrations.slack_files import (
     SlackFiles,
     verify_slack_signature,
@@ -22,7 +22,8 @@ from apps.sumin.app import create_app
 from apps.workers.sumin import process_one
 from workflows.sumin.events import normalize
 from workflows.sumin.graph import build_graph
-from workflows.sumin.service import Sumin, search_terms
+from workflows.sumin.search import SearchResult
+from workflows.sumin.service import Sumin
 from workflows.sumin.settings import Settings
 
 CHANNEL = "C12345678"
@@ -194,6 +195,9 @@ class FakeStore:
             (work.team_id, work.channel_id, work.file_id), proposed
         )
 
+    async def save_file_metadata(self, work, file):
+        pass
+
     async def save_context(self, work):
         self.contexts[work.key] = work
 
@@ -222,6 +226,12 @@ class FakeCloud:
         if path in self.data and self.data[path] != data:
             raise FileIntegrationError("nextcloud_file_conflict")
         self.data[path] = data
+
+    async def download(self, path, limit):
+        data = self.data[path]
+        if len(data) > limit:
+            raise FileIntegrationError("response_too_large")
+        return data
 
     async def list_files(self, folder):
         return [
@@ -257,14 +267,27 @@ def service(settings):
 
     slack.info.side_effect = info
     slack.member_channel = lambda channel: SlackFiles.member_channel(slack, channel)
+    cloud = FakeCloud()
+
+    async def find(work, folder):
+        files = await cloud.list_files(folder)
+        return SearchResult(
+            files[:10],
+            "Showing the first 10 matches"
+            if files
+            else "I couldn’t find matching files",
+        )
+
     return Sumin(
         settings,
         FakeStore(),
         slack,
-        FakeCloud(),
+        cloud,
         SimpleNamespace(
-            send_message=AsyncMock(return_value=SimpleNamespace(success=True))
+            upload_file=AsyncMock(),
+            send_message=AsyncMock(return_value=SimpleNamespace(success=True)),
         ),
+        search_agent=SimpleNamespace(find=AsyncMock(side_effect=find)),
     )
 
 
@@ -364,6 +387,9 @@ async def test_archive_resume_duplicate_and_context_search_graph(settings):
     assert message.channel_id == CHANNEL and message.thread_ts == "123000.100"
     assert "https://cloud.example/index.php/f/1" in message.text
     assert ".json" not in message.text
+    agent.sender.upload_file.assert_awaited_once_with(
+        channel_id=CHANNEL, thread_ts="123000.100", filename="plan.pdf", data=b"abc"
+    )
     # Deleted files are not returned just because their upload context remains indexed.
     agent.cloud.data.clear()
     await agent.run(search)
@@ -387,6 +413,10 @@ async def test_size_limit_no_cloud_write_and_no_bare_mention_listing(settings):
         await agent.run(task())
     assert agent.cloud.data == {}
     agent.slack.download.assert_not_called()
+    agent.search_agent.find.side_effect = None
+    agent.search_agent.find.return_value = SearchResult(
+        [], "Tell me a filename or describe the file"
+    )
     await agent.run(task(kind="search", file_id=None, text="<@U12345678> find files"))
     assert "Tell me a filename" in agent.sender.send_message.call_args.args[0].text
 
@@ -408,14 +438,6 @@ async def test_worker_retries_sanitizes_failures_and_propagates_cancellation():
     row["attempts"] = 6
     assert await process_one(store, graph)
     assert store.finish.call_args.args[1] == "attempts_exhausted"
-
-
-def test_search_terms_and_safe_names():
-    assert search_terms('<@U123> Please find "Q3 budget.xlsx"') == ["q3 budget.xlsx"]
-    assert search_terms("<@U123> 예산 파일 찾아줘") == ["예산"]
-    assert search_terms("find files please") == []
-    assert "/" not in path_component("../../unsafe\\file.pdf")
-    assert len(path_component("가" * 100).encode()) <= 160
 
 
 @pytest.mark.asyncio
@@ -819,3 +841,112 @@ async def test_worker_nextcloud_tls_setting_is_isolated(
         create_context.assert_called_once_with(cafile="/test/ca.pem")
     else:
         create_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_search_attaches_at_most_ten_files_in_request_thread(settings):
+    agent = service(settings)
+    for i in range(12):
+        agent.cloud.data[f"Slack/finance/F{i:08d}--budget-{i:02d}.md"] = b"# budget"
+    agent.cloud.data["Slack/other/budget-private.md"] = b"private"
+    await agent.run(task(kind="search", file_id=None, text="find budget"))
+    calls = agent.sender.upload_file.await_args_list
+    assert len(calls) == 10
+    for call in calls:
+        assert call.kwargs["channel_id"] == CHANNEL
+        assert call.kwargs["thread_ts"] == task().message_ts
+        assert call.kwargs["filename"].startswith("budget-")
+        assert call.kwargs["data"] == b"# budget"
+    assert "first 10" in agent.sender.send_message.call_args.args[0].text
+
+
+@pytest.mark.asyncio
+async def test_search_attachment_limit_and_upload_failure_do_not_complete(settings):
+    agent = service(replace(settings, max_file_bytes=2))
+    agent.cloud.data["Slack/finance/F12345678--budget.md"] = b"abc"
+    query = task(kind="search", file_id=None, text="budget")
+    with pytest.raises(FileIntegrationError, match="response_too_large"):
+        await agent.run(query)
+    agent.sender.upload_file.assert_not_awaited()
+    agent.sender.send_message.assert_not_awaited()
+    agent.settings = settings
+    agent.sender.upload_file.side_effect = FileIntegrationError(
+        "slack_file_upload_failed"
+    )
+    with pytest.raises(FileIntegrationError, match="slack_file_upload_failed"):
+        await agent.run(query)
+    agent.sender.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_attachment_sender_checks_membership_and_preserves_bytes():
+    from ax_integrations.slack_files import MemberSlackService
+
+    slack = SimpleNamespace(member_channel=AsyncMock())
+    client = SimpleNamespace(files_upload_v2=AsyncMock(return_value={"ok": True}))
+    sender = MemberSlackService("xoxb-test", slack, client=client)
+    values = {
+        "channel_id": CHANNEL,
+        "thread_ts": "123.456",
+        "filename": "notes.md",
+        "data": b"# notes",
+    }
+    await sender.upload_file(**values)
+    client.files_upload_v2.assert_awaited_once_with(
+        channel=CHANNEL,
+        thread_ts="123.456",
+        filename="notes.md",
+        title="notes.md",
+        file=b"# notes",
+    )
+    slack.member_channel.side_effect = FileIntegrationError("bot_not_channel_member")
+    with pytest.raises(FileIntegrationError, match="bot_not_channel_member"):
+        await sender.upload_file(**values)
+    assert client.files_upload_v2.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_attachment_sender_sanitizes_slack_api_failure():
+    from ax_integrations.slack_files import MemberSlackService
+    from slack_sdk.errors import SlackApiError
+
+    slack = SimpleNamespace(member_channel=AsyncMock())
+    client = SimpleNamespace(
+        files_upload_v2=AsyncMock(side_effect=SlackApiError("secret", {"ok": False}))
+    )
+    sender = MemberSlackService("xoxb-test", slack, client=client)
+    with pytest.raises(FileIntegrationError, match="^slack_file_upload_failed$"):
+        await sender.upload_file(
+            channel_id=CHANNEL, thread_ts="123.456", filename="notes.md", data=b"abc"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,content,error",
+    [
+        (200, b"abc", None),
+        (200, b"toolarge", "response_too_large"),
+        (404, b"", "nextcloud_download_failed"),
+        (302, b"", "nextcloud_download_failed"),
+    ],
+)
+async def test_nextcloud_attachment_download_is_authenticated_bounded(
+    status, content, error
+):
+    def handler(request):
+        assert request.method == "GET"
+        assert (
+            request.url.path
+            == "/remote.php/dav/files/sumin/Shared/Slack/finance/notes.md"
+        )
+        assert request.headers["authorization"].startswith("Basic ")
+        return httpx.Response(status, content=content)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        cloud = Nextcloud("https://cloud.example", "sumin", "secret", http)
+        if error:
+            with pytest.raises(FileIntegrationError, match=error):
+                await cloud.download("Shared/Slack/finance/notes.md", 3)
+        else:
+            assert await cloud.download("Shared/Slack/finance/notes.md", 3) == b"abc"

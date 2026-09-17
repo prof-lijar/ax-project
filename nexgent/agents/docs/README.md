@@ -1,6 +1,6 @@
 # Documentation map
 
-- [Sumin](../workflows/sumin/README.md): Markdown/snippet support, Socket Mode file collection in every joined Slack channel, automatic bot/workspace discovery, single-workspace Nextcloud channel folders and path migration, mention search, durable recovery, and shared `AGENT_DATABASE_DSN` and `agent.sumin_*` tables, unified root Compose startup, and Nextcloud CA and TLS verification settings.
+- [Sumin](../workflows/sumin/README.md): Markdown/snippet support, Socket Mode file collection in every joined Slack channel, automatic bot/workspace discovery, single-workspace Nextcloud channel folders and path migration, model-directed metadata tools, multilingual mention search and Slack file attachments, durable recovery, and shared `AGENT_DATABASE_DSN` and `agent.sumin_*` tables, unified root Compose startup, and Nextcloud CA and TLS verification settings.
 
 - [Chat session memory](chat-session-memory.md): per-conversation LangGraph threads, bounded history, streaming, session lifetime, and verification.
 
