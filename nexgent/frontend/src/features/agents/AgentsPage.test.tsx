@@ -76,7 +76,9 @@ describe("AgentsPage", () => {
     expect(markup).toContain("Weekly Reporter");
     expect(markup).toContain("RAG Agent");
     expect(markup).toContain("AnsimK Scout Agent");
+    expect(markup).toContain("Sumin");
     expect(markup).toContain('href="/agents/ansimk_scout_agent"');
+    expect(markup).toContain('href="/agents/sumin"');
     expect(markup).not.toContain("Google ADK");
     expect(markup).not.toContain("Data Analyst");
     expect(markup).not.toContain("Report QA");
@@ -118,6 +120,27 @@ describe("AgentsPage", () => {
     expect(markup).not.toContain("Start chat");
   });
 
+  it("registers Sumin as a Slack details-only co-worker", async () => {
+    const sumin = (await agentCatalogClient.listAgents()).find(
+      ({ id }) => id === "sumin"
+    );
+    expect(sumin).toBeDefined();
+
+    const markup = renderToStaticMarkup(
+      <AgentsPageView agents={[sumin!]} search="" />
+    );
+
+    expect(markup).toContain("Slack files");
+    expect(markup).toContain("Archive Slack files in Nextcloud");
+    expect(markup).toContain('href="/agents/sumin"');
+    expect(markup).toContain("View details");
+    expect(markup).toContain("Works in Slack");
+    expect(markup).not.toContain("Start chat");
+    expect(markup).not.toContain("Dedicated workspace");
+    expect(markup).not.toContain("Open workspace");
+    expect(markup).not.toContain(">Ready<");
+  });
+
   it("prepares Chat with the selected agent without a pending run intent", () => {
     useUiStore.getState().requestAgentRun(agent);
 
@@ -147,6 +170,9 @@ describe("Co-worker catalog states", () => {
     ]);
     expect(filterAgents(agents, "  KNOWLEDGE ").map((a) => a.id)).toEqual([
       "7"
+    ]);
+    expect(filterAgents(agents, "Slack files").map((a) => a.id)).toEqual([
+      "sumin"
     ]);
   });
 

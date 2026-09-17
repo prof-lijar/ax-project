@@ -62,6 +62,18 @@ const ragAgent: AgentDefinition = {
   recentRuns: []
 };
 
+const suminAgent: AgentDefinition = {
+  ...ragAgent,
+  id: "sumin",
+  name: "Sumin",
+  role: "Slack file archive collaborator",
+  description:
+    "Archives files from joined Slack channels in Nextcloud and finds them again from natural-language mentions.",
+  graphId: "sumin",
+  canRunInChat: false,
+  runtimeLabel: "Slack Socket Mode"
+};
+
 describe("AgentDetailPage", () => {
   it("renders the simplified agent header and a minimal empty run state", () => {
     const markup = renderToStaticMarkup(
@@ -111,6 +123,17 @@ describe("AgentDetailPage", () => {
     expect(markup).not.toContain("Current run");
     expect(markup).not.toContain("Latest run");
     expect(markup).not.toContain("mock run");
+  });
+
+  it("shows Sumin details without offering an unsupported Chat action", () => {
+    const markup = renderToStaticMarkup(
+      <AgentDetailPageView agent={suminAgent} />
+    );
+
+    expect(markup).toContain("Sumin");
+    expect(markup).toContain("Slack file archive collaborator");
+    expect(markup).not.toContain("Run in Chat");
+    expect(markup).not.toContain("Current run");
   });
 
   it("renders only a running mock record as the current run", () => {

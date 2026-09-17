@@ -8,6 +8,7 @@ export const WEEKLY_REPORTER_AGENT_ID = "1";
 export const RAG_CHAT_AGENT_ID = "7";
 export const RAG_CHAT_GRAPH_ID = "rag_chat";
 export const SCOUT_AGENT_ID = "ansimk_scout_agent";
+export const SUMIN_AGENT_ID = "sumin";
 
 export interface AgentCatalogRecord extends Omit<AgentDefinition, "readiness" | "recentRuns"> {
   readiness: string | null;
@@ -163,12 +164,53 @@ const scoutAgentRecord: AgentCatalogRecord = {
   recentRuns: []
 };
 
+const suminAgentRecord: AgentCatalogRecord = {
+  id: SUMIN_AGENT_ID,
+  name: "Sumin",
+  role: "Slack file archive collaborator",
+  description:
+    "Archives files from joined Slack channels in Nextcloud and finds them again from natural-language mentions.",
+  graphId: SUMIN_AGENT_ID,
+  canRunInChat: false,
+  readiness: null,
+  currentWork: null,
+  runtimeLabel: "Slack Socket Mode",
+  lastObservedAt: null,
+  observationMode: null,
+  capabilities: [
+    "Archive Slack uploads in channel folders",
+    "Find files from names and upload context",
+    "Return Slack attachments with Nextcloud source links"
+  ],
+  inputs: [
+    {
+      name: "slack_event",
+      description: "A file upload or Sumin mention in a joined Slack channel",
+      required: true
+    }
+  ],
+  outputDescription:
+    "A durable Nextcloud archive or a channel reply with matching files and source links.",
+  configuration: [
+    { label: "Interaction", value: "Slack channel uploads and mentions" },
+    { label: "Archive", value: "Nextcloud channel folders" },
+    { label: "Search scope", value: "The current joined Slack channel" }
+  ],
+  limitations: [
+    "Works only in Slack channels the bot has joined",
+    "Search uses file metadata and upload context, not file contents",
+    "Does not search across channels or direct messages"
+  ],
+  recentRuns: []
+};
+
 export const agentCatalogClient = {
   async listAgents(): Promise<AgentDefinition[]> {
     return normalizeAgentCatalog([
       weeklyReporterRecord,
       ragChatRecord,
-      scoutAgentRecord
+      scoutAgentRecord,
+      suminAgentRecord
     ]);
   }
 };
