@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from unittest.mock import Mock
 from urllib.error import URLError
@@ -19,11 +20,19 @@ def job(status="pending"):
         "week_start": "2026-08-31",
         "timezone": "Asia/Seoul",
         "max_reports": 10000,
+        "discovered_count": 3,
+        "completed_count": 3 if status == "completed" else 0,
+        "failed_count": 0,
+        "pending_count": 0,
+        "running_count": 0,
+        "producer_done": status == "completed",
+        "selection_truncated": False,
+        "next_cursor": None,
     }
 
 
-@pytest.mark.parametrize("terminal", ["completed", "partial"])
-def test_waits_through_finalizing_and_transient_outage(terminal):
+def test_waits_through_finalizing_and_transient_outage():
+    terminal = "completed"
     statuses = iter([URLError("offline"), "finalizing", terminal])
     calls = []
 
@@ -45,7 +54,7 @@ def test_waits_through_finalizing_and_transient_outage(terminal):
     assert all(request.full_url.endswith("/" + job()["job_id"]) for request in calls)
 
 
-@pytest.mark.parametrize("status", ["failed", "cancelled", "cancelling", "expired"])
+@pytest.mark.parametrize("status", ["partial", "failed", "cancelled", "cancelling", "expired"])
 def test_unsuccessful_job_cannot_trigger_migration(status, tmp_path):
     migrate = Mock()
     with pytest.raises(ScheduledSubmissionError):
@@ -86,7 +95,7 @@ def test_poll_rejects_mismatched_job(field, value):
 def test_migration_uses_reporting_monday_after_storage_and_saves_receipt(tmp_path):
     order = []
 
-    def wait(settings, submitted):
+    def wait(settings, submitted, **kwargs):
         order.append("storage_committed")
         return job("completed")
 
@@ -182,3 +191,72 @@ def test_pipeline_lock_prevents_overlapping_tunnels(tmp_path):
                 SchedulerSettings(), state_root=tmp_path, submit=submit
             )
     submit.assert_not_called()
+
+
+@pytest.mark.parametrize("changes", [
+    {"completed_count": 2}, {"failed_count": 1}, {"pending_count": 1},
+    {"running_count": 1}, {"producer_done": False}, {"completed_count": None},
+    {"selection_truncated": True, "next_cursor": None},
+    {"next_cursor": "unacknowledged-continuation"},
+])
+def test_completed_status_with_missing_reports_cannot_migrate(changes, tmp_path):
+    migrate = Mock()
+    with pytest.raises(ScheduledSubmissionError):
+        pipeline.run_pipeline(
+            SchedulerSettings(), state_root=tmp_path,
+            submit=lambda *a, **kw: {**job("completed"), **changes},
+            migrate=migrate,
+        )
+    migrate.assert_not_called()
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_scheduler_follows_all_batches_before_migrating_and_records_total(tmp_path):
+    first = {
+        **job("completed"), "selection_truncated": True, "next_cursor": "page-two",
+        "completed_count": 10_000, "discovered_count": 10_000,
+    }
+    last = {**job("completed"), "job_id": "9ff04888-a682-4704-8d27-3d5cd2cb26cb"}
+    cursors = []
+
+    def submit(*args, **kwargs):
+        cursors.append(kwargs["cursor"])
+        return last if kwargs["cursor"] else first
+
+    def migrate(week):
+        assert cursors == [None, "page-two"]
+
+    pipeline.run_pipeline(
+        SchedulerSettings(), now=datetime(2026, 9, 6, 18, tzinfo=UTC),
+        state_root=tmp_path, submit=submit, migrate=migrate,
+    )
+    receipt = json.loads((tmp_path / "2026-08-31.json").read_text())
+    assert receipt["report_count"] == 10_003
+    assert receipt["job_ids"] == [first["job_id"], last["job_id"]]
+    assert receipt["selection_policy"] == pipeline.SELECTION_POLICY
+
+
+def test_failure_in_later_batch_prevents_migration_and_receipt(tmp_path):
+    first = {**job("completed"), "selection_truncated": True, "next_cursor": "page-two"}
+    submit = Mock(side_effect=[first, job("failed")])
+    migrate = Mock()
+    with pytest.raises(ScheduledSubmissionError):
+        pipeline.run_pipeline(
+            SchedulerSettings(), state_root=tmp_path, submit=submit, migrate=migrate,
+        )
+    migrate.assert_not_called()
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_old_receipt_does_not_suppress_all_ward_generation(tmp_path):
+    path = tmp_path / "2026-08-31.json"
+    path.write_text(json.dumps({"job_id": job()["job_id"], "week_start": "2026-08-31"}))
+    submit = Mock(return_value=job("completed"))
+    migrate = Mock()
+    pipeline.run_pipeline(
+        SchedulerSettings(), now=datetime(2026, 9, 6, 18, tzinfo=UTC),
+        state_root=tmp_path, submit=submit, migrate=migrate,
+    )
+    submit.assert_called_once()
+    migrate.assert_called_once_with("2026-08-31")
+    assert json.loads(path.read_text())["selection_policy"] == pipeline.SELECTION_POLICY

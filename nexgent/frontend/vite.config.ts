@@ -2,58 +2,18 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const agentServerTarget =
-    env.VITE_AGENT_SERVER_BASE_URL?.trim() || "http://192.168.0.18:2024";
-  const weeklyReportBulkApiTarget =
-    env.VITE_WEEKLY_REPORT_BULK_API_BASE_URL?.trim() ||
-    "http://127.0.0.1:8090";
-  const serviceProxy = {
-    "/scout-api": {
-      target: env.SCOUT_PROXY_TARGET?.trim() || "http://127.0.0.1:8091",
-      changeOrigin: true,
-      proxyTimeout: 240_000,
-      rewrite: (path: string) => path.replace(/^\/scout-api/, "")
-    },
-    "/agent-server": {
-      target: agentServerTarget,
-      changeOrigin: true,
-      rewrite: (path: string) => path.replace(/^\/agent-server/, "")
-    },
-    "/weekly-report-bulk-api": {
-      target: weeklyReportBulkApiTarget,
-      changeOrigin: true,
-      rewrite: (path: string) =>
-        path.replace(/^\/weekly-report-bulk-api/, "")
-    }
-  };
-
+  const target = env.NEXGENT_BACKEND_TARGET || "http://127.0.0.1:8000";
+  const proxy = Object.fromEntries(
+    ["/api", "/auth", "/agent-server", "/weekly-report-bulk-api", "/scout-api", "/scout-scheduler-api", "/rag-api"]
+      .map(prefix => [prefix, { target, proxyTimeout: 300_000 }])
+  );
   return {
-    plugins: [react()],
-    clearScreen: false,
-    server: {
-      host: host || "127.0.0.1",
-      port: 5173,
-      strictPort: true,
-      hmr: host
-        ? {
-            protocol: "ws",
-            host,
-            port: 1421
-          }
-        : undefined,
-      proxy: serviceProxy,
-      watch: {
-        ignored: ["**/src-tauri/**"]
-      }
-    },
-    preview: {
-      host: "127.0.0.1",
-      port: 4173,
-      strictPort: true,
-      proxy: serviceProxy
-    }
+    plugins: [react()], clearScreen: false,
+    server: { host: host || "127.0.0.1", port: 5173, strictPort: true,
+      hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+      proxy, watch: { ignored: ["**/src-tauri/**"] } },
+    preview: { host: "127.0.0.1", port: 4173, strictPort: true, proxy }
   };
 });

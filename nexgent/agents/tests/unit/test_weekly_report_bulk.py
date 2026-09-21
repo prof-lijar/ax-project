@@ -684,21 +684,22 @@ async def test_selected_wards_generate_only_requested_reports_without_storage(tm
         poll_seconds=0.001,
     ).run(job.job_id, concurrency=1)
 
-    assert status.status == "completed"
+    assert status.status == ("failed" if missing else "completed")
     assert status.max_reports == 3
-    assert status.completed_count == (2 if missing else 3)
+    assert status.completed_count == (0 if missing else 3)
     assert len(source.requests) == 1
     assert source.requests[0].ward_ids == [23, 45, 56]
     assert source.requests[0].cursor is None
     assert status.next_cursor is None
     assert status.selection_truncated is False
+    if missing:
+        assert status.export is None
+        return
     assert status.export is not None
     with zipfile.ZipFile(artifacts.local_path(status.export.uri)) as archive:
         ids = {json.loads(line)["ward_id"] for line in archive.read("reports.jsonl").splitlines()}
         assert ids == ({23, 56} if missing else {23, 45, 56})
         assert json.loads(archive.read("manifest.json"))["request"]["persist_reports"] is False
-    if missing:
-        assert "ward-45:requested_ward_unavailable" in status.warnings
 
 
 @pytest.mark.asyncio
@@ -764,3 +765,83 @@ async def test_selected_wards_resume_after_a_partially_staged_selection(tmp_path
     assert len(requests) == 1
     assert requests[0].ward_ids == [45, 56]
     assert {int(item.item_key) for item in await store.list_items(job.job_id)} == {23, 45, 56}
+
+
+@pytest.mark.asyncio
+async def test_every_ward_is_stored_even_without_data_or_a_working_model(tmp_path):
+    from workflows.weekly_report.source.queries import CANDIDATE_WARDS_SQL
+    from workflows.weekly_report.source.service import WeeklyReportSourceService
+
+    class Database:
+        async def fetch(self, query, *args):
+            if query == CANDIDATE_WARDS_SQL:
+                after, limit = args
+                return [{"ward_id": ward, "full_name": f"대상 {ward}"}
+                        for ward in range(1, 104) if ward > after][:limit]
+            return []
+
+    class Source:
+        async def load(self, request):
+            return await WeeklyReportSourceService(Database()).build(request)
+
+    class BrokenModel:
+        async def complete(self, *args, **kwargs):
+            raise RuntimeError("unexpected model adapter failure")
+
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 9, 14), idempotency_key="all-wards-no-weekly-data",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND, request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    report_store = RecordingWeeklyReportStore()
+    status = await WeeklyReportBulkRunner(
+        store, artifacts, Source(), BrokenModel(), report_store, poll_seconds=0.001,
+    ).run(job.job_id, concurrency=4)
+
+    assert status.status == "completed"
+    assert status.discovered_count == status.completed_count == status.fallback_count == 103
+    assert status.failed_count == 0
+    assert {record.ward_id for record in report_store.records} == set(range(1, 104))
+    for record in report_store.records:
+        template = json.loads(record.report_data_json)
+        assert template["generation_notice"] is None
+        assert template["basic_info"]["risk_score"] is None
+        assert template["device_status"]["metrics"]["normal_reception_days"] == 0
+    with zipfile.ZipFile(artifacts.local_path(status.export.uri)) as archive:
+        assert len([name for name in archive.namelist() if name.startswith("json/")]) == 103
+
+
+@pytest.mark.asyncio
+async def test_failed_report_cannot_commit_a_smaller_batch(tmp_path, monkeypatch):
+    store = InMemoryBulkJobStore()
+    artifacts = LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0)
+    original_write = artifacts.write_json
+
+    def fail_one_report(job_id, name, payload):
+        if name == "reports/102.json":
+            raise OSError("injected artifact write failure")
+        return original_write(job_id, name, payload)
+
+    monkeypatch.setattr(artifacts, "write_json", fail_one_report)
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 9, 14), max_reports=3, idempotency_key="no-partial-storage",
+    )
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND, request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    report_store = RecordingWeeklyReportStore()
+    status = await WeeklyReportBulkRunner(
+        store, artifacts, MockWeeklyReportSourceRepository(), FakeModel(),
+        report_store, poll_seconds=0.001,
+    ).run(job.job_id, concurrency=3)
+
+    assert status.status == "failed"
+    assert status.completed_count == 2
+    assert status.failed_count == 1
+    assert status.export is None
+    assert report_store.records == []

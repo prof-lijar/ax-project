@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 import type {
   NextcloudFileItem,
   NextcloudDownloadResponse,
@@ -8,11 +9,7 @@ import type {
   NextcloudViewerKind
 } from "../types/nextcloud";
 
-const configuredBackendUrl = import.meta.env.VITE_BACKEND_URL?.trim();
-const backendPort = import.meta.env.VITE_BACKEND_PORT?.trim() || "8000";
-const BACKEND_URL = configuredBackendUrl
-  ? configuredBackendUrl.replace(/\/$/, "")
-  : defaultBackendUrl();
+const BACKEND_URL = "";
 
 export function backendUrl(path: string) {
   return `${BACKEND_URL}${path}`;
@@ -44,22 +41,9 @@ interface BackendNextcloudTextFileResponse {
   contentType?: string | null;
 }
 
-function defaultBackendUrl() {
-  if (typeof window === "undefined") {
-    return "http://127.0.0.1:8000";
-  }
-
-  const hostname = window.location.hostname;
-  if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
-    return `${window.location.protocol}//${hostname}:${backendPort}`;
-  }
-
-  return `http://127.0.0.1:${backendPort}`;
-}
-
 export async function getBrowserNextcloudStatus(): Promise<NextcloudStatus> {
   try {
-    const response = await fetch(backendUrl("/api/nextcloud/capabilities"));
+    const response = await authenticatedFetch(backendUrl("/api/nextcloud/capabilities"));
     if (!response.ok) {
       return {
         ok: false,
@@ -88,7 +72,7 @@ export async function getBrowserNextcloudStatus(): Promise<NextcloudStatus> {
 export async function listBrowserNextcloudFiles(
   path: string
 ): Promise<NextcloudListFilesResponse> {
-  const url = new URL(`${BACKEND_URL}/api/nextcloud/files`);
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files`, window.location.origin);
   url.searchParams.set("path", path);
   url.searchParams.set("depth", "1");
   return normalizeListFilesResponse(
@@ -99,7 +83,7 @@ export async function listBrowserNextcloudFiles(
 export async function readBrowserNextcloudTextFile(
   path: string
 ): Promise<NextcloudTextFileResponse> {
-  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/content`);
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/content`, window.location.origin);
   url.searchParams.set("path", path);
   return normalizeTextFileResponse(
     await requestJson<BackendNextcloudTextFileResponse>(url)
@@ -109,9 +93,9 @@ export async function readBrowserNextcloudTextFile(
 export async function previewBrowserNextcloudFile(
   path: string
 ): Promise<NextcloudPreviewResponse> {
-  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/preview`);
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/preview`, window.location.origin);
   url.searchParams.set("path", path);
-  const response = await fetch(url);
+  const response = await authenticatedFetch(url);
   if (!response.ok) {
     throw new Error(await errorDetail(response));
   }
@@ -147,9 +131,9 @@ export async function previewBrowserNextcloudFile(
 export async function downloadBrowserNextcloudFile(
   path: string
 ): Promise<NextcloudDownloadResponse> {
-  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/download`);
+  const url = new URL(`${BACKEND_URL}/api/nextcloud/files/download`, window.location.origin);
   url.searchParams.set("path", path);
-  const response = await fetch(url);
+  const response = await authenticatedFetch(url);
   if (!response.ok) {
     throw new Error(await errorDetail(response));
   }
@@ -172,7 +156,7 @@ export async function downloadBrowserNextcloudFile(
 }
 
 async function requestJson<T>(url: URL): Promise<T> {
-  const response = await fetch(url);
+  const response = await authenticatedFetch(url);
   if (!response.ok) {
     throw new Error(await errorDetail(response));
   }

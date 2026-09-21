@@ -15,7 +15,17 @@ from .policy import (
 
 def build_fallback(facts: FactPackage) -> WeeklyNarrative:
     if facts.weekly_report_data is not None:
-        return _build_free_summary_fallback(facts)
+        try:
+            return _build_free_summary_fallback(facts)
+        except ValueError:
+            # A prose-policy conflict must not discard validated report metrics.
+            # This fixed summary makes no claim about the ward or missing data.
+            return WeeklyNarrative(
+                headline="지난 한 주 생활 정보는 아래 항목에서 확인하실 수 있어요.",
+                analysis_text="",
+                observations=[],
+                suggestions=[],
+            )
     selected_facts = facts.facts[:6]
     return validate_narrative(
         WeeklyNarrative(
@@ -186,6 +196,14 @@ def _fallback_action(facts: FactPackage) -> str | None:
     overall_parts = re.split(r"(?<=[.!?])\s+", data.overall.description.strip())
     if len(overall_parts) > 1:
         return overall_parts[1]
+    # Activity CAUTION descriptions contain an observation but no action.
+    # Keep a check-in when no more specific section action was selected,
+    # without implying a routine week or depending on an available score.
+    if any(
+        section.status in {"CAUTION", "RISK"}
+        for section in (data.living_activity, data.living_pattern)
+    ):
+        return "안부를 한 번 확인해 주세요."
     if data.overall.status == "GOOD":
         return "평소처럼 안부를 확인해 주세요."
     return None

@@ -1,6 +1,5 @@
-export const SCOUT_SERVER_BASE_URL = resolveScoutServerBaseUrl(
-  import.meta.env.VITE_SCOUT_API_BASE_URL
-);
+import { authenticatedFetch } from "./authenticatedFetch";
+export const SCOUT_SERVER_BASE_URL = "/scout-api";
 
 export interface ScoutRunRequest {
   topic: string;
@@ -60,7 +59,7 @@ export const scoutClient = {
     let response: Response;
 
     try {
-      response = await fetch(scoutServerUrl("/v1/scout/runs"), {
+      response = await authenticatedFetch(scoutServerUrl("/v1/scout/runs"), {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -96,21 +95,14 @@ export const scoutClient = {
   }
 };
 
-export function resolveScoutServerBaseUrl(configuredUrl?: string) {
-  const value = configuredUrl?.trim() || defaultScoutServerBaseUrl();
-  return value.replace(/\/+$/, "");
+export function resolveScoutServerBaseUrl(_configured?: string) {
+  return "/scout-api";
 }
 
 function scoutServerUrl(path: string) {
   return `${SCOUT_SERVER_BASE_URL}${path}`;
 }
 
-function defaultScoutServerBaseUrl() {
-  if (typeof window === "undefined") {
-    return "http://127.0.0.1:8091";
-  }
-  return `${window.location.protocol}//${window.location.hostname}:8091`;
-}
 
 function normalizeRequest(input: ScoutRunRequest): ScoutRunRequest {
   const topic = input.topic.trim();

@@ -24,7 +24,7 @@ describe("ragClient.embedFile", () => {
     await expect(ragClient.embedFile(file)).resolves.toEqual(payload);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8765/rag/v1/embed");
+    expect(url).toBe("/rag-api/rag/v1/embed");
     expect(init.method).toBe("POST");
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("file")).toEqual(file);
@@ -96,7 +96,7 @@ describe("ragClient.embedText", () => {
     ).resolves.toEqual(payload);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8765/rag/v1/embed/text");
+    expect(url).toBe("/rag-api/rag/v1/embed/text");
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("Content-Type")).toBe(
       "application/json"
@@ -136,9 +136,9 @@ describe("ragClient.search", () => {
     await ragClient.search("서울 수도 & 행정?");
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const parsed = new URL(url);
-    expect(parsed.origin).toBe("http://127.0.0.1:8765");
-    expect(parsed.pathname).toBe("/rag/v1/search");
+    const parsed = new URL(url, "http://nexgent.test");
+    expect(parsed.origin).toBe("http://nexgent.test");
+    expect(parsed.pathname).toBe("/rag-api/rag/v1/search");
     expect(parsed.searchParams.get("query")).toBe("서울 수도 & 행정?");
     expect(parsed.searchParams.get("top_k")).toBe(String(DEFAULT_RAG_TOP_K));
     expect(init.method).toBe("GET");
@@ -157,10 +157,10 @@ describe("ragClient.search", () => {
     );
   });
 
-  it("normalizes the configured direct RAG server base URL", () => {
+  it("ignores direct URLs in favor of the authenticated RAG route", () => {
     expect(
       resolveRagServerBaseUrl("  http://192.168.0.18:8765/  ")
-    ).toBe("http://192.168.0.18:8765");
+    ).toBe("/rag-api");
   });
 
   it.each(["", "   ", "\n\t"])("rejects an invalid query %j", async (query) => {
@@ -242,7 +242,7 @@ describe("ragClient RAG data administration", () => {
     await expect(ragClient.getDataStats()).resolves.toEqual(payload);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8765/rag/v1/data/stats");
+    expect(url).toBe("/rag-api/rag/v1/data/stats");
     expect(init.method).toBe("GET");
     expect(init.body).toBeUndefined();
   });
@@ -258,7 +258,7 @@ describe("ragClient RAG data administration", () => {
     await expect(ragClient.deleteAllData("DELETE")).resolves.toEqual(payload);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8765/rag/v1/data");
+    expect(url).toBe("/rag-api/rag/v1/data");
     expect(init.method).toBe("DELETE");
     expect(new Headers(init.headers).get("Content-Type")).toBe(
       "application/json"

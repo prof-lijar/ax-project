@@ -1,26 +1,30 @@
 # Weekly Report Scheduler
 
-This private cron service submits one durable Weekly Reporter bulk job every
+This private cron service starts durable Weekly Reporter generation every
 Monday at 01:00 in `Asia/Seoul`. The cron expression is `0 1 * * 1`.
 
 Each run targets the previous fully completed Monday-through-Sunday period and
-requests up to 10,000 reports by default. The idempotency key is derived from
-that period's Monday, so a retried cron invocation resolves to the existing job
-instead of creating duplicate work.
+includes every ward in `resources_ward`, even without weekly records. Each job
+requests up to 10,000 reports by default; the pipeline follows continuation
+cursors until discovery is exhausted. Idempotency keys include the reporting
+Monday, the all-ward policy, and a cursor hash for subsequent jobs.
 
 After submission, the service polls the private bulk control API every 30
-seconds for up to 24 hours. `completed` and `partial` confirm the finalizer has
-committed generated reports to the local database. It then runs
+seconds. All batches share a 24-hour generation/polling deadline. Only
+`completed` with matching completed/discovered counts and no failed or unfinished
+items confirms complete batch storage. After the last continuation batch, it runs
 `playground/weekly-reporter/migrate.sh --write --week-start YYYY-MM-DD`, using
-the submitted reporting Monday, with a one-hour migration deadline. Partial
-jobs migrate the saved reports; failed, cancelled, cancelling, and expired jobs
+the submitted reporting Monday, with a one-hour migration deadline. Partial,
+failed, cancelled, cancelling, and expired jobs
 do not migrate. The service does not generate reports or call the model.
 
 For example, Monday 2026-09-14 submits the week starting 2026-09-07, then
 migrates with `--week-start 2026-09-07` after local storage succeeds.
 
 The pipeline serializes invocations with a local file lock, and saves a
-per-week success receipt only after migration exits successfully. A rerun
+per-week `all-wards-v1` success receipt with batch IDs and report count only
+after migration exits successfully. Legacy receipts do not suppress full-ward
+generation. A rerun
 with a receipt skips submission and migration. Without a receipt, the same
 idempotency key resumes the existing bulk job. If interrupted after target
 commit but before receipt creation, retrying may repeat the upsert and refresh
@@ -57,6 +61,8 @@ retrying an uncertain commit. Retain `/var/lib/ax/weekly-report-scheduler`
 across container replacement; `WEEKLY_REPORT_SCHEDULE_STATE_ROOT` can override
 that directory for local execution. A failed generation job requires the
 existing generation/storage recovery procedure before manual migration.
+For the all-ward policy rollout and regeneration of a legacy week, see
+[full-coverage recovery](../../docs/weekly-report-completeness.md).
 
 Configuration:
 

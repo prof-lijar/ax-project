@@ -1,0 +1,41 @@
+.login { min-height: 100dvh; display: grid; place-items: center; padding: 32px; background: var(--color-surface-raised); }
+.loginBody { width: 100%; max-width: 420px; }
+.brand { color: var(--color-text); font-size: 21px; font-weight: 750; text-decoration: none; }
+.loginBody h1 { margin: 36px 0 12px; font-size: 28px; }
+.loginBody p, .intro { color: var(--color-text-muted); line-height: 1.6; }
+.page button, .login button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 13px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 14px; cursor: pointer; }
+.page button:disabled, .login button:disabled { opacity: 0.5; cursor: wait; }
+.page :focus-visible, .login :focus-visible { outline: 2px solid var(--color-link); outline-offset: 3px; }
+.hint, .details small { font-size: 13px; color: var(--color-text-soft); line-height: 1.6; }
+.page { min-height: 100dvh; background: var(--color-canvas); }
+.header { display: flex; align-items: center; gap: 24px; padding: 18px 32px; border-bottom: 1px solid var(--color-border); }
+.header > span { flex: 1; overflow-wrap: anywhere; }
+.content { max-width: 1060px; margin: 0 auto; padding: 36px 32px; }
+.content h1 { font-size: 26px; margin: 0; }
+.intro { margin: 12px 0 28px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.tabs button[aria-current] { border-color: var(--color-primary); color: var(--color-primary); font-weight: 700; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 12px; gap: 12px; }
+.toolbar h2 { font-size: 19px; }
+.list { padding: 0; margin: 0; list-style: none; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--color-border); }
+.details { min-width: 0; overflow-wrap: anywhere; }
+.details small { display: block; margin-top: 5px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.error { color: var(--color-red); }
+.form, .fields, .editor { display: grid; gap: 16px; }
+.editor { margin: 16px 0; border: 1px solid var(--color-border); padding: 20px; border-radius: 6px; background: var(--color-surface); }
+.editor h3, .editor p { margin: 0; }
+.fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.form label, .editor label { display: grid; gap: 7px; font-size: 14px; }
+.form input, .editor input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font: inherit; }
+.choices { border: 0; border-top: 1px solid var(--color-border); padding: 12px 0 0; margin: 0; display: flex; flex-wrap: wrap; gap: 16px; }
+.choices legend { padding-right: 10px; font-size: 14px; }
+.choices label, .editor .checkbox { display: flex; align-items: center; gap: 8px; }
+.choices input, .checkbox input { accent-color: var(--color-primary); }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 640px) {
+  .header { padding: 16px; gap: 12px; flex-wrap: wrap; }
+  .content { padding: 28px 16px; }
+  .list li { align-items: flex-start; flex-direction: column; gap: 12px; }
+}

@@ -83,7 +83,7 @@ export function NextcloudPage() {
   if (statusQuery.isError) {
     return (
       <OfflineState
-        backendUrl="http://127.0.0.1:8000"
+        backendUrl="/api/nextcloud"
         detail="Unable to check local backend status."
         loading={statusQuery.isFetching}
         onRetry={() => void statusQuery.refetch()}

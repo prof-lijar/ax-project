@@ -29,7 +29,7 @@ describe("scoutScheduleClient", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8092/v1/scout/schedules");
+    expect(url).toBe("/scout-scheduler-api/v1/scout/schedules");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
       topic: "고독사 예방 AI IoT 서비스 최근 동향",
@@ -104,11 +104,11 @@ describe("scoutScheduleClient", () => {
     await configuredClient.list();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://192.168.0.18:8092/v1/scout/schedules",
+      "/scout-scheduler-api/v1/scout/schedules",
       expect.objectContaining({ method: "GET" })
     );
     expect(resolveScoutSchedulerServerBaseUrl("http://host:8092///")).toBe(
-      "http://host:8092"
+      "/scout-scheduler-api"
     );
   });
 
@@ -177,7 +177,7 @@ describe("scoutScheduleClient", () => {
       scoutScheduleClient.cancel(cancelled.schedule_id)
     ).resolves.toEqual(cancelled);
     expect(fetchMock).toHaveBeenCalledWith(
-      `http://127.0.0.1:8092/v1/scout/schedules/${cancelled.schedule_id}`,
+      `/scout-scheduler-api/v1/scout/schedules/${cancelled.schedule_id}`,
       expect.objectContaining({ method: "DELETE" })
     );
   });

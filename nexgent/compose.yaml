@@ -87,8 +87,8 @@ services:
     volumes:
       - chat_attachments:/run/ax-chat:ro
     init: true
-    ports:
-      - "192.168.0.18:2024:2024"
+    expose:
+      - "2024"
     healthcheck:
       test:
         - CMD
@@ -241,13 +241,18 @@ services:
     env_file:
       - ./backend/dev.env
     environment:
-      NEXGENT_CORS_FRONTEND_PORT: "${FRONTEND_PORT:-5173}"
-      NEXGENT_CORS_ORIGIN_REGEX: "${NEXGENT_CORS_ORIGIN_REGEX:-}"
       WATCHFILES_FORCE_POLLING: "${WATCHFILES_FORCE_POLLING:-true}"
       AX_AGENT_SERVER_URL: http://agent-server:2024
+      AX_SCOUT_URL: http://scout:8091
+      AX_WEEKLY_REPORT_BULK_URL: http://weekly-report-bulk-api:8090
       AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    networks:
+      - default
+      - database
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend:/app
       - chat_attachments:/run/ax-chat
@@ -277,12 +282,7 @@ services:
       - 0.0.0.0
     environment:
       CHOKIDAR_USEPOLLING: "${CHOKIDAR_USEPOLLING:-true}"
-      VITE_BACKEND_PORT: "${BACKEND_PORT:-8000}"
-      VITE_AGENT_SERVER_BASE_URL: http://agent-server:2024
-      VITE_WEEKLY_REPORT_BULK_API_BASE_URL: http://weekly-report-bulk-api:8090
-      VITE_RAG_SERVER_BASE_URL: http://192.168.0.18:8765
-      VITE_SCOUT_API_BASE_URL: /scout-api
-      SCOUT_PROXY_TARGET: http://scout:8091
+      NEXGENT_BACKEND_TARGET: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
@@ -310,6 +310,11 @@ services:
       retries: 10
       start_period: 10s
     stop_grace_period: 5s
+
+networks:
+  database:
+    external: true
+    name: nexgent-rag_default
 
 volumes:
   scout-reports:

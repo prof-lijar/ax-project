@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -113,26 +114,38 @@ def previous_completed_week_start(
     return current_week_start - timedelta(days=7)
 
 
-def build_job_payload(now: datetime, *, max_reports: int) -> dict[str, str | int]:
+def build_job_payload(
+    now: datetime, *, max_reports: int, cursor: str | None = None
+) -> dict[str, str | int]:
     week_start = previous_completed_week_start(now)
-    return {
+    payload: dict[str, str | int] = {
         "week_start": week_start.isoformat(),
         "timezone": SCHEDULE_TIMEZONE,
         "max_reports": max_reports,
-        "idempotency_key": "cron-weekly-report-" + week_start.isoformat(),
+        "idempotency_key": "cron-weekly-report-all-wards-" + week_start.isoformat(),
     }
+    if cursor is not None:
+        payload["cursor"] = cursor
+        payload["idempotency_key"] = (
+            str(payload["idempotency_key"])
+            + ":" + hashlib.sha256(cursor.encode()).hexdigest()[:32]
+        )
+    return payload
 
 
 def submit_scheduled_job(
     settings: SchedulerSettings,
     *,
     now: datetime | None = None,
+    cursor: str | None = None,
     opener: OpenUrl = urlopen,
     sleeper: Sleep = time.sleep,
     log_event: LogEvent | None = None,
 ) -> dict[str, Any]:
     requested_at = datetime.now(UTC) if now is None else now
-    payload = build_job_payload(requested_at, max_reports=settings.max_reports)
+    payload = build_job_payload(
+        requested_at, max_reports=settings.max_reports, cursor=cursor
+    )
     encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     request = Request(
         settings.jobs_url,

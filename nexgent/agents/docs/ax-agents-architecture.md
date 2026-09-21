@@ -9,6 +9,39 @@ agent runtime, graph orchestration, tools, APIs, persistence, deployment,
 security, or evaluation. `AGENTS.md` requires contributors and agents to read
 it before implementation and update it when architecture changes.
 
+## All-ward weekly-report completeness (2026-09-21)
+
+The operator now requires one weekly report for every row in
+`ansimk.resources_ward`, including wards without weekly records. This supersedes
+record-based candidate discovery and successful partial generation below.
+The source pages the ordered ward table; missing observations remain null or
+explicitly unavailable under the existing deterministic presentation rules.
+
+Every staged ward must have a verified, correctly identified report before a
+bulk batch can commit report storage or complete. Missing explicit selections,
+skipped source wards, and exhausted artifact/data failures fail the batch;
+successful artifacts remain recoverable. Cancelled batches retain export
+behavior but do not persist a subset. Model exceptions, invalid text and
+timeouts use deterministic fallback. If fallback prose itself fails validation,
+a fixed neutral summary points to the deterministic detail sections without
+inventing observations or dropping the ward. Cancellation still propagates.
+
+The scheduled pipeline follows continuation cursors across bounded jobs until
+the ward table is exhausted, validates completed/discovered counts, and only
+then migrates the week. `partial` no longer permits migration. A shared 24-hour
+generation deadline bounds continuation and polling. Policy-versioned keys and
+receipts avoid reusing legacy record-only completion; receipts contain batch
+IDs and the report count. Existing per-job 10,000 and per-source-page 100 limits
+remain. Discovery observes the live ward roster as pages are read, rather than
+introducing a transaction spanning source calls; changes to the roster during
+a run require reconciliation. No schema or process boundary is added.
+
+Per explicit operator instruction, generated Markdown and frontend JSON no
+longer display fallback implementation notices. `generation_notice` stays null
+for schema compatibility; report-level generation metadata retains the mode
+and reason. Existing saved reports need regeneration to adopt these changes.
+See [completeness rollout and verification](weekly-report-completeness.md).
+
 ## Update: selective database recovery (2026-09-08)
 
 Operator recovery supports `--write --skip-not-null`: bounded batch savepoints

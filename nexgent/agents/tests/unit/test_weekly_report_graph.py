@@ -125,10 +125,9 @@ async def test_failed_model_retries_then_uses_fallback(
     assert all(
         report["generation_mode"] == "template_fallback" for report in result["reports"]
     )
-    assert all("자동 대체됨" in report["markdown"] for report in result["reports"])
+    assert all("자동 대체됨" not in report["markdown"] for report in result["reports"])
     assert all(
-        report["template_data"]["generation_notice"]
-        == "문구 생성이 어려워 검증된 안내 문구로 자동 대체됨"
+        report["template_data"]["generation_notice"] is None
         for report in result["reports"]
     )
     assert len(result["warnings"]) == 3

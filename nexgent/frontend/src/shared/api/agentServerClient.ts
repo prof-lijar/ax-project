@@ -1,6 +1,6 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 import { backendUrl } from "./nextcloudBackendClient";
 
-export const DEFAULT_AGENT_SERVER_BASE_URL = "http://192.168.0.18:2024";
 
 export type AgentServerErrorCode =
   | "attachment_error"
@@ -56,15 +56,10 @@ interface SseEvent {
   data: string;
 }
 
-const configuredBaseUrl = (
-  import.meta.env.VITE_AGENT_SERVER_BASE_URL?.trim() ||
-  DEFAULT_AGENT_SERVER_BASE_URL
-).replace(/\/+$/, "");
-
 export const agentServerClient = {
   async checkHealth({ signal }: RequestOptions = {}): Promise<boolean> {
     try {
-      const response = await fetch(agentServerUrl("/ok"), {
+      const response = await authenticatedFetch(agentServerUrl("/ok"), {
         method: "GET",
         headers: { Accept: "application/json" },
         signal
@@ -91,7 +86,7 @@ export const agentServerClient = {
         body.append("files", file, file.name);
       }
 
-      const response = await fetch(backendUrl("/api/chat/stream"), {
+      const response = await authenticatedFetch(backendUrl("/api/chat/stream"), {
         method: "POST",
         headers: { Accept: "text/event-stream" },
         body,
@@ -123,7 +118,7 @@ export const agentServerClient = {
     { signal, onResponse }: RagChatRequestOptions = {}
   ): Promise<string> {
     try {
-      const response = await fetch(backendUrl("/api/rag/chat/stream"), {
+      const response = await authenticatedFetch(backendUrl("/api/rag/chat/stream"), {
         method: "POST",
         headers: {
           Accept: "text/event-stream",
@@ -368,16 +363,11 @@ class SseParser {
 }
 
 function agentServerUrl(path: string) {
-  const baseUrl = isTauriRuntime() ? configuredBaseUrl : "/agent-server";
+  const baseUrl = "/agent-server";
   return `${baseUrl}${path}`;
 }
 
-function isTauriRuntime() {
-  return (
-    typeof window !== "undefined" &&
-    "__TAURI_INTERNALS__" in (window as Window & { __TAURI_INTERNALS__?: unknown })
-  );
-}
+
 
 async function httpError(response: Response, prefix: string) {
   let detail = "";

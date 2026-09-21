@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 export const DEFAULT_RAG_TOP_K = 5;
 export const MIN_RAG_TOP_K = 1;
 export const MAX_RAG_TOP_K = 20;
@@ -5,9 +6,7 @@ export const DEFAULT_RAG_MAX_CHUNK_TOKENS = 500;
 export const MIN_RAG_MAX_CHUNK_TOKENS = 100;
 export const MAX_RAG_MAX_CHUNK_TOKENS = 1000;
 
-export const RAG_SERVER_BASE_URL = resolveRagServerBaseUrl(
-  import.meta.env.VITE_RAG_SERVER_BASE_URL
-);
+export const RAG_SERVER_BASE_URL = "/rag-api";
 
 export interface RagEmbedResponse {
   ok: true;
@@ -268,25 +267,18 @@ export const ragClient = {
   }
 };
 
-export function resolveRagServerBaseUrl(configuredUrl?: string) {
-  const value = configuredUrl?.trim() || defaultRagServerBaseUrl();
-  return value.replace(/\/+$/, "");
+export function resolveRagServerBaseUrl(_configured?: string) {
+  return "/rag-api";
 }
 
 function ragServerUrl(path: string) {
   return `${RAG_SERVER_BASE_URL}${path}`;
 }
 
-function defaultRagServerBaseUrl() {
-  if (typeof window === "undefined") {
-    return "http://127.0.0.1:8765";
-  }
-  return `${window.location.protocol}//${window.location.hostname}:8765`;
-}
 
 async function request(url: string, init: RequestInit) {
   try {
-    const response = await fetch(url, init);
+    const response = await authenticatedFetch(url, init);
     if (!response.ok) {
       throw new RagClientError(await errorMessage(response), response.status);
     }

@@ -474,3 +474,82 @@ def test_fallback_is_one_compliant_paragraph_when_model_is_unavailable() -> None
     assert "CAUTION" not in summary
     assert "RISK" not in summary
     assert summary.count("안부") <= 1
+
+
+@pytest.mark.parametrize("metric", ["movement_count_total", "remote_control_count_total"])
+@pytest.mark.parametrize("current_total", [60, 200])
+@pytest.mark.parametrize("risk_score", [90, None])
+def test_activity_caution_fallback_has_a_nonroutine_closing(
+    metric: str, current_total: int, risk_score: int | None
+) -> None:
+    facts = build_fact_package(
+        _metrics(
+            current_updates={metric: current_total, "risk_score_avg": risk_score},
+            previous_updates={metric: 100},
+        )
+    )
+
+    narrative = build_fallback(facts)
+    summary = f"{narrative.headline} {narrative.analysis_text}"
+
+    assert validate_summary_text(summary, facts) == summary
+    assert summary.endswith("안부를 한 번 확인해 주세요.")
+    assert summary.count("주세요") == 1
+    with pytest.raises(ValueError, match="contradictory stable close"):
+        validate_summary_text(
+            summary.replace("안부를 한 번 확인해 주세요.", "평소처럼 안부를 확인해 주세요."),
+            facts,
+        )
+
+
+@pytest.mark.asyncio
+async def test_invalid_model_output_recovers_from_pattern_caution() -> None:
+    facts = build_fact_package(
+        _metrics(
+            current_updates={"remote_control_count_total": 60},
+            previous_updates={"remote_control_count_total": 100},
+        )
+    )
+
+    class InvalidModel:
+        calls = 0
+
+        async def complete(self, messages, **kwargs: object) -> str:
+            self.calls += 1
+            return "invalid summary"
+
+    model = InvalidModel()
+    narrative, mode, metadata = await generate_narrative(model, facts)
+
+    assert model.calls == 2
+    assert mode == "template_fallback"
+    assert metadata.fallback_reason == "invalid_narrative_content"
+    assert narrative.analysis_text.endswith("안부를 한 번 확인해 주세요.")
+
+
+def test_fallback_policy_failure_retains_report_without_generation_notice(monkeypatch):
+    from ax_contracts import NarrativeGenerationMetadata
+
+    from workflows.weekly_report.domain import render_report
+
+    metrics = _metrics()
+    facts = build_fact_package(metrics)
+
+    def reject_summary(*args):
+        raise ValueError("injected prose policy conflict")
+
+    monkeypatch.setattr(
+        "workflows.weekly_report.agents.reporter.fallback.validate_summary_text",
+        reject_summary,
+    )
+    narrative = build_fallback(facts)
+    report = render_report(
+        metrics, narrative, "template_fallback",
+        NarrativeGenerationMetadata(prompt_version="test", validation_status="fallback"),
+    )
+    assert report.metrics == metrics
+    assert report.generation_mode == "template_fallback"
+    assert report.template_data.generation_notice is None
+    assert report.template_data.weekly_summary == narrative.headline
+    assert "자동 대체" not in report.markdown
+    assert "작성하지 못" not in report.markdown

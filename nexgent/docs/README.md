@@ -12,6 +12,23 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Password Length Policy](08-implementation/password-length-policy.md): 4–12 character creation/reset validation, existing-login compatibility, and verification.
+
+- [Unified App Authentication](08-implementation/unified-app-authentication.md): current login gate, Settings administration, protected feature gateway, standard Compose startup and validation.
+
+- [Backend PostgreSQL Docker Network](08-implementation/backend-postgresql-docker-network.md): database connection-refused fix, existing external network attachment, and runtime verification commands.
+
+- [External PostgreSQL Configuration](08-implementation/external-postgresql-configuration.md): historical removal of the bundled account database; current startup is in Unified App Authentication.
+
+- [Auth Database Schema](08-implementation/auth-database-schema.md): explicit `auth` table ownership, migration from `public`, data preservation and validation.
+
+- [Simple Login and Access Control](08-implementation/simple-login-access-control.md): historical account foundation and eight-table RBAC implementation; superseded deployment integration.
+- [Managed Account Foundation](08-implementation/managed-account-foundation.md): superseded historical record of the earlier Keycloak/session implementation.
+
+- [Login and Access Architecture](03-architecture/identity-access-architecture-plan.md): simple local login, direct/group roles, permission enforcement and deployment boundaries.
+- [Login and Access Database Schema](05-data/identity-access-database-plan.md): detailed columns, constraints, relationships, seed data and migration for the eight current tables.
+- [Login and Access Backend and UI Plan](07-roadmap/identity-access-delivery-plan.md): implemented APIs, administration forms, verification steps and extension points.
+
 - [Sumin Model-Directed File Search](08-implementation/sumin-model-directed-file-search.md): bounded metadata discovery, verified Slack attachments, migration, validation, and rollout checks.
 
 - [Sumin Shared Agent Schema](08-implementation/sumin-shared-agent-schema.md): legacy table migration into `agent.sumin_*`, permissions, rollout, and validation limits.

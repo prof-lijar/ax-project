@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Weekly-report completeness](weekly-report-completeness.md): every ward,
+  no-data reports, strict batch completion, scheduler continuation, internal-only
+  fallback metadata, verification, and rollout checkpoint.
+
 - [Sumin](../workflows/sumin/README.md): Markdown/snippet support, Socket Mode file collection in every joined Slack channel, automatic bot/workspace discovery, single-workspace Nextcloud channel folders and path migration, model-directed metadata tools, multilingual mention search and Slack file attachments, durable recovery, and shared `AGENT_DATABASE_DSN` and `agent.sumin_*` tables, unified root Compose startup, and Nextcloud CA and TLS verification settings.
 
 - [Chat session memory](chat-session-memory.md): per-conversation LangGraph threads, bounded history, streaming, session lifetime, and verification.
@@ -99,6 +103,8 @@
   `ANSIMK_DATABASE_DSN` for local compatibility; production should set the
   dedicated writer DSN and least-privilege role explicitly.
 - [Ansimk weekly reporter implementation specification](ansimk-weekly-reporter-implementation.md):
+  includes the September 21 activity-caution fallback correction, ward `13554`
+  reproduction, verification results, and deployment/recovery checkpoint;
   implemented FastAPI source boundary, calculation rules, inclusive year-round
   indoor-environment recommended ranges, special cool-humid/cold-humid daily
   maximum counters, and exact environment copy,

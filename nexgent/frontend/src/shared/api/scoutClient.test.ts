@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe("scoutClient.run", () => {
-  it("posts the normalized Scout contract directly to the standalone API", async () => {
+  it("posts the normalized Scout contract through the authenticated backend", async () => {
     const payload = scoutResponse();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload));
     vi.stubGlobal("fetch", fetchMock);
@@ -28,7 +28,7 @@ describe("scoutClient.run", () => {
     ).resolves.toEqual(payload);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8091/v1/scout/runs");
+    expect(url).toBe("/scout-api/v1/scout/runs");
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("Content-Type")).toBe(
       "application/json"
@@ -57,7 +57,7 @@ describe("scoutClient.run", () => {
     });
   });
 
-  it("uses VITE_SCOUT_API_BASE_URL and normalizes its trailing slash", async () => {
+  it("ignores legacy direct URL configuration", async () => {
     vi.stubEnv(
       "VITE_SCOUT_API_BASE_URL",
       "  http://192.168.0.18:8091/  "
@@ -72,7 +72,7 @@ describe("scoutClient.run", () => {
     await configuredScoutClient.run({ topic: "valid topic", keywords: [] });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://192.168.0.18:8091/v1/scout/runs",
+      "/scout-api/v1/scout/runs",
       expect.objectContaining({ method: "POST" })
     );
   });
@@ -80,7 +80,7 @@ describe("scoutClient.run", () => {
   it("resolves configured Scout base URLs like the RAG client", () => {
     expect(
       resolveScoutServerBaseUrl("  http://192.168.0.18:8091///  ")
-    ).toBe("http://192.168.0.18:8091");
+    ).toBe("/scout-api");
   });
 
   it("rejects invalid requests before using the network", async () => {

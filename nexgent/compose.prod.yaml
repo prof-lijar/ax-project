@@ -83,8 +83,8 @@ services:
     volumes:
       - chat_attachments:/run/ax-chat:ro
     init: true
-    ports:
-      - "${PROD_AGENT_SERVER_BIND_IP:-192.168.0.18}:${PROD_AGENT_SERVER_PORT:-2025}:2024"
+    expose:
+      - "2024"
     healthcheck:
       test:
         - CMD
@@ -230,14 +230,19 @@ services:
     image: nexgent-backend-prod:local
     init: true
     env_file:
-      - ./backend/dev.env
+      - ./backend/prod.env
     environment:
-      NEXGENT_CORS_FRONTEND_PORT: "${PROD_FRONTEND_PORT:-5174}"
-      NEXGENT_CORS_ORIGIN_REGEX: "${NEXGENT_CORS_ORIGIN_REGEX:-}"
       AX_AGENT_SERVER_URL: http://agent-server:2024
+      AX_SCOUT_URL: http://scout:8091
+      AX_WEEKLY_REPORT_BULK_URL: http://weekly-report-bulk-api:8090
       AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
     ports:
-      - "${PROD_BACKEND_PORT:-8001}:8000"
+      - "127.0.0.1:${PROD_BACKEND_PORT:-8001}:8000"
+    networks:
+      - default
+      - database
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - chat_attachments:/run/ax-chat
     healthcheck:
@@ -257,10 +262,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
-      args:
-        VITE_BACKEND_PORT: "${PROD_BACKEND_PORT:-8001}"
-        VITE_RAG_SERVER_BASE_URL: "${VITE_RAG_SERVER_BASE_URL:-http://192.168.0.18:8765}"
-        VITE_SCOUT_API_BASE_URL: /scout-api
     image: nexgent-frontend-prod:local
     init: true
     ports:
@@ -288,6 +289,11 @@ services:
       start_period: 10s
     restart: unless-stopped
     stop_grace_period: 5s
+
+networks:
+  database:
+    external: true
+    name: nexgent-rag_default
 
 volumes:
   weekly-report-scheduler-state:
