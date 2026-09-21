@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("status", help="show counts and up to 100 outstanding IDs")
     commands.add_parser("check", help="read-only database and schema readiness check")
     commands.add_parser("dry-run", help="read-only validation of up to 100 deliveries")
-    retry = commands.add_parser("retry", help="requeue one blocked delivery")
+    retry = commands.add_parser("retry", help="requeue one blocked or skipped delivery")
     retry.add_argument("delivery_id", type=int)
     return parser
 
@@ -79,8 +79,16 @@ async def run_command(args: argparse.Namespace, settings: SyncSettings) -> int:
             failures = 0
             for row in await outbox.preview(settings.limit):
                 try:
-                    outcome = await deliver(target, decode_payload(row), dry_run=True)
-                    emit({"delivery_id": row["id"], "outcome": outcome})
+                    payload = decode_payload(row)
+                    outcome = await deliver(target, payload, dry_run=True)
+                    emit(
+                        {
+                            "delivery_id": row["id"],
+                            "outcome": outcome,
+                            "ward_id": payload.ward_id,
+                            "week_start_date": str(payload.week_start_date),
+                        }
+                    )
                 except Exception as error:  # noqa: BLE001 -- sanitize external diagnostics
                     failures += 1
                     emit(

@@ -4,6 +4,25 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Missing production wards in weekly-report delivery (2026-09-21)
+
+Per operator instruction, a report whose ward does not exist in the production
+ward table is skipped. The scheduled pipeline already invokes the shared
+`playground/weekly-reporter/migrate.sh`; that command prints skipped ward IDs
+and weeks, counts skipped reports, and commits the remaining reports.
+
+The optional outbox delivery worker now records terminal `skipped` entries
+with reason `missing_ward`, no delivery timestamp, and no automatic retry.
+Dry-run and delivery output identify the ward and week. Status counts skips
+separately and excludes them from outstanding work. Explicit retry revalidates
+a skipped entry after the ward is restored. Local migration
+`003_weekly_report_sync_skipped.sql` adds the status without changing existing
+blocked deliveries; readiness checks require it. Missing reports for existing
+wards still insert, and content conflicts and other database errors retain
+their existing failure behavior. Generation and local storage completeness
+remain unchanged; this exception applies to missing production target wards.
+See [production delivery](weekly-report-production-sync.md) for rollout.
+
 ## Persistent product AX chat history (2026-09-21)
 
 The authenticated product backend now owns private per-user AX conversations,
@@ -1486,7 +1505,7 @@ report copy, separate from outbox delivery. Preview uses read-only transactions;
 write lock. Source snapshots are read-only; target IDs and existing creation
 timestamps are preserved, every matching row is updated (including identical
 content) with a refreshed `updated_at`, and missing target
-wards abort the operation. All weeks are selected unless `--week-start` is set.
+wards are logged and skipped. All weeks are selected unless `--week-start` is set.
 The original manual entry point leaves the outbox unchanged. See the [operator instructions](../playground/weekly-reporter/README.md).
 Seven isolated unit cases and shell/lint checks pass; live database behavior
 and SSH connectivity have not been verified.

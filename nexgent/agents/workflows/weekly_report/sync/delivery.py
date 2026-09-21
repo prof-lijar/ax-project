@@ -12,7 +12,7 @@ import asyncpg
 from ax_contracts import WeeklyReportTemplateData
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .outbox import Outbox
+from .outbox import Outbox, OutboxSchemaError
 
 REPORT_TABLE = "ansimk.resources_ward_weekly_report"
 WARD_TABLE = "ansimk.resources_ward"
@@ -78,7 +78,7 @@ async def inspect_target(conn: asyncpg.Connection, payload: Payload) -> str:
     if not await conn.fetchval(
         f"SELECT EXISTS (SELECT 1 FROM {WARD_TABLE} WHERE id=$1)", payload.ward_id
     ):
-        raise DeliveryError("missing_ward")
+        return "skipped_missing_ward"
     matches = await conn.fetchval(
         f"SELECT week_end_date=$3 AND weekly_score IS NOT DISTINCT FROM $4 "
         "AND weekly_status IS NOT DISTINCT FROM $5 AND report_data=$6::jsonb "
@@ -119,7 +119,7 @@ async def deliver(
 ) -> str:
     async with pool.acquire() as conn, conn.transaction(readonly=dry_run):
         state = await inspect_target(conn, payload)
-        if dry_run or state == "identical":
+        if dry_run or state in {"identical", "skipped_missing_ward"}:
             return state
         await conn.execute(
             f"INSERT INTO {REPORT_TABLE} (ward_id, week_start_date, week_end_date, "
@@ -135,7 +135,7 @@ async def deliver(
 
 
 def classify_error(error: Exception) -> tuple[str, bool]:
-    if isinstance(error, DeliveryError):
+    if isinstance(error, (DeliveryError, OutboxSchemaError)):
         return str(error), False
     if isinstance(error, (OSError, TimeoutError, asyncpg.PostgresConnectionError)):
         return "connection_unavailable", True
@@ -150,8 +150,6 @@ def classify_error(error: Exception) -> tuple[str, bool]:
             "53300",
         }:
             return "database_transient", True
-        if state == "23503":
-            return "missing_ward", False
         return "database_rejected", False
     return "unexpected_error", False
 
@@ -163,13 +161,22 @@ async def process_one(outbox: Outbox, target: asyncpg.Pool) -> dict | None:
     try:
         # Shorter than the lease; cancellation leaves a reclaimable delivery.
         async with asyncio.timeout(60):
-            outcome = await deliver(target, decode_payload(row))
+            payload = decode_payload(row)
+            outcome = await deliver(target, payload)
     except Exception as error:  # noqa: BLE001 -- sanitize external diagnostics
         code, retryable = classify_error(error)
         await outbox.finish(
             row["id"], row["lease_token"], error_code=code, retryable=retryable
         )
         return {"delivery_id": row["id"], "error_code": code, "retryable": retryable}
+    if outcome == "skipped_missing_ward":
+        await outbox.finish(row["id"], row["lease_token"], skipped=True)
+        return {
+            "delivery_id": row["id"],
+            "outcome": outcome,
+            "ward_id": payload.ward_id,
+            "week_start_date": str(payload.week_start_date),
+        }
     # A failed acknowledgement must never be misreported as a target failure.
     await outbox.finish(row["id"], row["lease_token"])
     return {"delivery_id": row["id"], "outcome": outcome}

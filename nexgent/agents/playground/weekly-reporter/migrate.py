@@ -48,7 +48,7 @@ def source_database_dsn():
 
 
 async def migrate(source, target, *, write=False, week_start=None):
-    counts = {"source": 0, "insert": 0, "update": 0, "unchanged": 0}
+    counts = {"source": 0, "insert": 0, "update": 0, "unchanged": 0, "skipped": 0}
     # A stable source snapshot; one target transaction rolls back on any failure.
     async with (
         source.transaction(isolation="repeatable_read", readonly=True),
@@ -69,7 +69,14 @@ async def migrate(source, target, *, write=False, week_start=None):
                 "SELECT EXISTS(SELECT 1 FROM ansimk.resources_ward WHERE id=$1)",
                 row["ward_id"],
             ):
-                raise ValueError("Target ward missing; entire migration aborted")
+                counts["skipped"] += 1
+                print(
+                    f"Skipping report: target ward missing, ward_id={row['ward_id']}, "
+                    f"week_start_date={row['week_start_date']}; "
+                    "report will not be migrated",
+                    flush=True,
+                )
+                continue
             existing = await target.fetchrow(
                 "SELECT 1 "
                 f"FROM {TABLE} WHERE ward_id=$1 AND week_start_date=$2",
