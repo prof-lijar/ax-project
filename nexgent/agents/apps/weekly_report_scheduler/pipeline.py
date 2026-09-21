@@ -28,6 +28,29 @@ from apps.weekly_report_scheduler.submit import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+SELECTION_POLICY = "all-wards-v1"
+
+
+def _validate_complete_batch(job):
+    counts = [job.get(key) for key in (
+        "discovered_count", "completed_count", "failed_count",
+        "pending_count", "running_count",
+    )]
+    if (
+        job.get("status") != "completed"
+        or job.get("producer_done") is not True
+        or any(type(value) is not int or value < 0 for value in counts)
+        or counts[0] != counts[1]
+        or any(counts[2:])
+        or type(job.get("selection_truncated")) is not bool
+    ):
+        raise ScheduledSubmissionError("scheduled batch is missing ward reports")
+    cursor = job.get("next_cursor")
+    if job["selection_truncated"]:
+        if not isinstance(cursor, str) or not cursor or not counts[0]:
+            raise ScheduledSubmissionError("scheduled batch has invalid continuation")
+    elif cursor is not None:
+        raise ScheduledSubmissionError("scheduled batch has unexpected continuation")
 
 
 def wait_for_storage(
@@ -44,9 +67,10 @@ def wait_for_storage(
     deadline = clock() + wait_seconds
     expected_id = job["job_id"]
     while True:
-        if job["status"] in {"completed", "partial"}:
+        if job["status"] == "completed":
+            _validate_complete_batch(job)
             return job
-        if job["status"] in {"failed", "cancelled", "expired", "cancelling"}:
+        if job["status"] in {"partial", "failed", "cancelled", "expired", "cancelling"}:
             raise ScheduledSubmissionError("scheduled job did not finish local storage")
         if clock() >= deadline:
             raise ScheduledSubmissionError("timed out waiting for local storage")
@@ -128,7 +152,9 @@ def run_pipeline(
     with (state_root / "pipeline.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         receipt = state_root / (week_start + ".json")
-        if receipt.exists():
+        if receipt.exists() and json.loads(receipt.read_text()).get(
+            "selection_policy"
+        ) == SELECTION_POLICY:
             _write_event(
                 {
                     "event": "weekly_report_migration_already_completed",
@@ -136,8 +162,29 @@ def run_pipeline(
                 }
             )
             return
-        job = submit(settings, now=now, log_event=_write_event)
-        completed = wait(settings, job)
+        cursor = None
+        seen_cursors = set()
+        job_ids = []
+        report_count = 0
+        deadline = time.monotonic() + 86400
+        while True:
+            if time.monotonic() >= deadline:
+                raise ScheduledSubmissionError("scheduled ward discovery timed out")
+            job = submit(settings, now=now, cursor=cursor, log_event=_write_event)
+            completed = wait(
+                settings, job, wait_seconds=max(0, deadline - time.monotonic())
+            )
+            _validate_complete_batch(completed)
+            if completed["job_id"] in job_ids:
+                raise ScheduledSubmissionError("scheduled batch repeated a job")
+            job_ids.append(completed["job_id"])
+            report_count += completed["completed_count"]
+            cursor = completed["next_cursor"]
+            if cursor is None:
+                break
+            if cursor in seen_cursors:
+                raise ScheduledSubmissionError("scheduled batch repeated a cursor")
+            seen_cursors.add(cursor)
         _write_event(
             {
                 "event": "weekly_report_migration_started",
@@ -149,7 +196,11 @@ def run_pipeline(
         migrate(week_start)
         temporary = receipt.with_suffix(".tmp")
         temporary.write_text(
-            json.dumps({"job_id": job["job_id"], "week_start": week_start})
+            json.dumps({
+                "job_id": job["job_id"], "job_ids": job_ids,
+                "week_start": week_start, "report_count": report_count,
+                "selection_policy": SELECTION_POLICY,
+            })
         )
         temporary.replace(receipt)
         _write_event(

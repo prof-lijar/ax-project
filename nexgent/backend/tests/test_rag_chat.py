@@ -9,6 +9,8 @@ from app.chat.streaming import relay_agent_stream
 
 
 async def _request(app, method: str, path: str, **kwargs) -> httpx.Response:
+    from conftest import authenticated_headers
+    kwargs["headers"] = {**authenticated_headers(), **kwargs.get("headers", {})}
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -56,7 +58,7 @@ def test_dedicated_rag_chat_route_preserves_question_and_streams(monkeypatch):
         return upstream
 
     monkeypatch.setattr("app.rag_chat.router.open_agent_stream", fake_open)
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     response = asyncio.run(
         _request(
@@ -84,7 +86,7 @@ def test_rag_chat_rejects_blank_and_attachment_like_payloads(monkeypatch):
         raise AssertionError("Agent Server must not be called")
 
     monkeypatch.setattr("app.rag_chat.router.open_agent_stream", must_not_open)
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     blank = asyncio.run(
         _request(

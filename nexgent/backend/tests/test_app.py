@@ -43,50 +43,19 @@ def test_health_check_does_not_require_integration_credentials(monkeypatch):
     assert response.json() == {"status": "ok"}
 
 
-def test_cors_origin_regex_is_configurable(monkeypatch):
-    monkeypatch.setenv(
-        "NEXGENT_CORS_ORIGIN_REGEX",
-        r"^https?://[^/]+:5173$",
-    )
-
+def test_unconfigured_app_fails_closed():
     from app.main import create_app
-
-    response = asyncio.run(
-        _request(
-            create_app(),
-            "OPTIONS",
-            "/health",
-            headers={
-                "Origin": "http://dev-machine:5173",
-                "Access-Control-Request-Method": "GET",
-            },
-        )
-    )
-
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://dev-machine:5173"
+    response = asyncio.run(_request(create_app(), "GET", "/api/nextcloud/files"))
+    assert response.status_code == 503
 
 
-def test_cors_regex_uses_compose_frontend_port(monkeypatch):
-    monkeypatch.delenv("NEXGENT_CORS_ORIGIN_REGEX", raising=False)
-    monkeypatch.setenv("NEXGENT_CORS_FRONTEND_PORT", "5174")
-
-    from app.main import create_app
-
-    response = asyncio.run(
-        _request(
-            create_app(),
-            "OPTIONS",
-            "/health",
-            headers={
-                "Origin": "http://dev-machine:5174",
-                "Access-Control-Request-Method": "GET",
-            },
-        )
-    )
-
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://dev-machine:5174"
+def test_feature_endpoints_require_login():
+    from conftest import feature_app
+    for path in ("/api/nextcloud/files", "/api/chat/stream", "/rag-api/rag/v1/search",
+                 "/scout-api/v1/scout/runs", "/scout-scheduler-api/v1/scout/schedules",
+                 "/weekly-report-bulk-api/health/ready", "/agent-server/ok"):
+        response = asyncio.run(_request(feature_app(), "GET", path))
+        assert response.status_code == 401
 
 
 def test_content_disposition_supports_unicode_filename():

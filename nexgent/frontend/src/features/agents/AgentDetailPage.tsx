@@ -191,14 +191,16 @@ function AgentDetails({
         </div>
         <p className={styles.detailsSubtitle}>{agent.role}</p>
         <p className={styles.description}>{agent.description}</p>
-        <button
-          className={styles.runInChatButton}
-          type="button"
-          onClick={() => onRunInChat?.(agent)}
-        >
-          <MessageSquare size={16} aria-hidden />
-          Run in Chat
-        </button>
+        {agent.canRunInChat && (
+          <button
+            className={styles.runInChatButton}
+            type="button"
+            onClick={() => onRunInChat?.(agent)}
+          >
+            <MessageSquare size={16} aria-hidden />
+            Run in Chat
+          </button>
+        )}
       </header>
 
       {showsRunMetadata && (

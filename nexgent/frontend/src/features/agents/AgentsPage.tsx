@@ -15,6 +15,7 @@ import { useRef, useState, type MouseEvent } from "react";
 import {
   RAG_CHAT_AGENT_ID,
   SCOUT_AGENT_ID,
+  SUMIN_AGENT_ID,
   WEEKLY_REPORTER_AGENT_ID
 } from "../../shared/api/agentCatalogClient";
 import { useAgentCatalog } from "../../shared/api/queries";
@@ -93,6 +94,18 @@ export function getAgentPresentation(agent: AgentDefinition) {
           "Create a sourced research report"
         ],
         tone: "research"
+      };
+    case SUMIN_AGENT_ID:
+      return {
+        icon: MessageSquare,
+        specialty: "Slack files",
+        description:
+          "Keep channel uploads organized and find them again from a mention.",
+        capabilities: [
+          "Archive Slack files in Nextcloud",
+          "Find uploads from names and context"
+        ],
+        tone: "knowledge"
       };
     default:
       return {
@@ -262,6 +275,13 @@ export function AgentsPageView({
               : null;
             const selected =
               agent.canRunInChat && agent.id === selectedAgent?.id;
+            const contextLabel = selected
+              ? "Selected in Chat"
+              : agent.canRunInChat
+                ? "Available in Chat"
+                : agent.id === SUMIN_AGENT_ID
+                  ? "Works in Slack"
+                  : "Dedicated workspace";
             const href = `/agents/${encodeURIComponent(agent.id)}`;
             return (
               <article
@@ -319,13 +339,7 @@ export function AgentsPageView({
                 )}
                 <footer className={styles.cardFooter}>
                   <div className={styles.cardContext}>
-                    <span>
-                      {selected
-                        ? "Selected in Chat"
-                        : agent.canRunInChat
-                          ? "Available in Chat"
-                          : "Dedicated workspace"}
-                    </span>
+                    <span>{contextLabel}</span>
                     {agent.id === RAG_CHAT_AGENT_ID && <span>Text only</span>}
                   </div>
                   <div className={styles.cardActions}>
@@ -355,9 +369,15 @@ export function AgentsPageView({
                         className={styles.primaryAction}
                         href={href}
                         onClick={(event) => openAgentDetail(event, agent)}
-                        aria-label={`Open ${agent.name} workspace`}
+                        aria-label={
+                          agent.id === SUMIN_AGENT_ID
+                            ? `View ${agent.name} details`
+                            : `Open ${agent.name} workspace`
+                        }
                       >
-                        Open workspace
+                        {agent.id === SUMIN_AGENT_ID
+                          ? "View details"
+                          : "Open workspace"}
                         <ArrowRight size={16} aria-hidden />
                       </a>
                     )}

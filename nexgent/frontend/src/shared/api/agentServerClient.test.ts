@@ -157,9 +157,9 @@ describe("agentServerClient", () => {
     ).resolves.toBe("done");
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/chat/stream");
+    expect(url).toBe("/api/chat/stream");
     expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ Accept: "text/event-stream" });
+    expect(new Headers(init.headers).get("Accept")).toBe("text/event-stream");
     expect(init.body).toBeInstanceOf(FormData);
     const body = init.body as FormData;
     expect(body.get("prompt")).toBe("current message");
@@ -182,12 +182,12 @@ describe("agentServerClient", () => {
     ).resolves.toBe("grounded answer");
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/rag/chat/stream");
+    expect(url).toBe("/api/rag/chat/stream");
     expect(init).toMatchObject({
       method: "POST",
       headers: {
-        Accept: "text/event-stream",
-        "Content-Type": "application/json"
+        accept: "text/event-stream",
+        "content-type": "application/json"
       },
       body: JSON.stringify({ question: "original question" })
     });

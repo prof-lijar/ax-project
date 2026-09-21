@@ -26,9 +26,12 @@ async def generate_narrative(
         except ModelRequestError as exc:
             last_reason = _safe_reason(exc)
             break
+        except Exception:  # noqa: BLE001 - model failures must not drop a ward
+            last_reason = "model_request_failed"
+            break
         try:
             narrative = _parse(response, facts)
-        except ValueError as exc:
+        except (ValueError, TypeError, AttributeError) as exc:
             last_reason = _safe_reason(exc)
             feedback = _correction_feedback(exc)
             continue

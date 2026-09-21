@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -103,3 +104,34 @@ def test_source_queries_are_bound_to_authoritative_ansimk_schema() -> None:
         assert f"ansimk.{table}" in combined
     assert "ansimk_clone." not in combined
     assert "archive." not in combined
+
+
+@pytest.mark.asyncio
+async def test_discovery_includes_every_ward_without_any_weekly_records() -> None:
+    class RosterDatabase(FakeDatabase):
+        async def fetch(self, query, *args):
+            if query == CANDIDATE_WARDS_SQL:
+                with sqlite3.connect(":memory:") as connection:
+                    connection.execute("ATTACH DATABASE ':memory:' AS ansimk")
+                    connection.execute(
+                        "CREATE TABLE ansimk.resources_ward (id INTEGER, full_name TEXT)"
+                    )
+                    connection.executemany(
+                        "INSERT INTO ansimk.resources_ward VALUES (?, ?)",
+                        [(10, "첫 대상"), (20, "둘째 대상"), (30, None)],
+                    )
+                    return [dict(zip(("ward_id", "full_name"), row, strict=True))
+                            for row in connection.execute(query, {"1": args[0], "2": args[1]})]
+            return []
+
+    service = WeeklyReportSourceService(RosterDatabase())
+    request = WeeklyReportRequest(week_start=date(2026, 9, 14), limit=2)
+    first = await service.build(request)
+    second = await service.build(request.model_copy(update={"cursor": first.next_cursor}))
+
+    items = first.items + second.items
+    assert [item.ward_id for item in items] == [10, 20, 30]
+    assert second.next_cursor is None
+    assert all(item.current.covered_days == 0 for item in items)
+    assert all(item.current.risk_score_avg is None for item in items)
+    assert all(item.current.movement_count_total is None for item in items)

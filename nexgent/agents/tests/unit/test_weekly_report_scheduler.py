@@ -49,8 +49,17 @@ def test_payload_is_full_batch_and_idempotent_for_the_reporting_week() -> None:
         "week_start": "2026-08-31",
         "timezone": "Asia/Seoul",
         "max_reports": 10_000,
-        "idempotency_key": "cron-weekly-report-2026-08-31",
+        "idempotency_key": "cron-weekly-report-all-wards-2026-08-31",
     }
+
+
+def test_continuation_cursor_has_a_distinct_stable_idempotency_key() -> None:
+    now = datetime(2026, 9, 6, 18, 0, tzinfo=UTC)
+    first = build_job_payload(now, max_reports=10_000)
+    continuation = build_job_payload(now, max_reports=10_000, cursor="opaque-cursor")
+    assert continuation["cursor"] == "opaque-cursor"
+    assert continuation["idempotency_key"] != first["idempotency_key"]
+    assert continuation == build_job_payload(now, max_reports=10_000, cursor="opaque-cursor")
 
 
 def test_submission_retries_transient_failure_with_same_request() -> None:

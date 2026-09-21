@@ -26,6 +26,8 @@ from starlette.requests import Request
 
 
 async def _request(app, method: str, path: str, **kwargs) -> httpx.Response:
+    from conftest import authenticated_headers
+    kwargs["headers"] = {**authenticated_headers(), **kwargs.get("headers", {})}
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -175,7 +177,7 @@ def test_chat_route_streams_and_cleans_normalized_attachments(tmp_path, monkeypa
 
 def test_chat_route_returns_stable_validation_error(tmp_path, monkeypatch):
     monkeypatch.setenv("AX_CHAT_ARTIFACT_ROOT", str(tmp_path))
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     response = asyncio.run(
         _request(
@@ -200,7 +202,7 @@ def test_chat_route_returns_stable_validation_error(tmp_path, monkeypatch):
 
 
 def test_prompt_is_required():
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     response = asyncio.run(
         _request(create_app(), "POST", "/api/chat/stream", data={"prompt": " "})
@@ -212,7 +214,7 @@ def test_prompt_is_required():
 
 def test_file_count_and_size_limits_are_enforced(tmp_path, monkeypatch):
     monkeypatch.setenv("AX_CHAT_ARTIFACT_ROOT", str(tmp_path))
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     too_many = [("files", (f"{index}.txt", b"x", "text/plain")) for index in range(6)]
     response = asyncio.run(
@@ -250,7 +252,7 @@ def test_combined_size_and_extracted_text_limits_are_enforced(tmp_path, monkeypa
 
     monkeypatch.setattr(attachment_module, "MAX_TOTAL_BYTES", 7)
     monkeypatch.setattr(attachment_module, "MAX_EXTRACTED_CHARACTERS", 5)
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     response = asyncio.run(
         _request(
@@ -560,7 +562,7 @@ def test_busy_session_returns_retryable_conflict(tmp_path):
 
 def test_route_validates_and_forwards_session_id(monkeypatch, tmp_path):
     import app.chat.router as chat_router
-    from app.main import create_app
+    from conftest import feature_app as create_app
 
     monkeypatch.setenv("AX_CHAT_ARTIFACT_ROOT", str(tmp_path))
     session_id = uuid4()

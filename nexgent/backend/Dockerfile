@@ -33,9 +33,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
 
 COPY --chown=nexgent:nexgent app ./app
+COPY --chown=nexgent:nexgent alembic.ini ./alembic.ini
+COPY --chown=nexgent:nexgent migrations ./migrations
+COPY --chown=nexgent:nexgent --chmod=755 start.sh ./start.sh
 
 USER nexgent
 
 EXPOSE 8000
+
+ENTRYPOINT ["/app/start.sh"]
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

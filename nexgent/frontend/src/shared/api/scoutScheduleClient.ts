@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 export const SCOUT_SCHEDULE_TIMEZONE = "Asia/Seoul" as const;
 
 export const SCOUT_SCHEDULE_RECURRENCES = [
@@ -114,10 +115,7 @@ export class ScoutScheduleClientError extends Error {
   }
 }
 
-export const SCOUT_SCHEDULER_SERVER_BASE_URL =
-  resolveScoutSchedulerServerBaseUrl(
-    import.meta.env.VITE_SCOUT_SCHEDULER_API_BASE_URL
-  );
+export const SCOUT_SCHEDULER_SERVER_BASE_URL = "/scout-scheduler-api";
 
 export const scoutScheduleClient = {
   async create(
@@ -186,15 +184,8 @@ export const scoutScheduleClient = {
   }
 };
 
-export function resolveScoutSchedulerServerBaseUrl(configured?: string) {
-  const normalized = configured?.trim().replace(/\/+$/, "");
-  if (normalized) {
-    return normalized;
-  }
-  if (typeof window !== "undefined" && window.location?.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:8092`;
-  }
-  return "http://127.0.0.1:8092";
+export function resolveScoutSchedulerServerBaseUrl(_configured?: string) {
+  return "/scout-scheduler-api";
 }
 
 function scoutSchedulerUrl(path: string) {
@@ -203,7 +194,7 @@ function scoutSchedulerUrl(path: string) {
 
 async function request(url: string, init: RequestInit) {
   try {
-    const response = await fetch(url, init);
+    const response = await authenticatedFetch(url, init);
     if (!response.ok) {
       const payload = await readJsonSafely(response);
       const detail =

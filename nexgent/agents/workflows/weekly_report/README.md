@@ -238,7 +238,8 @@ unset; production should configure the dedicated least-privilege role.
 }
 ```
 
-`week_start` must be Monday. Omit `ward_ids` for automatic candidate discovery
+`week_start` must be Monday. Omit `ward_ids` to discover every `resources_ward`
+row, including wards without weekly records,
 and use `next_cursor` on a later manual request. `ward_ids` and `cursor` are
 mutually exclusive.
 
@@ -258,17 +259,23 @@ consumers share one process-wide concurrency ceiling, so later jobs begin
 promptly without multiplying model-call capacity.
 The final export is a seven-day ZIP with a manifest, JSONL records, one
 unchanged `reports/<ward_id>.md` file, and one frontend-ready
-`json/<ward_id>.json` template per completed ward. Failed wards are recorded
-with safe error codes and up to three attempts; one bad ward does not discard
-successful work.
+`json/<ward_id>.json` template per completed ward. All selected wards must
+complete before report storage or successful export registration. Failed wards
+retain safe error codes and up to three attempts; completed artifacts remain
+recoverable, but a smaller batch cannot be committed as successful.
 Cancel requests are persisted and watched during execution. The worker cancels
 in-flight model awaits, marks pending and leased items cancelled, and packages
-only reports that completed before cancellation.
+only reports that completed before cancellation, without partial report-table
+writes. The scheduled pipeline follows continuation jobs until every ward is
+processed; its per-job limit does not cap weekly coverage.
 
 Every per-report narrative call has a bounded deadline controlled by
 `WEEKLY_REPORT_ITEM_TIMEOUT_SECONDS` (60 seconds by default). A timed-out model
 call becomes a deterministic template fallback, so one slow request cannot
-hold the queue. Producer, consumer, or finalizer failures now persist a
+hold the queue. Model errors and invalid output also use fallback; a prose-policy
+failure uses a fixed neutral summary with the validated detail sections.
+Guardian reports contain no fallback-generation notice. Internal generation
+metadata retains the mode and reason. Producer, consumer, or finalizer failures persist a
 terminal failed job and cancel unfinished items; the long-running worker logs
 the safe failure and continues serving later jobs. ZIP downloads are emitted
 in bounded chunks rather than being loaded into memory as one response, and

@@ -80,11 +80,6 @@ def render_report(
     power_check_days = selected_period_days - normal_reception_days
     indoor_environment_description = _environment_description(current, environment)
     report_end = metrics.week_end - timedelta(days=1)
-    fallback_note = (
-        "\n> 문구 생성이 어려워 검증된 안내 문구로 자동 대체됨\n"
-        if generation_mode == "template_fallback"
-        else ""
-    )
     suggestions = _render_suggestions(narrative, guardian_guides)
     summary_text = " ".join(
         value for value in (narrative.headline, narrative.analysis_text) if value
@@ -107,11 +102,6 @@ def render_report(
             status_description=risk_score_description(risk_score),
         ),
         weekly_summary=summary_text,
-        generation_notice=(
-            "문구 생성이 어려워 검증된 안내 문구로 자동 대체됨"
-            if generation_mode == "template_fallback"
-            else None
-        ),
         living_activity=WeeklyReportActivitySection(
             descriptions=_activity_descriptions(activity),
             tag=_activity_tag(activity),
@@ -214,7 +204,7 @@ def render_report(
 ## 한주 총평
 
 {summary_text}
-{fallback_note}
+
 ---
 
 # 주요 내용

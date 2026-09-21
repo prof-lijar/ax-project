@@ -4,6 +4,55 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## All-ward reporting and internal fallback metadata (2026-09-21)
+
+The operator requires every ward, including those without weekly source data,
+to receive a report. Record-only discovery and successful partial batches are
+superseded. The scheduler follows bounded continuation jobs to exhaustion and
+requires complete counts before migration. Narrative failures retain reports
+through deterministic fallback, with a neutral fixed summary if prose-policy
+validation itself fails. Fallback mode/reason remain internal; Markdown omits
+the generation notice and frontend `generation_notice` stays null. See
+[acceptance, validation, and rollout](weekly-report-completeness.md).
+
+## Activity-caution fallback correction (2026-09-21)
+
+Read-only source reproduction for ward `13554`, reporting September 14–20,
+2026, failed with `weekly summary uses a contradictory stable close`. The
+lifestyle-pattern section was CAUTION, while the overall score was GOOD.
+Activity CAUTION descriptions contain observations without action sentences,
+so the fallback selected the overall GOOD closing, `평소처럼 안부를 확인해
+주세요.`, which the existing attention validator correctly rejected. The same
+branch with an unavailable overall score omitted the required closing action.
+
+The fallback now uses `안부를 한 번 확인해 주세요.` when an activity or
+lifestyle-pattern attention signal has no selected section/overall action.
+Specific device/environment actions and overall attention actions retain their
+priority. The validator, classifications, model prompt, report schema, and
+storage behavior are unchanged.
+
+Acceptance: fallback generation must succeed for activity/pattern CAUTION in
+either direction with GOOD or unavailable overall score, retain one closing
+action, and continue rejecting contradictory routine reassurance. Nine new
+regression cases failed before the fix. After the fix, 101 focused tests and
+the full suite (637 passed, 21 skipped) passed. Actual ward data also passed
+local fallback validation and structured rendering for the requested dates.
+Changed-file Ruff, LangGraph validation, Compose rendering, and skill
+validation passed. Whole-tree Ruff retains two unrelated import/export
+ordering findings in the integrations exports and RAG graph tests.
+
+The configured local report database had no row for this ward/week. Original
+job metadata and worker logs could not be inspected because Docker requires
+interactive sudo authentication, so the historical model failure/validation
+reason is unconfirmed. No database writes, report delivery, or deployment were
+performed. Rebuild the deployed weekly-report worker, regenerate this ward for
+`2026-09-14` using a fresh selected-ward ZIP-only job, and verify completion.
+The existing [storage recovery command](weekly-report-database-recovery.md)
+can then validate that new single-report job with `--expected-count 1` and
+explicitly persist it with `--write`. Production migration is a separate step;
+the migration script selects the whole week, not a single ward. Resuming the
+old terminal job or scheduler receipt does not regenerate a failed item.
+
 ## Update: selective database recovery (2026-09-08)
 
 Operator recovery supports `--write --skip-not-null`: bounded batch savepoints
@@ -209,11 +258,11 @@ PostgreSQL raw tables
 
 ## Source and calculations
 
-Candidate wards are the ordered union of wards with current-period daily
-summaries, evaluations, or dispatch requests. Explicit ward IDs are also
-supported; missing IDs are returned in `skipped`. Automatic selection returns
-an opaque cursor bound to the week and timezone and never exceeds twenty-five
-wards per request.
+Candidate wards are every row in `ansimk.resources_ward`, ordered by ID,
+irrespective of weekly records. Explicit ward IDs are also supported; missing
+IDs are returned in `skipped` by the source and cause the bulk run to fail.
+Automatic selection returns an opaque cursor bound to the week and timezone.
+The compatibility graph caps requests at 25 wards; bulk source pages cap at 100.
 
 The source service reads fourteen days so both current and previous values use
 raw data. It implements the verified server semantics:
@@ -316,8 +365,11 @@ close that conflicts with an attention signal, persona-misaligned wording,
 actions before the final sentence, and new facts after an action, plus `위험`,
 rushed or alarm-amplifying words, and exclamation marks. Invalid output receives
 one bounded correction attempt. Remaining model or validation failures use a
-disclosed deterministic fallback built from the same report-facing section
-descriptions with duplicated local actions removed.
+deterministic fallback built from the same report-facing section descriptions
+with duplicated local actions removed. If that prose also fails validation,
+a fixed neutral summary preserves the deterministic detail report. Generation
+metadata identifies fallback internally; no generation notice appears in the
+guardian-facing report.
 
 Guardian action-card titles use the 2026-09-01 observation-style copy:
 `평소와 비슷하게 지내셨어요`, activity/pattern increase or decrease, the
@@ -690,9 +742,10 @@ is pending credentials and connection verification.
 
 The fixed Monday 01:00 Asia/Seoul cron now runs the scheduler pipeline. It
 submits the previous completed week, polls until the bulk finalizer confirms
-committed local storage (`completed` or `partial`), and executes
+committed local storage (`completed` with every discovered ward reported), and executes
 `playground/weekly-reporter/migrate.sh --write --week-start <reporting Monday>`.
-Failed/cancelled generation does not migrate. A saved success receipt prevents
+Failed/partial/cancelled generation does not migrate. Continuation batches are
+completed before migration. A policy-versioned success receipt prevents
 repeat migration; failure leaves generation and local storage intact. The
 production Compose file directly supplies runtime credential mounts and
 durable state for the scheduler; no additional migration overlay is needed. See [deployment and recovery](../apps/weekly_report_scheduler/README.md).

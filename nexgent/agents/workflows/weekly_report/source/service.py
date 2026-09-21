@@ -55,10 +55,6 @@ class WeeklyReportSourceService:
             ward_rows = await self.database.fetch(
                 CANDIDATE_WARDS_SQL,
                 after,
-                request.week_start,
-                week_end,
-                week_at,
-                end_at,
                 request.limit + 1,
             )
             has_more = len(ward_rows) > request.limit

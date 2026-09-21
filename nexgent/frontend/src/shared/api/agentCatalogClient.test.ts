@@ -7,17 +7,18 @@ import {
 } from "./agentCatalogClient";
 
 describe("agentCatalogClient", () => {
-  it("returns Weekly Reporter, RAG Agent, and the ADK Scout", async () => {
+  it("returns Weekly Reporter, RAG Agent, the ADK Scout, and Sumin", async () => {
     const first = await agentCatalogClient.listAgents();
     const second = await agentCatalogClient.listAgents();
 
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
-    expect(first).toHaveLength(3);
+    expect(first).toHaveLength(4);
     expect(first.map(({ id, graphId }) => ({ id, graphId }))).toEqual([
       { id: "1", graphId: "ansimk_weekly_reporter" },
       { id: "7", graphId: "rag_chat" },
-      { id: "ansimk_scout_agent", graphId: "ansimk_scout_agent" }
+      { id: "ansimk_scout_agent", graphId: "ansimk_scout_agent" },
+      { id: "sumin", graphId: "sumin" }
     ]);
     expect(first[0]).toMatchObject({
       id: "1",
@@ -59,6 +60,18 @@ describe("agentCatalogClient", () => {
       description: "Optional per-run or scheduled research guidance",
       required: false
     });
+    expect(first[3]).toMatchObject({
+      id: "sumin",
+      name: "Sumin",
+      graphId: "sumin",
+      canRunInChat: false,
+      runtimeLabel: "Slack Socket Mode",
+      readiness: null,
+      observationMode: null
+    });
+    expect(first[3].capabilities).toContain(
+      "Archive Slack uploads in channel folders"
+    );
   });
 
   it("normalizes unknown catalog and run states to safe fallbacks", () => {

@@ -4,21 +4,8 @@ CANDIDATE_WARDS_SQL = """
 SELECT w.id AS ward_id, w.full_name
 FROM ansimk.resources_ward AS w
 WHERE w.id > $1
-  AND w.id IN (
-    SELECT d.ward_id
-    FROM ansimk.analysis_devicedailysummary AS d
-    WHERE d.ward_id IS NOT NULL AND d.date >= $2 AND d.date < $3
-    UNION
-    SELECT e.ward_id
-    FROM ansimk.analysis_wardevaluation AS e
-    WHERE e.evaluated_at >= $4 AND e.evaluated_at < $5
-    UNION
-    SELECT r.ward_id
-    FROM ansimk.dispatch_dispatchrequest AS r
-    WHERE r.created_at >= $4 AND r.created_at < $5
-  )
 ORDER BY w.id
-LIMIT $6
+LIMIT $2
 """
 
 EXPLICIT_WARDS_SQL = """

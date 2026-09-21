@@ -374,7 +374,12 @@ class WeeklyReportBulkRunner:
         except Exception as exc:  # noqa: BLE001 - isolate one untrusted item
             _LOG.warning(
                 "bulk item failed",
-                extra={"job_id": str(item.job_id), "error_code": _error_code(exc)},
+                extra={
+                    "job_id": str(item.job_id),
+                    "ward_id": int(item.item_key),
+                    "error_code": _error_code(exc),
+                    "error_type": type(exc).__name__,
+                },
             )
             await self.store.fail_item(
                 item.job_id,
@@ -418,15 +423,37 @@ class WeeklyReportBulkRunner:
         job = await self.store.get_job(job_id)
         items = await self.store.list_items(job_id)
         completed = [item for item in items if item.status == "completed"]
+        request = WeeklyReportBulkJobRequest.model_validate(job.request)
+        if not job.cancel_requested and (
+            not job.producer_done
+            or len(completed) != len(items)
+            or (
+                request.ward_ids is not None
+                and {int(item.item_key) for item in completed} != set(request.ward_ids)
+            )
+        ):
+            raise WeeklyReportBulkExecutionError(
+                "every selected ward must have a completed report before storage"
+            )
 
         def read_report(item: BulkItemRecord) -> WardWeeklyReport:
             if not item.output_uri or not item.output_checksum:
                 raise WeeklyReportBulkExecutionError(
                     "completed bulk item is missing its output artifact"
                 )
-            return WardWeeklyReport.model_validate(
+            report = WardWeeklyReport.model_validate(
                 self.artifacts.read_verified_json(item.output_uri, item.output_checksum)
             )
+            if (
+                report.ward_id != int(item.item_key)
+                or report.metrics.ward_id != report.ward_id
+                or report.metrics.week_start != request.week_start
+                or report.metrics.week_end != request.week_start + timedelta(days=7)
+            ):
+                raise WeeklyReportBulkExecutionError(
+                    "completed report does not match the selected ward and week"
+                )
+            return report
 
         def write_jsonl(stream: Any) -> None:
             for item in completed:
@@ -447,11 +474,8 @@ class WeeklyReportBulkRunner:
         terminal_status = (
             "cancelled"
             if job.cancel_requested
-            else "partial"
-            if failures
             else "completed"
         )
-        request = WeeklyReportBulkJobRequest.model_validate(job.request)
         manifest = WeeklyReportBulkManifest(
             job_id=job_id,
             request=request,
@@ -488,7 +512,7 @@ class WeeklyReportBulkRunner:
         export = await asyncio.to_thread(
             self.artifacts.write_file, job_id, "weekly-reports.zip", write_zip
         )
-        if request.persist_reports:
+        if request.persist_reports and not job.cancel_requested:
             stored_count = await self.report_store.upsert_reports(
                 self._storage_records(completed, read_report)
             )
@@ -538,8 +562,17 @@ class WeeklyReportBulkRunner:
         ):
             raise ValueError("weekly-report source returned a mismatched period")
         ward_ids = [item.ward_id for item in source.items]
+        if source.skipped:
+            raise ValueError("weekly-report source skipped requested wards")
+        if len(ward_ids) > request.limit:
+            raise ValueError("weekly-report source exceeded the requested page size")
+        if any(
+            item.week_start != request.week_start or item.week_end != request.week_end
+            for item in source.items
+        ):
+            raise ValueError("weekly-report source item has a mismatched period")
         if request.ward_ids is not None and (
-            not set(ward_ids).issubset(request.ward_ids)
+            set(ward_ids) != set(request.ward_ids)
             or source.next_cursor is not None
         ):
             raise ValueError("weekly-report source returned wards outside the selection")

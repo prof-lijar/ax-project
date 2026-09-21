@@ -2,6 +2,18 @@
 
 Date: 2026-09-10
 
+## Update: Sumin registration
+
+Date: 2026-09-17
+
+Sumin is registered in the frontend co-worker catalog at `/agents`. Its card
+describes the existing Slack-to-Nextcloud archive and channel-scoped file
+discovery behavior, links to `/agents/sumin`, and does not expose a Chat action
+or claim unobserved readiness. Its card points users to Slack as the operating
+surface instead of implying a frontend workspace. The generic detail page now
+renders its Chat button only for catalog entries that declare `canRunInChat`,
+so Sumin's detail route does not imply an unsupported frontend runner.
+
 ## Implemented
 
 The Agents menu now opens a focused “Your co-workers” catalog. It uses distinct

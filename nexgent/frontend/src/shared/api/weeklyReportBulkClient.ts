@@ -1,3 +1,4 @@
+import { authenticatedFetch } from "./authenticatedFetch";
 export const WEEKLY_REPORT_BULK_BROWSER_PROXY_PATH = "/weekly-report-bulk-api";
 
 export type WeeklyReportBulkJobState =
@@ -162,7 +163,7 @@ async function request(path: string, init: RequestInit = {}) {
     controller.abort();
   }, 30_000);
   try {
-    const response = await fetch(apiUrl(path), {
+    const response = await authenticatedFetch(apiUrl(path), {
       ...init,
       signal: controller.signal,
       headers: { Accept: "application/json", ...init.headers }
@@ -197,10 +198,7 @@ async function request(path: string, init: RequestInit = {}) {
 }
 
 function apiUrl(path: string) {
-  const direct = import.meta.env.VITE_WEEKLY_REPORT_BULK_API_BASE_URL?.trim();
-  const base = isTauriRuntime() && direct
-    ? direct.replace(/\/+$/, "")
-    : WEEKLY_REPORT_BULK_BROWSER_PROXY_PATH;
+  const base = WEEKLY_REPORT_BULK_BROWSER_PROXY_PATH;
   return `${base}${path}`;
 }
 
@@ -308,8 +306,4 @@ function malformedResponse() {
   return new WeeklyReportBulkClientError(
     "The Weekly Reporter bulk service returned an invalid response."
   );
-}
-
-function isTauriRuntime() {
-  return "__TAURI_INTERNALS__" in globalThis;
 }
