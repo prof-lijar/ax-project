@@ -55,6 +55,9 @@ export function resolveSectionLocation(
   if (normalizedPathname === "/") {
     return { section: "chat", path: sectionPaths.chat };
   }
+  if (/^\/chat\/[0-9a-f-]{36}$/i.test(normalizedPathname)) {
+    return { section: "chat", path: normalizedPathname };
+  }
 
   if (normalizedPathname === "/co-workers") {
     return { section: "agents", path: sectionPaths.agents };

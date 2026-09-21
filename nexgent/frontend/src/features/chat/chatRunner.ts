@@ -6,7 +6,12 @@ import { RAG_CHAT_GRAPH_ID } from "../../shared/api/agentCatalogClient";
 import { chatId, useChatStore } from "../../shared/state/useChatStore";
 import { toAttachmentSummary } from "./chatAttachments";
 
-export type ChatRunner = ReturnType<typeof createChatRunner>;
+export interface ChatRunner {
+  send: (id: string) => Promise<void>;
+  stop: (id?: string) => void;
+  detach: () => void;
+  watch?: (conversationId: string, runId: string) => void;
+}
 
 // The app owns this runner across menu changes. Every callback is scoped
 // to its request, so cancellation/deletion cannot resurrect a stale response.
@@ -126,5 +131,5 @@ export function createChatRunner(client = agentServerClient) {
       }
     }
   }
-  return { send, stop };
+  return { send, stop, detach: stop };
 }

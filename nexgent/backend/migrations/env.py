@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app.identity.models import Base
+from app.chat import persistence  # noqa: F401 -- register chat metadata
 
 url = os.environ["NEXGENT_DATABASE_URL"]
 postgresql = url.startswith("postgresql")
@@ -36,12 +37,21 @@ BEGIN
         SET LOCAL search_path TO public;
     ELSE
         SET LOCAL search_path TO auth;
+        -- After the explicit-schema migration, use the neutral default for
+        -- reflection. Otherwise PostgreSQL omits auth from cross-schema FKs
+        -- and Alembic incorrectly proposes replacing valid chat ownership FKs.
+        IF to_regclass('auth.alembic_version') IS NOT NULL THEN
+            IF EXISTS (SELECT 1 FROM auth.alembic_version
+                       WHERE version_num NOT IN ('20260917_01', '20260917_02')) THEN
+                SET LOCAL search_path TO public;
+            END IF;
+        END IF;
     END IF;
 END $$
 """
 
 def include_name(name, type_, _parent_names):
-    return type_ != "schema" or name == "auth"
+    return type_ != "schema" or name in {"auth", "chat"}
 
 
 options = dict(target_metadata=Base.metadata, compare_type=True,

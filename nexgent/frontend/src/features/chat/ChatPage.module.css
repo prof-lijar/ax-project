@@ -835,3 +835,16 @@
   white-space: nowrap;
   border: 0;
 }
+.savedFilePicker {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.savedFilePicker summary { cursor: pointer; }
+.savedFilePicker > div {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.savedFilePicker button { max-width: 100%; overflow-wrap: anywhere; }

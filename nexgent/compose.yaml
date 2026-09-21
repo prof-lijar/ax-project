@@ -246,6 +246,8 @@ services:
       AX_SCOUT_URL: http://scout:8091
       AX_WEEKLY_REPORT_BULK_URL: http://weekly-report-bulk-api:8090
       AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
+      AX_CHAT_FILE_ROOT: /var/lib/nexgent/chat-files
+      AX_CHAT_DEPLOYMENT: development
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     networks:
@@ -256,6 +258,7 @@ services:
     volumes:
       - ./backend:/app
       - chat_attachments:/run/ax-chat
+      - chat_files:/var/lib/nexgent/chat-files
     healthcheck:
       test:
         - CMD
@@ -267,6 +270,32 @@ services:
       retries: 10
       start_period: 10s
     stop_grace_period: 5s
+
+  chat-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/dev.env
+    environment:
+      AX_AGENT_SERVER_URL: http://agent-server:2024
+      AX_CHAT_ARTIFACT_ROOT: /run/ax-chat
+      AX_CHAT_FILE_ROOT: /var/lib/nexgent/chat-files
+      AX_CHAT_DEPLOYMENT: development
+    entrypoint: ["python", "-m", "app.chat.worker"]
+    volumes:
+      - chat_attachments:/run/ax-chat
+      - chat_files:/var/lib/nexgent/chat-files
+    networks: [default, database]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      backend:
+        condition: service_healthy
+      agent-server:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
 
   frontend:
     build:
@@ -317,6 +346,7 @@ networks:
     name: nexgent-rag_default
 
 volumes:
+  chat_files:
   scout-reports:
   frontend_node_modules:
   weekly-report-job-data:

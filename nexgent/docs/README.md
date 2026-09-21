@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Persistent AX Chat History](08-implementation/persistent-ax-chat-history.md): private per-user history, background replies, saved files, APIs, deployment, recovery and validation.
+
 - [Password Length Policy](08-implementation/password-length-policy.md): 4–12 character creation/reset validation, existing-login compatibility, and verification.
 
 - [Unified App Authentication](08-implementation/unified-app-authentication.md): current login gate, Settings administration, protected feature gateway, standard Compose startup and validation.

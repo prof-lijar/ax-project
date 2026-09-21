@@ -70,7 +70,7 @@ class AttachmentProcessor:
     def __init__(self, settings: ChatSettings) -> None:
         self._settings = settings
 
-    async def process(self, uploads: list[UploadFile]) -> ArtifactBatch:
+    async def process(self, uploads: list[UploadFile], *, keep_originals: bool = False) -> ArtifactBatch:
         if len(uploads) > MAX_FILES:
             raise ChatRequestError(
                 "too_many_files",
@@ -148,6 +148,8 @@ class AttachmentProcessor:
                     )
 
                 attachment_id = str(uuid4())
+                if keep_originals:
+                    _write_private_file(request_dir / f"{attachment_id}.original", content)
                 artifact_path = request_dir / f"{attachment_id}{artifact_extension}"
                 _write_private_file(artifact_path, normalized)
                 references.append(

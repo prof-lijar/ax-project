@@ -2,6 +2,15 @@
 
 Date: 2026-09-14
 
+## Update: durable product history (2026-09-21)
+
+The product frontend/backend now persist per-user AX history and selected files,
+and an independent worker supplies bounded database history on each stateless
+Agent Server invocation. Browser disconnect no longer cancels product AX runs.
+This supersedes the ephemeral frontend/session wiring and ownership limitations
+described in the historical record below. The graph's history limits and successful
+pair semantics are unchanged. See [Persistent AX chat history](../../docs/08-implementation/persistent-ax-chat-history.md).
+
 Normal Chat now includes earlier successful user/assistant turns when generating
 a follow-up. A conversation owns a random UUID `sessionId`, separate from its
 UI message IDs. Switching conversations and returning preserves the same ID;

@@ -10,6 +10,8 @@ from app.chat.attachments import cleanup_stale_artifacts
 from app.chat.config import get_chat_settings
 from app.chat.errors import ChatRequestError
 from app.chat.router import router as chat_router
+from app.chat.history_router import router as chat_history_router
+from app.chat.store import ChatStore
 from app.identity.config import load_identity_settings
 from app.identity.router import AccountBoundary, access_error, database_error, router as account_router, validation_error
 from app.identity.store import AccessError, IdentityStore
@@ -26,6 +28,9 @@ async def _lifespan(app: FastAPI):
         app.state.identity_store = IdentityStore(settings)
     try:
         await run_in_threadpool(app.state.identity_store.ready)
+        if not hasattr(app.state, "chat_store"):
+            app.state.chat_store = ChatStore(app.state.identity_store.engine)
+        await run_in_threadpool(app.state.chat_store.ready)
         settings = get_chat_settings()
         cleanup_stale_artifacts(settings.artifact_root, settings.stale_after_seconds)
         yield
@@ -58,6 +63,7 @@ def create_app(*, identity_settings=None, identity_store=None):
     app.add_api_route("/health", health_check, methods=["GET"], include_in_schema=False)
     app.include_router(account_router)
     app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+    app.include_router(chat_history_router, prefix="/api/chat", tags=["chat-history"])
     app.include_router(rag_chat_router, prefix="/api/rag/chat", tags=["rag-chat"])
     app.include_router(nextcloud_router, prefix="/api/nextcloud", tags=["nextcloud"])
     app.include_router(integration_router)

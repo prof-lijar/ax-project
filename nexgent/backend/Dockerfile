@@ -24,7 +24,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 nexgent \
     && useradd --system --uid 10001 --gid nexgent --create-home nexgent \
-    && install --directory --owner=nexgent --group=nexgent --mode=0700 /run/ax-chat
+    && install --directory --owner=nexgent --group=nexgent --mode=0700 /run/ax-chat /var/lib/nexgent/chat-files
 
 WORKDIR /app
 

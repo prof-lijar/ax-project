@@ -9,6 +9,7 @@ import { ChatMarkdown } from "./ChatMarkdown";
 import { CopyButton } from "./MessageActions";
 import { formatFileSize } from "./chatAttachments";
 import styles from "./ChatPage.module.css";
+import { selectSavedFile } from "./SavedFilePicker";
 
 export function isNearBottom(
   scrollTop: number,
@@ -19,12 +20,25 @@ export function isNearBottom(
 }
 export function ChatTranscript({
   conversation,
-  onReuse
+  onReuse,
+  hasEarlier = false,
+  loadingEarlier = false,
+  onLoadEarlier
 }: {
   conversation: ChatConversation;
   onReuse: (message: ChatMessage) => void;
+  hasEarlier?: boolean;
+  loadingEarlier?: boolean;
+  onLoadEarlier?: () => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
+  const previousHeight = useRef<{ height: number; first?: string } | null>(null);
+  useLayoutEffect(() => {
+    if (previousHeight.current !== null && viewport.current && previousHeight.current.first !== conversation.messages[0]?.id) {
+      viewport.current.scrollTop += viewport.current.scrollHeight - previousHeight.current.height;
+      previousHeight.current = null;
+    }
+  }, [conversation.messages]);
   const last = conversation.messages[conversation.messages.length - 1];
   useLayoutEffect(() => {
     const element = viewport.current;
@@ -72,6 +86,11 @@ export function ChatTranscript({
         }}
       >
         <div className={styles.messageColumn}>
+          {hasEarlier && <button disabled={loadingEarlier} onClick={() => {
+            previousHeight.current = viewport.current ? { height: viewport.current.scrollHeight, first: conversation.messages[0]?.id } : null;
+            useChatStore.getState().patchChat(conversation.id, { following: false });
+            onLoadEarlier?.();
+          }}>{loadingEarlier ? "Loading…" : "Load earlier messages"}</button>}
           {conversation.messages.map((message) => (
             <article
               key={message.id}
@@ -104,6 +123,10 @@ export function ChatTranscript({
                             <FileText size={15} aria-hidden />
                             <span title={file.name}>{file.name}</span>
                             <small>{formatFileSize(file.size)}</small>
+                            {file.id && <>
+                              <a href={`/api/chat/attachments/${file.id}/download`} download={file.name}>Download</a>
+                              <button onClick={() => selectSavedFile(conversation, file)}>Use again</button>
+                            </>}
                           </li>
                         ))}
                       </ul>

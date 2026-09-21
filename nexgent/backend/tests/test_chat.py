@@ -134,7 +134,7 @@ def _pdf_with_text() -> bytes:
     return bytes(payload)
 
 
-def test_chat_route_streams_and_cleans_normalized_attachments(tmp_path, monkeypatch):
+def test_attachment_relay_streams_and_cleans_normalized_attachments(tmp_path, monkeypatch):
     monkeypatch.setenv("AX_CHAT_ARTIFACT_ROOT", str(tmp_path))
     captured = {}
     upstream = _FakeUpstream([b'event: custom\ndata: {"delta":"ok"}\n\n'])
@@ -147,26 +147,20 @@ def test_chat_route_streams_and_cleans_normalized_attachments(tmp_path, monkeypa
         ]
         return upstream
 
-    import app.chat.router as chat_router_module
-
-    monkeypatch.setattr(chat_router_module, "open_agent_stream", fake_open)
-    from app.chat.router import stream_chat
+    from app.chat.attachments import AttachmentProcessor
+    from app.chat.streaming import relay_agent_stream
 
     async def exercise():
-        response = await stream_chat(
-            Request({"type": "http", "method": "POST", "path": "/api/chat/stream"}),
-            prompt="  summarize  ",
-            files=[
+        settings = _settings(tmp_path)
+        batch = await AttachmentProcessor(settings).process([
                 _upload("notes.md", b"# Heading\r\nbody", "text/markdown"),
                 _upload("data.csv", b"a,b\n1,2", "text/csv"),
-            ],
-        )
-        chunks = [chunk async for chunk in response.body_iterator]
-        return response, b"".join(chunks)
+            ])
+        upstream = await fake_open("summarize", batch.attachments, settings)
+        chunks = [chunk async for chunk in relay_agent_stream(upstream, batch.cleanup)]
+        return b"".join(chunks)
 
-    response, body = asyncio.run(exercise())
-
-    assert response.status_code == 200
+    body = asyncio.run(exercise())
     assert body == b'event: custom\ndata: {"delta":"ok"}\n\n'
     assert captured["prompt"] == "summarize"
     assert [item.schema_version for item in captured["attachments"]] == ["1", "1"]
@@ -560,19 +554,11 @@ def test_busy_session_returns_retryable_conflict(tmp_path):
     asyncio.run(exercise())
 
 
-def test_route_validates_and_forwards_session_id(monkeypatch, tmp_path):
-    import app.chat.router as chat_router
+def test_route_rejects_unowned_or_invalid_session_id(monkeypatch, tmp_path):
     from conftest import feature_app as create_app
 
     monkeypatch.setenv("AX_CHAT_ARTIFACT_ROOT", str(tmp_path))
     session_id = uuid4()
-    captured = []
-
-    async def fake_open(prompt, attachments, settings, **kwargs):
-        captured.append(kwargs["session_id"])
-        return _FakeUpstream([b'event: custom\ndata: {"response_complete":"ok"}\n\n'])
-
-    monkeypatch.setattr(chat_router, "open_agent_stream", fake_open)
     response = asyncio.run(
         _request(
             create_app(),
@@ -581,8 +567,7 @@ def test_route_validates_and_forwards_session_id(monkeypatch, tmp_path):
             data={"prompt": "hello", "session_id": str(session_id)},
         )
     )
-    assert response.status_code == 200
-    assert captured == [session_id]
+    assert response.status_code == 404
     response = asyncio.run(
         _request(
             create_app(),
@@ -592,4 +577,3 @@ def test_route_validates_and_forwards_session_id(monkeypatch, tmp_path):
         )
     )
     assert response.status_code == 422
-    assert captured == [session_id]

@@ -4,12 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from starlette.responses import StreamingResponse
 
-from app.chat.agent_server import open_agent_stream
-from app.chat.attachments import AttachmentProcessor
-from app.chat.config import get_chat_settings
-from app.chat.errors import ChatRequestError
 from app.chat.models import ChatErrorResponse
-from app.chat.streaming import relay_agent_stream
+from app.chat.history_router import legacy_stream
 
 router = APIRouter()
 
@@ -32,31 +28,4 @@ async def stream_chat(
     files: Annotated[list[UploadFile] | None, File()] = None,
     session_id: Annotated[UUID | None, Form()] = None,
 ) -> StreamingResponse:
-    normalized_prompt = (prompt or "").strip()
-    if not normalized_prompt:
-        raise ChatRequestError(
-            "prompt_required",
-            "A non-empty prompt is required.",
-        )
-
-    settings = get_chat_settings()
-    batch = await AttachmentProcessor(settings).process(files or [])
-    try:
-        upstream = await open_agent_stream(
-            normalized_prompt,
-            batch.attachments,
-            settings,
-            **({"session_id": session_id} if session_id is not None else {}),
-        )
-    except BaseException:
-        await batch.cleanup()
-        raise
-
-    return StreamingResponse(
-        relay_agent_stream(upstream, batch.cleanup),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-store",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return await legacy_stream(request, prompt, files, session_id)

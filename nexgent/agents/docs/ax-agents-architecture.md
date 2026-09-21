@@ -4,6 +4,34 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Persistent product AX chat history (2026-09-21)
+
+The authenticated product backend now owns private per-user AX conversations,
+messages, attachment metadata and execution jobs in the application PostgreSQL
+`chat` schema. An independent backend `chat-worker` consumes leased jobs and
+persists assistant output independently of browser connections. Development and
+production use separate deployment namespaces because their account DB is shared.
+
+The worker invokes the existing `chat` graph through stateless Agent Server runs,
+supplying the recent successful pairs from the product database (20 turns/32,000
+characters). It uses custom response events and temporary-thread deletion. The
+graph does not open database connections or instantiate a checkpointer. Existing
+graph history and attachment contracts remain unchanged; public clients cannot
+submit historical context or arbitrary upstream thread identifiers. This supersedes
+the ephemeral product-UI/thread coupling in the September 14 record below.
+
+Original and normalized attachments persist in a private API/worker volume; the
+worker stages only selected normalized copies for Agent Server. Users explicitly
+reuse files. Browser disconnection detaches the viewer; explicit Stop cancels the
+worker's upstream connection and retains partial output. Worker loss marks the run
+interrupted after lease expiry without automatic model retries. Reopening a completed
+chat remains possible after Agent Server restarts. RAG remains session-only.
+
+Deletion immediately revokes access and queues file/record cleanup after cancellation.
+Migration, HTTP contracts, operational commands, isolated PostgreSQL and browser
+validation, and remaining real-model rollout checks are recorded in
+[Persistent AX chat history](../../docs/08-implementation/persistent-ax-chat-history.md).
+
 This document is the required starting point for any material change to AX
 agent runtime, graph orchestration, tools, APIs, persistence, deployment,
 security, or evaluation. `AGENTS.md` requires contributors and agents to read

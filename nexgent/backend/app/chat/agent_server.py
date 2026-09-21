@@ -25,6 +25,7 @@ async def open_agent_stream(
     *,
     assistant_id: str | None = None,
     session_id: UUID | None = None,
+    history: list[dict[str, str]] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> AgentServerStream:
     timeout = httpx.Timeout(
@@ -46,6 +47,9 @@ async def open_agent_stream(
         "on_disconnect": "cancel",
     }
     path = "/runs/stream"
+    if history is not None:
+        graph_input["history"] = history
+        payload.update({"stream_mode": ["custom"], "on_completion": "delete"})
     if session_id is not None:
         path = f"/threads/{session_id}/runs/stream"
         # Reset transient fields, preserving only server-owned history.

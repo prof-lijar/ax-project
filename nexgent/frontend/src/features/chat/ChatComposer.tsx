@@ -19,6 +19,7 @@ import {
   validateSelectedFiles
 } from "./chatAttachments";
 import styles from "./ChatPage.module.css";
+import { SavedFilePicker } from "./SavedFilePicker";
 
 function FilePreview({ file }: { file: File }) {
   const [url, setUrl] = useState<string>();
@@ -35,12 +36,14 @@ function FilePreview({ file }: { file: File }) {
   );
 }
 export function ChatComposer({
+  disabled = false,
   conversation,
   inputRef,
   onSend,
   onStop,
   onOpenRunning
 }: {
+  disabled?: boolean;
   conversation: ChatConversation;
   inputRef: RefObject<HTMLTextAreaElement>;
   onSend: () => void;
@@ -53,7 +56,7 @@ export function ChatComposer({
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const textOnly = conversation.agent?.graphId === RAG_CHAT_GRAPH_ID;
-  const ownRequest = activeRequest?.conversationId === conversation.id;
+  const ownRequest = !!conversation.runId || activeRequest?.conversationId === conversation.id;
   const otherRequest = activeRequest && !ownRequest;
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -74,7 +77,9 @@ export function ChatComposer({
       return;
     }
     const files = deduplicateFiles([...conversation.files, ...incoming]);
-    const error = validateSelectedFiles(files);
+    const all = [...files, ...(conversation.selectedFiles ?? [])];
+    const error = validateSelectedFiles(files) || (all.length > 5 || all.reduce((sum, f) => sum + f.size, 0) > 25 * 1024 * 1024
+      ? "Select at most five files totaling 25 MiB." : null);
     patchChat(conversation.id, error ? { error } : { files, error: null });
   }
   return (
@@ -89,7 +94,7 @@ export function ChatComposer({
         className={`${styles.composer} ${dragging ? styles.dragging : ""}`}
         onSubmit={(event) => {
           event.preventDefault();
-          onSend();
+          if (!disabled && !ownRequest && !conversation.submitting) onSend();
         }}
         onDragEnter={(event) => {
           if (Array.from(event.dataTransfer.types).includes("Files")) {
@@ -118,6 +123,13 @@ export function ChatComposer({
             {textOnly ? "RAG Agent supports text only" : "Drop files to attach"}
           </div>
         )}
+        {!!conversation.selectedFiles?.length && <div className={styles.attachmentList} aria-label="Selected saved files">
+          {conversation.selectedFiles.map(file => <div className={styles.attachment} key={file.id}>
+            <FileText size={20} aria-hidden /><span>{file.name}<small>Saved file · {formatFileSize(file.size)}</small></span>
+            <button type="button" aria-label={`Remove ${file.name}`} className={styles.iconButton}
+              onClick={() => patchChat(conversation.id, { selectedFiles: conversation.selectedFiles?.filter(f => f.id !== file.id) })}><X size={14} /></button>
+          </div>)}
+        </div>}
         {conversation.files.length > 0 && (
           <div
             className={styles.attachmentList}
@@ -166,7 +178,7 @@ export function ChatComposer({
               event.keyCode !== 229
             ) {
               event.preventDefault();
-              if (!activeRequest) onSend();
+              if (!activeRequest && !ownRequest && !conversation.submitting && !disabled) onSend();
             }
           }}
           onPaste={(event) => {
@@ -222,7 +234,7 @@ export function ChatComposer({
             <button
               className={styles.sendButton}
               type="submit"
-              disabled={Boolean(activeRequest) || !conversation.draft.trim()}
+              disabled={disabled || !!conversation.submitting || Boolean(activeRequest) || !conversation.draft.trim()}
               aria-label="Send message"
               title={
                 otherRequest ? "Another chat is responding" : "Send message"
@@ -233,12 +245,13 @@ export function ChatComposer({
           )}
         </div>
       </form>
+      {conversation.submitting && <p role="status">Saving your message…</p>}
+      {conversation.serverId && !textOnly && <SavedFilePicker conversation={conversation} />}
       <p id="chat-composer-help" className={styles.composerHelp}>
         Enter to send · Shift+Enter for a new line
       </p>
       <p className={styles.contextNote}>
-        Each request uses your latest message only. Earlier messages aren't
-        included.
+        {textOnly ? "RAG uses your latest question only. This chat is not saved." : "AX uses recent messages in this chat. Select saved files to include them again."}
       </p>
     </div>
   );

@@ -15,6 +15,9 @@ import { ChatComposer } from "./ChatComposer";
 import { ChatTranscript } from "./ChatTranscript";
 import { ConversationList } from "./ConversationList";
 import type { ChatRunner } from "./chatRunner";
+import { navigateChat, type SavedChatHistory } from "./useSavedChatHistory";
+import { chatHistoryClient } from "../../shared/api/chatHistoryClient";
+import { historyChanged } from "./persistentChatRunner";
 import styles from "./ChatPage.module.css";
 
 export function usesRagChat(graphId: string | null) {
@@ -31,7 +34,7 @@ const starters = [
   },
   { label: "Plan next steps", prompt: "Help me plan the next steps for " }
 ];
-export function ChatPage({ runner }: { runner: ChatRunner }) {
+export function ChatPage({ runner, history }: { runner: ChatRunner; history: SavedChatHistory }) {
   const { conversations, activeId, activeRequest, patchChat, chooseAgent } =
     useChatStore();
   const conversation = conversations.find((c) => c.id === activeId)!;
@@ -68,7 +71,13 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
   useEffect(() => {
     // The existing Agents entry point hands its selection to Chat via useUiStore.
     const state = useChatStore.getState();
-    state.chooseAgent(state.activeId, selectedAgent);
+    const current = state.conversations.find(c => c.id === state.activeId)!;
+    if (current.agent?.id !== selectedAgent?.id) {
+      if (current.messages.length || current.serverId) {
+        state.newChat(selectedAgent);
+        navigateChat();
+      } else state.chooseAgent(state.activeId, selectedAgent);
+    }
     const pending = useUiStore.getState().pendingAgentRun;
     if (pending) {
       useUiStore.getState().clearPendingAgentRun();
@@ -160,18 +169,28 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
   }
   function selectChat(id: string) {
     useChatStore.getState().selectChat(id);
+    navigateChat(useChatStore.getState().conversations.find(c => c.id === id)?.serverId);
     syncSelection();
     if (!wide) setSidebarOpen(false);
   }
   function newChat() {
     useChatStore.getState().newChat(conversation.agent);
+    navigateChat();
     syncSelection();
     if (!wide) setSidebarOpen(false);
     focusComposer();
   }
-  function deleteChat(id: string) {
-    if (activeRequest?.conversationId === id) runner.stop();
+  async function deleteChat(id: string) {
+    const chat = useChatStore.getState().conversations.find(c => c.id === id);
+    if (chat?.submitting) return;
+    try {
+      if (chat?.serverId) await chatHistoryClient.remove(chat.serverId);
+      else if (activeRequest?.conversationId === id) runner.stop(id);
+    } catch (error) { patchChat(id, { error: (error as Error).message }); return; }
     useChatStore.getState().deleteChat(id);
+    const state = useChatStore.getState();
+    navigateChat(state.conversations.find(c => c.id === state.activeId)?.serverId);
+    historyChanged();
     syncSelection();
     requestAnimationFrame(() =>
       sidebarRef.current
@@ -180,7 +199,10 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
     );
   }
   function selectAgent(agent: AgentDefinition | null) {
-    chooseAgent(activeId, agent);
+    if (conversation.agent?.id !== agent?.id && (conversation.messages.length || conversation.serverId)) {
+      useChatStore.getState().newChat(agent);
+      navigateChat();
+    } else chooseAgent(activeId, agent);
     useUiStore.setState({ selectedAgent: agent });
     if (selectorRef.current) selectorRef.current.open = false;
     focusComposer();
@@ -235,6 +257,7 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
             aria-label="Chat conversations"
           >
             <ConversationList
+              history={history}
               onSelect={selectChat}
               onNew={newChat}
               onDelete={deleteChat}
@@ -324,11 +347,16 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
         <div
           className={`${styles.conversationBody} ${!conversation.messages.length ? styles.emptyBody : ""}`}
         >
-          {conversation.messages.length ? (
+          {history.loading ? <p role="status">Loading conversation…</p> : history.error && conversation.serverId ? (
+            <div role="alert"><p>{history.error.message}</p><button onClick={history.refresh}>Retry</button></div>
+          ) : conversation.messages.length ? (
             <ChatTranscript
               key={activeId}
               conversation={conversation}
               onReuse={reuse}
+              onLoadEarlier={() => void history.messages.fetchNextPage()}
+              hasEarlier={!!history.messages.hasNextPage}
+              loadingEarlier={history.messages.isFetchingNextPage}
             />
           ) : (
             <div className={styles.welcome}>
@@ -403,6 +431,7 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
               </div>
             )}
             <ChatComposer
+              disabled={history.loading || !!(history.error && conversation.serverId)}
               conversation={conversation}
               inputRef={inputRef}
               onSend={() => {
@@ -416,7 +445,7 @@ export function ChatPage({ runner }: { runner: ChatRunner }) {
                 void runner.send(activeId);
                 focusComposer();
               }}
-              onStop={runner.stop}
+              onStop={() => runner.stop(activeId)}
               onOpenRunning={() => {
                 if (activeRequest) selectChat(activeRequest.conversationId);
               }}

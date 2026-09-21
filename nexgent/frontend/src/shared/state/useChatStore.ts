@@ -4,11 +4,13 @@ import type { AgentDefinition } from "../types/agents";
 
 export type ChatRole = "user" | "assistant";
 export interface ChatAttachmentSummary {
+  id?: string;
   name: string;
   size: number;
   type: string;
 }
 export interface ChatMessage {
+  position?: number;
   id: string;
   role: ChatRole;
   content: string;
@@ -17,6 +19,13 @@ export interface ChatMessage {
   status?: "waiting" | "streaming" | "complete" | "stopped" | "failed";
 }
 export interface ChatConversation {
+  serverId?: string;
+  runId?: string | null;
+  submitting?: boolean;
+  historyLoaded?: boolean;
+  selectedFiles?: ChatAttachmentSummary[];
+  submissionKey?: string;
+  submissionSignature?: string;
   id: string;
   sessionId: string;
   title: string;
@@ -111,7 +120,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   selectChat: (id) => {
     if (get().conversations.some((c) => c.id === id)) {
-      get().patchChat(id, { updatedAt: Date.now() });
       set({ activeId: id });
     }
   },

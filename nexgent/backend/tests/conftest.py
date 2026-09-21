@@ -13,7 +13,14 @@ class FeatureIdentityStore:
 
 def feature_app():
     from app.main import create_app
-    return create_app(identity_settings=TEST_SETTINGS, identity_store=FeatureIdentityStore())
+    app = create_app(identity_settings=TEST_SETTINGS, identity_store=FeatureIdentityStore())
+    # Validation tests do not submit valid work. Ownership rejection never calls an upstream.
+    class NoChatStore:
+        def conversation(self, *_):
+            from app.identity.store import AccessError
+            raise AccessError(404, "not_found")
+    app.state.chat_store = NoChatStore()
+    return app
 
 def authenticated_headers():
     return {"Cookie": f"{TEST_SETTINGS.cookie_name}={TEST_TOKEN}",

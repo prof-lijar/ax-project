@@ -2,13 +2,18 @@ import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useChatStore } from "../../shared/state/useChatStore";
 import styles from "./ChatPage.module.css";
+import { chatHistoryClient } from "../../shared/api/chatHistoryClient";
+import { historyChanged } from "./persistentChatRunner";
+import type { SavedChatHistory } from "./useSavedChatHistory";
 
 export function ConversationList({
+  history,
   onSelect,
   onNew,
   onDelete,
   onClose
 }: {
+  history: SavedChatHistory;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
@@ -27,10 +32,12 @@ export function ConversationList({
   const [editing, setEditing] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <>
       <div className={styles.listHeading}>
-        <strong>Chats this session</strong>
+        <strong>Chats</strong>
         <button
           className={styles.iconButton}
           onClick={onClose}
@@ -47,7 +54,7 @@ export function ConversationList({
       <nav
         ref={listRef}
         className={styles.conversations}
-        aria-label="Session conversations"
+        aria-label="Conversations"
       >
         {[...conversations]
           .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -63,10 +70,15 @@ export function ConversationList({
               {editing === conversation.id ? (
                 <form
                   className={styles.renameForm}
-                  onSubmit={(event) => {
+                  onSubmit={async (event) => {
                     event.preventDefault();
-                    renameChat(conversation.id, title);
-                    finishEditing(conversation.id);
+                    setSaving(true); setError(null);
+                    try {
+                      if (conversation.serverId) await chatHistoryClient.rename(conversation.serverId, title.trim());
+                      renameChat(conversation.id, title);
+                      finishEditing(conversation.id); historyChanged();
+                    } catch (failure) { setError((failure as Error).message); }
+                    finally { setSaving(false); }
                   }}
                 >
                   <input
@@ -84,7 +96,7 @@ export function ConversationList({
                   />
                   <button
                     className={styles.iconButton}
-                    disabled={!title.trim()}
+                    disabled={saving || !title.trim()}
                     aria-label="Save title"
                   >
                     <Check size={14} />
@@ -110,7 +122,7 @@ export function ConversationList({
                     title={conversation.title}
                   >
                     <span>{conversation.title}</span>
-                    {activeRequest?.conversationId === conversation.id && (
+                    {(conversation.runId || activeRequest?.conversationId === conversation.id) && (
                       <LoaderCircle
                         size={14}
                         className={styles.spinner}
@@ -135,6 +147,7 @@ export function ConversationList({
                       className={styles.iconButton}
                       aria-label={`Delete ${conversation.title}`}
                       title="Delete chat"
+                      disabled={conversation.submitting}
                       onClick={() => setDeleting(conversation.id)}
                     >
                       <Trash2 size={13} />
@@ -146,7 +159,7 @@ export function ConversationList({
                 <div className={styles.deleteConfirmation}>
                   <span>
                     Delete this chat
-                    {activeRequest?.conversationId === conversation.id
+                    {conversation.runId || activeRequest?.conversationId === conversation.id
                       ? " and stop its reply"
                       : ""}
                     ?
@@ -165,7 +178,10 @@ export function ConversationList({
             </div>
           ))}
       </nav>
-      <p className={styles.sessionNote}>Chats are cleared when you reload.</p>
+      {(error || history.list.error) && <p role="alert">{error ?? history.list.error?.message} <button onClick={history.refresh}>Retry</button></p>}
+      {history.list.isPending && <p role="status">Loading chats…</p>}
+      {history.list.hasNextPage && <button disabled={history.list.isFetchingNextPage} onClick={() => void history.list.fetchNextPage()}>Load more chats</button>}
+      <p className={styles.sessionNote}>AX chats are saved to your account. RAG chats last only this session.</p>
     </>
   );
 }
