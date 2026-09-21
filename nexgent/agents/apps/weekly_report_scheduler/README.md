@@ -40,6 +40,13 @@ image contains the migration scripts and SSH/Python dependencies; credentials
 are mounted read-only at runtime. Do not combine this whole-week migration
 with the optional outbox delivery overlay for the same reports.
 
+The shared migration skips reports whose ward is absent from the production
+ward table, prints each ward ID/week, and includes `skipped` in its summary.
+Other reports commit normally, including when all selected reports are skipped.
+The success receipt's report count is the locally generated count, not the
+production inserted count. Rebuild `weekly-report-scheduler` to pick up the
+updated migration script; no scheduler-specific skip flag is needed.
+
 From the `agents` folder, deploy the scheduler with its required secret mounts,
 durable receipts, and SSH known-host volume:
 

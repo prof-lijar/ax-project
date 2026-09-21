@@ -27,8 +27,8 @@ writer. The production overlay sets the flags on the generation worker only;
 do not place production flags in the shared `agents/.env`.
 
 Delivery eligibility means a report was successfully saved by the production
-writer. Existing partial/cancelled bulk finalizations can save completed reports;
-those saved reports are also eligible. This does not wait for the separate job
+writer. Bulk finalization requires all selected source reports to complete;
+cancelled or incomplete jobs do not save a subset. This does not wait for the separate job
 metadata transaction to mark the job terminal. Generation and delivery status
 are independent. Deployment enables future deliveries; it never sweeps old
 local rows, which may include development data.
@@ -51,16 +51,23 @@ must not delete or rewrite delivered report rows without an agreed policy.
 Target FK existence is checked, but does not establish cross-database identity;
 `WEEKLY_REPORT_SYNC_WARD_IDS_VERIFIED=true` records the operator's identity
 verification. Current deployment supports identical ward IDs only. Schema and
-content validation happen before insertion. Missing wards, content conflicts,
-invalid payloads, and permanent database errors block that delivery. Network and
+content validation happen before insertion. A missing target ward returns
+`skipped_missing_ward` and records terminal outbox status `skipped` with
+`error_code=missing_ward`, no delivered timestamp, and cleared lease fields.
+It is not claimed again automatically. Dry-run reports the same outcome without
+changing the queue. Both outputs include the ward ID and report week; the
+worker continues processing other deliveries and skips do not fail `run-once`.
+Content conflicts, invalid payloads, and permanent database errors still block
+the affected delivery. A foreign-key error is not assumed to mean a missing
+ward: only the explicit target ward existence check authorizes a skip. Network and
 transient database failures retry after 30, 60, 120 seconds, up to one hour.
 After eight attempts, including expired crash leases, delivery is blocked for
 explicit retry. Failure of one delivery does not stop other reports.
 
-Logs and status contain only delivery IDs, counts, outcomes, and safe error
-codes. Outbox payloads are private care data; restrict database access and apply
+Logs and status contain only delivery/ward IDs, report weeks, counts, outcomes,
+and safe error codes. Outbox payloads are private care data; restrict database access and apply
 local database backup/retention policy. ZIP cleanup does not delete deliveries.
-Delivered entries are retained for audit/deduplication; no automatic purge is
+Delivered and skipped entries are retained for audit/deduplication; no automatic purge is
 introduced. Pending and blocked entries must not be purged.
 
 ## Deployment
@@ -71,8 +78,12 @@ keeps the service absent from the development stack. Use both Compose files for
 subsequent production operations so the enqueue flags and services remain set.
 
 1. Apply `workflows/weekly_report/source/migrations/002_weekly_report_sync_outbox.sql`
-   to the **local report database**, using your migration role, before rebuilding
-   the generation worker with enqueue enabled. The target requires the existing
+   and then `003_weekly_report_sync_skipped.sql` to the **local report database**,
+   using your migration role, before rebuilding workers. For an existing outbox,
+   apply only `003`; it preserves all rows, including previously blocked missing
+   wards. Stop the sync worker during this migration, then rebuild/restart it.
+   Run `check` before resuming delivery. Old blocked entries require an explicit
+   `retry DELIVERY_ID` to revalidate and become skipped or delivered. The target requires the existing
    report schema and ward/week unique constraint; no target migration is needed.
 2. Grant the generation role INSERT and SELECT on the outbox, and USAGE on its
    identity sequence, alongside its existing report-table permissions. Grant
@@ -132,12 +143,14 @@ Use the same Compose prefix above with `exec weekly-report-sync` followed by:
 ```
 
 `check` opens read-only transactions against both databases and verifies the
-outbox columns, target tables, and an immediate unique ward/week index. It
+outbox columns, the skipped-status constraint, target tables, and an immediate
+unique ward/week index. It
 performs no probe inserts and does not certify INSERT/sequence permissions or
 compatibility of report content. `dry-run` runs this readiness check first,
 even when its queue is empty. Both commands return nonzero if readiness fails.
 
-`status` reports total counts and the first 100 outstanding IDs. `dry-run`
+`status` reports total counts (including `skipped`) and the first 100 outstanding
+IDs. Terminal skipped entries are excluded from outstanding work. `dry-run`
 validates up to 100 pending/blocked payloads with read-only target transactions;
 it does not claim, insert, or acknowledge. For a controlled initial dry-run,
 start only the tunnel, then use `run --rm --no-deps weekly-report-sync` with the
@@ -150,6 +163,11 @@ connection failures outside delivery processing. The daemon logs sanitized
 failures and continues polling. Monitor blocked count and outstanding delivery
 age with your existing monitoring system; no new notification integration is
 added.
+
+`retry DELIVERY_ID` also accepts a skipped entry. Use it after restoring the
+production ward; the worker checks identity prerequisites, payload, and target
+content again. It never creates ward records. The skip change does not relax
+local generation/storage completeness or suppress other storage failures.
 
 Retrying a conflict does not authorize replacing production content. Resolve
 identity/schema/connectivity issues first. Content replacement requires a
@@ -194,3 +212,14 @@ pre-existing ordering issues in `packages/integrations/src/ax_integrations/__ini
 and `tests/unit/test_rag_chat_graph.py`. Those unrelated files were not changed.
 Docker image startup, live SSH, target TLS/permissions, and production writes
 were not performed.
+
+
+Missing-ward skip verification (2026-09-21): the full suite passes with 679
+passed and 8 optional skips, including disposable PostgreSQL 18.6 checks for
+terminal skips, continued delivery, manual retry, stale lease fencing, preserved
+blocked rows, and rejection of the old outbox schema. Changed-file Ruff,
+LangGraph validation, development/production Compose rendering, and skill
+validation pass. Whole-tree Ruff still reports the existing integrations
+`__all__` and RAG test import-order findings. No production migration or service
+rebuild was performed. Rebuild the scheduled migration image to activate that
+path; the optional outbox worker additionally requires local migration `003`.

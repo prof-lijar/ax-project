@@ -721,6 +721,12 @@ outbox and runs an independent delivery worker through an SSH forwarder. The
 writer queues immutable report payloads only with explicit production flags;
 UI ZIP-only requests never enqueue. Production inserts use the ward/week key,
 accept identical content, and block different content without replacing it.
+Missing production wards are terminal skips with ward/week output, separate
+status counts, and no automatic retry or delivered timestamp. Explicit retry
+revalidates them. Apply local migration `003_weekly_report_sync_skipped.sql`
+before deploying the updated sync worker; existing blocked rows are retained.
+The scheduler's shared migration script also skips and counts missing target
+wards. Source roster generation and local storage completeness are unchanged.
 Local acknowledgements follow target commit; leases and bounded retries recover
 interruptions. Per-report delivery status is separate from bulk generation.
 See [production delivery](weekly-report-production-sync.md) for the local schema
@@ -728,7 +734,8 @@ migration, verified identity/TLS prerequisites, commands, tests, and activation.
 
 Sync `check` and `dry-run` verify database/schema readiness without writes,
 including when no deliveries exist. Missing outbox columns, target tables, or
-the required immediate ward/week unique index fail the check.
+the required immediate ward/week unique index, or the outbox skipped-status
+migration fail the check.
 
 
 Operator historical migration is available through

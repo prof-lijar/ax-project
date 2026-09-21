@@ -142,9 +142,9 @@
 
 - [Weekly-report production delivery](weekly-report-production-sync.md):
   transactional local outbox, production-only sync worker, private SSH transport,
-  conservative conflict handling, retries, read-only readiness checks, deployment,
+  terminal missing-ward skips, conservative conflict handling, retries, read-only readiness checks, deployment,
   and recovery.
 
 - [Historical weekly-report migration](../playground/weekly-reporter/README.md):
   manual local-to-production preview and atomic ward/week upserts, updating all
-  matches while preserving production creation timestamps.
+  matches while preserving production creation timestamps and skipping missing target wards.

@@ -62,6 +62,7 @@ async def databases(monkeypatch):
                 for filename in (
                     "001_create_resources_ward_weekly_report.sql",
                     "002_weekly_report_sync_outbox.sql",
+                    "003_weekly_report_sync_skipped.sql",
                 ):
                     sql = (
                         (root / filename)
@@ -171,8 +172,19 @@ async def test_dry_run_conflict_missing_ward_and_manual_retry(databases, report_
     )
     await target.execute("DELETE FROM pg_temp.resources_ward")
     result = await delivery.process_one(queue, target)
-    assert result["error_code"] == "missing_ward"
-    assert (await queue.status())["counts"] == {"blocked": 1}
+    assert result == {
+        "delivery_id": row["id"],
+        "outcome": "skipped_missing_ward",
+        "ward_id": 101,
+        "week_start_date": "2026-08-03",
+    }
+    assert (await queue.status())["counts"] == {"skipped": 1}
+    assert (await queue.status())["outstanding"] == []
+    assert await queue.claim() is None
+    skipped = await local.fetchrow("SELECT * FROM pg_temp.weekly_report_sync_outbox")
+    assert skipped["error_code"] == "missing_ward"
+    assert skipped["delivered_at"] is None
+    assert skipped["lease_token"] is None
     await target.execute("INSERT INTO pg_temp.resources_ward VALUES (101)")
     assert await queue.retry(row["id"])
     await delivery.process_one(queue, target)
@@ -315,3 +327,89 @@ async def test_readiness_rejects_missing_local_migration(databases):
     await local.execute("DROP TABLE pg_temp.weekly_report_sync_outbox")
     with pytest.raises(asyncpg.UndefinedTableError):
         await outbox.Outbox(local).check()
+
+
+@pytest.mark.asyncio
+async def test_skip_is_terminal_and_next_valid_report_delivers(
+    databases, report_record
+):
+    local, target = databases
+    await local.execute("INSERT INTO pg_temp.resources_ward VALUES (102)")
+    await target.execute("DELETE FROM pg_temp.resources_ward")
+    await target.execute("INSERT INTO pg_temp.resources_ward VALUES (102)")
+    await save(local, [report_record, replace(report_record, ward_id=102)])
+    queue = outbox.Outbox(local)
+    row = (await queue.preview(100))[0]
+    payload = delivery.decode_payload(row)
+    assert (
+        await delivery.deliver(target, payload, dry_run=True) == "skipped_missing_ward"
+    )
+    assert (await queue.status())["counts"] == {"pending": 2}
+    assert (await delivery.process_one(queue, target))[
+        "outcome"
+    ] == "skipped_missing_ward"
+    assert (await delivery.process_one(queue, target))[
+        "outcome"
+    ] == "inserted_or_identical"
+    assert (await queue.status())["counts"] == {"skipped": 1, "delivered": 1}
+    assert await queue.claim() is None
+    assert (
+        await target.fetchval(
+            "SELECT ward_id FROM pg_temp.resources_ward_weekly_report"
+        )
+        == 102
+    )
+
+
+@pytest.mark.asyncio
+async def test_stale_skip_cannot_finish_another_lease(databases, report_record):
+    local, _ = databases
+    await save(local, [report_record])
+    queue = outbox.Outbox(local)
+    first = await queue.claim()
+    await local.execute(
+        "UPDATE pg_temp.weekly_report_sync_outbox SET lease_until=NOW()-INTERVAL '1 second'"
+    )
+    second = await queue.claim()
+    await queue.finish(first["id"], first["lease_token"], skipped=True)
+    assert (await queue.status())["counts"] == {"running": 1}
+    await queue.finish(second["id"], second["lease_token"], skipped=True)
+    assert (await queue.status())["counts"] == {"skipped": 1}
+
+
+@pytest.mark.asyncio
+async def test_skip_migration_preserves_existing_blocked_deliveries(
+    databases, report_record
+):
+    local, _ = databases
+    await save(local, [report_record])
+    queue = outbox.Outbox(local)
+    row = await queue.claim()
+    await queue.finish(row["id"], row["lease_token"], error_code="missing_ward")
+    await local.execute(
+        "ALTER TABLE pg_temp.weekly_report_sync_outbox "
+        "DROP CONSTRAINT weekly_report_sync_outbox_status_check; "
+        "ALTER TABLE pg_temp.weekly_report_sync_outbox "
+        "ADD CONSTRAINT weekly_report_sync_outbox_status_check "
+        "CHECK (status IN ('pending', 'running', 'delivered', 'blocked'))"
+    )
+    migration = (
+        (
+            Path(__file__).parents[2]
+            / "workflows/weekly_report/source/migrations/003_weekly_report_sync_skipped.sql"
+        )
+        .read_text()
+        .replace("ansimk.", "pg_temp.")
+    )
+    before = await local.fetchrow("SELECT * FROM pg_temp.weekly_report_sync_outbox")
+    with pytest.raises(outbox.OutboxSchemaError, match="outbox_skip_migration_missing"):
+        await queue.check()
+    await local.execute(migration)
+    await queue.check()
+    assert dict(
+        await local.fetchrow("SELECT * FROM pg_temp.weekly_report_sync_outbox")
+    ) == dict(before)
+    assert await queue.retry(row["id"])
+    retried = await queue.claim()
+    await queue.finish(retried["id"], retried["lease_token"], skipped=True)
+    assert (await queue.status())["counts"] == {"skipped": 1}

@@ -118,9 +118,54 @@ def test_existing_creation_timestamp_is_not_overwritten():
 
 
 @pytest.mark.asyncio
-async def test_missing_ward_aborts_transaction():
-    source, target = Database([report()]), Database(ward_exists=False)
-    with pytest.raises(ValueError, match="Target ward missing"):
+@pytest.mark.parametrize("write", [False, True])
+@pytest.mark.parametrize("all_missing", [False, True])
+async def test_missing_wards_are_skipped(write, all_missing, capsys):
+    rows = [report(), report(), report()]
+    for ward_id, row in enumerate(rows, start=1):
+        row["ward_id"] = ward_id
+
+    class Target(Database):
+        async def fetchval(self, query, ward_id):
+            return not all_missing and ward_id == 2
+
+    source, target = Database(rows), Target()
+    counts = await migration.migrate(source, target, write=write)
+    assert counts == {
+        "source": 3,
+        "insert": 0 if all_missing else 1,
+        "update": 0,
+        "unchanged": 0,
+        "skipped": 3 if all_missing else 2,
+    }
+    assert not target.rolled_back
+    assert source.readonly
+    assert target.readonly == (not write)
+    upserts = [args for query, args in target.writes if query == migration.UPSERT]
+    assert [args[0] for args in upserts] == (
+        [2] if write and not all_missing else []
+    )
+    output = capsys.readouterr().out
+    for ward_id in ([1, 2, 3] if all_missing else [1, 3]):
+        assert f"ward_id={ward_id}, week_start_date=2026-08-31" in output
+    assert output.count("Skipping report:") == counts["skipped"]
+
+
+@pytest.mark.asyncio
+async def test_write_failure_after_skip_still_aborts_transaction():
+    rows = [report(), report()]
+    rows[1]["ward_id"] = 2
+
+    class Target(Database):
+        async def fetchval(self, query, ward_id):
+            return ward_id == 2
+
+        async def execute(self, query, *args):
+            if query == migration.UPSERT:
+                raise ValueError("write failed")
+            return await super().execute(query, *args)
+
+    source, target = Database(rows), Target()
+    with pytest.raises(ValueError, match="write failed"):
         await migration.migrate(source, target, write=True)
     assert target.rolled_back
-    assert not any(query == migration.UPSERT for query, _ in target.writes)

@@ -77,7 +77,7 @@ def test_canonical_payload_deduplicates_json_key_order():
         (OSError("SECRET"), "connection_unavailable", True),
         (TimeoutError("SECRET"), "connection_unavailable", True),
         (asyncpg.SerializationError("SECRET"), "database_transient", True),
-        (asyncpg.ForeignKeyViolationError("SECRET"), "missing_ward", False),
+        (asyncpg.ForeignKeyViolationError("SECRET"), "database_rejected", False),
         (asyncpg.InsufficientPrivilegeError("SECRET"), "database_rejected", False),
         (delivery.DeliveryError("content_conflict"), "content_conflict", False),
     ],
@@ -159,3 +159,125 @@ async def test_readiness_failure_is_reported_even_without_pending_deliveries(
     queue.claim.assert_not_awaited()
     local.close.assert_awaited_once()
     target.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_missing_target_ward_returns_skip_without_report_write(dry_run):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    conn = MagicMock()
+    conn.fetchval = AsyncMock(return_value=False)
+    conn.execute = AsyncMock()
+    conn.transaction.return_value = AsyncMock()
+    pool = MagicMock()
+    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+    payload = SimpleNamespace(ward_id=101)
+    assert (
+        await delivery.deliver(pool, payload, dry_run=dry_run) == "skipped_missing_ward"
+    )
+    conn.execute.assert_not_awaited()
+    assert conn.fetchval.await_count == 1
+    conn.transaction.assert_called_once_with(readonly=dry_run)
+
+
+@pytest.mark.asyncio
+async def test_missing_ward_finishes_as_skip_with_identity(monkeypatch):
+    from datetime import date
+    from types import SimpleNamespace
+
+    row = {"id": 1, "lease_token": uuid4()}
+    outbox = AsyncMock()
+    outbox.claim.return_value = row
+    payload = SimpleNamespace(ward_id=101, week_start_date=date(2026, 9, 14))
+    monkeypatch.setattr(delivery, "decode_payload", lambda row: payload)
+    monkeypatch.setattr(
+        delivery, "deliver", AsyncMock(return_value="skipped_missing_ward")
+    )
+    assert await delivery.process_one(outbox, object()) == {
+        "delivery_id": 1,
+        "outcome": "skipped_missing_ward",
+        "ward_id": 101,
+        "week_start_date": "2026-09-14",
+    }
+    outbox.finish.assert_awaited_once_with(1, row["lease_token"], skipped=True)
+
+
+@pytest.mark.asyncio
+async def test_skip_ack_failure_remains_reclaimable(monkeypatch):
+    outbox = AsyncMock()
+    outbox.claim.return_value = {"id": 1, "lease_token": uuid4()}
+    outbox.finish.side_effect = OSError("local connection lost")
+    monkeypatch.setattr(delivery, "decode_payload", lambda row: object())
+    monkeypatch.setattr(
+        delivery, "deliver", AsyncMock(return_value="skipped_missing_ward")
+    )
+    with pytest.raises(OSError):
+        await delivery.process_one(outbox, object())
+    assert outbox.finish.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_run_once_continues_after_skip_and_exits_successfully(
+    monkeypatch, capsys
+):
+    from apps.workers import weekly_report_sync as cli
+
+    local, target = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(cli, "connect", AsyncMock(side_effect=[local, target]))
+    process = AsyncMock(
+        side_effect=[
+            {
+                "delivery_id": 1,
+                "outcome": "skipped_missing_ward",
+                "ward_id": 101,
+                "week_start_date": "2026-09-14",
+            },
+            {"delivery_id": 2, "outcome": "inserted_or_identical"},
+            None,
+        ]
+    )
+    monkeypatch.setattr(cli, "process_one", process)
+    monkeypatch.setattr(
+        asyncio.get_running_loop(), "add_signal_handler", lambda *args: None
+    )
+    result = await cli.run_command(
+        cli.build_parser().parse_args(["run-once"]), SyncSettings("local", "target")
+    )
+    assert result == 0
+    assert process.await_count == 3
+    output = capsys.readouterr().out
+    assert '"skipped_missing_ward"' in output
+    assert '"inserted_or_identical"' in output
+
+
+@pytest.mark.asyncio
+async def test_dry_run_missing_ward_reports_identity_without_ack(monkeypatch, capsys):
+    from datetime import date
+    from types import SimpleNamespace
+
+    from apps.workers import weekly_report_sync as cli
+
+    local, target, queue = AsyncMock(), AsyncMock(), AsyncMock()
+    queue.preview.return_value = [{"id": 1}]
+    monkeypatch.setattr(cli, "connect", AsyncMock(side_effect=[local, target]))
+    monkeypatch.setattr(cli, "Outbox", lambda *args: queue)
+    monkeypatch.setattr(cli, "check_target", AsyncMock())
+    monkeypatch.setattr(
+        cli,
+        "decode_payload",
+        lambda row: SimpleNamespace(ward_id=101, week_start_date=date(2026, 9, 14)),
+    )
+    monkeypatch.setattr(cli, "deliver", AsyncMock(return_value="skipped_missing_ward"))
+    assert (
+        await cli.run_command(
+            cli.build_parser().parse_args(["dry-run"]), SyncSettings("local", "target")
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert '"ward_id": 101' in output and '"week_start_date": "2026-09-14"' in output
+    assert "skipped_missing_ward" in output
+    queue.finish.assert_not_awaited()
+    queue.claim.assert_not_awaited()

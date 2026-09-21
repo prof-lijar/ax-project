@@ -7,6 +7,12 @@ count, including wards without weekly records. The generation notice
 `문구 생성이 어려워 검증된 안내 문구로 자동 대체됨` must not appear in
 guardian reports.
 
+Production delivery exception (2026-09-21): after complete local generation,
+reports for wards absent from the production roster are logged and skipped.
+Scheduled migration counts them; the optional outbox worker persists a terminal
+skip. This does not permit dropping source wards or incomplete local artifacts.
+See [production delivery](weekly-report-production-sync.md).
+
 ## Acceptance and implementation
 
 - Discover every ward from `ansimk.resources_ward` in ID order. No daily-summary,

@@ -16,6 +16,7 @@ Rows match on `(ward_id, week_start_date)`:
 | Does not exist | Insert the source report |
 | Exists with different report fields | Update it from the source |
 | Already has identical report fields | Update it anyway and refresh `updated_at` |
+| Ward is absent from production `resources_ward` | Skip its report and print the ward ID and report week |
 
 ## Files
 
@@ -116,12 +117,16 @@ The script opens SSH automatically, reads both databases, reports the planned
 counts, and closes SSH. Example output (illustrative counts):
 
 ```json
-{"mode": "preview", "source": 100, "insert": 60, "update": 40, "unchanged": 0}
+{"mode": "preview", "source": 100, "insert": 60, "update": 38, "unchanged": 0, "skipped": 2}
 ```
 
 `source` is the number of selected local reports. The remaining counts show
 how many would be inserted or updated. Every matching row counts as an update,
-even when its report content is identical. `unchanged` remains zero. Preview does not issue
+even when its report content is identical. `unchanged` remains zero. `skipped`
+counts reports whose ward is absent from production; each is printed with its
+ward ID and report week in both preview and write mode. Such skips do not fail
+the command, including when every selected report is skipped. Thus
+`source = insert + update + skipped`. Preview does not issue
 database writes and does not verify every production write permission or
 constraint. Counts may change if either database changes before the write run.
 
@@ -156,8 +161,8 @@ Run the preview again with the same scope:
 ./migrate.sh --week-start 2026-08-31
 ```
 
-After a successful migration, `insert` should be zero and `update` should equal
-`source` if neither database changed in between. This preview reports planned
+After a successful migration, `insert` should be zero and `update + skipped`
+should equal `source` if neither database changed in between. This preview reports planned
 upserts, not content differences. Each subsequent `--write` updates matching
 reports again and refreshes `updated_at`, even for identical content. To verify
 the copied content, compare the selected source and production report fields;
@@ -184,8 +189,10 @@ uncertain; run a preview to inspect the resulting state before retrying.
 
 The production report table must already exist with its ward/week unique
 constraint. The migration role needs SELECT/INSERT/UPDATE and identity-sequence
-access, plus SELECT on `ansimk.resources_ward`. A missing target ward aborts the
-whole operation. The tool does not create or alter the database schema.
+access, plus SELECT on `ansimk.resources_ward`. Reports for missing target wards
+are skipped; reports for existing wards continue in the same transaction.
+This also applies to scheduled migrations. The tool does not create or alter
+the database schema.
 
 The SSH tunnel closes on normal completion, migration failure, or handled
 interruption. A forwarding port already in use aborts the run; choose another
