@@ -66,6 +66,26 @@ try {
     tick(); check(text() === "👩🏽‍💻e\u0301", "combining characters remain whole");
     render("Corrected answer", "complete", "unicode");
     check(text() === "Corrected answer", "authoritative replacements reconcile immediately");
+    render(String.raw`Solve $x$ using $\frac{a}{b}$.
+
+| Type | Formula |
+| --- | --- |
+| Quadratic | $b^2 - 4ac$ |
+
+$$
+\frac{-b \pm \sqrt{b^2-4ac}}{2a}
+$$`, "complete", "math");
+    const math = document.querySelector("math");
+    check(document.querySelectorAll("math").length === 4 &&
+      math?.namespaceURI === "http://www.w3.org/1998/Math/MathML",
+      "inline, table and display formulas render as native MathML");
+    const fraction = document.querySelector("mfrac");
+    const numerator = fraction.children[0].getBoundingClientRect();
+    const denominator = fraction.children[1].getBoundingClientRect();
+    check(numerator.top < denominator.top && numerator.height > 0,
+      "the browser typesets a stacked fraction");
+    check(document.querySelector('math[display="block"]') !== null &&
+      !document.querySelector(".katex-error"), "display formulas render without errors");
     for (const status of ["stopped", "failed"]) {
       render("", "waiting", status);
       render("Partial response", "streaming", status); tick();

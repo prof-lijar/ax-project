@@ -14,7 +14,8 @@ export function createPersistentChatRunner(client = chatHistoryClient): ChatRunn
   const submissions = new Map<string, AbortController>();
   let generation = 0;
   function watch(id: string, runId: string) {
-    if (observers.has(id)) return;
+    const chat = useChatStore.getState().conversations.find(c => c.id === id);
+    if (observers.has(id) || chat?.settledRunIds?.includes(runId)) return;
     const controller = new AbortController();
     observers.set(id, controller);
     let revision = -1, finished = false;
@@ -30,6 +31,7 @@ export function createPersistentChatRunner(client = chatHistoryClient): ChatRunn
       if (terminal(value.status)) {
         finished = true;
         state.patchChat(id, { runId: null,
+          settledRunIds: [...new Set([...(chat.settledRunIds ?? []), runId])],
           error: ["failed", "interrupted"].includes(value.status) ? "Reply interrupted. Your messages are saved; reuse your prompt to try again." : null,
           notice: value.status === "stopped" ? "Response stopped." : null });
         historyChanged();

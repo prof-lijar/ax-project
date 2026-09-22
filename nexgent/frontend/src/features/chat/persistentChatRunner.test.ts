@@ -40,6 +40,9 @@ describe("Saved chat lifecycle", () => {
     f.push(snapshot("completed", "done", 3)); f.close();
     expect(current().messages[1].content).toBe("done");
     expect(current().runId).toBeNull(); runner.detach();
+    expect(current().settledRunIds).toEqual(["run"]);
+    runner.watch!(id, "run");
+    expect(f.client.run).toHaveBeenCalledTimes(1);
   });
   it("detaches on logout without cancelling and ignores late output", async () => {
     const f = fixture(), runner = createPersistentChatRunner(f.client);
