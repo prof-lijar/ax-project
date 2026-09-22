@@ -345,10 +345,14 @@
   font-size: 15px;
   line-height: 1.7;
 }
-.thinking {
-  margin: 0;
-  color: var(--color-text-soft);
-  font-size: 14px;
+.waitingIndicator {
+  display: block;
+  width: 6px;
+  height: 6px;
+  margin: 8px 0;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: pulse 1s ease-in-out infinite;
 }
 .responseStatus {
   display: block;
@@ -651,6 +655,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .spinner,
+  .waitingIndicator,
   .streamCursor {
     animation: none;
   }
@@ -669,6 +674,18 @@
 
 .markdown > :last-child {
   margin-bottom: 0;
+}
+
+.markdown math {
+  font-size: 1.08em;
+}
+
+.markdown :global(.katex):has(math[display="block"]) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 8px 0;
+  margin: 0 0 14px;
 }
 
 .markdown h1,

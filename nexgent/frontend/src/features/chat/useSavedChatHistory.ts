@@ -6,6 +6,7 @@ import { createConversation, useChatStore } from "../../shared/state/useChatStor
 import { useUiStore } from "../../shared/state/useUiStore";
 import { HISTORY_CHANGED } from "./persistentChatRunner";
 import type { ChatRunner } from "./chatRunner";
+import { mergeChatHistory, reconcileRunId } from "./mergeChatHistory";
 
 export function navigateChat(serverId?: string) {
   const path = serverId ? `/chat/${serverId}` : "/chat";
@@ -55,7 +56,7 @@ export function useSavedChatHistory(runner: ChatRunner) {
     for (const row of list.data.pages.flatMap(p => p.items)) {
       const index = conversations.findIndex(c => c.serverId === row.id);
       const old = index >= 0 ? conversations[index] : { ...createConversation(), id: row.id, serverId: row.id };
-      const next = { ...old, title: row.title, updatedAt: new Date(row.updated_at).getTime(), runId: row.active_run_id ?? old.runId };
+      const next = { ...old, title: row.title, updatedAt: new Date(row.updated_at).getTime(), runId: reconcileRunId(old, row.active_run_id) };
       if (index >= 0) conversations[index] = next; else conversations.push(next);
     }
     useChatStore.setState({ conversations });
@@ -65,18 +66,10 @@ export function useSavedChatHistory(runner: ChatRunner) {
     const state = useChatStore.getState();
     const chat = state.conversations.find(c => c.serverId === serverId);
     if (!chat) return;
-    let rows = [...messages.data.pages].reverse().flatMap(p => p.items);
-    if (chat.runId) {
-      rows = rows.map(row => {
-        const live = chat.messages.find(m => m.id === row.id);
-        return live && live.role === "assistant" && (live.status === "streaming" || live.status === "complete") ? live : row;
-      });
-      const ids = new Set(rows.map(m => m.id));
-      rows.push(...chat.messages.filter(m => !ids.has(m.id) && !m.position));
-    }
+    const rows = mergeChatHistory(chat.messages, [...messages.data.pages].reverse().flatMap(p => p.items));
+    const runId = reconcileRunId(chat, detail.data.active_run_id);
     state.patchChat(chat.id, { title: detail.data.title, messages: rows, historyLoaded: true,
-      runId: detail.data.active_run_id ?? chat.runId, updatedAt: new Date(detail.data.updated_at).getTime() });
-    const runId = detail.data.active_run_id ?? chat.runId;
+      runId, updatedAt: new Date(detail.data.updated_at).getTime() });
     if (runId) runner.watch?.(chat.id, runId);
   }, [serverId, detail.data, messages.data, runner]);
 

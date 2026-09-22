@@ -21,6 +21,7 @@ export interface ChatMessage {
 export interface ChatConversation {
   serverId?: string;
   runId?: string | null;
+  settledRunIds?: string[];
   submitting?: boolean;
   historyLoaded?: boolean;
   selectedFiles?: ChatAttachmentSummary[];

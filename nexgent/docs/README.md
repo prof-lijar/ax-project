@@ -12,6 +12,10 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Chat Math Rendering](08-implementation/chat-math-rendering.md): LaTeX formulas in chat, native MathML rendering, streaming and security checks, and validation limits.
+
+- [Smooth Chat Character Streaming](08-implementation/chat-character-streaming.md): per-message character reveal, completion and scrolling behavior, browser regression, and validation limits.
+
 - [Persistent AX Chat History](08-implementation/persistent-ax-chat-history.md): private per-user history, background replies, saved files, APIs, deployment, recovery and validation.
 
 - [Password Length Policy](08-implementation/password-length-policy.md): 4–12 character creation/reset validation, existing-login compatibility, and verification.

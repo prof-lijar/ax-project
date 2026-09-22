@@ -1,11 +1,12 @@
 import { ArrowDown, FileText, RotateCcw } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import {
   type ChatConversation,
   type ChatMessage,
   useChatStore
 } from "../../shared/state/useChatStore";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { useStreamingText } from "./useStreamingText";
 import { CopyButton } from "./MessageActions";
 import { formatFileSize } from "./chatAttachments";
 import styles from "./ChatPage.module.css";
@@ -58,6 +59,11 @@ export function ChatTranscript({
     conversation.messages.length,
     conversation.following
   ]);
+  const followReveal = useCallback(() => {
+    const element = viewport.current;
+    const current = useChatStore.getState().conversations.find(c => c.id === conversation.id);
+    if (element && current?.following) element.scrollTop = element.scrollHeight;
+  }, [conversation.id]);
   function jump() {
     const element = viewport.current;
     if (element) element.scrollTop = element.scrollHeight;
@@ -92,95 +98,8 @@ export function ChatTranscript({
             onLoadEarlier?.();
           }}>{loadingEarlier ? "Loading…" : "Load earlier messages"}</button>}
           {conversation.messages.map((message) => (
-            <article
-              key={message.id}
-              className={
-                message.role === "user" ? styles.userTurn : styles.assistantTurn
-              }
-              aria-label={
-                message.role === "user"
-                  ? "Your message"
-                  : `${message.speaker ?? "AX"} response`
-              }
-            >
-              <div
-                className={
-                  message.role === "user"
-                    ? styles.userMessage
-                    : styles.assistantMessage
-                }
-              >
-                {message.role === "user" ? (
-                  <>
-                    <p className={styles.plainText}>{message.content}</p>
-                    {!!message.attachments?.length && (
-                      <ul
-                        className={styles.messageAttachments}
-                        aria-label="Message attachments"
-                      >
-                        {message.attachments.map((file, index) => (
-                          <li key={`${file.name}-${index}`}>
-                            <FileText size={15} aria-hidden />
-                            <span title={file.name}>{file.name}</span>
-                            <small>{formatFileSize(file.size)}</small>
-                            {file.id && <>
-                              <a href={`/api/chat/attachments/${file.id}/download`} download={file.name}>Download</a>
-                              <button onClick={() => selectSavedFile(conversation, file)}>Use again</button>
-                            </>}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <strong className={styles.speaker}>
-                      {message.speaker ?? "AX"}
-                    </strong>
-                    {message.status === "waiting" ? (
-                      <p className={styles.thinking} role="status">
-                        Thinking<span aria-hidden>…</span>
-                      </p>
-                    ) : (
-                      <ChatMarkdown content={message.content} />
-                    )}
-                    {message.status === "complete" && (
-                      <span className={styles.srOnly} role="status">
-                        Reply complete.
-                      </span>
-                    )}
-                    {message.status === "streaming" && (
-                      <span className={styles.streamCursor} aria-hidden />
-                    )}
-                    {message.status === "stopped" && (
-                      <small className={styles.responseStatus} role="status">
-                        Response stopped
-                      </small>
-                    )}
-                    {message.status === "failed" && (
-                      <small className={styles.responseStatus} role="status">
-                        Reply interrupted. You can restore your prompt below.
-                      </small>
-                    )}
-                  </>
-                )}
-              </div>
-              {message.content && message.status !== "streaming" && (
-                <div className={styles.messageActions}>
-                  <CopyButton text={message.content} />
-                  {message.role === "user" && (
-                    <button
-                      className={styles.iconButton}
-                      onClick={() => onReuse(message)}
-                      title="Reuse prompt"
-                      aria-label="Reuse prompt"
-                    >
-                      <RotateCcw size={15} />
-                    </button>
-                  )}
-                </div>
-              )}
-            </article>
+            <ChatTurn key={message.id} message={message} conversation={conversation}
+              onReuse={onReuse} onReveal={followReveal} />
           ))}
         </div>
       </section>
@@ -191,5 +110,109 @@ export function ChatTranscript({
         </button>
       )}
     </div>
+  );
+}
+
+function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
+  message: ChatMessage;
+  conversation: ChatConversation;
+  onReuse: (message: ChatMessage) => void;
+  onReveal: () => void;
+}) {
+  const display = useStreamingText(received.content, received.role === "assistant" ? received.status : undefined);
+  const message = { ...received, content: display.content,
+    status: display.revealing ? "streaming" as const : received.status };
+  useLayoutEffect(onReveal, [display.content, onReveal]);
+  return (
+    <article
+      className={
+        message.role === "user" ? styles.userTurn : styles.assistantTurn
+      }
+      aria-label={
+        message.role === "user"
+          ? "Your message"
+          : message.status === "waiting"
+            ? `Waiting for ${message.speaker ?? "AX"}`
+            : `${message.speaker ?? "AX"} response`
+      }
+    >
+      <div
+        className={
+          message.role === "user"
+            ? styles.userMessage
+            : styles.assistantMessage
+        }
+      >
+        {message.role === "user" ? (
+          <>
+            <p className={styles.plainText}>{message.content}</p>
+            {!!message.attachments?.length && (
+              <ul
+                className={styles.messageAttachments}
+                aria-label="Message attachments"
+              >
+                {message.attachments.map((file, index) => (
+                  <li key={`${file.name}-${index}`}>
+                    <FileText size={15} aria-hidden />
+                    <span title={file.name}>{file.name}</span>
+                    <small>{formatFileSize(file.size)}</small>
+                    {file.id && <>
+                      <a href={`/api/chat/attachments/${file.id}/download`} download={file.name}>Download</a>
+                      <button onClick={() => selectSavedFile(conversation, file)}>Use again</button>
+                    </>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <>
+            {message.status === "waiting" ? (
+              <span className={styles.waitingIndicator} aria-hidden />
+            ) : (
+              <>
+                <strong className={styles.speaker}>
+                  {message.speaker ?? "AX"}
+                </strong>
+                <ChatMarkdown content={message.content} />
+              </>
+            )}
+            {message.status === "complete" && (
+              <span className={styles.srOnly} role="status">
+                Reply complete.
+              </span>
+            )}
+            {message.status === "streaming" && (
+              <span className={styles.streamCursor} aria-hidden />
+            )}
+            {message.status === "stopped" && (
+              <small className={styles.responseStatus} role="status">
+                Response stopped
+              </small>
+            )}
+            {message.status === "failed" && (
+              <small className={styles.responseStatus} role="status">
+                Reply interrupted. You can restore your prompt below.
+              </small>
+            )}
+          </>
+        )}
+      </div>
+      {message.content && message.status !== "streaming" && (
+        <div className={styles.messageActions}>
+          <CopyButton text={message.content} />
+          {message.role === "user" && (
+            <button
+              className={styles.iconButton}
+              onClick={() => onReuse(message)}
+              title="Reuse prompt"
+              aria-label="Reuse prompt"
+            >
+              <RotateCcw size={15} />
+            </button>
+          )}
+        </div>
+      )}
+    </article>
   );
 }
