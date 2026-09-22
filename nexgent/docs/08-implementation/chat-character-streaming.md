@@ -75,3 +75,17 @@ reflow as delimiters finish, and unusually large backlogs can take time to drain
 The Stop control still reflects server run state and may disappear while the
 last display characters finish. Older webviews using the code-point fallback
 protect surrogate pairs but do not group multi-code-point graphemes.
+
+## Update: Single Response Transition
+
+Date: 2026-09-22
+
+The empty assistant turn no longer presents `Thinking…` beneath the co-worker
+name. That treatment made the waiting phase look like one response followed by
+a second response when answer text arrived. Waiting now renders as a quiet pulse
+with a `Waiting for AX` article label; the co-worker name and response semantics
+appear once, together with the first real answer text.
+
+Validation passed with `npm run build`, all 273 tests in `npm test`,
+`git diff --check`, and 16 deterministic Chromium streaming checks. The browser
+regression now specifically verifies that waiting is not rendered as a response.

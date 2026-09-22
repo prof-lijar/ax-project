@@ -43,6 +43,9 @@ try {
     const check = (ok, name) => { if (!ok) throw new Error(name); results.push(name); };
     const results = [];
     render("", "waiting");
+    check(!document.body.textContent.includes("Thinking") &&
+      document.querySelector('article[aria-label="Waiting for AX"]') !== null,
+      "waiting is a quiet state, not a second response");
     render("Hello world", "streaming");
     check(text() === "", "a server chunk is buffered");
     const prefixes = [];

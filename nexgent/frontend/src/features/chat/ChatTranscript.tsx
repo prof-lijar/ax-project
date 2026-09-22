@@ -131,7 +131,9 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
       aria-label={
         message.role === "user"
           ? "Your message"
-          : `${message.speaker ?? "AX"} response`
+          : message.status === "waiting"
+            ? `Waiting for ${message.speaker ?? "AX"}`
+            : `${message.speaker ?? "AX"} response`
       }
     >
       <div
@@ -165,15 +167,15 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
           </>
         ) : (
           <>
-            <strong className={styles.speaker}>
-              {message.speaker ?? "AX"}
-            </strong>
             {message.status === "waiting" ? (
-              <p className={styles.thinking} role="status">
-                Thinking<span aria-hidden>…</span>
-              </p>
+              <span className={styles.waitingIndicator} aria-hidden />
             ) : (
-              <ChatMarkdown content={message.content} />
+              <>
+                <strong className={styles.speaker}>
+                  {message.speaker ?? "AX"}
+                </strong>
+                <ChatMarkdown content={message.content} />
+              </>
             )}
             {message.status === "complete" && (
               <span className={styles.srOnly} role="status">
