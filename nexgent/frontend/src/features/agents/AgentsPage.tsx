@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import {
   ArrowRight,
   BookOpen,
@@ -42,6 +43,7 @@ interface AgentsPageViewProps {
 }
 
 export function AgentsPage() {
+  useLanguage((state) => state.language);
   const catalogQuery = useAgentCatalog();
   const [search, setSearch] = useState("");
   return (
@@ -63,47 +65,47 @@ export function getAgentPresentation(agent: AgentDefinition) {
     case WEEKLY_REPORTER_AGENT_ID:
       return {
         icon: FileBarChart,
-        specialty: "Reporting",
-        description: "Turn weekly ward activity into clear risk reports.",
+        specialty: t("Reporting"),
+        description: t("Turn weekly ward activity into clear risk reports."),
         capabilities: [
-          "Review ward risk and activity",
-          "Download reports as a ZIP"
+          t("Review ward risk and activity"),
+          t("Download reports as a ZIP")
         ],
         tone: "reporting"
       };
     case RAG_CHAT_AGENT_ID:
       return {
         icon: BookOpen,
-        specialty: "Knowledge",
+        specialty: t("Knowledge"),
         description:
-          "Find answers in your indexed knowledge, with sources to check.",
+          t("Find answers in your indexed knowledge, with sources to check."),
         capabilities: [
-          "Ask about indexed documents",
-          "Follow sources in each answer"
+          t("Ask about indexed documents"),
+          t("Follow sources in each answer")
         ],
         tone: "knowledge"
       };
     case SCOUT_AGENT_ID:
       return {
         icon: Telescope,
-        specialty: "Research",
+        specialty: t("Research"),
         description:
-          "Explore a topic on the web and bring the findings together.",
+          t("Explore a topic on the web and bring the findings together."),
         capabilities: [
-          "Search and review web sources",
-          "Create a sourced research report"
+          t("Search and review web sources"),
+          t("Create a sourced research report")
         ],
         tone: "research"
       };
     case SUMIN_AGENT_ID:
       return {
         icon: MessageSquare,
-        specialty: "Slack files",
+        specialty: t("Slack files"),
         description:
-          "Keep channel uploads organized and find them again from a mention.",
+          t("Keep channel uploads organized and find them again from a mention."),
         capabilities: [
-          "Archive Slack files in Nextcloud",
-          "Find uploads from names and context"
+          t("Archive Slack files in Nextcloud"),
+          t("Find uploads from names and context")
         ],
         tone: "knowledge"
       };
@@ -127,6 +129,7 @@ export function AgentsPageView({
   isError = false,
   isRetrying = false
 }: AgentsPageViewProps) {
+  useLanguage((state) => state.language);
   const selectedAgent = useUiStore((state) => state.selectedAgent);
   const searchRef = useRef<HTMLInputElement>(null);
   const visibleAgents = filterAgents(agents, search);
@@ -161,28 +164,28 @@ export function AgentsPageView({
     <section className={styles.page} aria-labelledby="coworkers-title">
       <header className={styles.pageHeader}>
         <div>
-          <h1 id="coworkers-title">Your co-workers</h1>
+          <h1 id="coworkers-title">{t("Your co-workers")}</h1>
           <p>
-            Choose a co-worker. Open their workspace or start a conversation.
+            {t("Choose a co-worker. Open their workspace or start a conversation.")}
           </p>
         </div>
       </header>
       <div className={styles.catalogTools}>
         <p className={styles.resultCount} role="status">
           {isLoading
-            ? "Loading co-workers…"
+            ? t("Loading co-workers…")
             : isError
-              ? "Couldn't load co-workers"
+              ? t("Couldn't load co-workers")
               : search.trim()
-                ? `${visibleAgents.length} of ${agents.length} co-workers`
-                : `${agents.length} co-worker${agents.length === 1 ? "" : "s"}`}
+                ? t("{0} of {1} co-workers", { 0: visibleAgents.length, 1: agents.length })
+                : t("{0} co-worker{1}", { 0: agents.length, 1: agents.length === 1 ? "" : "s" })}
         </p>
         <div className={styles.searchBox}>
           <Search size={17} aria-hidden />
           <input
             ref={searchRef}
-            aria-label="Find a co-worker"
-            placeholder="Find a co-worker…"
+            aria-label={t("Find a co-worker")}
+            placeholder={t("Find a co-worker…")}
             type="search"
             value={search}
             readOnly={!onSearchChange}
@@ -194,8 +197,8 @@ export function AgentsPageView({
           {search && (
             <button
               type="button"
-              aria-label="Clear search"
-              title="Clear search"
+              aria-label={t("Clear search")}
+              title={t("Clear search")}
               onClick={clearSearch}
             >
               <X size={15} />
@@ -207,8 +210,7 @@ export function AgentsPageView({
         <p className={styles.previewNotice}>
           <CircleAlert size={16} aria-hidden />
           <span>
-            Preview data is marked on each sample co-worker. Their status and
-            activity are examples.
+            {t("Preview data is marked on each sample co-worker. Their status and activity are examples.")}
           </span>
         </p>
       )}
@@ -227,8 +229,8 @@ export function AgentsPageView({
       {isError && (
         <div className={styles.catalogMessage} role="alert">
           <CircleAlert size={25} aria-hidden />
-          <h2>Co-workers are unavailable</h2>
-          <p>Try loading your team again.</p>
+          <h2>{t("Co-workers are unavailable")}</h2>
+          <p>{t("Try loading your team again.")}</p>
           {onRetry && (
             <button
               type="button"
@@ -236,7 +238,7 @@ export function AgentsPageView({
               onClick={onRetry}
               disabled={isRetrying}
             >
-              {isRetrying ? "Trying again…" : "Try again"}
+              {isRetrying ? t("Trying again…") : t("Try again")}
             </button>
           )}
         </div>
@@ -248,11 +250,11 @@ export function AgentsPageView({
           ) : (
             <UsersRound size={26} aria-hidden />
           )}
-          <h2>{agents.length ? "No co-workers found" : "No co-workers yet"}</h2>
+          <h2>{agents.length ? t("No co-workers found") : t("No co-workers yet")}</h2>
           <p>
             {agents.length
-              ? "Try a name, a role, or the work you need help with."
-              : "Connected co-workers will appear here."}
+              ? t("Try a name, a role, or the work you need help with.")
+              : t("Connected co-workers will appear here.")}
           </p>
           {search && onSearchChange && (
             <button
@@ -260,13 +262,12 @@ export function AgentsPageView({
               className={styles.secondaryAction}
               onClick={clearSearch}
             >
-              Clear search
-            </button>
+              {t("Clear search")}</button>
           )}
         </div>
       )}
       {showCatalog && visibleAgents.length > 0 && (
-        <div className={styles.agentList} role="list" aria-label="Co-workers">
+        <div className={styles.agentList} role="list" aria-label={t("Co-workers")}>
           {visibleAgents.map((agent) => {
             const presentation = getAgentPresentation(agent);
             const Icon = presentation.icon;
@@ -276,12 +277,12 @@ export function AgentsPageView({
             const selected =
               agent.canRunInChat && agent.id === selectedAgent?.id;
             const contextLabel = selected
-              ? "Selected in Chat"
+              ? t("Selected in Chat")
               : agent.canRunInChat
-                ? "Available in Chat"
+                ? t("Available in Chat")
                 : agent.id === SUMIN_AGENT_ID
-                  ? "Works in Slack"
-                  : "Dedicated workspace";
+                  ? t("Works in Slack")
+                  : t("Dedicated workspace");
             const href = `/agents/${encodeURIComponent(agent.id)}`;
             return (
               <article
@@ -299,7 +300,7 @@ export function AgentsPageView({
                   </span>
                   <div className={styles.cardStatus}>
                     {agent.observationMode === "preview" && (
-                      <Badge tone="amber">Preview data</Badge>
+                      <Badge tone="amber">{t("Preview data")}</Badge>
                     )}
                     {readiness && (
                       <Badge tone={readiness.tone}>{readiness.label}</Badge>
@@ -313,7 +314,7 @@ export function AgentsPageView({
                       href={href}
                       onClick={(event) => openAgentDetail(event, agent)}
                     >
-                      {agent.name}
+                      {t(agent.name)}
                     </a>
                   </h2>
                 </div>
@@ -322,7 +323,7 @@ export function AgentsPageView({
                 </p>
                 <ul
                   className={styles.capabilities}
-                  aria-label={`${agent.name} can help with`}
+                  aria-label={t("{0} can help with", { 0: agent.name })}
                 >
                   {presentation.capabilities.map((capability) => (
                     <li key={capability}>
@@ -333,14 +334,14 @@ export function AgentsPageView({
                 </ul>
                 {agent.currentWork && agent.observationMode !== null && (
                   <p className={styles.currentWork}>
-                    <span>Current work</span>
-                    {agent.currentWork}
+                    <span>{t("Current work")}</span>
+                    {t(agent.currentWork)}
                   </p>
                 )}
                 <footer className={styles.cardFooter}>
                   <div className={styles.cardContext}>
                     <span>{contextLabel}</span>
-                    {agent.id === RAG_CHAT_AGENT_ID && <span>Text only</span>}
+                    {agent.id === RAG_CHAT_AGENT_ID && <span>{t("Text only")}</span>}
                   </div>
                   <div className={styles.cardActions}>
                     {agent.canRunInChat ? (
@@ -349,19 +350,18 @@ export function AgentsPageView({
                           type="button"
                           className={styles.primaryAction}
                           onClick={() => openAgentInChat(agent)}
-                          aria-label={`Start chat with ${agent.name}`}
+                          aria-label={t("Start chat with {0}", { 0: agent.name })}
                         >
                           <MessageSquare size={16} aria-hidden />
-                          Start chat
+                          {t("Start chat")}
                         </button>
                         <a
                           className={styles.detailsLink}
                           href={href}
                           onClick={(event) => openAgentDetail(event, agent)}
-                          aria-label={`View ${agent.name} details`}
+                          aria-label={t("View {0} details", { 0: agent.name })}
                         >
-                          Details
-                          <ArrowRight size={14} aria-hidden />
+                          {t("Details")} <ArrowRight size={14} aria-hidden />
                         </a>
                       </>
                     ) : (
@@ -371,13 +371,13 @@ export function AgentsPageView({
                         onClick={(event) => openAgentDetail(event, agent)}
                         aria-label={
                           agent.id === SUMIN_AGENT_ID
-                            ? `View ${agent.name} details`
-                            : `Open ${agent.name} workspace`
+                            ? t("View {0} details", { 0: agent.name })
+                            : t("Open {0} workspace", { 0: agent.name })
                         }
                       >
                         {agent.id === SUMIN_AGENT_ID
-                          ? "View details"
-                          : "Open workspace"}
+                          ? t("View details")
+                          : t("Open workspace")}
                         <ArrowRight size={16} aria-hidden />
                       </a>
                     )}
@@ -393,6 +393,7 @@ export function AgentsPageView({
 }
 
 function CheckMark() {
+  useLanguage((state) => state.language);
   return <span className={styles.capabilityDot} aria-hidden />;
 }
 
@@ -425,10 +426,10 @@ export function filterAgents(agents: AgentDefinition[], search: string) {
 }
 export function getReadinessPresentation(readiness: AgentReadiness) {
   const presentations = {
-    ready: { label: "Ready", tone: "green" },
-    degraded: { label: "Needs attention", tone: "amber" },
-    offline: { label: "Offline", tone: "red" },
-    draft: { label: "Draft", tone: "neutral" }
+    ready: { label: t("Ready"), tone: "green" },
+    degraded: { label: t("Needs attention"), tone: "amber" },
+    offline: { label: t("Offline"), tone: "red" },
+    draft: { label: t("Draft"), tone: "neutral" }
   } as const;
   return presentations[readiness];
 }

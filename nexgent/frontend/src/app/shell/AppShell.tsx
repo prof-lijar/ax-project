@@ -1,3 +1,5 @@
+import { LanguageSelect } from "../../shared/i18n/LanguageSelect";
+import { t, useLanguage } from "../../shared/i18n";
 import type { PropsWithChildren } from "react";
 
 import { navItems } from "../routes";
@@ -7,6 +9,7 @@ import { useUiStore } from "../../shared/state/useUiStore";
 import styles from "./AppShell.module.css";
 
 export function AppShell({ children }: PropsWithChildren) {
+  useLanguage((state) => state.language);
   const activeSection = useUiStore((state) => state.activeSection);
   const healthQuery = useSystemHealth();
   const chatIsActive = activeSection === "chat";
@@ -25,13 +28,15 @@ export function AppShell({ children }: PropsWithChildren) {
           </span>
         </div>
 
-        <nav className={styles.nav} aria-label="Primary navigation">
+        <nav data-primary-navigation className={styles.nav} aria-label={t("Primary navigation")}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const selected = activeSection === item.id;
 
             return (
               <a
+                aria-label={t(item.label)}
+                title={t(item.label)}
                 aria-current={selected ? "page" : undefined}
                 key={item.id}
                 className={selected ? styles.navItemActive : styles.navItem}
@@ -51,16 +56,17 @@ export function AppShell({ children }: PropsWithChildren) {
                 }}
               >
                 <Icon size={18} strokeWidth={2.1} />
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
               </a>
             );
           })}
         </nav>
 
+        <LanguageSelect />
         <div className={styles.railStatus}>
-          <span>Status:</span>
+          <span>{t("Status:")}</span>
           <strong className={systemIsGood ? styles.statusGood : styles.statusBad}>
-            {systemIsGood ? "Good" : "Bad"}
+            {systemIsGood ? t("Good") : t("Bad")}
           </strong>
         </div>
       </aside>

@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { Children, isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,6 +19,7 @@ function plainText(node: ReactNode): string {
     .join("");
 }
 export function ChatMarkdown({ content }: { content: string }) {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.markdown}>
       <ReactMarkdown
@@ -34,10 +36,10 @@ export function ChatMarkdown({ content }: { content: string }) {
           pre: ({ children }) => (
             <div className={styles.codeBlock}>
               <div className={styles.codeToolbar}>
-                <span>Code</span>
+                <span>{t("Code")}</span>
                 <CopyButton
                   text={plainText(children).replace(/\n$/, "")}
-                  label="Copy code"
+                  label={t("Copy code")}
                 />
               </div>
               <pre>{children}</pre>

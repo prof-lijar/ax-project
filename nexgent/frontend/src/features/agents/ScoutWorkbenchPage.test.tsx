@@ -117,7 +117,7 @@ describe("ScoutWorkbenchPage Run Now", () => {
   it("disables Run Now inputs and shows only honest elapsed status", () => {
     const markup = renderView({ isPending: true, elapsedSeconds: 47 });
 
-    expect(markup).toContain("Scout가 웹 자료를 조사하고 있습니다...");
+    expect(markup).toContain("Scout is researching web sources…");
     expect(markup).toContain("Running Scout…");
     expect(markup).toContain("Elapsed 00:47");
     expect(markup).not.toContain("% complete");

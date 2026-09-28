@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { ArrowDown, FileText, RotateCcw } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import {
@@ -32,6 +33,7 @@ export function ChatTranscript({
   loadingEarlier?: boolean;
   onLoadEarlier?: () => void;
 }) {
+  useLanguage((state) => state.language);
   const viewport = useRef<HTMLDivElement>(null);
   const previousHeight = useRef<{ height: number; first?: string } | null>(null);
   useLayoutEffect(() => {
@@ -77,7 +79,7 @@ export function ChatTranscript({
       <section
         className={styles.transcript}
         ref={viewport}
-        aria-label="Chat transcript"
+        aria-label={t("Chat transcript")}
         tabIndex={0}
         onScroll={(event) => {
           const element = event.currentTarget;
@@ -96,7 +98,7 @@ export function ChatTranscript({
             previousHeight.current = viewport.current ? { height: viewport.current.scrollHeight, first: conversation.messages[0]?.id } : null;
             useChatStore.getState().patchChat(conversation.id, { following: false });
             onLoadEarlier?.();
-          }}>{loadingEarlier ? "Loading…" : "Load earlier messages"}</button>}
+          }}>{loadingEarlier ? t("Loading…") : t("Load earlier messages")}</button>}
           {conversation.messages.map((message) => (
             <ChatTurn key={message.id} message={message} conversation={conversation}
               onReuse={onReuse} onReveal={followReveal} />
@@ -106,7 +108,7 @@ export function ChatTranscript({
       {!conversation.following && (
         <button className={styles.jumpButton} onClick={jump}>
           <ArrowDown size={16} />
-          Jump to latest
+          {t("Jump to latest")}
         </button>
       )}
     </div>
@@ -119,6 +121,7 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
   onReuse: (message: ChatMessage) => void;
   onReveal: () => void;
 }) {
+  useLanguage((state) => state.language);
   const display = useStreamingText(received.content, received.role === "assistant" ? received.status : undefined);
   const message = { ...received, content: display.content,
     status: display.revealing ? "streaming" as const : received.status };
@@ -130,10 +133,10 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
       }
       aria-label={
         message.role === "user"
-          ? "Your message"
+          ? t("Your message")
           : message.status === "waiting"
-            ? `Waiting for ${message.speaker ?? "AX"}`
-            : `${message.speaker ?? "AX"} response`
+            ? t("Waiting for {0}", { 0: message.speaker ?? "AX" })
+            : t("{0} response", { 0: message.speaker ?? "AX" })
       }
     >
       <div
@@ -149,7 +152,7 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
             {!!message.attachments?.length && (
               <ul
                 className={styles.messageAttachments}
-                aria-label="Message attachments"
+                aria-label={t("Message attachments")}
               >
                 {message.attachments.map((file, index) => (
                   <li key={`${file.name}-${index}`}>
@@ -157,8 +160,8 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
                     <span title={file.name}>{file.name}</span>
                     <small>{formatFileSize(file.size)}</small>
                     {file.id && <>
-                      <a href={`/api/chat/attachments/${file.id}/download`} download={file.name}>Download</a>
-                      <button onClick={() => selectSavedFile(conversation, file)}>Use again</button>
+                      <a href={`/api/chat/attachments/${file.id}/download`} download={file.name}>{t("Download")}</a>
+                      <button onClick={() => selectSavedFile(conversation, file)}>{t("Use again")}</button>
                     </>}
                   </li>
                 ))}
@@ -179,7 +182,7 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
             )}
             {message.status === "complete" && (
               <span className={styles.srOnly} role="status">
-                Reply complete.
+                {t("Reply complete.")}
               </span>
             )}
             {message.status === "streaming" && (
@@ -187,12 +190,12 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
             )}
             {message.status === "stopped" && (
               <small className={styles.responseStatus} role="status">
-                Response stopped
+                {t("Response stopped")}
               </small>
             )}
             {message.status === "failed" && (
               <small className={styles.responseStatus} role="status">
-                Reply interrupted. You can restore your prompt below.
+                {t("Reply interrupted. You can restore your prompt below.")}
               </small>
             )}
           </>
@@ -205,8 +208,8 @@ function ChatTurn({ message: received, conversation, onReuse, onReveal }: {
             <button
               className={styles.iconButton}
               onClick={() => onReuse(message)}
-              title="Reuse prompt"
-              aria-label="Reuse prompt"
+              title={t("Reuse prompt")}
+              aria-label={t("Reuse prompt")}
             >
               <RotateCcw size={15} />
             </button>

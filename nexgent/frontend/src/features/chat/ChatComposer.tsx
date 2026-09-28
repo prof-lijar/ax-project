@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { ArrowUp, FileText, Paperclip, Square, X } from "lucide-react";
 import {
   useEffect,
@@ -22,6 +23,7 @@ import styles from "./ChatPage.module.css";
 import { SavedFilePicker } from "./SavedFilePicker";
 
 function FilePreview({ file }: { file: File }) {
+  useLanguage((state) => state.language);
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     if (!file.type.startsWith("image/")) return;
@@ -50,6 +52,7 @@ export function ChatComposer({
   onStop: () => void;
   onOpenRunning: () => void;
 }) {
+  useLanguage((state) => state.language);
   const activeRequest = useChatStore((state) => state.activeRequest);
   const { patchChat } = useChatStore.getState();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -79,15 +82,15 @@ export function ChatComposer({
     const files = deduplicateFiles([...conversation.files, ...incoming]);
     const all = [...files, ...(conversation.selectedFiles ?? [])];
     const error = validateSelectedFiles(files) || (all.length > 5 || all.reduce((sum, f) => sum + f.size, 0) > 25 * 1024 * 1024
-      ? "Select at most five files totaling 25 MiB." : null);
+      ? t("Select at most five files totaling 25 MiB.") : null);
     patchChat(conversation.id, error ? { error } : { files, error: null });
   }
   return (
     <div className={styles.composerArea}>
       {otherRequest && (
         <div className={styles.busyNotice}>
-          Another chat is responding.{" "}
-          <button onClick={onOpenRunning}>View chat</button>
+          {t("Another chat is responding.")}{" "}
+          <button onClick={onOpenRunning}>{t("View chat")}</button>
         </div>
       )}
       <form
@@ -120,20 +123,20 @@ export function ChatComposer({
       >
         {dragging && (
           <div className={styles.dropHint}>
-            {textOnly ? "RAG Agent supports text only" : "Drop files to attach"}
+            {textOnly ? t("RAG Agent supports text only") : t("Drop files to attach")}
           </div>
         )}
-        {!!conversation.selectedFiles?.length && <div className={styles.attachmentList} aria-label="Selected saved files">
+        {!!conversation.selectedFiles?.length && <div className={styles.attachmentList} aria-label={t("Selected saved files")}>
           {conversation.selectedFiles.map(file => <div className={styles.attachment} key={file.id}>
-            <FileText size={20} aria-hidden /><span>{file.name}<small>Saved file · {formatFileSize(file.size)}</small></span>
-            <button type="button" aria-label={`Remove ${file.name}`} className={styles.iconButton}
+            <FileText size={20} aria-hidden /><span>{file.name}<small>{t("Saved file ·")} {formatFileSize(file.size)}</small></span>
+            <button type="button" aria-label={t("Remove {0}", { 0: file.name })} className={styles.iconButton}
               onClick={() => patchChat(conversation.id, { selectedFiles: conversation.selectedFiles?.filter(f => f.id !== file.id) })}><X size={14} /></button>
           </div>)}
         </div>}
         {conversation.files.length > 0 && (
           <div
             className={styles.attachmentList}
-            aria-label="Selected attachments"
+            aria-label={t("Selected attachments")}
           >
             {conversation.files.map((file) => (
               <div className={styles.attachment} key={attachmentKey(file)}>
@@ -145,7 +148,7 @@ export function ChatComposer({
                 <button
                   type="button"
                   className={styles.iconButton}
-                  aria-label={`Remove ${file.name}`}
+                  aria-label={t("Remove {0}", { 0: file.name })}
                   onClick={() =>
                     patchChat(conversation.id, {
                       files: conversation.files.filter(
@@ -162,9 +165,9 @@ export function ChatComposer({
         )}
         <textarea
           ref={inputRef}
-          aria-label={`Message ${conversation.agent?.name ?? "AX"}`}
+          aria-label={t("Message {0}", { 0: conversation.agent?.name ?? "AX" })}
           aria-describedby="chat-composer-help"
-          placeholder={`Message ${conversation.agent?.name ?? "AX"}`}
+          placeholder={t("Message {0}", { 0: conversation.agent?.name ?? "AX" })}
           rows={1}
           value={conversation.draft}
           onChange={(event) =>
@@ -211,22 +214,22 @@ export function ChatComposer({
             type="button"
             className={styles.iconButton}
             disabled={textOnly}
-            aria-label="Attach files"
-            title={textOnly ? "RAG Agent supports text only" : "Attach files"}
+            aria-label={t("Attach files")}
+            title={textOnly ? t("RAG Agent supports text only") : t("Attach files")}
             onClick={() => fileInput.current?.click()}
           >
             <Paperclip size={19} />
           </button>
           <span className={styles.attachmentHint}>
-            {textOnly ? "Text only" : "Up to 5 files · 25 MB total"}
+            {textOnly ? t("Text only") : t("Up to 5 files · 25 MB total")}
           </span>
           {ownRequest ? (
             <button
               className={styles.sendButton}
               type="button"
               onClick={onStop}
-              aria-label="Stop response"
-              title="Stop response"
+              aria-label={t("Stop response")}
+              title={t("Stop response")}
             >
               <Square size={15} fill="currentColor" />
             </button>
@@ -235,9 +238,9 @@ export function ChatComposer({
               className={styles.sendButton}
               type="submit"
               disabled={disabled || !!conversation.submitting || Boolean(activeRequest) || !conversation.draft.trim()}
-              aria-label="Send message"
+              aria-label={t("Send message")}
               title={
-                otherRequest ? "Another chat is responding" : "Send message"
+                otherRequest ? t("Another chat is responding") : t("Send message")
               }
             >
               <ArrowUp size={20} />
@@ -245,13 +248,13 @@ export function ChatComposer({
           )}
         </div>
       </form>
-      {conversation.submitting && <p role="status">Saving your message…</p>}
+      {conversation.submitting && <p role="status">{t("Saving your message…")}</p>}
       {conversation.serverId && !textOnly && <SavedFilePicker conversation={conversation} />}
       <p id="chat-composer-help" className={styles.composerHelp}>
-        Enter to send · Shift+Enter for a new line
+        {t("Enter to send · Shift+Enter for a new line")}
       </p>
       <p className={styles.contextNote}>
-        {textOnly ? "RAG uses your latest question only. This chat is not saved." : "AX uses recent messages in this chat. Select saved files to include them again."}
+        {textOnly ? t("RAG uses your latest question only. This chat is not saved.") : t("AX uses recent messages in this chat. Select saved files to include them again.")}
       </p>
     </div>
   );

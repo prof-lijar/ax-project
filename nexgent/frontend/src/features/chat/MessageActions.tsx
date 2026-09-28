@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { copyChatText } from "./copyChatText";
@@ -5,11 +6,12 @@ import styles from "./ChatPage.module.css";
 
 export function CopyButton({
   text,
-  label = "Copy message"
+  label = t("Copy message")
 }: {
   text: string;
   label?: string;
 }) {
+  useLanguage((state) => state.language);
   const [feedback, setFeedback] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const mounted = useRef(true);
@@ -45,7 +47,7 @@ export function CopyButton({
         {feedback === "Copied" ? <Check size={15} /> : <Copy size={15} />}
       </button>
       <span className={styles.copyFeedback} role="status">
-        {feedback}
+        {t(feedback)}
       </span>
     </span>
   );

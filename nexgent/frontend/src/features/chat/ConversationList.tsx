@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useChatStore } from "../../shared/state/useChatStore";
@@ -19,6 +20,7 @@ export function ConversationList({
   onDelete: (id: string) => void;
   onClose: () => void;
 }) {
+  useLanguage((state) => state.language);
   const { conversations, activeId, activeRequest, renameChat } = useChatStore();
   const listRef = useRef<HTMLElement>(null);
   function finishEditing(id: string) {
@@ -37,24 +39,24 @@ export function ConversationList({
   return (
     <>
       <div className={styles.listHeading}>
-        <strong>Chats</strong>
+        <strong>{t("Chats")}</strong>
         <button
           className={styles.iconButton}
           onClick={onClose}
-          aria-label="Close chat list"
-          title="Close chat list"
+          aria-label={t("Close chat list")}
+          title={t("Close chat list")}
         >
           <X size={17} />
         </button>
       </div>
       <button className={styles.newChatButton} onClick={onNew}>
         <Plus size={17} />
-        New chat
+        {t("New chat")}
       </button>
       <nav
         ref={listRef}
         className={styles.conversations}
-        aria-label="Conversations"
+        aria-label={t("Conversations")}
       >
         {[...conversations]
           .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -82,7 +84,7 @@ export function ConversationList({
                   }}
                 >
                   <input
-                    aria-label="Conversation title"
+                    aria-label={t("Conversation title")}
                     autoFocus
                     maxLength={120}
                     value={title}
@@ -97,7 +99,7 @@ export function ConversationList({
                   <button
                     className={styles.iconButton}
                     disabled={saving || !title.trim()}
-                    aria-label="Save title"
+                    aria-label={t("Save title")}
                   >
                     <Check size={14} />
                   </button>
@@ -105,7 +107,7 @@ export function ConversationList({
                     className={styles.iconButton}
                     type="button"
                     onClick={() => finishEditing(conversation.id)}
-                    aria-label="Cancel rename"
+                    aria-label={t("Cancel rename")}
                   >
                     <X size={14} />
                   </button>
@@ -119,22 +121,22 @@ export function ConversationList({
                     aria-current={
                       conversation.id === activeId ? "page" : undefined
                     }
-                    title={conversation.title}
+                    title={conversationTitle(conversation)}
                   >
-                    <span>{conversation.title}</span>
+                    <span>{conversationTitle(conversation)}</span>
                     {(conversation.runId || activeRequest?.conversationId === conversation.id) && (
                       <LoaderCircle
                         size={14}
                         className={styles.spinner}
-                        aria-label="Responding"
+                        aria-label={t("Responding")}
                       />
                     )}
                   </button>
                   <div className={styles.rowActions}>
                     <button
                       className={styles.iconButton}
-                      aria-label={`Rename ${conversation.title}`}
-                      title="Rename chat"
+                      aria-label={t("Rename {0}", { 0: conversationTitle(conversation) })}
+                      title={t("Rename chat")}
                       onClick={() => {
                         setEditing(conversation.id);
                         setTitle(conversation.title);
@@ -145,8 +147,8 @@ export function ConversationList({
                     </button>
                     <button
                       className={styles.iconButton}
-                      aria-label={`Delete ${conversation.title}`}
-                      title="Delete chat"
+                      aria-label={t("Delete {0}", { 0: conversationTitle(conversation) })}
+                      title={t("Delete chat")}
                       disabled={conversation.submitting}
                       onClick={() => setDeleting(conversation.id)}
                     >
@@ -158,11 +160,8 @@ export function ConversationList({
               {deleting === conversation.id && (
                 <div className={styles.deleteConfirmation}>
                   <span>
-                    Delete this chat
-                    {conversation.runId || activeRequest?.conversationId === conversation.id
-                      ? " and stop its reply"
-                      : ""}
-                    ?
+                    {t(conversation.runId || activeRequest?.conversationId === conversation.id
+                      ? "Delete this chat and stop its reply?" : "Delete this chat?")}
                   </span>
                   <button
                     onClick={() => {
@@ -170,18 +169,24 @@ export function ConversationList({
                       setDeleting(null);
                     }}
                   >
-                    Delete
+                    {t("Delete")}
                   </button>
-                  <button onClick={() => setDeleting(null)}>Keep</button>
+                  <button onClick={() => setDeleting(null)}>{t("Keep")}</button>
                 </div>
               )}
             </div>
           ))}
       </nav>
-      {(error || history.list.error) && <p role="alert">{error ?? history.list.error?.message} <button onClick={history.refresh}>Retry</button></p>}
-      {history.list.isPending && <p role="status">Loading chats…</p>}
-      {history.list.hasNextPage && <button disabled={history.list.isFetchingNextPage} onClick={() => void history.list.fetchNextPage()}>Load more chats</button>}
-      <p className={styles.sessionNote}>AX chats are saved to your account. RAG chats last only this session.</p>
+      {(error || history.list.error) && <p role="alert">{error ?? history.list.error?.message} <button onClick={history.refresh}>{t("Retry")}</button></p>}
+      {history.list.isPending && <p role="status">{t("Loading chats…")}</p>}
+      {history.list.hasNextPage && <button disabled={history.list.isFetchingNextPage} onClick={() => void history.list.fetchNextPage()}>{t("Load more chats")}</button>}
+      <p className={styles.sessionNote}>{t("AX chats are saved to your account. RAG chats last only this session.")}</p>
     </>
   );
+}
+
+// Translate only the untouched, automatic empty-chat title, never a user title.
+function conversationTitle(conversation: { title: string; renamed: boolean; messages: unknown[]; serverId?: string }) {
+  return !conversation.serverId && !conversation.renamed && !conversation.messages.length && conversation.title === "New chat"
+    ? t("New chat") : conversation.title;
 }

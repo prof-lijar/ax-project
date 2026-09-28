@@ -88,6 +88,8 @@ This documentation set defines the product architecture before implementation be
 
 - [RAG Knowledge Search Workspace](08-implementation/rag-knowledge-search-workspace.md): search-first RAG redesign, source drawer, passage inspector, API boundaries, and validation.
 
+- [English and Korean Interface Language](08-implementation/english-korean-interface-language.md): Korean-default interface localization, English switching, local-storage preference, translation boundaries, validation, and browser verification.
+
 ## Stage-One Definition
 
 Stage one does not need full autonomous execution. It needs the durable product foundation:

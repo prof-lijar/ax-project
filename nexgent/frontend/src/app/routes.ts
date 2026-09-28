@@ -28,7 +28,7 @@ export const navItems: Array<{
     icon: Cloud,
     path: sectionPaths.nextcloud
   },
-  { id: "agents", label: "Agents", icon: Bot, path: sectionPaths.agents },
-  { id: "rag", label: "RAG", icon: Database, path: sectionPaths.rag },
+  { id: "agents", label: "Co-workers", icon: Bot, path: sectionPaths.agents },
+  { id: "rag", label: "Knowledge", icon: Database, path: sectionPaths.rag },
   { id: "settings", label: "Settings", icon: Settings, path: sectionPaths.settings }
 ];

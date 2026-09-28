@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { CalendarClock, Clock3, Repeat2, Save } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
@@ -16,6 +17,7 @@ const WEEKDAYS = [
 type Weekday = (typeof WEEKDAYS)[number];
 
 export function WeeklyReportSchedulePanel() {
+  useLanguage((state) => state.language);
   const [enabled, setEnabled] = useState(true);
   const [weekday, setWeekday] = useState<Weekday>("monday");
   const [time, setTime] = useState("03:00");
@@ -31,10 +33,10 @@ export function WeeklyReportSchedulePanel() {
           <CalendarClock size={19} />
         </span>
         <div>
-          <h2 id="weekly-schedule-title">Default schedule</h2>
-          <p>Choose when this agent should prepare the weekly report.</p>
+          <h2 id="weekly-schedule-title">{t("Default schedule")}</h2>
+          <p>{t("Choose when this agent should prepare the weekly report.")}</p>
         </div>
-        <span className={styles.prototypeBadge}>Server cron</span>
+        <span className={styles.prototypeBadge}>{t("Server cron")}</span>
       </header>
 
       <form className={styles.form} onSubmit={preventPrototypeSubmit}>
@@ -48,14 +50,14 @@ export function WeeklyReportSchedulePanel() {
             <span className={styles.switchThumb} />
           </span>
           <span>
-            <strong>Scheduled runs</strong>
-            <small>The server default runs automatically each week.</small>
+            <strong>{t("Scheduled runs")}</strong>
+            <small>{t("The server default runs automatically each week.")}</small>
           </span>
         </label>
 
         <div className={styles.fields}>
           <label className={styles.field}>
-            <span>Day</span>
+            <span>{t("Day")}</span>
             <select
               value={weekday}
               disabled={!enabled}
@@ -63,14 +65,14 @@ export function WeeklyReportSchedulePanel() {
             >
               {WEEKDAYS.map((day) => (
                 <option key={day} value={day}>
-                  {capitalize(day)}
+                  {t(capitalize(day))}
                 </option>
               ))}
             </select>
           </label>
 
           <label className={styles.field}>
-            <span>Time</span>
+            <span>{t("Time")}</span>
             <span className={styles.inputWithIcon}>
               <Clock3 size={15} aria-hidden />
               <input
@@ -84,42 +86,41 @@ export function WeeklyReportSchedulePanel() {
           </label>
 
           <label className={styles.field}>
-            <span>Repeat</span>
+            <span>{t("Repeat")}</span>
             <span className={styles.inputWithIcon}>
               <Repeat2 size={15} aria-hidden />
               <select defaultValue="weekly" disabled={!enabled}>
-                <option value="weekly">Weekly</option>
+                <option value="weekly">{t("Weekly")}</option>
               </select>
             </span>
           </label>
 
           <div className={styles.field}>
-            <span>Time zone</span>
+            <span>{t("Time zone")}</span>
             <span className={styles.timezoneValue}>
               <strong>Asia/Seoul</strong>
-              <small>Korean Standard Time</small>
+              <small>{t("Korean Standard Time")}</small>
             </span>
           </div>
         </div>
 
         <footer className={styles.footer}>
           <div className={styles.summary}>
-            <small>{enabled ? "Planned schedule" : "Schedule paused"}</small>
+            <small>{enabled ? t("Planned schedule") : t("Schedule paused")}</small>
             <strong>
               {enabled
                 ? formatWeeklySchedule(weekday, time)
-                : "Automatic runs are off"}
+                : t("Automatic runs are off")}
             </strong>
           </div>
           <button type="submit" disabled aria-describedby="schedule-ui-note">
             <Save size={15} aria-hidden />
-            Save schedule
+            {t("Save schedule")}
           </button>
         </footer>
 
         <p className={styles.connectionNote} id="schedule-ui-note">
-          Server cron is configured for every Monday at 3:00 AM. UI changes
-          are previews only and are not saved yet.
+          {t("Server cron is configured for every Monday at 3:00 AM. UI changes are previews only and are not saved yet.")}
         </p>
       </form>
     </section>
@@ -129,24 +130,17 @@ export function WeeklyReportSchedulePanel() {
 export function formatWeeklySchedule(weekday: Weekday, time: string) {
   const match = /^(\d{2}):(\d{2})$/.exec(time);
   if (!match) {
-    return "Every " + capitalize(weekday) + " · choose a time";
+    return t("Every {day} · choose a time", { day: t(capitalize(weekday)) });
   }
 
   const hour = Number(match[1]);
   const minute = match[2];
-  const period = hour >= 12 ? "PM" : "AM";
+  const period = t(hour >= 12 ? "PM" : "AM");
   const displayHour = hour % 12 || 12;
 
-  return (
-    "Every " +
-    capitalize(weekday) +
-    " at " +
-    displayHour +
-    ":" +
-    minute +
-    " " +
-    period
-  );
+  return t("Every {day} at {hour}:{minute} {period}", {
+    day: t(capitalize(weekday)), hour: displayHour, minute, period
+  });
 }
 
 function capitalize(value: string) {
