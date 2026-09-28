@@ -1,3 +1,4 @@
+import { t, useLanguage, locale } from "../../shared/i18n";
 import {
   AlertTriangle,
   CalendarDays,
@@ -29,6 +30,7 @@ const TIMEZONES = ["Asia/Seoul", "UTC", "America/New_York", "Europe/London"];
 const DEFAULT_BULK_REPORT_LIMIT = 10_000;
 
 export function BulkWeeklyReportPanel() {
+  useLanguage((state) => state.language);
   const [weekStart, setWeekStart] = useState(getLatestMonday);
   const [timezone, setTimezone] = useState("Asia/Seoul");
   const [reportLimitInput, setReportLimitInput] = useState(
@@ -200,12 +202,12 @@ export function BulkWeeklyReportPanel() {
 
   return (
     <div className={styles.workbench}>
-      <aside className={styles.runPanel} aria-label="Bulk run configuration">
+      <aside className={styles.runPanel} aria-label={t("Bulk run configuration")}>
         <div className={styles.identity}>
           <span aria-hidden><ServerCog size={20} /></span>
           <div>
-            <strong>Test report generation</strong>
-            <small>ZIP export only · reports are not saved to the database</small>
+            <strong>{t("Test report generation")}</strong>
+            <small>{t("ZIP export only · reports are not saved to the database")}</small>
           </div>
         </div>
 
@@ -217,7 +219,7 @@ export function BulkWeeklyReportPanel() {
           }}
         >
           <label>
-            <span>Week starts</span>
+            <span>{t("Week starts")}</span>
             <div className={styles.fieldControl}>
               <CalendarDays size={16} aria-hidden />
               <input
@@ -229,20 +231,20 @@ export function BulkWeeklyReportPanel() {
             </div>
             <small className={weekStartIsValid ? undefined : styles.fieldError}>
               {weekStartIsValid
-                ? "Monday-to-Sunday reporting period"
-                : "Choose a Monday."}
+                ? t("Monday-to-Sunday reporting period")
+                : t("Choose a Monday.")}
             </small>
           </label>
 
           <label>
-            <span>Timezone</span>
+            <span>{t("Timezone")}</span>
             <select value={timezone} onChange={(event) => setTimezone(event.target.value)}>
               {TIMEZONES.map((item) => <option key={item}>{item}</option>)}
             </select>
           </label>
 
           <label>
-            <span>Ward IDs (optional)</span>
+            <span>{t("Ward IDs (optional)")}</span>
             <div className={styles.fieldControl}>
               <Users size={16} aria-hidden />
               <input
@@ -256,15 +258,15 @@ export function BulkWeeklyReportPanel() {
             </div>
             <small id="ward-ids-help" className={wardIds === null ? styles.fieldError : undefined}>
               {wardIds === null
-                ? "Enter up to 25 unique positive whole-number IDs, separated by commas."
+                ? t("Enter up to 25 unique positive whole-number IDs, separated by commas.")
                 : wardIds
-                  ? `Only these ${wardIds.length} wards will be requested. ZIP only; no report database save.`
-                  : "Leave blank for automatic selection, or enter up to 25 ward IDs."}
+                  ? t("Only these {0} wards will be requested. ZIP only; no report database save.", { 0: wardIds.length })
+                  : t("Leave blank for automatic selection, or enter up to 25 ward IDs.")}
             </small>
           </label>
 
           <label>
-            <span>Maximum reports</span>
+            <span>{t("Maximum reports")}</span>
             <div className={styles.fieldControl}>
               <Files size={16} aria-hidden />
               <input
@@ -281,19 +283,19 @@ export function BulkWeeklyReportPanel() {
             </div>
             <small className={reportLimit === null ? styles.fieldError : undefined}>
               {reportLimit === null
-                ? "Enter a whole number from 1 to 10,000."
+                ? t("Enter a whole number from 1 to 10,000.")
                 : wardIds
-                  ? "Report count matches the selected ward IDs."
+                  ? t("Report count matches the selected ward IDs.")
                 : reportLimit === 10_000
-                  ? "All available reports, up to 10,000 per run."
-                  : `${formatNumber(reportLimit)} eligible wards at most.`}
+                  ? t("All available reports, up to 10,000 per run.")
+                  : t("{0} eligible wards at most.", { 0: formatNumber(reportLimit) })}
             </small>
           </label>
 
           <div className={styles.runtimeSummary}>
-            <span><Gauge size={14} /> Worker concurrency</span>
+            <span><Gauge size={14} /> {t("Worker concurrency")}</span>
             <strong>{runtime?.worker_concurrency ?? "—"}</strong>
-            <small>Source pages contain up to 100 wards; workers process staged reports concurrently.</small>
+            <small>{t("Source pages contain up to 100 wards; workers process staged reports concurrently.")}</small>
           </div>
 
           <label className={styles.approval}>
@@ -303,8 +305,7 @@ export function BulkWeeklyReportPanel() {
               onChange={(event) => setApproved(event.target.checked)}
             />
             <span>
-              I approve this live run. It sends allowlisted care-derived facts
-              to the configured private model and may reduce Chat capacity.
+              {t("I approve this live run. It sends allowlisted care-derived facts to the configured private model and may reduce Chat capacity.")}
             </span>
           </label>
 
@@ -322,15 +323,14 @@ export function BulkWeeklyReportPanel() {
             }
           >
             {isSubmitting || activeJobId ? <LoaderCircle className={styles.spin} size={17} aria-hidden /> : <Play size={17} aria-hidden />}
-            {isSubmitting ? "Starting…" : activeJobId ? "Running…" : "Run Agent"}
+            {isSubmitting ? t("Starting…") : activeJobId ? t("Running…") : t("Run Agent")}
           </button>
         </form>
 
         <div className={styles.safetyNote}>
           <AlertTriangle size={15} />
           <p>
-            This is a real model-backed load run. Start with 100–1,000 before
-            using 10,000, then watch throughput and Chat latency.
+            {t("This is a real model-backed load run. Start with 100–1,000 before using 10,000, then watch throughput and Chat latency.")}
           </p>
         </div>
       </aside>
@@ -339,16 +339,16 @@ export function BulkWeeklyReportPanel() {
         <header className={styles.dashboardHeader}>
           <div>
             <span className={runtime ? styles.onlineDot : styles.offlineDot} aria-hidden />
-            <strong>{runtime ? "Bulk service ready" : "Bulk service unavailable"}</strong>
+            <strong>{runtime ? t("Bulk service ready") : t("Bulk service unavailable")}</strong>
             <small>
               {runtime
-                ? `${runtime.worker_concurrency} concurrent consumers · page size ${runtime.source_page_size}`
-                : "Start the bulk API, job database, and worker."}
+                ? t("{0} concurrent consumers · page size {1}", { 0: runtime.worker_concurrency, 1: runtime.source_page_size })
+                : t("Start the bulk API, job database, and worker.")}
             </small>
           </div>
           <button type="button" onClick={() => void refreshDashboard()} disabled={isLoading}>
             <RefreshCw className={isLoading ? styles.spin : undefined} size={15} />
-            {activeJobId ? "Stop & refresh" : "Refresh"}
+            {activeJobId ? t("Stop & refresh") : t("Refresh")}
           </button>
         </header>
 
@@ -364,7 +364,7 @@ export function BulkWeeklyReportPanel() {
             <div className={styles.jobHeading}>
               <div>
                 <RunStatusIndicator job={selectedJob} />
-                <h2>{formatNumber(selectedJob.max_reports)}-report run</h2>
+                <h2>{formatNumber(selectedJob.max_reports)}{t("-report run")}</h2>
                 <code>{selectedJob.job_id}</code>
               </div>
               <div className={styles.jobActions}>
@@ -376,7 +376,7 @@ export function BulkWeeklyReportPanel() {
                     disabled={isCancelling}
                   >
                     <CircleStop size={16} />
-                    {isCancelling ? "Cancelling" : "Cancel"}
+                    {isCancelling ? t("Cancelling") : t("Cancel")}
                   </button>
                 )}
                 {selectedJob.export && (
@@ -385,20 +385,20 @@ export function BulkWeeklyReportPanel() {
                     href={weeklyReportBulkClient.exportUrl(selectedJob.job_id)}
                     download
                   >
-                    <Download size={16} /> Download ZIP
+                    <Download size={16} /> {t("Download ZIP")}
                   </a>
                 )}
               </div>
             </div>
 
             <div className={styles.progressMeta}>
-              <span>{metrics.percent}% terminal</span>
-              <span>{formatDuration(metrics.elapsedSeconds)} elapsed</span>
+              <span>{metrics.percent}{t("% terminal")}</span>
+              <span>{formatDuration(metrics.elapsedSeconds)} {t("elapsed")}</span>
             </div>
             <div
               className={styles.progressTrack}
               role="progressbar"
-              aria-label="Report generation progress"
+              aria-label={t("Report generation progress")}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={metrics.percent}
@@ -407,43 +407,43 @@ export function BulkWeeklyReportPanel() {
             </div>
 
             <dl className={styles.metricGrid}>
-              <Metric label="Completed" value={formatNumber(selectedJob.completed_count)} icon={<CheckCircle2 size={16} />} />
-              <Metric label="Running now" value={`${selectedJob.running_count}/${runtime?.worker_concurrency ?? "—"}`} icon={<Users size={16} />} />
-              <Metric label="Discovered" value={formatNumber(selectedJob.discovered_count)} icon={<Files size={16} />} />
-              <Metric label="Reports / sec" value={metrics.reportsPerSecond.toFixed(2)} icon={<Gauge size={16} />} />
-              <Metric label="Fallback" value={formatNumber(selectedJob.fallback_count)} icon={<AlertTriangle size={16} />} />
-              <Metric label="Failed" value={formatNumber(selectedJob.failed_count)} icon={<CircleStop size={16} />} />
-              <Metric label="Queued" value={formatNumber(selectedJob.pending_count)} icon={<Clock3 size={16} />} />
-              <Metric label="Projected finish" value={metrics.etaLabel} icon={<Clock3 size={16} />} />
+              <Metric label={t("Completed")} value={formatNumber(selectedJob.completed_count)} icon={<CheckCircle2 size={16} />} />
+              <Metric label={t("Running now")} value={`${selectedJob.running_count}/${runtime?.worker_concurrency ?? "—"}`} icon={<Users size={16} />} />
+              <Metric label={t("Discovered")} value={formatNumber(selectedJob.discovered_count)} icon={<Files size={16} />} />
+              <Metric label={t("Reports / sec")} value={metrics.reportsPerSecond.toFixed(2)} icon={<Gauge size={16} />} />
+              <Metric label={t("Fallback")} value={formatNumber(selectedJob.fallback_count)} icon={<AlertTriangle size={16} />} />
+              <Metric label={t("Failed")} value={formatNumber(selectedJob.failed_count)} icon={<CircleStop size={16} />} />
+              <Metric label={t("Queued")} value={formatNumber(selectedJob.pending_count)} icon={<Clock3 size={16} />} />
+              <Metric label={t("Projected finish")} value={metrics.etaLabel} icon={<Clock3 size={16} />} />
             </dl>
 
             <div className={styles.pipeline}>
               <PipelineStep
                 complete={selectedJob.producer_done}
                 active={!selectedJob.producer_done && !isBulkJobTerminal(selectedJob.status)}
-                label={`Discover wards in pages of 100 · ${formatNumber(selectedJob.discovered_count)}`}
+                label={t("Discover wards in pages of 100 · {0}", { 0: formatNumber(selectedJob.discovered_count) })}
               />
               <PipelineStep
                 complete={selectedJob.producer_done && selectedJob.pending_count === 0 && selectedJob.running_count === 0}
                 active={selectedJob.running_count > 0}
-                label={`Generate with bounded concurrency · ${selectedJob.running_count} active`}
+                label={t("Generate with bounded concurrency · {0} active", { 0: selectedJob.running_count })}
               />
               <PipelineStep
                 complete={Boolean(selectedJob.export)}
                 active={selectedJob.status === "finalizing"}
-                label="Verify artifacts and assemble ZIP"
+                label={t("Verify artifacts and assemble ZIP")}
               />
             </div>
 
             {selectedJob.selection_truncated && (
               <p className={styles.warningCount} role="status">
-                The report limit was reached. More wards are available; this run does not include all reports.
+                {t("The report limit was reached. More wards are available; this run does not include all reports.")}
               </p>
             )}
 
             {selectedJob.warnings.length > 0 && (
               <details className={styles.warningCount}>
-                <summary>{selectedJob.warnings.length} source warning(s)</summary>
+                <summary>{selectedJob.warnings.length} {t("source warning(s)")}</summary>
                 <ul>{selectedJob.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
               </details>
             )}
@@ -451,21 +451,20 @@ export function BulkWeeklyReportPanel() {
         ) : (
           <section className={styles.emptyState}>
             <span><ServerCog size={28} /></span>
-            <h2>No bulk run selected</h2>
+            <h2>{t("No bulk run selected")}</h2>
             <p>
-              Submit a durable job to process repeated 100-ward source pages with
-              concurrent workers. Refresh, navigation, or Cancel stops an active run.
+              {t("Submit a durable job to process repeated 100-ward source pages with concurrent workers. Refresh, navigation, or Cancel stops an active run.")}
             </p>
           </section>
         )}
 
         <section className={styles.recentJobs}>
           <div className={styles.sectionHeading}>
-            <strong>Recent runs</strong>
-            <small>Newest first · only the latest 5 ZIP files are kept</small>
+            <strong>{t("Recent runs")}</strong>
+            <small>{t("Newest first · only the latest 5 ZIP files are kept")}</small>
           </div>
           {jobs.length === 0 ? (
-            <p>No durable runs yet.</p>
+            <p>{t("No durable runs yet.")}</p>
           ) : (
             <div className={styles.jobList}>
               {jobs.map((job) => (
@@ -477,11 +476,11 @@ export function BulkWeeklyReportPanel() {
                   onClick={() => setSelectedJob(job)}
                 >
                   <span>
-                    <strong>{formatNumber(job.max_reports)} reports</strong>
+                    <strong>{formatNumber(job.max_reports)} {t("reports")}</strong>
                     <small>{job.week_start} · {job.timezone}</small>
                   </span>
                   <span>
-                    <strong>{formatNumber(job.completed_count)} done</strong>
+                    <strong>{formatNumber(job.completed_count)} {t("done")}</strong>
                     <small>{statusLabel(job.status)}</small>
                   </span>
                 </button>
@@ -510,10 +509,12 @@ export function RunStatusIndicator({ job }: { job: WeeklyReportBulkJobStatus }) 
 }
 
 function Metric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  useLanguage((state) => state.language);
   return <div><dt>{icon}{label}</dt><dd>{value}</dd></div>;
 }
 
 function PipelineStep({ complete, active, label }: { complete: boolean; active: boolean; label: string }) {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.pipelineStep}>
       <span className={complete ? styles.stepDone : active ? styles.stepActive : styles.stepIdle}>
@@ -568,9 +569,9 @@ export function calculateBulkProgress(
     elapsedSeconds,
     reportsPerSecond,
     etaLabel: isBulkJobTerminal(job.status)
-      ? "Finished"
+      ? t("Finished")
       : etaSeconds === null
-        ? "Measuring"
+        ? t("Measuring")
         : formatDuration(Math.ceil(etaSeconds))
   };
 }
@@ -589,23 +590,23 @@ function upsertJob(
 
 function statusLabel(status: WeeklyReportBulkJobStatus["status"]) {
   return ({
-    pending: "Queued",
-    preparing: "Discovering",
-    running: "Generating",
-    finalizing: "Packaging",
-    completed: "Completed",
-    partial: "Completed with failures",
-    failed: "Failed",
-    cancelling: "Cancelling",
-    cancelled: "Cancelled",
-    expired: "Expired"
+    pending: t("Queued"),
+    preparing: t("Discovering"),
+    running: t("Generating"),
+    finalizing: t("Packaging"),
+    completed: t("Completed"),
+    partial: t("Completed with failures"),
+    failed: t("Failed"),
+    cancelling: t("Cancelling"),
+    cancelled: t("Cancelled"),
+    expired: t("Expired")
   } as const)[status];
 }
 
 function errorText(error: unknown) {
   return error instanceof WeeklyReportBulkClientError || error instanceof Error
     ? error.message
-    : "The bulk job could not be updated.";
+    : t("The bulk job could not be updated.");
 }
 
 function isMonday(value: string) {
@@ -625,7 +626,7 @@ function getLatestMonday() {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat(locale()).format(value);
 }
 
 function formatDuration(seconds: number) {

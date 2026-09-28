@@ -1,3 +1,4 @@
+import { t, useLanguage, locale } from "../../shared/i18n";
 import {
   ArrowLeft,
   ChevronRight,
@@ -27,6 +28,7 @@ import type {
 import styles from "./NextcloudPage.module.css";
 
 export function NextcloudPage() {
+  useLanguage((state) => state.language);
   const [currentPath, setCurrentPath] = useState("");
   const [viewerItem, setViewerItem] = useState<NextcloudFileItem | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "card">("list");
@@ -84,7 +86,7 @@ export function NextcloudPage() {
     return (
       <OfflineState
         backendUrl="/api/nextcloud"
-        detail="Unable to check local backend status."
+        detail={t("Unable to check local backend status.")}
         loading={statusQuery.isFetching}
         onRetry={() => void statusQuery.refetch()}
       />
@@ -137,7 +139,7 @@ export function NextcloudPage() {
             className={`${styles.fileList} ${
               viewMode === "card" ? styles.fileListCards : ""
             }`}
-            aria-label="NextCloud files"
+            aria-label={t("NextCloud files")}
           >
             {statusQuery.isLoading || filesQuery.isLoading ? (
               <LoadingState />
@@ -192,24 +194,25 @@ export function NextcloudToolbar({
   onViewModeChange: (viewMode: "list" | "card") => void;
   viewMode: "list" | "card";
 }) {
+  useLanguage((state) => state.language);
   return (
     <header className={styles.toolbar}>
       <h1>NextCloud</h1>
       <div className={styles.locationRow}>
-        <nav className={styles.breadcrumbs} aria-label="NextCloud path">
+        <nav className={styles.breadcrumbs} aria-label={t("NextCloud path")}>
           {currentPath ? (
             <>
               <button
                 className={styles.breadcrumbBack}
-                aria-label="Back one folder"
-                title="Back"
+                aria-label={t("Back one folder")}
+                title={t("Back")}
                 type="button"
                 onClick={() => onOpenFolder(parentPath(currentPath))}
               >
                 <ArrowLeft size={16} aria-hidden />
               </button>
               <button type="button" onClick={() => onOpenFolder("")}>
-                All files
+                {t("All files")}
               </button>
               {pathParts(currentPath).map((part) => (
                 <span key={part.path}>
@@ -224,31 +227,31 @@ export function NextcloudToolbar({
               ))}
             </>
           ) : (
-            <span className={styles.currentLocation}>All files</span>
+            <span className={styles.currentLocation}>{t("All files")}</span>
           )}
         </nav>
 
         <div
           className={styles.viewSwitch}
           role="group"
-          aria-label="File layout"
+          aria-label={t("File layout")}
         >
           <button
-            aria-label="List view"
+            aria-label={t("List view")}
             aria-pressed={viewMode === "list"}
             className={styles.viewSwitchButton}
             onClick={() => onViewModeChange("list")}
-            title="List view"
+            title={t("List view")}
             type="button"
           >
             <List size={17} aria-hidden />
           </button>
           <button
-            aria-label="Card view"
+            aria-label={t("Card view")}
             aria-pressed={viewMode === "card"}
             className={styles.viewSwitchButton}
             onClick={() => onViewModeChange("card")}
-            title="Card view"
+            title={t("Card view")}
             type="button"
           >
             <LayoutGrid size={17} aria-hidden />
@@ -260,12 +263,13 @@ export function NextcloudToolbar({
 }
 
 function FileListHeader() {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.fileListHeader} aria-hidden>
-      <span className={styles.listHeaderName}>Name</span>
-      <span className={styles.listHeaderType}>Type</span>
-      <span className={styles.listHeaderModified}>Modified</span>
-      <span className={styles.listHeaderSize}>Size</span>
+      <span className={styles.listHeaderName}>{t("Name")}</span>
+      <span className={styles.listHeaderType}>{t("Type")}</span>
+      <span className={styles.listHeaderModified}>{t("Modified")}</span>
+      <span className={styles.listHeaderSize}>{t("Size")}</span>
       <span />
     </div>
   );
@@ -292,6 +296,7 @@ function FileRow({
   viewMode: "list" | "card";
   viewable: boolean;
 }) {
+  useLanguage((state) => state.language);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLSpanElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -348,7 +353,7 @@ function FileRow({
           <small className={styles.compactMetadata}>{itemSubtitle(item)}</small>
         </span>
         <span className={styles.fileMetadata}>
-          <span className={styles.fileType}>Folder</span>
+          <span className={styles.fileType}>{t("Folder")}</span>
           <span className={styles.fileModified}>
             {formatModified(item.lastModified)}
           </span>
@@ -368,18 +373,18 @@ function FileRow({
         <strong>{item.name}</strong>
         <small className={styles.compactMetadata}>
           {downloadError
-            ? "Download failed"
+            ? t("Download failed")
             : downloadResult
-              ? `Downloaded ${formatSize(downloadResult.bytesWritten)}`
+              ? t("Downloaded {0}", { 0: formatSize(downloadResult.bytesWritten) })
               : itemSubtitle(item)}
         </small>
       </span>
       <span className={styles.fileMetadata}>
         <span className={styles.fileType}>
           {downloadError
-            ? "Download failed"
+            ? t("Download failed")
             : downloadResult
-              ? `Downloaded ${formatSize(downloadResult.bytesWritten)}`
+              ? t("Downloaded {0}", { 0: formatSize(downloadResult.bytesWritten) })
               : fileTypeLabel(item)}
         </span>
         <span className={styles.fileModified}>
@@ -401,7 +406,7 @@ function FileRow({
           className={styles.fileOpenButton}
           onClick={onOpen}
           type="button"
-          title={`Open ${item.name}`}
+          title={t("Open {0}", { 0: item.name })}
         >
           {fileDetails}
         </button>
@@ -412,7 +417,7 @@ function FileRow({
         <button
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          aria-label={`Actions for ${item.name}`}
+          aria-label={t("Actions for {0}", { 0: item.name })}
           className={styles.actionMenuButton}
           onClick={() => setMenuOpen((open) => !open)}
           ref={menuButtonRef}
@@ -434,7 +439,7 @@ function FileRow({
               type="button"
             >
               <Download size={16} />
-              <span>{downloading ? "Downloading" : "Download"}</span>
+              <span>{downloading ? t("Downloading") : t("Download")}</span>
             </button>
           </span>
         ) : null}
@@ -466,13 +471,13 @@ function FileViewer({
   previewErrorMessage: string;
   previewLoading: boolean;
 }) {
+  useLanguage((state) => state.language);
   return (
-    <section className={styles.viewer} aria-label={`Viewer for ${item.name}`}>
+    <section className={styles.viewer} aria-label={t("Viewer for {0}", { 0: item.name })}>
       <header className={styles.viewerHeader}>
         <button className={styles.backButton} onClick={onBack} type="button">
           <ArrowLeft size={16} />
-          Back
-        </button>
+          {t("Back")}</button>
         <div>
           <h2>{item.name}</h2>
           <p>{itemSubtitle(item)}</p>
@@ -484,17 +489,17 @@ function FileViewer({
           type="button"
         >
           <Download size={16} />
-          {downloading ? "Downloading" : "Download"}
+          {downloading ? t("Downloading") : t("Download")}
         </button>
       </header>
 
       {downloadResult ? (
         <p className={styles.viewerStatus}>
-          Downloaded {formatSize(downloadResult.bytesWritten)}
+          {t("Downloaded")} {formatSize(downloadResult.bytesWritten)}
         </p>
       ) : null}
       {downloadError ? (
-        <p className={styles.viewerError}>Download failed. Try again.</p>
+        <p className={styles.viewerError}>{t("Download failed. Try again.")}</p>
       ) : null}
 
       <div className={styles.viewerBody}>
@@ -503,7 +508,7 @@ function FileViewer({
           <ErrorState
             message={
               previewErrorMessage ||
-              "Preview unavailable. Download this file instead."
+              t("Preview unavailable. Download this file instead.")
             }
           />
         ) : null}
@@ -516,6 +521,7 @@ function FileViewer({
 }
 
 function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
+  useLanguage((state) => state.language);
   if (preview.viewerKind === "pdf" && preview.objectUrl) {
     return (
       <iframe
@@ -542,7 +548,7 @@ function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
     return <pre className={styles.textViewer}>{preview.text ?? ""}</pre>;
   }
 
-  return <ErrorState message="Preview unavailable. Download this file instead." />;
+  return <ErrorState message={t("Preview unavailable. Download this file instead.")} />;
 }
 
 function OfflineState({
@@ -556,14 +562,15 @@ function OfflineState({
   loading: boolean;
   onRetry: () => void;
 }) {
+  useLanguage((state) => state.language);
   return (
     <section className={styles.offline}>
       <span className={styles.offlineIcon}>
         <CloudOff size={28} />
       </span>
       <div>
-        <h1>NextCloud is not connected</h1>
-        <p>{detail ?? "Connect the service to browse shared files."}</p>
+        <h1>{t("NextCloud is not connected")}</h1>
+        <p>{detail ?? t("Connect the service to browse shared files.")}</p>
         <small>{backendUrl}</small>
         <button
           className={styles.retryButton}
@@ -572,7 +579,7 @@ function OfflineState({
           type="button"
         >
           <RefreshCw size={16} />
-          {loading ? "Checking" : "Try again"}
+          {loading ? t("Checking") : t("Try again")}
         </button>
       </div>
     </section>
@@ -586,11 +593,12 @@ function FilesUnavailableState({
   loading: boolean;
   onRetry: () => void;
 }) {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.filesUnavailable}>
       <CloudOff size={28} />
-      <strong>Files are unavailable</strong>
-      <p>We couldn’t fetch this NextCloud folder.</p>
+      <strong>{t("Files are unavailable")}</strong>
+      <p>{t("We couldn’t fetch this NextCloud folder.")}</p>
       <button
         className={styles.retryButton}
         disabled={loading}
@@ -598,21 +606,24 @@ function FilesUnavailableState({
         type="button"
       >
         <RefreshCw size={16} />
-        {loading ? "Loading" : "Try again"}
+        {loading ? t("Loading") : t("Try again")}
       </button>
     </div>
   );
 }
 
 function LoadingState() {
-  return <div className={styles.state}>Loading files...</div>;
+  useLanguage((state) => state.language);
+  return <div className={styles.state}>{t("Loading files...")}</div>;
 }
 
 function ErrorState({ message }: { message: string }) {
+  useLanguage((state) => state.language);
   return <div className={styles.state}>{message}</div>;
 }
 
 function MarkdownViewer({ content }: { content: string }) {
+  useLanguage((state) => state.language);
   return (
     <article className={styles.markdownViewer}>{renderMarkdown(content)}</article>
   );
@@ -742,7 +753,7 @@ function renderDetailsBlock(lines: string[], startIndex: number) {
   const openingLine = lines[startIndex].trim();
   const open = /\sopen(?:\s|>|$)/i.test(openingLine);
   let index = startIndex + 1;
-  let summary = "Details";
+  let summary = t("Details");
 
   const summaryMatch = lines[index]
     ?.trim()
@@ -941,7 +952,8 @@ function isMarkdownBlockStart(line: string) {
 }
 
 function EmptyState() {
-  return <div className={styles.state}>This folder is empty.</div>;
+  useLanguage((state) => state.language);
+  return <div className={styles.state}>{t("This folder is empty.")}</div>;
 }
 
 function iconForFile(item: NextcloudFileItem, size = 19) {
@@ -961,30 +973,30 @@ function itemSubtitle(item: NextcloudFileItem) {
     return formatModified(item.lastModified);
   }
 
-  return `${item.contentType ?? "File"} · ${formatModified(item.lastModified)}`;
+  return `${item.contentType ?? t("File")} · ${formatModified(item.lastModified)}`;
 }
 
 export function fileTypeLabel(item: NextcloudFileItem) {
   if (item.isDirectory) {
-    return "Folder";
+    return t("Folder");
   }
 
   const extension = extensionFor(item);
   const labels: Record<string, string> = {
     csv: "CSV",
-    docx: "Word document",
-    gif: "GIF image",
-    jpeg: "JPEG image",
-    jpg: "JPEG image",
+    docx: t("Word document"),
+    gif: t("GIF image"),
+    jpeg: t("JPEG image"),
+    jpg: t("JPEG image"),
     json: "JSON",
     md: "Markdown",
     markdown: "Markdown",
     pdf: "PDF",
-    png: "PNG image",
-    pptx: "Presentation",
-    txt: "Text document",
-    webp: "WebP image",
-    xlsx: "Spreadsheet"
+    png: t("PNG image"),
+    pptx: t("Presentation"),
+    txt: t("Text document"),
+    webp: t("WebP image"),
+    xlsx: t("Spreadsheet")
   };
 
   if (labels[extension]) {
@@ -993,7 +1005,7 @@ export function fileTypeLabel(item: NextcloudFileItem) {
   if (extension) {
     return extension.toLocaleUpperCase();
   }
-  return item.contentType?.split(";", 1)[0] ?? "File";
+  return item.contentType?.split(";", 1)[0] ?? t("File");
 }
 
 export function sortItems(items: NextcloudFileItem[]) {
@@ -1040,10 +1052,10 @@ export function formatSize(size: number | null) {
 
 function formatModified(value: string | null) {
   if (!value) {
-    return "Modified time unknown";
+    return t("Modified time unknown");
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale(), {
     month: "short",
     day: "numeric",
     hour: "2-digit",

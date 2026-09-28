@@ -165,7 +165,7 @@ describe("RAG data administration UI", () => {
       "The database structure itself will remain unchanged."
     );
     expect(open).toContain("Documents: 2 · Embedding chunks: 80");
-    expect(open).toContain("Type <strong>DELETE</strong> to confirm");
+    expect(open).toContain("Enter DELETE to confirm");
   });
 
   it("enables final deletion only for exact DELETE", () => {

@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type PropsWithChildren } from "react";
 import { accountClient } from "../../shared/api/accountClient";
@@ -16,13 +17,15 @@ function resetFeatureState() {
   useUiStore.setState({ selectedAgent: null, pendingAgentRun: null, search: "" });
 }
 export function AuthGate({ children }: PropsWithChildren) {
+  useLanguage((state) => state.language);
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    return <main className={styles.login}><div><h1>Open Nexgent in your browser</h1>
-      <p>Use your company’s Nexgent web address to sign in.</p></div></main>;
+    return <main className={styles.login}><div><h1>{t("Open Nexgent in your browser")}</h1>
+      <p>{t("Use your company’s Nexgent web address to sign in.")}</p></div></main>;
   }
   return <BrowserAuthGate>{children}</BrowserAuthGate>;
 }
 function BrowserAuthGate({ children }: PropsWithChildren) {
+  useLanguage((state) => state.language);
   const client = useQueryClient();
   const previousUser = useRef<string | null>(null);
   const returnTo = useRef(typeof window !== "undefined" && window.location.pathname !== "/login"
@@ -77,9 +80,9 @@ function BrowserAuthGate({ children }: PropsWithChildren) {
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
   }, [query.data?.id, query.isPending, query.isError]);
-  if (query.isPending) return <main className={styles.login}><p role="status">Opening Nexgent…</p></main>;
-  if (query.isError) return <main className={styles.login}><div><p role="alert">Account service unavailable.</p>
-    <button onClick={() => void query.refetch()}>Try again</button></div></main>;
+  if (query.isPending) return <main className={styles.login}><p role="status">{t("Opening Nexgent…")}</p></main>;
+  if (query.isError) return <main className={styles.login}><div><p role="alert">{t("Account service unavailable.")}</p>
+    <button onClick={() => void query.refetch()}>{t("Try again")}</button></div></main>;
   if (!query.data) return <SignIn onSignedIn={() => query.refetch()} />;
   return <AccountContext.Provider value={query.data}><div key={query.data.id}>{children}</div></AccountContext.Provider>;
 }

@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import {
   AlertCircle,
   ArrowLeft,
@@ -76,6 +77,7 @@ interface ScoutWorkbenchViewProps {
 }
 
 export function ScoutWorkbenchPage() {
+  useLanguage((state) => state.language);
   const [topic, setTopic] = useState("");
   const [keywordText, setKeywordText] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
@@ -187,7 +189,7 @@ export function ScoutWorkbenchPage() {
         () => schedulesQuery.refetch()
       );
       setScheduleNotice(
-        `Scout is scheduled ${formatScoutScheduleRule(scheduleRequest.request)}.`
+        t("Scout is scheduled {0}.", { 0: formatScoutScheduleRule(scheduleRequest.request) })
       );
     } catch (error) {
       setScheduleActionError(getScoutScheduleErrorMessage(error));
@@ -210,7 +212,7 @@ export function ScoutWorkbenchPage() {
     } catch (error) {
       setScheduleActionError(
         error instanceof ScoutScheduleClientError && error.status === 409
-          ? "The schedule had already started or changed state. Its latest status has been refreshed."
+          ? t("The schedule had already started or changed state. Its latest status has been refreshed.")
           : getScoutScheduleErrorMessage(error)
       );
     } finally {
@@ -268,6 +270,7 @@ export function ScoutWorkbenchPage() {
 }
 
 export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
+  useLanguage((state) => state.language);
   const {
     topic, keywordText, additionalInstructions, isPending, elapsedSeconds, result, failureRun,
     formError, apiError, scheduleRecurrence, scheduleDate, scheduleTime,
@@ -291,48 +294,48 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
     <section className={styles.page}>
       <div className={styles.pageHeading}>
         <a className={styles.backLink} href="/agents" onClick={onBack}>
-          <ArrowLeft size={16} aria-hidden /> Back to Agents
+          <ArrowLeft size={16} aria-hidden /> {t("Back to Agents")}
         </a>
         <header className={styles.pageHeader}>
           <span className={styles.titleIcon} aria-hidden><Bot size={22} /></span>
           <div>
-            <h1>AnsimK Scout Agent</h1>
-            <p>Research public web sources and create an evidence-grounded Markdown report.</p>
+            <h1>{t("AnsimK Scout Agent")}</h1>
+            <p>{t("Research public web sources and create an evidence-grounded Markdown report.")}</p>
           </div>
         </header>
       </div>
 
       <div className={styles.workbench}>
-        <aside className={styles.runPanel} aria-label="Scout run configuration">
+        <aside className={styles.runPanel} aria-label={t("Scout run configuration")}>
           <div className={styles.agentIdentity}>
             <span aria-hidden><Search size={19} /></span>
-            <div><strong>Research request</strong><small>Google ADK · standalone service</small></div>
+            <div><strong>{t("Research request")}</strong><small>{t("Google ADK · standalone service")}</small></div>
           </div>
           <form className={styles.runForm} onSubmit={onSubmit} noValidate>
             <label htmlFor="scout-topic">
-              <span>Topic <strong aria-hidden>*</strong></span>
+              <span>{t("Topic")} <strong aria-hidden>*</strong></span>
               <textarea
                 id="scout-topic" value={topic} rows={5} minLength={3}
                 maxLength={500} required disabled={isPending}
                 onChange={(event) => onTopicChange(event.target.value)}
-                placeholder="고독사 예방 AI IoT 서비스 최근 동향"
+                placeholder={t("Recent trends in AI and IoT services for preventing isolated deaths")}
                 aria-describedby="scout-topic-help"
               />
-              <small id="scout-topic-help">Required, 3–500 characters.</small>
+              <small id="scout-topic-help">{t("Required, 3–500 characters.")}</small>
             </label>
             <label htmlFor="scout-keywords">
-              <span>Keywords</span>
+              <span>{t("Keywords")}</span>
               <textarea
                 id="scout-keywords" value={keywordText} rows={5}
                 disabled={isPending}
                 onChange={(event) => onKeywordTextChange(event.target.value)}
-                placeholder={"AI 돌봄\nIoT 모니터링\n고독사 예방"}
+                placeholder={t("AI care\nIoT monitoring\nIsolated death prevention")}
                 aria-describedby="scout-keywords-help"
               />
-              <small id="scout-keywords-help">Optional. Separate up to 10 keywords with commas or new lines.</small>
+              <small id="scout-keywords-help">{t("Optional. Separate up to 10 keywords with commas or new lines.")}</small>
             </label>
             <label htmlFor="scout-additional-instructions">
-              <span>Additional research instructions</span>
+              <span>{t("Additional research instructions")}</span>
               <textarea
                 id="scout-additional-instructions" value={additionalInstructions}
                 rows={4} maxLength={2_000} disabled={isPending}
@@ -340,7 +343,7 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
                 aria-describedby="scout-additional-instructions-help"
               />
               <small id="scout-additional-instructions-help">
-                Optional. Guides this run or schedule but cannot change Scout's source and safety rules.
+                {t("Optional. Guides this run or schedule but cannot change Scout's source and safety rules.")}
               </small>
             </label>
             {errorMessage && <InlineError message={errorMessage} />}
@@ -349,15 +352,15 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
               {isPending
                 ? <LoaderCircle className={styles.spinner} size={17} aria-hidden />
                 : <Play size={16} aria-hidden />}
-              {isPending ? "Running Scout…" : "Run Now"}
+              {isPending ? t("Running Scout…") : t("Run Now")}
             </button>
           </form>
           {isPending && (
             <div className={styles.runningState} role="status" aria-live="polite">
               <LoaderCircle className={styles.spinner} size={18} aria-hidden />
               <div>
-                <strong>Scout가 웹 자료를 조사하고 있습니다...</strong>
-                <small>Elapsed {formatElapsedDuration(elapsedSeconds)} · This synchronous run may take more than a minute.</small>
+                <strong>{t("Scout is researching web sources…")}</strong>
+                <small>{t("Elapsed")} {formatElapsedDuration(elapsedSeconds)} {t("· This synchronous run may take more than a minute.")}</small>
               </div>
             </div>
           )}
@@ -366,29 +369,29 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
           <form className={styles.scheduleForm} onSubmit={onScheduleSubmit} noValidate>
             <header className={styles.scheduleFormHeading}>
               <CalendarClock size={17} aria-hidden />
-              <div><strong>Schedule Scout</strong><small>Run this same request once or on a recurring schedule.</small></div>
+              <div><strong>{t("Schedule Scout")}</strong><small>{t("Run this same request once or on a recurring schedule.")}</small></div>
             </header>
             <div className={styles.scheduleFields}>
               <label htmlFor="scout-schedule-recurrence">
-                <span>Repeat</span>
+                <span>{t("Repeat")}</span>
                 <select id="scout-schedule-recurrence" value={scheduleRecurrence}
                   onChange={(event) => onScheduleRecurrenceChange(event.target.value as ScoutScheduleRecurrence)}>
-                  <option value="once">Once</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
+                  <option value="once">{t("Once")}</option>
+                  <option value="daily">{t("Daily")}</option>
+                  <option value="weekly">{t("Weekly")}</option>
+                  <option value="monthly">{t("Monthly")}</option>
                 </select>
               </label>
               {scheduleRecurrence === "once" && (
                 <label htmlFor="scout-schedule-date">
-                  <span>Schedule date</span>
+                  <span>{t("Schedule date")}</span>
                   <input id="scout-schedule-date" type="date" required value={scheduleDate}
                     onChange={(event) => onScheduleDateChange(event.target.value)} />
                 </label>
               )}
               {scheduleRecurrence === "weekly" && (
                 <label htmlFor="scout-schedule-weekday">
-                  <span>Day of week</span>
+                  <span>{t("Day of week")}</span>
                   <select id="scout-schedule-weekday" value={scheduleDayOfWeek}
                     onChange={(event) => onScheduleDayOfWeekChange(event.target.value as ScoutScheduleDayOfWeek)}>
                     {SCOUT_SCHEDULE_DAYS.map((day) => (
@@ -399,19 +402,19 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
               )}
               {scheduleRecurrence === "monthly" && (
                 <label htmlFor="scout-schedule-month-day">
-                  <span>Day of month</span>
+                  <span>{t("Day of month")}</span>
                   <input id="scout-schedule-month-day" type="number" min="1" max="31" required
                     value={scheduleDayOfMonth}
                     onChange={(event) => onScheduleDayOfMonthChange(event.target.value)} />
                 </label>
               )}
               <label htmlFor="scout-schedule-time">
-                <span>Schedule time</span>
+                <span>{t("Schedule time")}</span>
                 <input id="scout-schedule-time" type="time" step="60" required value={scheduleTime}
                   onChange={(event) => onScheduleTimeChange(event.target.value)} />
               </label>
             </div>
-            <p className={styles.timezoneNote}>Timezone: <strong>{SCOUT_SCHEDULE_TIMEZONE}</strong> (KST)</p>
+            <p className={styles.timezoneNote}>{t("Timezone:")} <strong>{SCOUT_SCHEDULE_TIMEZONE}</strong> (KST)</p>
             {nextRecurringRun !== null && (
               <div className={styles.schedulePreview} aria-live="polite">
                 <strong>{formatScoutNextRun(nextRecurringRun)}</strong>
@@ -424,13 +427,13 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
             )}
             {(scheduleFormError || scheduleActionError) &&
               <InlineError message={scheduleFormError ?? scheduleActionError ?? ""} />}
-            {scheduleNotice && <p className={styles.scheduleNotice} role="status">{scheduleNotice}</p>}
+            {scheduleNotice && <p className={styles.scheduleNotice} role="status">{t(scheduleNotice)}</p>}
             <button className={styles.scheduleButton} type="submit"
               disabled={scheduleSubmitting || isPending}>
               {scheduleSubmitting
                 ? <LoaderCircle className={styles.spinner} size={17} aria-hidden />
                 : <CalendarClock size={16} aria-hidden />}
-              {scheduleSubmitting ? "Scheduling…" : "Schedule Scout"}
+              {scheduleSubmitting ? t("Scheduling…") : t("Schedule Scout")}
             </button>
           </form>
         </aside>
@@ -439,8 +442,8 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
           {result ? <ScoutResult result={result} /> : (
             <div className={styles.emptyResult}>
               <Search size={24} aria-hidden />
-              <h2>Ready for a research topic</h2>
-              <p>The latest completed report, sources, and run references will appear here.</p>
+              <h2>{t("Ready for a research topic")}</h2>
+              <p>{t("The latest completed report, sources, and run references will appear here.")}</p>
             </div>
           )}
         </main>
@@ -455,20 +458,22 @@ export function ScoutWorkbenchView(props: ScoutWorkbenchViewProps) {
 }
 
 function InlineError({ message }: { message: string }) {
-  return <p className={styles.error} role="alert"><AlertCircle size={16} aria-hidden /><span>{message}</span></p>;
+  useLanguage((state) => state.language);
+  return <p className={styles.error} role="alert"><AlertCircle size={16} aria-hidden /><span>{t(message)}</span></p>;
 }
 
 function ScoutResult({ result }: { result: ScoutRunResponse }) {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.resultContent}>
       <section className={styles.reportSection} aria-labelledby="scout-report">
-        <header className={styles.sectionHeading}><h2 id="scout-report">Report</h2><span>Markdown</span></header>
+        <header className={styles.sectionHeading}><h2 id="scout-report">{t("Report")}</h2><span>Markdown</span></header>
         <MarkdownReport report={result.report} />
       </section>
       <SourcesList sources={result.sources} headingId="scout-sources" />
       <section className={styles.metadataSection} aria-labelledby="scout-run">
-        <header className={styles.sectionHeading}><h2 id="scout-run">Run details</h2><span>{result.status}</span></header>
-        <ScoutRunMetadata run={result} statusLabel="Success" />
+        <header className={styles.sectionHeading}><h2 id="scout-run">{t("Run details")}</h2><span>{result.status}</span></header>
+        <ScoutRunMetadata run={result} statusLabel={t("Success")} />
       </section>
     </div>
   );
@@ -478,18 +483,19 @@ function ScheduledJobsSection({ schedules, isPending, error, cancellingScheduleI
   schedules: ScoutScheduleRecord[]; isPending: boolean; error: unknown;
   cancellingScheduleId: string | null; onCancel: (scheduleId: string) => void;
 }) {
+  useLanguage((state) => state.language);
   return (
     <section className={styles.schedulesPanel} aria-labelledby="scout-schedules">
       <header className={styles.schedulesHeading}>
-        <div><h2 id="scout-schedules">Scheduled Scout jobs</h2><p>Persisted status from the standalone Scheduling API.</p></div>
+        <div><h2 id="scout-schedules">{t("Scheduled Scout jobs")}</h2><p>{t("Persisted status from the standalone Scheduling API.")}</p></div>
         <span>{schedules.length}</span>
       </header>
       {isPending && schedules.length === 0 ? (
-        <p className={styles.scheduleListMessage} role="status">Loading scheduled jobs…</p>
+        <p className={styles.scheduleListMessage} role="status">{t("Loading scheduled jobs…")}</p>
       ) : error ? (
         <InlineError message={getScoutScheduleErrorMessage(error)} />
       ) : schedules.length === 0 ? (
-        <p className={styles.scheduleListMessage}>No scheduled Scout jobs have been persisted yet.</p>
+        <p className={styles.scheduleListMessage}>{t("No scheduled Scout jobs have been persisted yet.")}</p>
       ) : (
         <div className={styles.scheduleList}>
           {schedules.map((schedule) => (
@@ -505,6 +511,7 @@ function ScheduledJobsSection({ schedules, isPending, error, cancellingScheduleI
 function ScheduledJobCard({ schedule, cancelling, onCancel }: {
   schedule: ScoutScheduleRecord; cancelling: boolean; onCancel: (scheduleId: string) => void;
 }) {
+  useLanguage((state) => state.language);
   return (
     <article className={styles.scheduleCard} data-status={schedule.status}>
       <header className={styles.scheduleCardHeader}>
@@ -515,28 +522,28 @@ function ScheduledJobCard({ schedule, cancelling, onCancel }: {
           <button className={styles.cancelButton} type="button" disabled={cancelling}
             onClick={() => onCancel(schedule.schedule_id)}>
             {cancelling ? <LoaderCircle className={styles.spinner} size={14} aria-hidden /> : <X size={14} aria-hidden />}
-            {cancelling ? "Cancelling…" : "Cancel"}
+            {cancelling ? t("Cancelling…") : t("Cancel")}
           </button>
         )}
       </header>
       <div className={styles.scheduleRequest}>
-        <div><span>Topic</span><p>{schedule.topic}</p></div>
-        {schedule.keywords.length > 0 && <div><span>Keywords</span><p>{schedule.keywords.join(", ")}</p></div>}
+        <div><span>{t("Topic")}</span><p>{schedule.topic}</p></div>
+        {schedule.keywords.length > 0 && <div><span>{t("Keywords")}</span><p>{schedule.keywords.join(", ")}</p></div>}
         {schedule.additional_instructions && (
-          <div><span>Instructions</span><p>{schedule.additional_instructions}</p></div>
+          <div><span>{t("Instructions")}</span><p>{schedule.additional_instructions}</p></div>
         )}
       </div>
       {schedule.status === "pending" && <p className={styles.honestStatus}>
-        {schedule.recurrence === "once" ? "Waiting for the scheduled time." :
-          `Active. Next run: ${formatScheduledWallTime(schedule.run_at)}.`}
+        {schedule.recurrence === "once" ? t("Waiting for the scheduled time.") :
+          t("Active. Next run: {0}.", { 0: formatScheduledWallTime(schedule.run_at) })}
       </p>}
-      {schedule.status === "running" && <p className={styles.honestStatus}>Scout is running.</p>}
+      {schedule.status === "running" && <p className={styles.honestStatus}>{t("Scout is running.")}</p>}
       {schedule.error_message && <p className={styles.scheduleError}>{sanitizeSchedulingError(schedule.error_message)}</p>}
       {schedule.scout_run && (
         <ScheduledScoutResult run={schedule.scout_run} scheduleStatus={schedule.status}
         />
       )}
-      <small className={styles.scheduleId}>Schedule ID: {schedule.schedule_id}</small>
+      <small className={styles.scheduleId}>{t("Schedule ID:")} {schedule.schedule_id}</small>
     </article>
   );
 }
@@ -544,20 +551,21 @@ function ScheduledJobCard({ schedule, cancelling, onCancel }: {
 function ScheduledScoutResult({ run, scheduleStatus }: {
   run: ScheduledScoutRun; scheduleStatus: ScoutScheduleStatus;
 }) {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.scheduledResult}>
       <ScoutRunMetadata run={run} statusLabel={
         scheduleStatus === "pending"
-          ? `Latest run ${run.status === "success" ? "succeeded" : "failed"}`
+          ? t("Latest run {0}", { 0: run.status === "success" ? t("succeeded") : t("failed") })
           : formatScheduleStatus(scheduleStatus)
       } />
       {run.status === "success" && (
         <>
-          <ul className={styles.scheduledSources} aria-label="Scheduled sources">
+          <ul className={styles.scheduledSources} aria-label={t("Scheduled sources")}>
             {run.sources.map((source) => <li key={source}><a href={source} target="_blank" rel="noreferrer">
               {source}<ExternalLink size={13} aria-hidden /></a></li>)}
           </ul>
-          <details className={styles.scheduledReport}><summary>View scheduled report</summary>
+          <details className={styles.scheduledReport}><summary>{t("View scheduled report")}</summary>
             <MarkdownReport report={run.report} /></details>
         </>
       )}
@@ -568,21 +576,23 @@ function ScheduledScoutResult({ run, scheduleStatus }: {
 function ScoutRunMetadata({ run, statusLabel }: {
   run: ScoutRunResponse | ScheduledScoutRun; statusLabel: string;
 }) {
+  useLanguage((state) => state.language);
   const successfulRun = run.status === "success" ? run : null;
   return (
     <dl className={styles.metadataList}>
-      <div><dt>Status</dt><dd>{statusLabel}</dd></div>
-      <div><dt>Duration</dt><dd>{formatCompletedDuration(run.duration_seconds)}</dd></div>
-      <div><dt>Completed</dt><dd>{formatScoutCompletedAt(run.completed_at)}</dd></div>
-      <div><dt>Sources</dt><dd>{run.source_count}</dd></div>
-      <div><dt>Run ID</dt><dd><code>{run.run_id}</code></dd></div>
-      {successfulRun && <div><dt>Report artifact</dt><dd><code>{successfulRun.report_artifact}</code></dd></div>}
-      <div><dt>Execution log</dt><dd><code>{run.log_artifact}</code></dd></div>
+      <div><dt>{t("Status")}</dt><dd>{statusLabel}</dd></div>
+      <div><dt>{t("Duration")}</dt><dd>{formatCompletedDuration(run.duration_seconds)}</dd></div>
+      <div><dt>{t("Completed")}</dt><dd>{formatScoutCompletedAt(run.completed_at)}</dd></div>
+      <div><dt>{t("Sources")}</dt><dd>{run.source_count}</dd></div>
+      <div><dt>{t("Run ID")}</dt><dd><code>{run.run_id}</code></dd></div>
+      {successfulRun && <div><dt>{t("Report artifact")}</dt><dd><code>{successfulRun.report_artifact}</code></dd></div>}
+      <div><dt>{t("Execution log")}</dt><dd><code>{run.log_artifact}</code></dd></div>
     </dl>
   );
 }
 
 function MarkdownReport({ report }: { report: string }) {
+  useLanguage((state) => state.language);
   return (
     <div className={styles.markdown}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
@@ -593,9 +603,10 @@ function MarkdownReport({ report }: { report: string }) {
 }
 
 function SourcesList({ sources, headingId }: { sources: string[]; headingId: string }) {
+  useLanguage((state) => state.language);
   return (
     <section className={styles.sourcesSection} aria-labelledby={headingId}>
-      <header className={styles.sectionHeading}><h2 id={headingId}>Sources</h2><span>{sources.length}</span></header>
+      <header className={styles.sectionHeading}><h2 id={headingId}>{t("Sources")}</h2><span>{sources.length}</span></header>
       <ul className={styles.sourceList}>{sources.map((source) => <li key={source}>
         <a href={source} target="_blank" rel="noreferrer"><span>{source}</span><ExternalLink size={14} aria-hidden /></a>
       </li>)}</ul>
@@ -604,15 +615,16 @@ function SourcesList({ sources, headingId }: { sources: string[]; headingId: str
 }
 
 function ScoutFailureDetails({ run }: { run: ScoutRunFailure }) {
+  useLanguage((state) => state.language);
   return (
-    <section className={styles.failureDetails} aria-label="Latest failed attempt">
-      <strong>Latest attempt failed</strong>
+    <section className={styles.failureDetails} aria-label={t("Latest failed attempt")}>
+      <strong>{t("Latest attempt failed")}</strong>
       <dl className={styles.failureMetadata}>
-        <div><dt>Duration</dt><dd>{formatCompletedDuration(run.duration_seconds)}</dd></div>
-        <div><dt>Completed</dt><dd>{formatScoutCompletedAt(run.completed_at)}</dd></div>
-        <div><dt>Sources</dt><dd>{run.source_count}</dd></div>
-        <div><dt>Run ID</dt><dd><code>{run.run_id}</code></dd></div>
-        <div><dt>Execution log</dt><dd><code>{run.log_artifact}</code></dd></div>
+        <div><dt>{t("Duration")}</dt><dd>{formatCompletedDuration(run.duration_seconds)}</dd></div>
+        <div><dt>{t("Completed")}</dt><dd>{formatScoutCompletedAt(run.completed_at)}</dd></div>
+        <div><dt>{t("Sources")}</dt><dd>{run.source_count}</dd></div>
+        <div><dt>{t("Run ID")}</dt><dd><code>{run.run_id}</code></dd></div>
+        <div><dt>{t("Execution log")}</dt><dd><code>{run.log_artifact}</code></dd></div>
       </dl>
     </section>
   );
@@ -640,13 +652,13 @@ export function validateScoutForm(
 ) {
   const normalizedTopic = topic.trim();
   if (normalizedTopic.length < 3 || normalizedTopic.length > 500)
-    return "Enter a topic containing 3 to 500 characters.";
+    return t("Enter a topic containing 3 to 500 characters.");
   const keywords = parseScoutKeywords(keywordText);
-  if (keywords.length > 10) return "Enter no more than 10 keywords.";
+  if (keywords.length > 10) return t("Enter no more than 10 keywords.");
   if (keywords.some((keyword) => keyword.length > 100))
-    return "Each keyword must contain no more than 100 characters.";
+    return t("Each keyword must contain no more than 100 characters.");
   if (normalizeAdditionalInstructions(additionalInstructions).length > 2_000)
-    return "Additional research instructions must contain no more than 2,000 characters.";
+    return t("Additional research instructions must contain no more than 2,000 characters.");
   return null;
 }
 
@@ -740,7 +752,7 @@ export function formatScoutNextRun(nextRun: number) {
   const hour = seoulDate.getUTCHours();
   const displayHour = hour % 12 || 12;
   const minute = String(seoulDate.getUTCMinutes()).padStart(2, "0");
-  return `Next run: ${SHORT_MONTH_NAMES[seoulDate.getUTCMonth()]} ${seoulDate.getUTCDate()}, ${seoulDate.getUTCFullYear()} at ${displayHour}:${minute} ${hour < 12 ? "AM" : "PM"} KST`;
+  return t("Next run: {0} {1}, {2} at {3}:{4} {5} KST", { 0: t(SHORT_MONTH_NAMES[seoulDate.getUTCMonth()]), 1: seoulDate.getUTCDate(), 2: seoulDate.getUTCFullYear(), 3: displayHour, 4: minute, 5: hour < 12 ? t("AM") : t("PM") });
 }
 
 export function formatScoutRecurrenceDescription(
@@ -748,10 +760,10 @@ export function formatScoutRecurrenceDescription(
   dayOfWeek: ScoutScheduleDayOfWeek,
   dayOfMonth: string
 ) {
-  if (recurrence === "weekly") return `Repeats every ${capitalize(dayOfWeek)}`;
+  if (recurrence === "weekly") return t("Repeats every {0}", { 0: capitalize(dayOfWeek) });
   if (recurrence === "monthly")
-    return `Repeats on day ${Number(dayOfMonth)} of every month`;
-  return "Repeats daily";
+    return t("Repeats on day {0} of every month", { 0: Number(dayOfMonth) });
+  return t("Repeats daily");
 }
 
 export function validateScoutScheduleForm(
@@ -767,27 +779,27 @@ export function validateScoutScheduleForm(
 ): { error: string | null; runAt: string | null } {
   const scoutError = validateScoutForm(topic, keywordText, additionalInstructions);
   if (scoutError) return { error: scoutError, runAt: null };
-  if (!time) return { error: "Choose a schedule time.", runAt: null };
+  if (!time) return { error: t("Choose a schedule time."), runAt: null };
   if (!buildScoutScheduleTime(time))
-    return { error: "Enter a valid schedule time.", runAt: null };
+    return { error: t("Enter a valid schedule time."), runAt: null };
   if (recurrence === "daily") return { error: null, runAt: null };
   if (recurrence === "weekly") {
     return SCOUT_SCHEDULE_DAYS.includes(dayOfWeek)
       ? { error: null, runAt: null }
-      : { error: "Choose a day of week.", runAt: null };
+      : { error: t("Choose a day of week."), runAt: null };
   }
   if (recurrence === "monthly") {
     const parsedDay = Number(dayOfMonth);
     return Number.isInteger(parsedDay) && parsedDay >= 1 && parsedDay <= 31
       ? { error: null, runAt: null }
-      : { error: "Choose a day of month from 1 to 31.", runAt: null };
+      : { error: t("Choose a day of month from 1 to 31."), runAt: null };
   }
-  if (!date) return { error: "Choose a schedule date.", runAt: null };
+  if (!date) return { error: t("Choose a schedule date."), runAt: null };
   const runAt = buildScoutScheduleRunAt(date, time);
-  if (!runAt) return { error: "Enter a valid schedule date and time.", runAt: null };
+  if (!runAt) return { error: t("Enter a valid schedule date and time."), runAt: null };
   const seoulInstant = Date.parse(`${runAt}+09:00`);
   if (!Number.isFinite(seoulInstant) || seoulInstant <= now)
-    return { error: "Choose a future date and time in Asia/Seoul.", runAt: null };
+    return { error: t("Choose a future date and time in Asia/Seoul."), runAt: null };
   return { error: null, runAt };
 }
 
@@ -830,7 +842,7 @@ export function buildScoutScheduleRequest(
   };
   if (recurrence === "once") {
     if (!validation.runAt) {
-      return { error: "Enter a valid schedule date and time.", request: null };
+      return { error: t("Enter a valid schedule date and time."), request: null };
     }
     return {
       error: null,
@@ -867,16 +879,16 @@ export function buildScoutScheduleRequest(
 
 export function formatScoutScheduleRule(request: ScoutScheduleCreateRequest) {
   if (request.recurrence === "once" && request.run_at) {
-    return `once for ${formatScheduledWallTime(request.run_at)}`;
+    return t("once for {0}", { 0: formatScheduledWallTime(request.run_at) });
   }
   const time = formatScheduleTime(request.schedule_time);
   if (request.recurrence === "weekly" && request.day_of_week) {
-    return `weekly on ${capitalize(request.day_of_week)} at ${time}`;
+    return t("weekly on {0} at {1}", { 0: capitalize(request.day_of_week), 1: time });
   }
   if (request.recurrence === "monthly" && request.day_of_month) {
-    return `monthly on day ${request.day_of_month} at ${time}`;
+    return t("monthly on day {0} at {1}", { 0: request.day_of_month, 1: time });
   }
-  return `daily at ${time}`;
+  return t("daily at {0}", { 0: time });
 }
 
 export function formatPersistedScheduleRule(schedule: ScoutScheduleRecord) {
@@ -899,7 +911,7 @@ function formatScheduleTime(value: string | undefined) {
 }
 
 function capitalize(value: string) {
-  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
+  return t(`${value.charAt(0).toUpperCase()}${value.slice(1)}`);
 }
 
 export async function createScoutScheduleAndRefresh(
@@ -930,20 +942,20 @@ export async function cancelScoutScheduleAndRefresh(
 export function getScoutErrorMessage(error: unknown) {
   if (error instanceof ScoutClientError) {
     if (error.status === 503)
-      return "Scout is not ready. Confirm that the standalone service and model configuration are available.";
+      return t("Scout is not ready. Confirm that the standalone service and model configuration are available.");
     return error.message;
   }
-  if (error instanceof Error) return "The Scout run could not be completed. Please try again.";
+  if (error instanceof Error) return t("The Scout run could not be completed. Please try again.");
   return null;
 }
 
 export function getScoutScheduleErrorMessage(error: unknown) {
   if (error instanceof ScoutScheduleClientError) {
     if (error.status === 503)
-      return "Scout scheduling is not ready. Confirm that the standalone Scheduling API is available.";
+      return t("Scout scheduling is not ready. Confirm that the standalone Scheduling API is available.");
     return error.message;
   }
-  return "The Scout scheduling request could not be completed. Please try again.";
+  return t("The Scout scheduling request could not be completed. Please try again.");
 }
 
 export function calculateElapsedSeconds(startedAt: number, now: number) {
@@ -972,8 +984,8 @@ export function formatScheduledWallTime(runAt: string) {
 
 export function formatScheduleStatus(status: ScoutScheduleStatus) {
   const labels: Record<ScoutScheduleStatus, string> = {
-    pending: "Pending", running: "Running", succeeded: "Succeeded",
-    failed: "Failed", cancelled: "Cancelled", missed: "Missed"
+    pending: t("Pending"), running: t("Running"), succeeded: t("Succeeded"),
+    failed: t("Failed"), cancelled: t("Cancelled"), missed: t("Missed")
   };
   return labels[status];
 }

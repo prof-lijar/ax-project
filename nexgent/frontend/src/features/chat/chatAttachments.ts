@@ -1,3 +1,4 @@
+import { t } from "../../shared/i18n";
 import type { ChatAttachmentSummary } from "../../shared/state/useChatStore";
 
 const MAX_ATTACHMENT_COUNT = 5;
@@ -22,23 +23,23 @@ export const ATTACHMENT_ACCEPT =
 
 export function validateSelectedFiles(files: File[]) {
   if (files.length > MAX_ATTACHMENT_COUNT) {
-    return `Attach no more than ${MAX_ATTACHMENT_COUNT} files.`;
+    return t("Attach no more than {count} files.", { count: MAX_ATTACHMENT_COUNT });
   }
   for (const file of files) {
     const extension = file.name.split(".").pop()?.toLocaleLowerCase() ?? "";
     if (!ACCEPTED_ATTACHMENT_EXTENSIONS.has(extension)) {
-      return `${file.name} is not a supported attachment type.`;
+      return t("{name} is not a supported attachment type.", { name: file.name });
     }
     if (file.size === 0) {
-      return `${file.name} is empty.`;
+      return t("{name} is empty.", { name: file.name });
     }
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      return `${file.name} exceeds the 10 MB per-file limit.`;
+      return t("{name} exceeds the 10 MB per-file limit.", { name: file.name });
     }
   }
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
   if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-    return "Attachments exceed the 25 MB total limit.";
+    return t("Attachments exceed the 25 MB total limit.");
   }
   return null;
 }

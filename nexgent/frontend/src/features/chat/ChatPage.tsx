@@ -1,3 +1,4 @@
+import { t, useLanguage } from "../../shared/i18n";
 import { Check, ChevronDown, Menu, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { RAG_CHAT_GRAPH_ID } from "../../shared/api/agentCatalogClient";
@@ -35,6 +36,7 @@ const starters = [
   { label: "Plan next steps", prompt: "Help me plan the next steps for " }
 ];
 export function ChatPage({ runner, history }: { runner: ChatRunner; history: SavedChatHistory }) {
+  useLanguage((state) => state.language);
   const { conversations, activeId, activeRequest, patchChat, chooseAgent } =
     useChatStore();
   const conversation = conversations.find((c) => c.id === activeId)!;
@@ -95,7 +97,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
     const background = [
       mainRef.current,
       document
-        .querySelector('nav[aria-label="Primary navigation"]')
+        .querySelector('nav[data-primary-navigation]')
         ?.closest("aside")
     ].filter(
       (element): element is HTMLElement => element instanceof HTMLElement
@@ -214,7 +216,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
       files: textOnly ? [] : action.files,
       notice:
         textOnly && action.files.length
-          ? "Prompt restored. RAG Agent supports text only; files were not restored."
+          ? t("Prompt restored. RAG Agent supports text only; files were not restored.")
           : action.notice,
       ...(action.recovery ? { error: null, recovery: null } : {})
     });
@@ -231,7 +233,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
       draft: message.content,
       files: [],
       notice: message.attachments?.length
-        ? "Prompt reused. Reattach any files you need."
+        ? t("Prompt reused. Reattach any files you need.")
         : null,
       recovery: false
     });
@@ -243,7 +245,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
           {!wide && (
             <button
               className={styles.drawerBackdrop}
-              aria-label="Close chat list"
+              aria-label={t("Close chat list")}
               tabIndex={-1}
               onClick={() => setSidebarOpen(false)}
             />
@@ -254,7 +256,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
             className={`${styles.sidebar} ${!wide ? styles.sidebarDrawer : ""}`}
             role={!wide ? "dialog" : undefined}
             aria-modal={!wide ? true : undefined}
-            aria-label="Chat conversations"
+            aria-label={t("Chat conversations")}
           >
             <ConversationList
               history={history}
@@ -274,8 +276,8 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
           <button
             ref={toggleRef}
             className={styles.iconButton}
-            aria-label="Toggle chat list"
-            title="Toggle chat list"
+            aria-label={t("Toggle chat list")}
+            title={t("Toggle chat list")}
             aria-expanded={sidebarOpen}
             aria-controls="chat-conversations"
             onClick={() => setSidebarOpen((open) => !open)}
@@ -283,18 +285,18 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
             <Menu size={19} />
           </button>
           <details className={styles.agentSelector} ref={selectorRef}>
-            <summary aria-label="Choose a co-worker for Chat">
-              <span>{conversation.agent?.name ?? "AX Chat"}</span>
+            <summary aria-label={t("Choose a co-worker for Chat")}>
+              <span>{t(conversation.agent?.name ?? "AX Chat")}</span>
               <ChevronDown size={15} />
             </summary>
             <div className={styles.agentSelectorMenu}>
-              <small>Chat with</small>
+              <small>{t("Chat with")}</small>
               <button
                 onClick={() => selectAgent(null)}
                 aria-pressed={!conversation.agent}
               >
                 <span>
-                  AX Chat<small>General questions and files</small>
+                  {t("AX Chat")}<small>{t("General questions and files")}</small>
                 </span>
                 {!conversation.agent && <Check size={15} />}
               </button>
@@ -305,17 +307,17 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
                   onClick={() => selectAgent(agent)}
                 >
                   <span>
-                    {agent.name}
-                    <small>{agent.role}</small>
+                    {t(agent.name)}
+                    <small>{t(agent.role)}</small>
                   </span>
                   {conversation.agent?.id === agent.id && <Check size={15} />}
                 </button>
               ))}
-              {catalog.isPending && <p>Loading co-workers…</p>}
+              {catalog.isPending && <p>{t("Loading co-workers…")}</p>}
               {catalog.isError && (
                 <p>
-                  Couldn't load co-workers.{" "}
-                  <button onClick={() => void catalog.refetch()}>Retry</button>
+                  {t("Couldn't load co-workers.")}{" "}
+                  <button onClick={() => void catalog.refetch()}>{t("Retry")}</button>
                 </p>
               )}
             </div>
@@ -323,11 +325,11 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
           <span className={styles.headerSpacer} />
           {health.isError && (
             <div className={styles.healthWarning}>
-              <span>Connection unavailable</span>
+              <span>{t("Connection unavailable")}</span>
               <button
                 className={styles.iconButton}
-                aria-label="Retry connection"
-                title="Retry connection"
+                aria-label={t("Retry connection")}
+                title={t("Retry connection")}
                 disabled={health.isFetching}
                 onClick={() => void health.refetch()}
               >
@@ -337,8 +339,8 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
           )}
           <button
             className={styles.iconButton}
-            aria-label="New chat"
-            title="New chat"
+            aria-label={t("New chat")}
+            title={t("New chat")}
             onClick={newChat}
           >
             <Plus size={20} />
@@ -347,8 +349,8 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
         <div
           className={`${styles.conversationBody} ${!conversation.messages.length ? styles.emptyBody : ""}`}
         >
-          {history.loading ? <p role="status">Loading conversation…</p> : history.error && conversation.serverId ? (
-            <div role="alert"><p>{history.error.message}</p><button onClick={history.refresh}>Retry</button></div>
+          {history.loading ? <p role="status">{t("Loading conversation…")}</p> : history.error && conversation.serverId ? (
+            <div role="alert"><p>{history.error.message}</p><button onClick={history.refresh}>{t("Retry")}</button></div>
           ) : conversation.messages.length ? (
             <ChatTranscript
               key={activeId}
@@ -360,21 +362,21 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
             />
           ) : (
             <div className={styles.welcome}>
-              <h1>How can I help?</h1>
+              <h1>{t("How can I help?")}</h1>
               <div className={styles.starters}>
                 {starters.map((starter) => (
                   <button
                     key={starter.label}
                     onClick={() =>
                       requestDraft({
-                        draft: starter.prompt,
+                        draft: t(starter.prompt),
                         files: [],
                         notice: null,
                         recovery: false
                       })
                     }
                   >
-                    {starter.label}
+                    {t(starter.label)}
                   </button>
                 ))}
               </div>
@@ -383,7 +385,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
           <div className={styles.composerDock}>
             {conversation.error && (
               <div className={styles.error} role="alert">
-                <span>{conversation.error}</span>
+                <span>{t(conversation.error)}</span>
                 {conversation.recovery && (
                   <button
                     onClick={() =>
@@ -395,12 +397,12 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
                       })
                     }
                   >
-                    Restore prompt
+                    {t("Restore prompt")}
                   </button>
                 )}
                 <button
                   className={styles.iconButton}
-                  aria-label="Dismiss error"
+                  aria-label={t("Dismiss error")}
                   onClick={() => patchChat(activeId, { error: null })}
                 >
                   <X size={14} />
@@ -409,10 +411,10 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
             )}
             {conversation.notice && (
               <div className={styles.notice} role="status">
-                <span>{conversation.notice}</span>
+                <span>{t(conversation.notice)}</span>
                 <button
                   className={styles.iconButton}
-                  aria-label="Dismiss notice"
+                  aria-label={t("Dismiss notice")}
                   onClick={() => patchChat(activeId, { notice: null })}
                 >
                   <X size={14} />
@@ -421,12 +423,12 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
             )}
             {replaceAction && (
               <div className={styles.notice}>
-                <span>Replace your current draft and attachments?</span>
+                <span>{t("Replace your current draft and attachments?")}</span>
                 <button onClick={() => applyDraft(replaceAction)}>
-                  Replace
+                  {t("Replace")}
                 </button>
                 <button onClick={() => setReplaceAction(null)}>
-                  Keep draft
+                  {t("Keep draft")}
                 </button>
               </div>
             )}
@@ -438,7 +440,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
                 if (conversation.agent && !conversation.agent.canRunInChat) {
                   patchChat(activeId, {
                     error:
-                      "This co-worker isn't available in Chat. Choose AX Chat or RAG Agent."
+                      t("This co-worker isn't available in Chat. Choose AX Chat or RAG Agent.")
                   });
                   return;
                 }

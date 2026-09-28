@@ -1,3 +1,4 @@
+import { t, useLanguage, locale } from "../../shared/i18n";
 import {
   Plus,
   ArrowLeft,
@@ -43,6 +44,7 @@ export type RagInputMode = "file" | "text";
 export const RAG_FILE_ACCEPT = ".txt,.md,.docx,.pdf";
 
 export function RagPage() {
+  useLanguage((state) => state.language);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [inputMode, setInputMode] = useState<RagInputMode>("file");
@@ -75,7 +77,7 @@ export function RagPage() {
     }
     if (!isSupportedRagFile(file)) {
       setSelectedFile(null);
-      setFileError("Choose a TXT, MD, DOCX, or PDF file.");
+      setFileError(t("Choose a TXT, MD, DOCX, or PDF file."));
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -172,15 +174,14 @@ export function RagPage() {
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1>Knowledge</h1>
+          <h1>{t("Knowledge")}</h1>
           <p>
-            Add source material your co-workers can use, then explore what they
-            can find.
+            {t("Add source material your co-workers can use, then explore what they can find.")}
           </p>
         </div>
         <div
           className={styles.knowledgeSummary}
-          aria-label="Knowledge summary"
+          aria-label={t("Knowledge summary")}
           role="status"
         >
           <BookOpen size={18} aria-hidden />
@@ -190,23 +191,23 @@ export function RagPage() {
               onClick={() => void dataStatsQuery.refetch()}
               disabled={dataStatsQuery.isFetching}
             >
-              Counts unavailable · Retry
+              {t("Counts unavailable · Retry")}
             </button>
           ) : dataStatsQuery.data ? (
             <span>
               <strong>{formatCount(dataStatsQuery.data.document_rows)}</strong>{" "}
-              documents <span aria-hidden>·</span>{" "}
+              {t("documents")} <span aria-hidden>·</span>{" "}
               <strong>{formatCount(dataStatsQuery.data.embedding_rows)}</strong>{" "}
-              passages
+              {t("passages")}
             </span>
           ) : (
-            <span>Loading knowledge…</span>
+            <span>{t("Loading knowledge…")}</span>
           )}
         </div>
       </header>
 
       <div className={styles.commandBar}>
-        <span>Shared knowledge for your co-workers</span>
+        <span>{t("Shared knowledge for your co-workers")}</span>
         <div className={styles.headerActions}>
           <button
             type="button"
@@ -215,7 +216,7 @@ export function RagPage() {
             aria-controls="rag-management"
             onClick={() => setManageOpen(!manageOpen)}
           >
-            <Settings2 size={16} /> Manage
+            <Settings2 size={16} /> {t("Manage")}
           </button>
           <button
             type="button"
@@ -223,7 +224,7 @@ export function RagPage() {
             onClick={() => setSourceOpen(true)}
             disabled={deleteDataMutation.isPending}
           >
-            <Plus size={17} /> Add source
+            <Plus size={17} /> {t("Add source")}
           </button>
         </div>
       </div>
@@ -242,11 +243,11 @@ export function RagPage() {
                 aria-labelledby="rag-embedding-heading"
               >
                 <div className={styles.drawerTop}>
-                  <span>KNOWLEDGE / ADD SOURCE</span>
+                  <span>{t("KNOWLEDGE / ADD SOURCE")}</span>
                   <button
                     type="button"
                     className={styles.iconButton}
-                    aria-label="Close add source"
+                    aria-label={t("Close add source")}
                     disabled={embedMutation.isPending}
                     onClick={() => setSourceOpen(false)}
                   >
@@ -374,10 +375,9 @@ export function RagDataPanel({
     <section className={styles.dataPanel} aria-labelledby="rag-data-heading">
       <div className={styles.dataPanelHeading}>
         <div>
-          <h2 id="rag-data-heading">RAG data</h2>
+          <h2 id="rag-data-heading">{t("RAG data")}</h2>
           <p>
-            Review indexed data and remove all knowledge when it is no longer
-            needed.
+            {t("Review indexed data and remove all knowledge when it is no longer needed.")}
           </p>
         </div>
         <button
@@ -389,12 +389,12 @@ export function RagDataPanel({
           }
         >
           <Trash2 size={16} />
-          Empty database
+          {t("Empty database")}
         </button>
       </div>
 
       {statsPending && stats === null && (
-        <p className={styles.dataStatus}>Loading RAG data counts…</p>
+        <p className={styles.dataStatus}>{t("Loading RAG data counts…")}</p>
       )}
       {statsErrorMessage && (
         <p className={styles.error} role="alert">
@@ -404,17 +404,17 @@ export function RagDataPanel({
       )}
       {stats && (
         <dl className={styles.dataCounts}>
-          <Metric label="Documents" value={formatCount(stats.document_rows)} />
+          <Metric label={t("Documents")} value={formatCount(stats.document_rows)} />
           <Metric
-            label="Embedding chunks"
+            label={t("Embedding chunks")}
             value={formatCount(stats.embedding_rows)}
           />
           <Metric
-            label="Legacy chunks"
+            label={t("Legacy chunks")}
             value={formatCount(stats.legacy_embedding_rows)}
           />
           <Metric
-            label="Provenance chunks"
+            label={t("Provenance chunks")}
             value={formatCount(stats.provenance_embedding_rows)}
           />
         </dl>
@@ -423,9 +423,8 @@ export function RagDataPanel({
       {deleteResult && !deletePending && !deleteErrorMessage && (
         <p className={styles.success} role="status">
           <CheckCircle2 size={17} />
-          RAG database emptied successfully. Removed{" "}
-          {formatCount(deleteResult.deleted_embedding_rows)} embedding chunks
-          and {formatCount(deleteResult.deleted_document_rows)} documents.
+          {t("RAG database emptied successfully. Removed")}{" "}
+          {formatCount(deleteResult.deleted_embedding_rows)} {t("embedding chunks and")} {formatCount(deleteResult.deleted_document_rows)} {t("documents.")}
         </p>
       )}
       {deleteErrorMessage && !isConfirmationOpen && (
@@ -448,15 +447,13 @@ export function RagDataPanel({
               <span className={styles.warningIcon} aria-hidden>
                 <AlertTriangle size={22} />
               </span>
-              <h2 id="rag-delete-title">Delete all RAG data?</h2>
+              <h2 id="rag-delete-title">{t("Delete all RAG data?")}</h2>
               <p id="rag-delete-description">
-                This permanently removes all indexed RAG documents and embedding
-                chunks. The database structure itself will remain unchanged.
+                {t("This permanently removes all indexed RAG documents and embedding chunks. The database structure itself will remain unchanged.")}
               </p>
               {stats && (
                 <p className={styles.confirmationCounts}>
-                  Documents: {formatCount(stats.document_rows)} · Embedding
-                  chunks: {formatCount(stats.embedding_rows)}
+                  {t("Documents:")} {formatCount(stats.document_rows)} {t("· Embedding chunks:")} {formatCount(stats.embedding_rows)}
                 </p>
               )}
               {deleteErrorMessage && (
@@ -466,8 +463,7 @@ export function RagDataPanel({
               )}
               <label className={styles.confirmationField}>
                 <span>
-                  Type <strong>DELETE</strong> to confirm
-                </span>
+                  {t("Enter DELETE to confirm")}</span>
                 <input
                   id="rag-delete-confirmation"
                   type="text"
@@ -489,7 +485,7 @@ export function RagDataPanel({
                   onClick={onCancel}
                   disabled={deletePending}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
                 <button
                   className={styles.deleteDataButton}
@@ -498,7 +494,7 @@ export function RagDataPanel({
                   disabled={!canDelete}
                 >
                   <Trash2 size={16} />
-                  {deletePending ? "Deleting…" : "Delete all data"}
+                  {deletePending ? t("Deleting…") : t("Delete all data")}
                 </button>
               </div>
             </section>
@@ -554,6 +550,7 @@ export function EmbeddingPanel({
   onSearchKnowledge?: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  useLanguage((state) => state.language);
   const [dragging, setDragging] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const error = dropError ?? fileError ?? errorMessage(apiError);
@@ -567,8 +564,8 @@ export function EmbeddingPanel({
       aria-labelledby="rag-embedding-heading"
     >
       <div className={styles.panelHeading}>
-        <h2 id="rag-embedding-heading">Add to your knowledge</h2>
-        <p>Upload a document or paste text to make it searchable.</p>
+        <h2 id="rag-embedding-heading">{t("Add to your knowledge")}</h2>
+        <p>{t("Upload a document or paste text to make it searchable.")}</p>
       </div>
 
       <form
@@ -581,7 +578,7 @@ export function EmbeddingPanel({
           onSubmit(event);
         }}
       >
-        <div className={styles.inputMode} aria-label="Embedding input method">
+        <div className={styles.inputMode} aria-label={t("Embedding input method")}>
           <button
             className={
               inputMode === "file" ? styles.inputModeActive : undefined
@@ -595,7 +592,7 @@ export function EmbeddingPanel({
             disabled={isPending}
           >
             <FileText size={16} />
-            File upload
+            {t("File upload")}
           </button>
           <button
             className={
@@ -610,7 +607,7 @@ export function EmbeddingPanel({
             disabled={isPending}
           >
             <TextCursorInput size={16} />
-            Paste text
+            {t("Paste text")}
           </button>
         </div>
 
@@ -653,7 +650,7 @@ export function EmbeddingPanel({
                 if (isPending) return;
                 const files = Array.from(event.dataTransfer.files);
                 if (files.length !== 1) {
-                  setDropError("Add one document at a time.");
+                  setDropError(t("Add one document at a time."));
                   return;
                 }
                 setDropError(null);
@@ -666,13 +663,13 @@ export function EmbeddingPanel({
                   <span>
                     <strong>{selectedFile.name}</strong>
                     <small>
-                      {formatBytes(selectedFile.size)} · Ready to add
+                      {formatBytes(selectedFile.size)} {t("· Ready to add")}
                     </small>
                   </span>
                   <button
                     type="button"
-                    aria-label="Remove file"
-                    title="Remove file"
+                    aria-label={t("Remove file")}
+                    title={t("Remove file")}
                     disabled={isPending}
                     onClick={() => {
                       setDropError(null);
@@ -685,8 +682,8 @@ export function EmbeddingPanel({
               ) : (
                 <>
                   <Upload size={27} aria-hidden />
-                  <strong>Drop a document here</strong>
-                  <span>PDF, DOCX, TXT or Markdown</span>
+                  <strong>{t("Drop a document here")}</strong>
+                  <span>{t("PDF, DOCX, TXT or Markdown")}</span>
                 </>
               )}
               <button
@@ -695,18 +692,17 @@ export function EmbeddingPanel({
                 onClick={onChooseFile}
                 disabled={isPending}
               >
-                {selectedFile ? "Choose another file" : "Choose a source file"}
+                {selectedFile ? t("Choose another file") : t("Choose a source file")}
               </button>
             </div>
             <p className={styles.note}>
-              Supported: UTF-8 TXT, UTF-8 MD, DOCX, and PDF. Scanned PDF pages
-              use automatic OCR. Images embedded in DOCX are not OCRed.
+              {t("Supported: UTF-8 TXT, UTF-8 MD, DOCX, and PDF. Scanned PDF pages use automatic OCR. Images embedded in DOCX are not OCRed.")}
             </p>
           </>
         ) : (
           <div className={styles.directTextFields}>
             <label>
-              <span>Display title (optional)</span>
+              <span>{t("Display title (optional)")}</span>
               <input
                 type="text"
                 value={directTextTitle}
@@ -718,26 +714,25 @@ export function EmbeddingPanel({
               />
             </label>
             <label>
-              <span>Source text</span>
+              <span>{t("Source text")}</span>
               <textarea
                 value={directText}
                 onChange={(event) => onDirectTextChange(event.target.value)}
-                placeholder="Type or paste source text"
+                placeholder={t("Type or paste source text")}
                 rows={10}
                 disabled={isPending}
               />
             </label>
             <p className={styles.note}>
-              Without a title, a short display name is generated from the first
-              non-empty line.
+              {t("Without a title, a short display name is generated from the first non-empty line.")}
             </p>
           </div>
         )}
 
         <details className={styles.advancedOptions}>
-          <summary>Indexing options</summary>
+          <summary>{t("Indexing options")}</summary>
           <label className={styles.chunkTokenField}>
-            <span>Maximum tokens per chunk</span>
+            <span>{t("Maximum tokens per chunk")}</span>
             <input
               type="number"
               min={MIN_RAG_MAX_CHUNK_TOKENS}
@@ -752,13 +747,13 @@ export function EmbeddingPanel({
             />
             <small id="rag-max-chunk-tokens-help">
               {maxChunkTokensIsValid
-                ? "Choose 100–1000. Natural boundaries may produce shorter chunks."
-                : "Enter a whole number from 100 to 1000."}
+                ? t("Choose 100–1000. Natural boundaries may produce shorter chunks.")
+                : t("Enter a whole number from 100 to 1000.")}
             </small>
           </label>
         </details>
         <p className={styles.note}>
-          Adding the same source again can create duplicates.
+          {t("Adding the same source again can create duplicates.")}
         </p>
 
         <button
@@ -772,25 +767,25 @@ export function EmbeddingPanel({
           }
         >
           <Upload size={17} />
-          {isPending ? "Adding to knowledge…" : "Add to knowledge"}
+          {isPending ? t("Adding to knowledge…") : t("Add to knowledge")}
         </button>
       </form>
 
       {isPending && (
         <p className={styles.note} role="status">
-          Reading and indexing your source. This may take a moment.
+          {t("Reading and indexing your source. This may take a moment.")}
         </p>
       )}
       {result && !isPending && !error && (
         <p className={styles.success} role="status">
           <CheckCircle2 size={17} />
-          Source added to knowledge
+          {t("Source added to knowledge")}
         </p>
       )}
       {error && (
         <p className={styles.error} role="alert">
           <AlertCircle size={17} />
-          {error}
+          {t(error)}
         </p>
       )}
 
@@ -803,8 +798,7 @@ export function EmbeddingPanel({
               type="button"
               onClick={onSearchKnowledge}
             >
-              Search your knowledge
-              <ArrowRight size={16} aria-hidden />
+              {t("Search your knowledge")} <ArrowRight size={16} aria-hidden />
             </button>
           )}
         </>
@@ -814,60 +808,61 @@ export function EmbeddingPanel({
 }
 
 export function EmbedResult({ result }: { result: RagEmbedResponse }) {
+  useLanguage((state) => state.language);
   return (
-    <section className={styles.embedResult} aria-label="Embedding result">
+    <section className={styles.embedResult} aria-label={t("Embedding result")}>
       <div className={styles.indexedSummary}>
         <FileText size={21} aria-hidden />
         <div>
           <strong>{result.source.source_name}</strong>
-          <p>{result.chunking.chunk_count} searchable passages added</p>
+          <p>{result.chunking.chunk_count} {t("searchable passages added")}</p>
         </div>
       </div>
       <details className={styles.processingDetails}>
-        <summary>Processing details</summary>
+        <summary>{t("Processing details")}</summary>
         <div className={styles.resultSectionHeading}>
-          <h3>Processing summary</h3>
+          <h3>{t("Processing summary")}</h3>
           <span>
-            Maximum {result.chunking.max_chunk_tokens} tokens per chunk
+            {t("Maximum")} {result.chunking.max_chunk_tokens} {t("tokens per chunk")}
           </span>
         </div>
 
         <dl className={styles.metricsGrid}>
-          <Metric label="Source" value={result.source.source_name} />
+          <Metric label={t("Source")} value={result.source.source_name} />
           <Metric
-            label="Type"
+            label={t("Type")}
             value={sourceTypeLabel(result.source.source_type)}
           />
           {result.source.filename && (
-            <Metric label="Filename" value={result.source.filename} />
+            <Metric label={t("Filename")} value={result.source.filename} />
           )}
           <Metric
-            label="Source size"
+            label={t("Source size")}
             value={formatBytes(result.source.size_bytes)}
           />
           <Metric
-            label="Document tokens"
+            label={t("Document tokens")}
             value={String(result.source.token_count)}
           />
-          <Metric label="Chunks" value={String(result.chunking.chunk_count)} />
+          <Metric label={t("Chunks")} value={String(result.chunking.chunk_count)} />
           <Metric
-            label="Chunking"
+            label={t("Chunking")}
             value={formatMilliseconds(result.timing_ms.chunking)}
           />
           <Metric
-            label="Embedding"
+            label={t("Embedding")}
             value={formatMilliseconds(result.timing_ms.embedding)}
           />
           <Metric
-            label="Total"
+            label={t("Total")}
             value={formatMilliseconds(result.timing_ms.total)}
           />
         </dl>
 
         <div className={styles.previewHeading}>
-          <h3>Chunk preview</h3>
+          <h3>{t("Chunk preview")}</h3>
           {result.chunking.preview_truncated && (
-            <p>Showing the first 10 of {result.chunking.chunk_count} chunks.</p>
+            <p>{t("Showing the first 10 of")} {result.chunking.chunk_count} {t("chunks.")}</p>
           )}
         </div>
 
@@ -875,17 +870,17 @@ export function EmbedResult({ result }: { result: RagEmbedResponse }) {
           {result.chunking.chunks.map((chunk) => (
             <article className={styles.chunkPreview} key={chunk.index}>
               <header>
-                <strong>Chunk {chunk.index}</strong>
-                <span>{chunk.token_count} tokens</span>
-                <span>{chunk.character_count} characters</span>
+                <strong>{t("Chunk")} {chunk.index}</strong>
+                <span>{chunk.token_count} {t("tokens")}
+                </span>
+                <span>{chunk.character_count} {t("characters")}</span>
                 <span>
-                  Source characters [{chunk.source_start_character},{" "}
+                  {t("Source characters [")}{chunk.source_start_character},{" "}
                   {chunk.source_end_character})
                 </span>
                 <span>
-                  Overlap with previous: {chunk.overlap_with_previous_tokens}{" "}
-                  tokens
-                </span>
+                  {t("Overlap with previous:")} {chunk.overlap_with_previous_tokens}{" "}
+                  {t("tokens")}</span>
               </header>
               <p>{chunk.context}</p>
             </article>
@@ -897,6 +892,7 @@ export function EmbedResult({ result }: { result: RagEmbedResponse }) {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
+  useLanguage((state) => state.language);
   return (
     <div>
       <dt>{label}</dt>
@@ -936,6 +932,7 @@ export function SearchPanel({
   onTopKChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  useLanguage((state) => state.language);
   const error = errorMessage(apiError);
 
   return (
@@ -945,25 +942,25 @@ export function SearchPanel({
       aria-labelledby="rag-search-heading"
     >
       <div className={styles.panelHeading}>
-        <h2 id="rag-search-heading">Find useful passages</h2>
-        <p>Find the source material behind your team’s work.</p>
+        <h2 id="rag-search-heading">{t("Find useful passages")}</h2>
+        <p>{t("Find the source material behind your team’s work.")}</p>
       </div>
 
       <form className={styles.searchForm} onSubmit={onSubmit}>
         <label className={styles.queryField}>
-          <span>What are you looking for?</span>
+          <span>{t("What are you looking for?")}</span>
           <input
             id="rag-query"
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Ask a question or describe a topic"
+            placeholder={t("Ask a question or describe a topic")}
             disabled={isPending}
           />
         </label>
 
         <label className={styles.topKField}>
-          <span>Passage limit</span>
+          <span>{t("Passage limit")}</span>
           <input
             type="number"
             min={MIN_RAG_TOP_K}
@@ -980,8 +977,8 @@ export function SearchPanel({
 
         <small className={styles.topKHelp} id="rag-top-k-help">
           {topKIsValid
-            ? "Choose 1–20. Default: 5."
-            : "Enter a whole number from 1 to 20."}
+            ? t("Choose 1–20. Default: 5.")
+            : t("Enter a whole number from 1 to 20.")}
         </small>
 
         <button
@@ -992,20 +989,20 @@ export function SearchPanel({
           }
         >
           <Search size={17} />
-          {isPending ? "Searching…" : "Search"}
+          {isPending ? t("Searching…") : t("Search")}
         </button>
       </form>
 
       {error && (
         <p className={styles.error} role="alert">
           <AlertCircle size={17} />
-          {error}
+          {t(error)}
         </p>
       )}
 
       {isPending && (
         <p className={styles.searchStatus} role="status">
-          Searching your knowledge…
+          {t("Searching your knowledge…")}
         </p>
       )}
       {results === null && !isPending && !error && (
@@ -1013,13 +1010,13 @@ export function SearchPanel({
           <Search size={25} aria-hidden />
           <strong>
             {emptyKnowledge
-              ? "Build your team’s knowledge"
-              : "Find a passage worth using"}
+              ? t("Build your team’s knowledge")
+              : t("Find a passage worth using")}
           </strong>
           <p>
             {emptyKnowledge
-              ? "Add a document or paste notes to give your co-workers a shared source of knowledge."
-              : "Enter a question or topic to explore passages from your sources."}
+              ? t("Add a document or paste notes to give your co-workers a shared source of knowledge.")
+              : t("Enter a question or topic to explore passages from your sources.")}
           </p>
           {emptyKnowledge && onAddSource && (
             <button
@@ -1028,11 +1025,11 @@ export function SearchPanel({
               onClick={onAddSource}
               disabled={operationsBlocked}
             >
-              <Plus size={16} /> Add your first source
+              <Plus size={16} /> {t("Add your first source")}
             </button>
           )}
           <small>
-            Search retrieves source passages. Answers are available in Chat.
+            {t("Search retrieves source passages. Answers are available in Chat.")}
           </small>
         </div>
       )}
@@ -1040,16 +1037,16 @@ export function SearchPanel({
         <div className={styles.results}>
           <div className={styles.resultsHeading} role="status">
             <h3>
-              {results.length} matching passage{results.length === 1 ? "" : "s"}
+              {t(results.length === 1 ? "{count} matching passage" : "{count} matching passages", { count: results.length })}
             </h3>
-            {searchedQuery && <p>Results for “{searchedQuery}”</p>}
+            {searchedQuery && <p>{t("Results for “")}{searchedQuery}”</p>}
           </div>
           {timing && <SearchTimingSummary timing={timing} />}
           {results.length === 0 ? (
             <div className={styles.empty}>
               <BookOpen size={25} aria-hidden />
-              <strong>No matching passages</strong>
-              <p>Try different words or add a source that covers this topic.</p>
+              <strong>{t("No matching passages")}</strong>
+              <p>{t("Try different words or add a source that covers this topic.")}</p>
             </div>
           ) : (
             <PassageWorkspace key={searchedQuery} results={results} />
@@ -1061,6 +1058,7 @@ export function SearchPanel({
 }
 
 export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
+  useLanguage((state) => state.language);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [reading, setReading] = useState(false);
   const selected = results[selectedIndex] ?? results[0];
@@ -1071,7 +1069,7 @@ export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
     <div
       className={`${styles.passageWorkspace} ${reading ? styles.reading : ""}`}
     >
-      <ol className={styles.passageList} aria-label="Matching passages">
+      <ol className={styles.passageList} aria-label={t("Matching passages")}>
         {results.map((result, index) => (
           <li key={`${result.id}-${index}`}>
             <button
@@ -1095,13 +1093,13 @@ export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
                 {String(index + 1).padStart(2, "0")}
               </span>
               <span className={styles.passageExcerpt}>
-                <strong>{result.source_name || "Source unavailable"}</strong>
+                <strong>{result.source_name || t("Source unavailable")}</strong>
                 <span>{result.context}</span>
                 <small>
                   {sourceTypeLabel(result.source_type)}
                   {result.chunk_index !== null
-                    ? ` · Passage ${result.chunk_index}`
-                    : " · Source details unavailable"}
+                    ? t(" · Passage {0}", { 0: result.chunk_index })
+                    : t(" · Source details unavailable")}
                 </small>
               </span>
               <ArrowRight size={15} aria-hidden />
@@ -1114,7 +1112,7 @@ export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
         ref={readerRef}
         tabIndex={-1}
         className={styles.passageReader}
-        aria-label="Selected passage"
+        aria-label={t("Selected passage")}
       >
         <button
           type="button"
@@ -1126,57 +1124,57 @@ export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
             );
           }}
         >
-          <ArrowLeft size={16} /> Back to results
+          <ArrowLeft size={16} /> {t("Back to results")}
         </button>
         <div className={styles.readerEyebrow}>
-          <FileText size={16} /> SOURCE PASSAGE · {selectedIndex + 1} OF{" "}
+          <FileText size={16} /> {t("SOURCE PASSAGE ·")} {selectedIndex + 1} {t("OF")}{" "}
           {results.length}
         </div>
-        <h3>{selected.source_name || "Source unavailable"}</h3>
+        <h3>{selected.source_name || t("Source unavailable")}</h3>
         <p className={styles.readerSubtitle}>
           {sourceTypeLabel(selected.source_type)}
           {selected.chunk_index !== null
-            ? ` · Passage ${selected.chunk_index}`
+            ? t(" · Passage {0}", { 0: selected.chunk_index })
             : ""}
         </p>
         <p className={styles.readerContext}>{selected.context}</p>
         <details className={styles.matchDetails}>
-          <summary>Source details</summary>
+          <summary>{t("Source details")}</summary>
           <dl className={styles.sourceDetails}>
             <Metric
-              label="Cosine similarity"
+              label={t("Cosine similarity")}
               value={String(selected.similarity)}
             />
             <Metric
-              label="Document ID"
+              label={t("Document ID")}
               value={
                 selected.document_id === null
-                  ? "Unavailable — legacy row"
+                  ? t("Unavailable — legacy row")
                   : String(selected.document_id)
               }
             />
             <Metric
-              label="Passage"
+              label={t("Passage")}
               value={
                 selected.chunk_index === null
-                  ? "Unavailable"
+                  ? t("Unavailable")
                   : String(selected.chunk_index)
               }
             />
             <Metric
-              label="Tokens"
+              label={t("Tokens")}
               value={
                 selected.token_count === null
-                  ? "Unavailable"
+                  ? t("Unavailable")
                   : String(selected.token_count)
               }
             />
             <Metric
-              label="Source characters"
+              label={t("Source characters")}
               value={
                 selected.source_start_character === null ||
                 selected.source_end_character === null
-                  ? "Unavailable"
+                  ? t("Unavailable")
                   : `[${selected.source_start_character}, ${selected.source_end_character})`
               }
             />
@@ -1188,16 +1186,17 @@ export function PassageWorkspace({ results }: { results: RagSearchResult[] }) {
 }
 
 export function SearchTimingSummary({ timing }: { timing: RagSearchTiming }) {
+  useLanguage((state) => state.language);
   return (
     <details className={styles.searchTiming}>
-      <summary>Search timing · {formatMilliseconds(timing.total)}</summary>
+      <summary>{t("Search timing ·")} {formatMilliseconds(timing.total)}</summary>
       <div>
-        <strong>Server processing time</strong>
+        <strong>{t("Server processing time")}</strong>
         <span>
-          Query embedding: {formatMilliseconds(timing.query_embedding)}
+          {t("Query embedding:")} {formatMilliseconds(timing.query_embedding)}
         </span>
-        <span>DB search: {formatMilliseconds(timing.database_search)}</span>
-        <span>Total: {formatMilliseconds(timing.total)}</span>
+        <span>{t("DB search:")} {formatMilliseconds(timing.database_search)}</span>
+        <span>{t("Total:")} {formatMilliseconds(timing.total)}</span>
       </div>
     </details>
   );
@@ -1236,26 +1235,26 @@ function formatMilliseconds(value: number) {
 }
 
 function formatBytes(value: number) {
-  return `${value.toLocaleString()} bytes`;
+  return t("{0} bytes", { 0: value.toLocaleString(locale()) });
 }
 
 function formatCount(value: number) {
-  return value.toLocaleString();
+  return value.toLocaleString(locale());
 }
 
 function sourceTypeLabel(sourceType: "file" | "text" | null) {
   if (sourceType === "file") {
-    return "File";
+    return t("File");
   }
   if (sourceType === "text") {
-    return "Direct text";
+    return t("Direct text");
   }
-  return "Unavailable";
+  return t("Unavailable");
 }
 
 function errorMessage(error: unknown) {
   if (!error) {
     return null;
   }
-  return error instanceof Error ? error.message : "The RAG request failed.";
+  return error instanceof Error ? error.message : t("The RAG request failed.");
 }

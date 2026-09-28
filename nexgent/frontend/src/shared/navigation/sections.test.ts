@@ -55,7 +55,7 @@ describe("section routing", () => {
 
     const ragIndex = navItems.findIndex((item) => item.id === "rag");
     expect(ragIndex).toBeGreaterThan(-1);
-    expect(navItems[ragIndex]).toMatchObject({ label: "RAG", path: "/rag" });
+    expect(navItems[ragIndex]).toMatchObject({ label: "Knowledge", path: "/rag" });
     expect(navItems[ragIndex + 1]?.id).toBe("settings");
   });
 
