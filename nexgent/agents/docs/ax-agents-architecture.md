@@ -4,6 +4,22 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Weekly-report source retries and diagnostics (2026-09-28)
+
+The workflow-owned read-only source client now retries transient timeouts,
+network errors and HTTP 408/429/5xx up to three attempts with 2/4-second backoff.
+Each whole HTTP attempt is bounded by the configured source timeout (30 seconds
+by default, finite and at most 120). Validation and permanent HTTP failures do
+not retry; cancellation propagates. Retries reuse the page within the existing
+job before staging, preserving completed work and weekly idempotency.
+
+The worker uses an allowlisted JSON formatter from `ax-observability`; source
+events carry task-local job correlation, timing, attempts and safe error types.
+Stage failures retain source diagnostics instead of losing structured fields.
+The scheduler logs timestamped failed-job identity and counts. No new persistence,
+job restart, catch-up, migration retry, or notification boundary is introduced.
+See [retry policy, diagnostics and rollout](weekly-report-retries-and-diagnostics.md).
+
 ## Missing production wards in weekly-report delivery (2026-09-21)
 
 Per operator instruction, a report whose ward does not exist in the production

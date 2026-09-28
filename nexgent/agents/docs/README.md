@@ -1,5 +1,8 @@
 # Documentation map
 
+- [Weekly-report retries and diagnostics](weekly-report-retries-and-diagnostics.md):
+  bounded transient source retries, correlated JSON logs, verification and rollout.
+
 - [Persistent AX chat history](../../docs/08-implementation/persistent-ax-chat-history.md): product-owned conversation storage, independent worker, server-loaded context, durable attachments and browser reconnection.
 
 - [Weekly-report completeness](weekly-report-completeness.md): every ward,

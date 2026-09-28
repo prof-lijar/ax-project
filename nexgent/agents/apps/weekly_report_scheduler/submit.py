@@ -278,6 +278,7 @@ def _float_setting(
 
 
 def _write_event(event: dict[str, object]) -> None:
+    event = {"timestamp": datetime.now(UTC).isoformat(), **event}
     print(json.dumps(event, separators=(",", ":"), sort_keys=True), flush=True)
 
 

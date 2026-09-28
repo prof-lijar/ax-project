@@ -34,7 +34,9 @@ from pydantic import ValidationError
 from workflows.weekly_report.agents.reporter import generate_narrative
 from workflows.weekly_report.agents.reporter.fallback import build_fallback
 from workflows.weekly_report.agents.reporter.prompt import PROMPT_VERSION
+from workflows.weekly_report.diagnostics import SOURCE_JOB_ID
 from workflows.weekly_report.domain import build_fact_package, render_report
+from workflows.weekly_report.tools.source_api_client import WeeklyReportSourceError
 from workflows.weekly_report.tools.source_repository import WeeklyReportSourceRepository
 
 from .report_store import (
@@ -214,9 +216,13 @@ class WeeklyReportBulkRunner:
                 ward_ids=selected_ids,
                 limit=min(100, request.max_reports - discovered),
             )
-            source = WeeklyReportSourceResponse.model_validate(
-                await self.source.load(page_request)
-            )
+            token = SOURCE_JOB_ID.set(str(job_id))
+            try:
+                source = WeeklyReportSourceResponse.model_validate(
+                    await self.source.load(page_request)
+                )
+            finally:
+                SOURCE_JOB_ID.reset(token)
             self._validate_source(page_request, source)
             refreshed_job = await self.store.get_job(job_id)
             if refreshed_job.cancel_requested:
@@ -395,12 +401,19 @@ class WeeklyReportBulkRunner:
         error: BaseException,
         stage: str,
     ) -> None:
+        diagnostics = {"error_type": type(error).__name__}
+        if isinstance(error, WeeklyReportSourceError):
+            diagnostics.update(
+                cause_type=error.cause_type, attempt=error.attempts,
+                retryable=error.retryable, http_status=error.http_status,
+            )
         _LOG.error(
             "weekly report bulk stage failed",
             extra={
                 "job_id": str(job_id),
                 "stage": stage,
                 "error_code": _error_code(error),
+                **diagnostics,
             },
         )
         try:
@@ -639,6 +652,8 @@ async def bulk_job_status(
 
 
 def _error_code(exc: BaseException) -> str:
+    if isinstance(exc, WeeklyReportSourceError):
+        return exc.error_code
     if isinstance(exc, WeeklyReportStorageUnavailable):
         return "report_storage_error"
     if isinstance(exc, ValidationError):

@@ -71,6 +71,15 @@ def wait_for_storage(
             _validate_complete_batch(job)
             return job
         if job["status"] in {"partial", "failed", "cancelled", "expired", "cancelling"}:
+            _write_event({
+                "event": "weekly_report_schedule_job_failed",
+                "stage": "generation", "job_id": expected_id,
+                "week_start": job["week_start"], "job_status": job["status"],
+                "discovered_count": job.get("discovered_count"),
+                "completed_count": job.get("completed_count"),
+                "failed_count": job.get("failed_count"),
+                "producer_done": job.get("producer_done"),
+            })
             raise ScheduledSubmissionError("scheduled job did not finish local storage")
         if clock() >= deadline:
             raise ScheduledSubmissionError("timed out waiting for local storage")

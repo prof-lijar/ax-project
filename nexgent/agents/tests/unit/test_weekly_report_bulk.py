@@ -3,8 +3,10 @@ import hashlib
 import json
 import zipfile
 from datetime import date
+from unittest.mock import AsyncMock
 from uuid import UUID
 
+import httpx
 import pytest
 from ax_contracts import (
     WeeklyReportBulkJobRequest,
@@ -25,9 +27,59 @@ from workflows.weekly_report.bulk import (
     WeeklyReportStorageRecord,
     WeeklyReportStorageUnavailable,
 )
+from workflows.weekly_report.diagnostics import SOURCE_JOB_ID
+from workflows.weekly_report.tools import source_api_client as source_client
 from workflows.weekly_report.tools.source_repository import (
     MockWeeklyReportSourceRepository,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recover", [True, False])
+async def test_bulk_source_timeout_retries_in_same_job(tmp_path, monkeypatch, caplog, recover):
+    request = WeeklyReportBulkJobRequest(
+        week_start=date(2026, 9, 21), max_reports=1,
+        idempotency_key="source-timeout-recovery",
+    )
+    store = InMemoryBulkJobStore()
+    job = await store.create_job(
+        WEEKLY_REPORT_BULK_JOB_KIND, request.idempotency_key,
+        request.model_dump(mode="json"),
+    )
+    snapshot = await MockWeeklyReportSourceRepository().load(
+        WeeklyReportRequest(week_start=request.week_start, limit=1)
+    )
+    calls = 0
+    async def handle(http_request):
+        nonlocal calls
+        calls += 1
+        if not recover or calls == 1:
+            raise httpx.ReadTimeout("private data must not be logged")
+        return httpx.Response(200, json=snapshot.model_dump(mode="json"))
+
+    # Patch only the client's backoff, not the event-loop sleeps used by the runner.
+    monkeypatch.setattr(source_client, "_retry_sleep", AsyncMock())
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as http:
+        source = source_client.WeeklyReportSourceApiClient(
+            source_client.SourceApiSettings("http://source"), client=http,
+        )
+        status = await WeeklyReportBulkRunner(
+            store, LocalBulkArtifactStore(tmp_path.resolve(), minimum_free_bytes=0),
+            source, FakeModel(), RecordingWeeklyReportStore(), poll_seconds=0.001,
+        ).run(job.job_id, concurrency=1)
+    assert status.job_id == job.job_id
+    assert status.status == ("completed" if recover else "failed")
+    assert status.completed_count == (1 if recover else 0)
+    assert calls == (2 if recover else 3)
+    retries = [r for r in caplog.records if r.msg == "weekly_report_source_retry"]
+    assert all(r.job_id == str(job.job_id) for r in retries)
+    assert SOURCE_JOB_ID.get() is None
+    if not recover:
+        failure = next(r for r in caplog.records if r.msg == "weekly report bulk stage failed")
+        assert failure.stage == "producer"
+        assert failure.error_code == "source_timeout"
+        assert failure.cause_type == "ReadTimeout"
+        assert failure.attempt == 3
 
 
 class FakeModel:

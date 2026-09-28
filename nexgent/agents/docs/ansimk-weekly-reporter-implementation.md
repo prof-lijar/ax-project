@@ -4,6 +4,14 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Source reliability and diagnostics (2026-09-28)
+
+Source pages retry transient failures up to three attempts within the same job,
+with bounded deadlines and backoff. Worker JSON diagnostics preserve job/stage,
+attempts and content-free cause information; scheduler failure events expose job
+identity and progress. Permanent errors remain terminal. See
+[retry policy, tests and deployment](weekly-report-retries-and-diagnostics.md).
+
 ## All-ward reporting and internal fallback metadata (2026-09-21)
 
 The operator requires every ward, including those without weekly source data,

@@ -17,6 +17,7 @@ from uuid import UUID
 from ax_contracts import WeeklyReportBulkJobRequest
 from ax_evals import evaluate_weekly_report_bulk_capacity
 from ax_integrations import get_default_chat_model
+from ax_observability.logging import JsonDiagnosticFormatter
 from ax_persistence import (
     AsyncpgBulkJobStore,
     BulkJobStore,
@@ -32,6 +33,7 @@ from workflows.weekly_report.bulk import (
     bulk_job_status,
     cleanup_weekly_report_exports,
 )
+from workflows.weekly_report.diagnostics import DIAGNOSTIC_FIELDS
 from workflows.weekly_report.tools import get_weekly_report_source_repository
 
 
@@ -293,10 +295,15 @@ def _print_json(value: object) -> None:
 
 
 def main() -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonDiagnosticFormatter(DIAGNOSTIC_FIELDS))
     logging.basicConfig(
         level=os.environ.get("LOG_LEVEL", "INFO"),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        handlers=[handler],
     )
+    # Request URLs and HTTP bodies belong outside content-free worker diagnostics.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     args = build_parser().parse_args()
     if args.command == "capacity":
         if args.reports < 1 or args.elapsed_seconds <= 0:

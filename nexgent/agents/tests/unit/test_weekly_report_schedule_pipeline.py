@@ -76,6 +76,17 @@ def test_timeout_is_bounded():
         )
 
 
+def test_failed_job_logs_identity_and_counts(capsys):
+    with pytest.raises(ScheduledSubmissionError):
+        pipeline.wait_for_storage(SchedulerSettings(), job("failed"))
+    event = json.loads(capsys.readouterr().out)
+    assert event["event"] == "weekly_report_schedule_job_failed"
+    assert event["job_id"] == job()["job_id"]
+    assert event["stage"] == "generation"
+    assert event["completed_count"] == 0
+    assert event["timestamp"]
+
+
 @pytest.mark.parametrize(
     "field,value",
     [("week_start", "2026-09-07"), ("job_id", "9ff04888-a682-4704-8d27-3d5cd2cb26cb")],
