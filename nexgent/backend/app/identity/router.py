@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 from typing import Annotated, Literal
 from uuid import UUID
@@ -102,7 +103,24 @@ class AccountBoundary(BaseHTTPMiddleware):
             return error_response(503, "account_unavailable")
         settings = request.app.state.identity_settings
         path = request.url.path
-        if path not in {"/health", "/auth/login"}:
+        # Machine credentials grant access only to the notification API. Browser
+        # sessions continue through the existing Origin/CSRF checks.
+        machine_route = (
+            (request.method == "POST" and path == "/api/notifications/slack")
+            or (request.method == "GET" and path == "/api/notifications/capabilities")
+            or (request.method == "GET" and re.fullmatch(r"/api/notifications/[0-9a-fA-F-]{36}", path))
+        )
+        machine = False
+        authorization = request.headers.get("authorization", "")
+        if machine_route and authorization:
+            configured = request.app.state.notification_settings.service_token.get_secret_value()
+            scheme, _, token = authorization.partition(" ")
+            if (scheme.lower() != "bearer" or not configured or len(token) > 512
+                    or not secrets.compare_digest(token.encode(), configured.encode())):
+                return error_response(401, "invalid_notification_token")
+            machine = True
+            request.state.notification_service = True
+        if not machine and path not in {"/health", "/auth/login"}:
             try:
                 account = await run_in_threadpool(
                     request.app.state.identity_store.authenticate,
@@ -114,7 +132,7 @@ class AccountBoundary(BaseHTTPMiddleware):
             if account is None:
                 return error_response(401, "authentication_required")
             request.state.account = account
-        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        if not machine and request.method not in {"GET", "HEAD", "OPTIONS"}:
             if request.headers.get("origin") != settings.public_url:
                 return error_response(403, "origin_not_allowed")
             if path != "/auth/login":

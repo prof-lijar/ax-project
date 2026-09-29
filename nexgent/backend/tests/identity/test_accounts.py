@@ -106,9 +106,11 @@ def test_final_schema_matches_models(stack):
         "alembic_version", "users", "groups", "roles", "permissions",
         "user_groups", "user_roles", "group_roles", "role_permissions"}
     chat_tables = {"conversations", "messages", "runs", "attachments", "message_attachments"}
-    assert set(inspect(engine).get_table_names(schema=schema)) == (expected if pg else expected | chat_tables)
+    notification_tables = {"notification_jobs", "notification_rate_gates"}
+    assert set(inspect(engine).get_table_names(schema=schema)) == (expected if pg else expected | chat_tables | notification_tables)
     if pg:
         assert set(inspect(engine).get_table_names(schema="chat")) == chat_tables
+        assert set(inspect(engine).get_table_names(schema="notifications")) == notification_tables
     metadata = Base.metadata
     if pg:
         assert inspect(engine).get_table_names(schema="public") == []
@@ -514,7 +516,7 @@ def test_fresh_auth_schema_ignores_public_user_table(database_url, monkeypatch):
     with engine.connect() as db:
         assert db.exec_driver_sql("SELECT marker FROM public.users").scalar() == "unrelated"
         assert db.exec_driver_sql("SELECT username FROM auth.users").scalar() == "admin"
-        assert db.exec_driver_sql("SELECT version_num FROM auth.alembic_version").scalar() == "20260921_04"
+        assert db.exec_driver_sql("SELECT version_num FROM auth.alembic_version").scalar() == "20260929_05"
         assert db.exec_driver_sql("SELECT to_regclass('public.alembic_version')").scalar() is None
     command.check(Config(str(Path(__file__).resolve().parents[2] / "alembic.ini")))
     engine.dispose()

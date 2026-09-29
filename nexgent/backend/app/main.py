@@ -17,6 +17,9 @@ from app.identity.router import AccountBoundary, access_error, database_error, r
 from app.identity.store import AccessError, IdentityStore
 from app.integrations import router as integration_router
 from app.nextcloud.router import router as nextcloud_router
+from app.notifications.config import load_notification_settings
+from app.notifications.router import router as notification_router
+from app.notifications.store import NotificationStore
 from app.rag_chat.router import router as rag_chat_router
 
 
@@ -31,6 +34,10 @@ async def _lifespan(app: FastAPI):
         if not hasattr(app.state, "chat_store"):
             app.state.chat_store = ChatStore(app.state.identity_store.engine)
         await run_in_threadpool(app.state.chat_store.ready)
+        if app.state.notification_settings.enabled:
+            await run_in_threadpool(NotificationStore(
+                app.state.identity_store.engine, app.state.notification_settings.deployment,
+            ).ready)
         settings = get_chat_settings()
         cleanup_stale_artifacts(settings.artifact_root, settings.stale_after_seconds)
         yield
@@ -47,9 +54,10 @@ async def _chat_error_response(_request: Request, error: ChatRequestError):
                         content={"error": error.detail.model_dump(exclude_none=True)})
 
 
-def create_app(*, identity_settings=None, identity_store=None):
+def create_app(*, identity_settings=None, identity_store=None, notification_settings=None):
     app = FastAPI(title="Nexgent Backend", version="0.1.0", lifespan=_lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.notification_settings = notification_settings or load_notification_settings()
     # Explicit dependency injection is used by tests; normal startup requires
     # the configured external database and signing key, with no unauthenticated mode.
     if identity_settings is not None:
@@ -67,6 +75,7 @@ def create_app(*, identity_settings=None, identity_store=None):
     app.include_router(rag_chat_router, prefix="/api/rag/chat", tags=["rag-chat"])
     app.include_router(nextcloud_router, prefix="/api/nextcloud", tags=["nextcloud"])
     app.include_router(integration_router)
+    app.include_router(notification_router)
     return app
 
 

@@ -261,6 +261,25 @@ services:
     restart: unless-stopped
     stop_grace_period: 5s
 
+  notification-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: nexgent-backend-prod:local
+    env_file:
+      - ./backend/prod.env
+    environment:
+      AX_CHAT_DEPLOYMENT: production
+    entrypoint: ["python", "-m", "app.notifications.worker"]
+    networks: [default, database]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 75s
+
   chat-worker:
     build:
       context: ./backend
