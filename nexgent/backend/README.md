@@ -1,6 +1,27 @@
 # Nexgent Backend
 
-FastAPI backend for AX Chat and Nextcloud integration.
+FastAPI backend for AX Chat, Nextcloud, and durable Slack notifications.
+
+## Slack notifications
+
+`POST /api/notifications/slack` queues a notification and returns `202` with a
+job ID; `GET /api/notifications/{id}` reports delivery status.
+`GET /api/notifications/capabilities` lists configured destination aliases.
+Requests use the existing browser session/CSRF protection or a server-side
+notification service Bearer token. Submission requires `Idempotency-Key`.
+
+Configuration is optional and disabled by default. Add the `NEXGENT_SLACK_*`
+and `NEXGENT_NOTIFICATION_*` values from `example.env` when ready. Run migrations
+and start the delivery worker alongside the API:
+
+```bash
+uv run alembic upgrade head
+uv run python -m app.notifications.worker
+```
+
+The development and production Compose stacks include `notification-worker`.
+See [Slack notification service](../docs/08-implementation/slack-notification-service.md)
+for configuration, browser/agent examples, retry behavior, scaling, and rollout.
 
 ## Get Started
 
@@ -140,3 +161,6 @@ Validation errors use a stable JSON envelope:
   }
 }
 ```
+
+Native header, section, context, divider and table blocks are now supported.
+See [native-block contracts and deployment](../docs/08-implementation/slack-notification-native-blocks.md).

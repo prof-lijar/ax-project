@@ -12,6 +12,10 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Slack Native Blocks](08-implementation/slack-notification-native-blocks.md): validated native Block Kit API, complete weekly-report tables, compatibility and rollout.
+
+- [Slack Notification Service](08-implementation/slack-notification-service.md): reusable queued API, frontend and agent authentication, Slack configuration, independent workers, retries, scaling, and validation.
+
 - [Chat Math Rendering](08-implementation/chat-math-rendering.md): LaTeX formulas in chat, native MathML rendering, streaming and security checks, and validation limits.
 
 - [Smooth Chat Character Streaming](08-implementation/chat-character-streaming.md): per-message character reveal, completion and scrolling behavior, browser regression, and validation limits.
@@ -99,6 +103,8 @@ This documentation set defines the product architecture before implementation be
 - [Administrator-Only Knowledge and Agent Pages](08-implementation/admin-only-knowledge-agent-pages.md): page guards, disabled member controls, gateway permission enforcement, tests, and rollout requirements.
 
 - [Nextcloud Shared Folder Scope](08-implementation/nextcloud-shared-folder-scope.md): Shared-root browsing and file operations, WebDAV path boundaries, validation, and live verification limits.
+
+- [Nextcloud Slack Folder Scope](08-implementation/nextcloud-slack-folder-scope.md): corrected Slack mount, boundary validation, and deployment/authentication verification limits.
 
 ## Stage-One Definition
 

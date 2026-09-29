@@ -1,0 +1,16 @@
+# From nexgent/: docker compose -f compose.prod.yaml
+#   -f agents/compose.weekly-report-monitor.prod.yaml up -d --build
+#   weekly-report-scheduler weekly-report-monitor
+services:
+  weekly-report-monitor:
+    build:
+      context: ./agents
+      dockerfile: apps/weekly_report_scheduler/Dockerfile
+    image: ax-weekly-report-scheduler-prod:local
+    command: ["/app/.venv/bin/python", "-m", "apps.weekly_report_scheduler.monitor"]
+    volumes:
+      - ./agents/.env:/app/.env:ro
+      - weekly-report-scheduler-state:/var/lib/ax/weekly-report-scheduler
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s

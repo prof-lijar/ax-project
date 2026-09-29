@@ -271,6 +271,26 @@ services:
       start_period: 10s
     stop_grace_period: 5s
 
+  notification-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/dev.env
+    environment:
+      AX_CHAT_DEPLOYMENT: development
+    entrypoint: ["python", "-m", "app.notifications.worker"]
+    volumes:
+      - ./backend:/app
+    networks: [default, database]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 75s
+
   chat-worker:
     build:
       context: ./backend

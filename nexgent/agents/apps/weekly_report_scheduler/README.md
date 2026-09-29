@@ -25,12 +25,18 @@ The pipeline serializes invocations with a local file lock, and saves a
 per-week `all-wards-v1` success receipt with batch IDs and report count only
 after migration exits successfully. Legacy receipts do not suppress full-ward
 generation. A rerun
-with a receipt skips submission and migration. Without a receipt, the same
+with a receipt skips submission and migration and resumes any configured pending
+completion notification. Without a receipt, the same
 idempotency key resumes the existing bulk job. If interrupted after target
 commit but before receipt creation, retrying may repeat the upsert and refresh
 `updated_at`; delivery is not exactly-once. There is no automatic restart
 catch-up or migration retry. Failures log a content-free pipeline event and
 exit nonzero; local reports remain saved.
+
+Each attempt also saves its current stage, safe job counts and a heartbeat under
+`runs/`. Normal errors trigger a best-effort Korean failure notification. Deploy
+the independent monitor below for abrupt process death and missed cron runs;
+a stopped scheduler cannot send its own alert.
 
 ## Production rollout and recovery
 
@@ -54,13 +60,24 @@ durable receipts, and SSH known-host volume:
 docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-scheduler
 ```
 
+For failure monitoring, include the overlay and start both processes:
+
+```bash
+docker compose -f ../compose.prod.yaml -f compose.weekly-report-monitor.prod.yaml up -d --build --no-deps weekly-report-scheduler weekly-report-monitor
+```
+
+The monitor shares the scheduler state volume and existing notification
+configuration. It runs independently of scheduler/bulk API readiness. See
+[failure alerts](../../docs/weekly-report-failure-notification.md) for detection
+times, durable retry and outage limitations.
+
 The production Compose file includes the migration mounts directly. The agent-only
 `compose.yaml` includes them under its existing opt-in `scheduled` profile.
 
 To resume an interrupted or failed migration for a specific reporting week:
 
 ```bash
-docker compose -f ../compose.prod.yaml exec weekly-report-scheduler python -m apps.weekly_report_scheduler.pipeline --week-start 2026-09-07
+docker compose -f ../compose.prod.yaml exec weekly-report-scheduler /app/.venv/bin/python -m apps.weekly_report_scheduler.pipeline --week-start 2026-09-07
 ```
 
 This does not regenerate a retained existing job. Inspect target state before
@@ -72,6 +89,17 @@ For the all-ward policy rollout and regeneration of a legacy week, see
 [full-coverage recovery](../../docs/weekly-report-completeness.md).
 
 Configuration:
+
+Optional completion notifications use the backend's durable Slack API after
+production migration. Set `WEEKLY_REPORT_NOTIFICATION_ENABLED=true`,
+`WEEKLY_REPORT_NOTIFICATION_API_URL`, `WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN`
+and `WEEKLY_REPORT_NOTIFICATION_DESTINATION` in the existing mounted agent
+`.env`. Both weeks' production report coverage is grouped by subscriber address
+with missing rates and percentage-point comparisons. Notification failure keeps
+the migration receipt and can be resumed independently. See [notification
+configuration and recovery](../../docs/weekly-report-completion-notification.md).
+
+Bulk submission settings:
 
 - `WEEKLY_REPORT_BULK_API_URL`, default
   `http://weekly-report-bulk-api:8090`;

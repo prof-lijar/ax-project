@@ -194,6 +194,20 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
 
+  weekly-report-monitor:
+    build:
+      context: .
+      dockerfile: apps/weekly_report_scheduler/Dockerfile
+    image: ax-weekly-report-scheduler-dev:local
+    command: ["/app/.venv/bin/python", "-m", "apps.weekly_report_scheduler.monitor"]
+    volumes:
+      - ./.env:/app/.env:ro
+      - weekly-report-scheduler-state:/var/lib/ax/weekly-report-scheduler
+    profiles: [scheduled]
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+
 volumes:
   weekly-report-job-data:
   weekly-report-artifacts:
