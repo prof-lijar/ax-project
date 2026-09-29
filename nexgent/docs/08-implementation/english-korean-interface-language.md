@@ -53,3 +53,13 @@ npm run dev -- --host 127.0.0.1
 ```
 
 At `http://127.0.0.1:5173`, remove `nexgent.language` in browser storage and reload: the sign-in interface should be Korean. Select English, reload, and verify the saved English preference. Sign in and switch on each main route, keeping a draft and selected files, then verify that work is retained. Check sidebar controls at narrow desktop widths and switch in a second tab to verify synchronization. Confirm that report bodies, filenames, source passages, and user messages retain their original content. This changes interface language only; it does not change the language requested from co-workers/models.
+
+## Update: Agents terminology — 2026-09-28
+
+At the user's explicit request, visible English “Co-workers” / “co-worker” wording now uses “Agents” / “agent”; Korean “동료” now uses “에이전트”. This overrides the earlier co-worker terminology preference in the UX/agent guides for these labels. The sidebar and catalog heading are “Agents” / “에이전트”. Catalog search, status/count/empty-state text, accessibility labels, chat agent selection/notices, knowledge helper copy, and Korean agent descriptions use the same terminology. Korean agent counts use “개”.
+
+The `/agents` URL and existing `/co-workers` compatibility redirect remain intact. User-generated content, identifiers, and historical implementation records were not rewritten. Existing catalog and locale assertions were updated; no new behavior or dependencies were added.
+
+Validation from `frontend/`: `npm test` passed (304 tests, 30 files); `npm run build` passed with the existing bundle-size warning; `npm audit --audit-level=moderate` reported zero vulnerabilities; `git diff --check` passed. The standard `cargo check --manifest-path src-tauri/Cargo.toml` still encounters the existing stale Tauri cache path, while `CARGO_TARGET_DIR=/tmp/nexgent-language-cargo cargo check --offline --manifest-path src-tauri/Cargo.toml` passed. The current suite includes the pending Settings profile and password-confirmation changes.
+
+Visual browser verification remains unperformed because no browser runtime is available. Run `npm run dev -- --host 127.0.0.1`, then check `/agents`, `/chat`, and `/rag` in Korean and English, including catalog search/empty states and the sidebar.

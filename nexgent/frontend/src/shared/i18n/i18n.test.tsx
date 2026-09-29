@@ -73,13 +73,13 @@ describe("interface translations", () => {
     expect(render()).toContain("Sign in");
   });
 
-  it("renders Korean co-worker empty states and count grammar", () => {
+  it("renders Korean agent empty states and count grammar", () => {
     useLanguage.setState({ language: "ko" });
     const markup = renderToStaticMarkup(<AgentsPageView agents={[]} search="" />);
-    expect(markup).toContain("함께 일하는 동료");
-    expect(markup).toContain("아직 동료가 없습니다");
-    expect(markup).toContain("동료 0명");
-    expect(markup).toContain('aria-label="동료 찾기"');
+    expect(markup).toContain("에이전트");
+    expect(markup).toContain("아직 에이전트가 없습니다");
+    expect(markup).toContain("에이전트 0개");
+    expect(markup).toContain('aria-label="에이전트 찾기"');
   });
 
   it("keeps user source text intact while translating knowledge result counts", () => {

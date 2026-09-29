@@ -7,6 +7,7 @@ import { AccountError, accountClient, type Account, type AccessCatalog, type Acc
 import styles from "./AccountApp.module.css";
 import { useAccount } from "./accountContext";
 import { AUTH_EXPIRED_EVENT } from "../../shared/api/authenticatedFetch";
+import { validatePasswordConfirmation, clearPasswordConfirmationError } from "./passwordConfirmation";
 
 type Section = "users" | AccessKind;
 type Act = (operation: () => Promise<void>) => Promise<boolean>;
@@ -73,12 +74,24 @@ export function AccountSettings() {
         window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
       })}><LogOut size={16} aria-hidden /> {t("Sign out all devices")}</button></header>
     <div className={styles.content}>
+      <h1>{t("Settings")}</h1>
+      <section className={styles.profile} aria-labelledby="account-profile-title">
+        <h2 id="account-profile-title">{t("Signed-in account")}</h2>
+        <dl className={styles.profileDetails}>
+          <div><dt>{t("Name")}</dt><dd>{account.name || account.username}</dd></div>
+          <div><dt>{t("Username")}</dt><dd>{account.username}</dd></div>
+          <div><dt>{t("Email")}</dt><dd>{account.email || t("Not provided")}</dd></div>
+          <div><dt>{t("Account type")}</dt><dd>{account.is_admin ? t("Administrator") : t("Member")}</dd></div>
+          <div><dt>{t("Roles")}</dt><dd>{account.roles.join(", ") || t("No roles assigned")}</dd></div>
+        </dl>
+      </section>
       <LanguageSelect />
-      <h1>{account.is_admin ? t("Manage access") : t("Your account")}</h1>
-      <p className={styles.intro}>{account.username} · {account.roles.join(", ") || t("No roles assigned")}</p>
       {error && <p role="alert" className={styles.error}>{t(error)}</p>}
       {notice && <p role="status">{t(notice)}</p>}
-      {account.is_admin ? <AccessAdmin account={account} busy={busy} act={act} /> : <section>
+      {account.is_admin ? <>
+        <h2>{t("Manage access")}</h2>
+        <AccessAdmin account={account} busy={busy} act={act} />
+      </> : <section>
         <p>{t("You’re signed in. Contact your administrator for account or access changes.")}</p>
         <p>{t("Permissions:")} {account.permissions.join(", ") || t("None assigned")}</p>
       </section>}
@@ -121,11 +134,21 @@ function AccessAdmin({ account, busy, act }: { account: Account; busy: boolean; 
     {section === "permissions" && <p className={styles.hint}>{t("Permission keys are assigned through roles. Each feature must enforce its supported keys.")}</p>}
     {editing !== undefined && <AccessEditor key={section + (editing ?? "new")} section={section} id={editing} data={data}
       csrf={account.csrf_token} busy={busy} act={act} close={() => setEditing(undefined)} />}
-    {resetUser && <form className={styles.editor} onSubmit={event => {
-      event.preventDefault(); const form = event.currentTarget; const values = new FormData(form); form.reset();
+    {resetUser && <form key={resetUser.id} className={styles.editor}
+      onInput={event => clearPasswordConfirmationError(event.currentTarget)} onSubmit={event => {
+      event.preventDefault();
+      if (busy) return;
+      const form = event.currentTarget;
+      if (!validatePasswordConfirmation(form)) return;
+      const values = new FormData(form); form.reset();
       void act(() => accountClient.resetPassword(resetUser.id, String(values.get("password")), account.csrf_token)).then(ok => { if (ok) setResetUser(null); });
     }}><h3>{t("Reset password for")} {resetUser.username}</h3><p>{t("This signs the account out on all devices.")}</p>
-      <PasswordInput /><div className={styles.actions}><button disabled={busy}>{t("Save password")}</button>
+      <fieldset disabled={busy} className={styles.fields}>
+        <PasswordInput />
+        <label>{t("Confirm password")}<input name="confirm_password" type="password" autoComplete="new-password"
+          minLength={4} maxLength={12} required /></label>
+      </fieldset>
+      <div className={styles.actions}><button disabled={busy}>{t("Save password")}</button>
         <button type="button" disabled={busy} onClick={() => setResetUser(null)}>{t("Cancel")}</button></div></form>}
     <ul className={styles.list}>{data[section].map(item => {
       const user = section === "users" ? item as AccessUser : null;

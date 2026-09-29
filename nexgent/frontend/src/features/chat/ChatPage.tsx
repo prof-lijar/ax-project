@@ -84,7 +84,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
     if (pending) {
       useUiStore.getState().clearPendingAgentRun();
       state.patchChat(state.activeId, {
-        notice: "Choose a co-worker available in Chat to send a message."
+        notice: "Choose an agent available in Chat to send a message."
       });
     }
   }, [selectedAgent]);
@@ -285,7 +285,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
             <Menu size={19} />
           </button>
           <details className={styles.agentSelector} ref={selectorRef}>
-            <summary aria-label={t("Choose a co-worker for Chat")}>
+            <summary aria-label={t("Choose an agent for Chat")}>
               <span>{t(conversation.agent?.name ?? "AX Chat")}</span>
               <ChevronDown size={15} />
             </summary>
@@ -313,10 +313,10 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
                   {conversation.agent?.id === agent.id && <Check size={15} />}
                 </button>
               ))}
-              {catalog.isPending && <p>{t("Loading co-workers…")}</p>}
+              {catalog.isPending && <p>{t("Loading agents…")}</p>}
               {catalog.isError && (
                 <p>
-                  {t("Couldn't load co-workers.")}{" "}
+                  {t("Couldn't load agents.")}{" "}
                   <button onClick={() => void catalog.refetch()}>{t("Retry")}</button>
                 </p>
               )}
@@ -440,7 +440,7 @@ export function ChatPage({ runner, history }: { runner: ChatRunner; history: Sav
                 if (conversation.agent && !conversation.agent.canRunInChat) {
                   patchChat(activeId, {
                     error:
-                      t("This co-worker isn't available in Chat. Choose AX Chat or RAG Agent.")
+                      t("This agent isn't available in Chat. Choose AX Chat or RAG Agent.")
                   });
                   return;
                 }

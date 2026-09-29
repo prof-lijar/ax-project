@@ -5,7 +5,7 @@ import { AccountSettings, SignIn } from "./AccountApp";
 import { AuthGate } from "./AuthGate";
 import { AccountContext } from "./accountContext";
 afterEach(() => vi.unstubAllGlobals());
-const account = (admin: boolean) => ({ id: "user-id", username: "user", name: "User", email: "",
+const account = (admin: boolean) => ({ id: "user-id", username: "user", name: "User", email: admin ? "admin@example.test" : "",
   roles: [], permissions: [], is_admin: admin, csrf_token: "csrf" });
 describe("integrated account UI", () => {
   it("provides local login and administrator-only creation guidance", () => {
@@ -29,6 +29,13 @@ describe("integrated account UI", () => {
     expect(markup.includes("Manage access")).toBe(isAdmin);
     expect(markup.includes("Create account")).toBe(isAdmin);
     expect(markup).toContain("Sign out all devices");
+    expect(markup).toContain('aria-labelledby="account-profile-title"');
+    expect(markup).toContain("<dt>Name</dt><dd>User</dd>");
+    expect(markup).toContain("<dt>Username</dt><dd>user</dd>");
+    expect(markup).toContain(isAdmin ? "admin@example.test" : "Not provided");
+    expect(markup).toContain(isAdmin ? "Administrator" : "Member");
+    expect(markup).toContain("No roles assigned");
+    expect(markup).not.toContain("csrf");
   });
   it.each([true, false])("gates every feature before rendering: signed in %s", signedIn => {
     const client = new QueryClient();

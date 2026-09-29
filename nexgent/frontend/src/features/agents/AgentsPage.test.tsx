@@ -53,14 +53,14 @@ describe("AgentsPage", () => {
 
   it("renders a compact catalog with detail and direct Chat actions", () => {
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={[agent]} search="" />
+      <AgentsPageView canViewDetails agents={[agent]} search="" />
     );
 
     expect(markup).toContain("Preview data");
     expect(markup).toContain('href="/agents/1"');
     expect(markup).toContain("Start chat");
-    expect(markup).toContain("Your co-workers");
-    expect(markup).toContain('aria-label="Find a co-worker"');
+    expect(markup).toContain("Agents");
+    expect(markup).toContain('aria-label="Find an agent"');
     expect(markup).not.toContain("0 runs");
     expect(markup).not.toContain("sample runs");
     expect(markup).not.toContain("No sample runs yet.");
@@ -70,7 +70,7 @@ describe("AgentsPage", () => {
   it("renders only the real shared catalog without fake RAG runtime state", async () => {
     const agents = await agentCatalogClient.listAgents();
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={agents} search="" />
+      <AgentsPageView canViewDetails agents={agents} search="" />
     );
 
     expect(markup).toContain("Weekly Reporter");
@@ -99,7 +99,7 @@ describe("AgentsPage", () => {
     expect(weeklyReporter).toBeDefined();
 
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={[weeklyReporter!]} search="" />
+      <AgentsPageView canViewDetails agents={[weeklyReporter!]} search="" />
     );
 
     expect(markup).toContain("Weekly Reporter");
@@ -113,25 +113,24 @@ describe("AgentsPage", () => {
     expect(scout).toBeDefined();
 
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={[scout!]} search="" />
+      <AgentsPageView canViewDetails agents={[scout!]} search="" />
     );
 
     expect(markup).toContain("AnsimK Scout Agent");
     expect(markup).not.toContain("Start chat");
   });
 
-  it("registers Sumin as a Slack details-only co-worker", async () => {
+  it("registers Sumin as a Slack details-only agent", async () => {
     const sumin = (await agentCatalogClient.listAgents()).find(
       ({ id }) => id === "sumin"
     );
     expect(sumin).toBeDefined();
 
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={[sumin!]} search="" />
+      <AgentsPageView canViewDetails agents={[sumin!]} search="" />
     );
 
-    expect(markup).toContain("Slack files");
-    expect(markup).toContain("Archive Slack files in Nextcloud");
+    expect(markup).toContain("Keep channel uploads organized and find them again from a mention.");
     expect(markup).toContain('href="/agents/sumin"');
     expect(markup).toContain("View details");
     expect(markup).toContain("Works in Slack");
@@ -152,15 +151,15 @@ describe("AgentsPage", () => {
 
   it("shows an operational no-results state", () => {
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={[agent]} search="does-not-match" />
+      <AgentsPageView canViewDetails agents={[agent]} search="does-not-match" />
     );
 
-    expect(markup).toContain("No co-workers found");
+    expect(markup).toContain("No agents found");
     expect(markup).not.toContain("Agent details");
   });
 });
 
-describe("Co-worker catalog states", () => {
+describe("Agent catalog states", () => {
   it("finds user-facing outcomes without requiring technical search terms", async () => {
     const agents = await agentCatalogClient.listAgents();
     expect(filterAgents(agents, "ZIP").map((a) => a.id)).toEqual(["1"]);
@@ -178,28 +177,28 @@ describe("Co-worker catalog states", () => {
 
   it("does not show stale cards alongside an error or loading state", () => {
     const failed = renderToStaticMarkup(
-      <AgentsPageView agents={[agent]} search="" isError onRetry={() => {}} />
+      <AgentsPageView canViewDetails agents={[agent]} search="" isError onRetry={() => {}} />
     );
     expect(failed).toContain("Try again");
     expect(failed).toContain('role="alert"');
     expect(failed).not.toContain('role="listitem"');
     const loading = renderToStaticMarkup(
-      <AgentsPageView agents={[agent]} search="" isLoading />
+      <AgentsPageView canViewDetails agents={[agent]} search="" isLoading />
     );
-    expect(loading).toContain("Loading co-workers");
+    expect(loading).toContain("Loading agents");
     expect(loading).not.toContain('role="listitem"');
   });
 
   it("offers a clear action when search has no matches", () => {
     const markup = renderToStaticMarkup(
-      <AgentsPageView
+      <AgentsPageView canViewDetails
         agents={[agent]}
         search="missing"
         onSearchChange={() => {}}
       />
     );
     expect(markup).toContain("Clear search");
-    expect(markup).toContain("0 of 1 co-workers");
+    expect(markup).toContain("0 of 1 agents");
     expect(markup).not.toContain('role="listitem"');
   });
 
@@ -208,7 +207,7 @@ describe("Co-worker catalog states", () => {
       (a) => a.id === "7"
     )!;
     const markup = renderToStaticMarkup(
-      <AgentsPageView agents={[rag]} search="" />
+      <AgentsPageView canViewDetails agents={[rag]} search="" />
     );
     expect(markup).toContain("Available in Chat");
     expect(markup).toContain("Text only");
