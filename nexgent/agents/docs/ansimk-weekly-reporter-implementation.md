@@ -4,6 +4,18 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Operational failure notification (2026-09-29)
+
+Scheduler attempts now persist stage, safe batch status/counts and heartbeat.
+Generation, migration, configuration, notification and termination errors can
+send Korean native-block failure alerts through the existing backend API.
+A separate process detects scheduler heartbeat loss, excessive runtime and
+missed scheduled starts without querying production report data. Durable
+idempotent failure-event retries do not repeat generation or migration. The
+monitor is included in agent-only scheduled Compose and an agents-owned
+production overlay. See [failure monitoring](weekly-report-failure-notification.md)
+for rollout, recovery and the external-monitor requirement for host outages.
+
 ## Operational completion notification (2026-09-29)
 
 After scheduled production DB migration commits, the scheduler can submit an

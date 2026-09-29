@@ -4,6 +4,27 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Weekly-report failure monitoring (2026-09-29)
+
+The scheduler persists a UUID-scoped attempt record after obtaining its existing
+pipeline lock, with configuration/submission/generation/migration/notification
+stages, safe job status/counts and a 30-second heartbeat. Caught exceptions and
+termination persist failure before best-effort backend notification submission.
+An independent `apps.weekly_report_scheduler.monitor` process observes the same
+durable volume and detects failed attempts, five-minute heartbeat loss,
+27-hour runtime overruns and missed Monday 01:00 KST starts after 15 minutes.
+The monitor has no bulk API/scheduler dependency or production DB access.
+
+Failure events retain immutable Korean native blocks and one idempotency key
+per attempt (or missed week). A file lock coordinates scheduler/monitor outbox
+creation and submission, with bounded backend attempts and persistent backoff.
+Monitoring and alert retry never regenerate reports or rerun migration. The
+first monitor activation establishes the missed-schedule baseline; restarts
+retain it. Backend acceptance still delegates actual Slack delivery to the
+backend worker. Same-host failure monitoring requires the monitor, state volume
+and backend to remain available; whole-host coverage needs an external observer.
+See [deployment, limitations and recovery](weekly-report-failure-notification.md).
+
 ## Weekly-report production completion notification (2026-09-29)
 
 The scheduler now has an opt-in operational notification stage after its

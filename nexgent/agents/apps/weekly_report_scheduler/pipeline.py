@@ -62,11 +62,14 @@ def wait_for_storage(
     clock=time.monotonic,
     wait_seconds=86400,
     poll_seconds=30,
+    progress=None,
 ):
     """Terminal success follows the bulk finalizer's committed storage write."""
     deadline = clock() + wait_seconds
     expected_id = job["job_id"]
     while True:
+        if progress:
+            progress(job)
         if job["status"] == "completed":
             _validate_complete_batch(job)
             return job
@@ -150,7 +153,7 @@ def run_database_command(week_start, *, coverage_output=None):
 
 
 def run_pipeline(
-    settings,
+    settings=None,
     *,
     now=None,
     state_root=None,
@@ -158,6 +161,7 @@ def run_pipeline(
     wait=wait_for_storage,
     migrate=migrate_week,
     notify=None,
+    failure_notify=None,
 ):
     now = datetime.now(UTC) if now is None else now
     week_start = previous_completed_week_start(now).isoformat()
@@ -171,69 +175,102 @@ def run_pipeline(
     # Serialize all weeks because migrate.sh owns one fixed local SSH port.
     with (state_root / "pipeline.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        receipt = state_root / (week_start + ".json")
-        if receipt.exists() and json.loads(receipt.read_text()).get(
-            "selection_policy"
-        ) == SELECTION_POLICY:
-            _write_event(
-                {
-                    "event": "weekly_report_migration_already_completed",
-                    "week_start": week_start,
-                }
-            )
-            if notify:
-                notify(week_start, state_root)
-            return
-        cursor = None
-        seen_cursors = set()
-        job_ids = []
-        report_count = 0
-        deadline = time.monotonic() + 86400
-        while True:
-            if time.monotonic() >= deadline:
-                raise ScheduledSubmissionError("scheduled ward discovery timed out")
-            job = submit(settings, now=now, cursor=cursor, log_event=_write_event)
-            completed = wait(
-                settings, job, wait_seconds=max(0, deadline - time.monotonic())
-            )
-            _validate_complete_batch(completed)
-            if completed["job_id"] in job_ids:
-                raise ScheduledSubmissionError("scheduled batch repeated a job")
-            job_ids.append(completed["job_id"])
-            report_count += completed["completed_count"]
-            cursor = completed["next_cursor"]
-            if cursor is None:
-                break
-            if cursor in seen_cursors:
-                raise ScheduledSubmissionError("scheduled batch repeated a cursor")
-            seen_cursors.add(cursor)
+        from apps.weekly_report_scheduler.status import RunStatus
+
+        status = RunStatus(state_root, week_start)
+        try:
+            status.start()
+            settings = settings or SchedulerSettings.from_env()
+            _run_locked(settings, now, state_root, week_start, status, submit, wait,
+                        migrate, notify)
+            status.update(status="succeeded")
+        except BaseException as exc:
+            status.close()
+            try:
+                status.update(status="failed", reason=(
+                    "terminated" if isinstance(exc, (SystemExit, KeyboardInterrupt)) else "error"
+                ))
+                if failure_notify:
+                    failure_notify(status.record, state_root)
+            except Exception as notification_exc:  # noqa: BLE001 - preserve original failure
+                _write_event({"event": "weekly_report_failure_notification_deferred",
+                              "error_type": type(notification_exc).__name__})
+            raise
+        finally:
+            status.close()
+
+
+def _run_locked(settings, now, state_root, week_start, status, submit, wait, migrate, notify):
+    receipt = state_root / (week_start + ".json")
+    if receipt.exists() and json.loads(receipt.read_text()).get(
+        "selection_policy"
+    ) == SELECTION_POLICY:
         _write_event(
             {
-                "event": "weekly_report_migration_started",
-                "job_id": job["job_id"],
-                "week_start": week_start,
-                "job_status": completed["status"],
-            }
-        )
-        migrate(week_start)
-        temporary = receipt.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps({
-                "job_id": job["job_id"], "job_ids": job_ids,
-                "week_start": week_start, "report_count": report_count,
-                "selection_policy": SELECTION_POLICY,
-            })
-        )
-        temporary.replace(receipt)
-        _write_event(
-            {
-                "event": "weekly_report_migration_completed",
-                "job_id": job["job_id"],
+                "event": "weekly_report_migration_already_completed",
                 "week_start": week_start,
             }
         )
         if notify:
+            status.update(stage="notification")
             notify(week_start, state_root)
+        return
+    cursor = None
+    seen_cursors = set()
+    job_ids = []
+    report_count = 0
+    deadline = time.monotonic() + 86400
+    while True:
+        if time.monotonic() >= deadline:
+            raise ScheduledSubmissionError("scheduled ward discovery timed out")
+        status.update(stage="submission")
+        job = submit(settings, now=now, cursor=cursor, log_event=_write_event)
+        status.update(stage="generation", job=job)
+        progress = {"progress": lambda job: status.update(job=job)} if wait is wait_for_storage else {}
+        completed = wait(
+            settings, job, wait_seconds=max(0, deadline - time.monotonic()), **progress
+        )
+        status.update(job=completed)
+        _validate_complete_batch(completed)
+        if completed["job_id"] in job_ids:
+            raise ScheduledSubmissionError("scheduled batch repeated a job")
+        job_ids.append(completed["job_id"])
+        report_count += completed["completed_count"]
+        cursor = completed["next_cursor"]
+        if cursor is None:
+            break
+        if cursor in seen_cursors:
+            raise ScheduledSubmissionError("scheduled batch repeated a cursor")
+        seen_cursors.add(cursor)
+    _write_event(
+        {
+            "event": "weekly_report_migration_started",
+            "job_id": job["job_id"],
+            "week_start": week_start,
+            "job_status": completed["status"],
+        }
+    )
+    status.update(stage="migration")
+    migrate(week_start)
+    temporary = receipt.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps({
+            "job_id": job["job_id"], "job_ids": job_ids,
+            "week_start": week_start, "report_count": report_count,
+            "selection_policy": SELECTION_POLICY,
+        })
+    )
+    temporary.replace(receipt)
+    _write_event(
+        {
+            "event": "weekly_report_migration_completed",
+            "job_id": job["job_id"],
+            "week_start": week_start,
+        }
+    )
+    if notify:
+        status.update(stage="notification")
+        notify(week_start, state_root)
 
 
 def main() -> int:
@@ -286,14 +323,10 @@ def main() -> int:
                 "notification_status": accepted["status"] if accepted else None,
             })
 
-        run_pipeline(SchedulerSettings.from_env(), now=now, notify=notify)
-    except (
-        ValueError,
-        OSError,
-        ScheduledSubmissionError,
-        subprocess.TimeoutExpired,
-        NotificationError,
-    ) as exc:
+        from apps.weekly_report_scheduler.monitor import notify_failure
+
+        run_pipeline(now=now, notify=notify, failure_notify=notify_failure)
+    except Exception as exc:  # noqa: BLE001 - process boundary logs unexpected failures too
         _write_event(
             {
                 "event": "weekly_report_schedule_pipeline_failed",

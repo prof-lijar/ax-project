@@ -33,6 +33,11 @@ commit but before receipt creation, retrying may repeat the upsert and refresh
 catch-up or migration retry. Failures log a content-free pipeline event and
 exit nonzero; local reports remain saved.
 
+Each attempt also saves its current stage, safe job counts and a heartbeat under
+`runs/`. Normal errors trigger a best-effort Korean failure notification. Deploy
+the independent monitor below for abrupt process death and missed cron runs;
+a stopped scheduler cannot send its own alert.
+
 ## Production rollout and recovery
 
 Configure `playground/weekly-reporter/.env` using its README and ensure the
@@ -54,6 +59,17 @@ durable receipts, and SSH known-host volume:
 ```bash
 docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-scheduler
 ```
+
+For failure monitoring, include the overlay and start both processes:
+
+```bash
+docker compose -f ../compose.prod.yaml -f compose.weekly-report-monitor.prod.yaml up -d --build --no-deps weekly-report-scheduler weekly-report-monitor
+```
+
+The monitor shares the scheduler state volume and existing notification
+configuration. It runs independently of scheduler/bulk API readiness. See
+[failure alerts](../../docs/weekly-report-failure-notification.md) for detection
+times, durable retry and outage limitations.
 
 The production Compose file includes the migration mounts directly. The agent-only
 `compose.yaml` includes them under its existing opt-in `scheduled` profile.

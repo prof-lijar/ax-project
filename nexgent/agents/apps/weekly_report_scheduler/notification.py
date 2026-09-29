@@ -101,6 +101,16 @@ def notify_completed_week(week_start, state_root, *, settings, collect, send=Non
         write_state(pending, event)
     if event["base_url"] != settings.base_url:
         raise NotificationError("notification backend changed during recovery")
+    result = send(event) if send else send_event(settings, event)
+    event["accepted"] = result
+    write_state(pending, event)
+    return result
+
+
+def send_event(settings, event):
+    """Submit an immutable completion or failure event through the backend API."""
+    if event["base_url"] != settings.base_url:
+        raise NotificationError("notification backend changed during recovery")
 
     async def send_to_backend():
         async with httpx.AsyncClient(trust_env=False) as client:
@@ -112,7 +122,4 @@ def notify_completed_week(week_start, state_root, *, settings, collect, send=Non
                 payload=event["payload"],
             )
 
-    result = send(event) if send else asyncio.run(send_to_backend())
-    event["accepted"] = result
-    write_state(pending, event)
-    return result
+    return asyncio.run(send_to_backend())

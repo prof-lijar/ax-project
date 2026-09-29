@@ -144,6 +144,9 @@
 - [Outbound Slack messaging](slack-outbound-messaging.md): approved-channel
   configuration, reusable async delivery, safe failures, Slack app setup, and
   human-approved weekly-report verification.
+- [Weekly-report failure alerts](weekly-report-failure-notification.md): Korean
+  stage/status alerts, independent scheduler heartbeat and missed-start monitor,
+  durable retry, deployment and outage limits.
 - [Workspace README](../README.md#docker-development-server): license-free
   Docker development startup, parent Nexgent Compose integration, and
   trusted-LAN publishing.
