@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Slack Native Blocks](08-implementation/slack-notification-native-blocks.md): validated native Block Kit API, complete weekly-report tables, compatibility and rollout.
+
 - [Slack Notification Service](08-implementation/slack-notification-service.md): reusable queued API, frontend and agent authentication, Slack configuration, independent workers, retries, scaling, and validation.
 
 - [Chat Math Rendering](08-implementation/chat-math-rendering.md): LaTeX formulas in chat, native MathML rendering, streaming and security checks, and validation limits.

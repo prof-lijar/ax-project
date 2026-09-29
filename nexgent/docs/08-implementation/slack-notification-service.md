@@ -257,3 +257,11 @@ migration or container rollout was performed. Reload the backend and worker
 with the updated environment, then run the submission/poll commands above and
 verify `status: "sent"` and a `slack_ts`. API-to-worker delivery remains the
 outstanding live end-to-end check. Credential values are not recorded here.
+
+### Native block support — 2026-09-29
+
+The API now accepts a validated native `blocks` layout and an optional generated
+table/footer layout. This supersedes the earlier statement that callers cannot
+supply Block Kit payloads. Supported block types, size limits, mention handling,
+legacy idempotency compatibility and rollout are documented in
+[Slack native blocks](slack-notification-native-blocks.md).

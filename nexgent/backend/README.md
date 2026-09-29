@@ -161,3 +161,6 @@ Validation errors use a stable JSON envelope:
   }
 }
 ```
+
+Native header, section, context, divider and table blocks are now supported.
+See [native-block contracts and deployment](../docs/08-implementation/slack-notification-native-blocks.md).

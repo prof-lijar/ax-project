@@ -4,6 +4,24 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Operational completion notification (2026-09-29)
+
+After scheduled production DB migration commits, the scheduler can submit an
+aggregate Slack notification through the backend notification API. The workflow
+owns address-based regional coverage and deterministic formatting for the two
+completed weeks. A separate read-only target query, frozen payload, per-week
+idempotency key and acceptance receipt let operators retry notification without
+regeneration or database migration. See [counting policy, configuration and
+recovery](weekly-report-completion-notification.md). Graph execution and existing
+per-report Slack approval are unchanged.
+
+The operational message uses the backend's native Block Kit contract with a
+Korean header, summary, date context, table, dividers and complete calculation
+notes. Each region has two rows with subscriber counts, successes, missing
+counts, missing rates and percentage-point changes. All information is retained;
+the actual backend schema and renderer are tested. Pending immutable requests
+keep their original layout during recovery.
+
 ## Source reliability and diagnostics (2026-09-28)
 
 Source pages retry transient failures up to three attempts within the same job,

@@ -4,6 +4,38 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Weekly-report production completion notification (2026-09-29)
+
+The scheduler now has an opt-in operational notification stage after its
+production migration receipt. Workflow-owned deterministic SQL reads both
+reporting weeks in one read-only target snapshot through the existing SSH
+migration script's new coverage-only mode. The current production subscriber
+roster supplies identical denominators for both weeks. Address municipality
+tokens partition 울진, 영덕, 광명 and 기타; 전체 is their sum. Report existence
+defines success, absence defines failure, and the message includes missing
+rates for both weeks and the change in missing counts, with the current-roster limitation.
+
+A shared `ax-integrations.notifications` adapter submits aggregate-only
+messages to the backend's durable Slack API using a service token, configured
+destination alias and stable per-week idempotency key. Persisted snapshots and
+immutable request/acceptance receipts separate retries from generation and DB
+migration. Backend acceptance is not proof of Slack delivery; its worker owns
+delivery retries/status. Failed generation/migration never announces completion.
+No new database tables, process boundaries or automatic cron catch-up are added.
+
+The backend now validates native header, section, context, divider and table
+blocks. The producer uses seven blocks with a full seven-column regional table
+and retains every count, rate, percentage-point change and calculation note.
+Plain-text table cells and escaped/verbatim Markdown preserve mention safety.
+Complete accessible fallbacks and unchanged legacy idempotency fingerprints
+are required. See [backend native-block contract](../../docs/08-implementation/slack-notification-native-blocks.md).
+
+The scheduler image installs frozen workspace dependencies and cron uses the
+virtualenv Python. Notification settings come from the existing agent `.env`
+mount. This operational aggregate notification is authorized by the feature
+request; existing report-content delivery approval remains intact. See
+[configuration, acceptance criteria and recovery](weekly-report-completion-notification.md).
+
 ## Weekly-report source retries and diagnostics (2026-09-28)
 
 The workflow-owned read-only source client now retries transient timeouts,

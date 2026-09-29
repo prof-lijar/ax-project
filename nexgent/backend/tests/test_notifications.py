@@ -138,7 +138,7 @@ def test_browser_and_agent_auth_are_scoped(api, settings):
     {"text": "Hi", "destination": "missing"}, {"text": "Hi", "url": "javascript:alert(1)"},
     {"text": "Hi", "url": "https://user:secret@example.org"},
     {"text": "Hi", "fields": [{"name": "x", "value": "y"}] * 11},
-    {"text": "Hi", "thread_ts": "invalid"}, {"text": "Hi", "blocks": []},
+    {"text": "Hi", "thread_ts": "invalid"}, {"text": "Hi", "blocks": [{"type": "unsupported"}]},
 ])
 def test_invalid_payload_never_enqueues(api, store, payload):
     response = api.post("/api/notifications/slack", json=payload,

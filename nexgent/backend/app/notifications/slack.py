@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import math
 import re
 
@@ -17,7 +18,11 @@ class DeliveryError(Exception):
 def render_message(job):
     """Plain-text blocks prevent accidental mentions from arbitrary agent output."""
     data = job["payload"]
+    if data.get("blocks"):
+        return render_native_message(job)
     severity = data["severity"].upper()
+    if data.get("locale") == "ko":
+        severity = {"info": "안내", "success": "완료", "warning": "확인 필요", "error": "오류"}[data["severity"]]
     title = data.get("title")
     blocks = []
     if title:
@@ -30,6 +35,23 @@ def render_message(job):
         blocks.append({"type": "section", "fields": [
             {"type": "plain_text", "text": f"{field['name']}\n{field['value']}"} for field in data["fields"]
         ]})
+    table = data.get("table")
+    if table:
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "table",
+            "column_settings": [
+                {"align": alignment, "is_wrapped": True}
+                for alignment in (table.get("align") or ["left"] * len(table["columns"]))
+            ],
+            "rows": [
+                [{"type": "raw_text", "text": cell} for cell in row]
+                for row in [table["columns"], *table["rows"]]
+            ],
+        })
+    if data.get("footer"):
+        blocks.append({"type": "divider"})
+        blocks.append({"type": "section", "text": {"type": "plain_text", "text": data["footer"]}})
     if data.get("url"):
         blocks.append({"type": "actions", "elements": [{
             "type": "button", "action_id": "notification_open_link",
@@ -38,11 +60,50 @@ def render_message(job):
     # Slack still requires a text fallback for notifications and screen readers.
     fallback = f"[{severity}] " + (f"{title}\n" if title else "") + message
     fallback += "".join(f"\n{field['name']}: {field['value']}" for field in data.get("fields", []))
+    if table:
+        fallback += "\n" + " | ".join(table["columns"])
+        fallback += "".join("\n" + " | ".join(row) for row in table["rows"])
+    if data.get("footer"):
+        fallback += "\n" + data["footer"]
     if data.get("url"):
         fallback += "\n" + data["url"]
     fallback = fallback.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return {
         "channel": job["channel_id"], "text": fallback[:39000], "blocks": blocks,
+        "mrkdwn": False, "parse": "none", "unfurl_links": False, "unfurl_media": False,
+        "client_msg_id": job["id"],
+        **({"thread_ts": data["thread_ts"]} if data.get("thread_ts") else {}),
+    }
+
+
+def render_native_message(job):
+    """Render validated Block Kit without adding or discarding caller sections."""
+    data = job["payload"]
+    def prepare(value):
+        if isinstance(value, list):
+            return [prepare(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {key: prepare(item) for key, item in value.items()
+                  if item is not None and item != []}
+        if result.get("type") == "mrkdwn":
+            result["text"] = (result["text"].replace("&", "&amp;")
+                              .replace("<", "&lt;").replace(">", "&gt;"))
+            result["verbatim"] = True
+        return result
+
+    lines = [data["text"]]
+    for block in data["blocks"]:
+        if block.get("text"):
+            lines.append(block["text"]["text"])
+        for text in block.get("fields", []) + block.get("elements", []):
+            lines.append(text["text"])
+        for row in block.get("rows", []):
+            lines.append(" | ".join(cell["text"] for cell in row))
+    fallback = "\n".join(lines).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return {
+        "channel": job["channel_id"], "text": fallback,
+        "blocks": prepare(deepcopy(data["blocks"])),
         "mrkdwn": False, "parse": "none", "unfurl_links": False, "unfurl_media": False,
         "client_msg_id": job["id"],
         **({"thread_ts": data["thread_ts"]} if data.get("thread_ts") else {}),

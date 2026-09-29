@@ -4,11 +4,15 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 from datetime import date
 from pathlib import Path
 
 import asyncpg
 from dotenv import dotenv_values, load_dotenv
+
+# Also runnable as a standalone script from the operator playground.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 TABLE = "ansimk.resources_ward_weekly_report"
 COLUMNS = (
@@ -94,6 +98,9 @@ async def migrate(source, target, *, write=False, week_start=None):
 
 async def run(args):
     load_dotenv(Path(__file__).with_name(".env"), override=False)
+    if getattr(args, "coverage_output", None):
+        await export_coverage(args)
+        return
     source_dsn = source_database_dsn()
     target_user = required("TARGET_DB_USER")
     target_password = required("TARGET_DB_PASSWORD")
@@ -136,6 +143,30 @@ async def run(args):
         await source.close()
 
 
+async def export_coverage(args):
+    """Read committed production state using the already-open SSH tunnel."""
+    from workflows.weekly_report.completion_notification import collect_coverage
+
+    if args.write or args.week_start is None or args.week_start.weekday() != 0:
+        raise ValueError("coverage export requires a Monday and cannot use --write")
+    target = await asyncpg.connect(
+        host=os.environ.get("TARGET_DB_HOST", "127.0.0.1"),
+        port=int(os.environ.get("TARGET_DB_PORT", "15432")),
+        database=os.environ.get("TARGET_DB_NAME", "ansimk"),
+        user=required("TARGET_DB_USER"), password=required("TARGET_DB_PASSWORD"),
+        ssl=os.environ.get("TARGET_DB_SSL", "require"), timeout=15,
+        server_settings={"statement_timeout": "60000", "lock_timeout": "5000"},
+    )
+    try:
+        snapshot = await collect_coverage(target, args.week_start)
+    finally:
+        await target.close()
+    output = Path(args.coverage_output)
+    temporary = output.with_suffix(".tmp")
+    temporary.write_text(json.dumps(snapshot, ensure_ascii=False))
+    temporary.replace(output)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -143,6 +174,10 @@ def main():
     )
     parser.add_argument(
         "--week-start", type=date.fromisoformat, help="Limit to YYYY-MM-DD"
+    )
+    parser.add_argument(
+        "--coverage-output", type=Path,
+        help="Read-only production coverage JSON for this and the preceding week; no migration",
     )
     args = parser.parse_args()
     try:

@@ -19,6 +19,10 @@ class NotificationService:
             raise AccessError(503, "notifications_disabled")
         request_key = TypeAdapter(RequestKey).validate_python(request_key)
         data = payload.model_dump(mode="json")
+        # Preserve fingerprints for requests accepted before table support.
+        for field in ("table", "footer", "locale", "blocks"):
+            if data[field] is None or (field == "blocks" and not data[field]):
+                del data[field]
         fingerprint = sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         # Resolve idempotency before channel lookup so configuration changes never
         # reroute a previously accepted request.

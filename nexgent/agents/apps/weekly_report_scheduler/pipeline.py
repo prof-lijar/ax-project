@@ -1,4 +1,4 @@
-"""Submit, wait for local persistence, then migrate the scheduled report week."""
+"""Submit, persist, migrate, and notify about the scheduled production week."""
 
 from __future__ import annotations
 
@@ -112,6 +112,14 @@ def wait_for_storage(
 
 
 def migrate_week(week_start: str) -> None:
+    run_database_command(week_start)
+
+
+def collect_production_coverage(week_start, output):
+    run_database_command(week_start, coverage_output=output)
+
+
+def run_database_command(week_start, *, coverage_output=None):
     # Validate before handing the date to the fixed script; never invoke a shell string.
     selected = date.fromisoformat(week_start)
     if selected.weekday() != 0:
@@ -119,10 +127,12 @@ def migrate_week(week_start: str) -> None:
     command = [
         "bash",
         str(ROOT / "playground/weekly-reporter/migrate.sh"),
-        "--write",
-        "--week-start",
-        selected.isoformat(),
     ]
+    if coverage_output is None:
+        command.append("--write")
+    command.extend(["--week-start", selected.isoformat()])
+    if coverage_output is not None:
+        command.extend(["--coverage-output", str(coverage_output)])
     environment = {**os.environ, "PYTHON_BIN": sys.executable}
     with subprocess.Popen(command, env=environment, start_new_session=True) as process:
         try:
@@ -147,6 +157,7 @@ def run_pipeline(
     submit=submit_scheduled_job,
     wait=wait_for_storage,
     migrate=migrate_week,
+    notify=None,
 ):
     now = datetime.now(UTC) if now is None else now
     week_start = previous_completed_week_start(now).isoformat()
@@ -170,6 +181,8 @@ def run_pipeline(
                     "week_start": week_start,
                 }
             )
+            if notify:
+                notify(week_start, state_root)
             return
         cursor = None
         seen_cursors = set()
@@ -219,9 +232,17 @@ def run_pipeline(
                 "week_start": week_start,
             }
         )
+        if notify:
+            notify(week_start, state_root)
 
 
 def main() -> int:
+    from apps.weekly_report_scheduler.notification import (
+        NotificationError,
+        NotificationSettings,
+        notify_completed_week,
+    )
+
     def stop(_signum, _frame):
         raise SystemExit(143)
 
@@ -243,12 +264,35 @@ def main() -> int:
             tzinfo=ZoneInfo(SCHEDULE_TIMEZONE),
         )
     try:
-        run_pipeline(SchedulerSettings.from_env(), now=now)
+        def notify(week_start, state_root):
+            try:
+                settings = NotificationSettings.from_env()
+                accepted = notify_completed_week(
+                    week_start, state_root, settings=settings,
+                    collect=collect_production_coverage,
+                )
+            except (ValueError, OSError, NotificationError, ScheduledSubmissionError,
+                    subprocess.TimeoutExpired) as exc:
+                _write_event({
+                    "event": "weekly_report_notification_failed",
+                    "week_start": week_start, "error_type": type(exc).__name__,
+                })
+                raise
+            _write_event({
+                "event": "weekly_report_notification_accepted" if settings.enabled
+                else "weekly_report_notification_disabled",
+                "week_start": week_start,
+                "notification_id": accepted["id"] if accepted else None,
+                "notification_status": accepted["status"] if accepted else None,
+            })
+
+        run_pipeline(SchedulerSettings.from_env(), now=now, notify=notify)
     except (
         ValueError,
         OSError,
         ScheduledSubmissionError,
         subprocess.TimeoutExpired,
+        NotificationError,
     ) as exc:
         _write_event(
             {
