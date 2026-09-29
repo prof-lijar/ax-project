@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 import shutil
 import posixpath
 import subprocess
@@ -17,6 +17,7 @@ from app.nextcloud.schemas import FileItem
 
 
 DAV_NS = "{DAV:}"
+SHARED_ROOT = "Shared"
 NC_OCS_META_STATUS_OK = {"ok", "100", "200"}
 OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx", "xlsx"}
 PDF_PREVIEW_EXTENSIONS = {"pdf"}
@@ -238,7 +239,7 @@ class NextcloudClient:
                 auth=self._auth,
                 verify=self._verify,
                 timeout=self._timeout,
-                follow_redirects=True,
+                follow_redirects=False,
             ) as client:
                 return await client.request(method, url, **kwargs)
         except httpx.RequestError as exc:
@@ -252,7 +253,7 @@ class NextcloudClient:
 
     def _absolute_webdav_url(self, path: str, trailing_slash: bool = False) -> str:
         clean_path = self._clean_path(path)
-        encoded_parts = [quote(part, safe="") for part in clean_path.split("/") if part]
+        encoded_parts = [SHARED_ROOT, *[quote(part, safe="") for part in clean_path.split("/") if part]]
         encoded_path = "/".join(encoded_parts)
         url = f"{self._base_url}/remote.php/dav/files/{quote(self._user, safe='')}/"
         if encoded_path:
@@ -289,6 +290,11 @@ class NextcloudClient:
         for response in root.findall(f"{DAV_NS}response"):
             href = response.findtext(f"{DAV_NS}href") or ""
             item_path = self._path_from_href(href)
+            if item_path is None:
+                continue
+            # Depth-1 listings must contain only children of the requested folder.
+            if str(PurePosixPath(item_path).parent) != (root_clean or "."):
+                continue
             if item_path.rstrip("/") == root_clean.rstrip("/"):
                 continue
 
@@ -316,12 +322,21 @@ class NextcloudClient:
             )
         return items
 
-    def _path_from_href(self, href: str) -> str:
-        marker = f"/remote.php/dav/files/{quote(self._user, safe='')}/"
-        if marker not in href:
-            return unquote(href.strip("/"))
-        path = href.split(marker, 1)[1]
-        return unquote(httpx.URL(f"http://local/{path}").path.lstrip("/"))
+    def _path_from_href(self, href: str) -> str | None:
+        parsed = urlsplit(href)
+        base = urlsplit(self._base_url)
+        if parsed.netloc and (parsed.scheme, parsed.netloc) != (base.scheme, base.netloc):
+            return None
+        path = unquote(parsed.path)
+        root = f"{unquote(base.path).rstrip('/')}/remote.php/dav/files/{self._user}/{SHARED_ROOT}"
+        if path.rstrip("/") == root:
+            return ""
+        if not path.startswith(root + "/"):
+            return None
+        try:
+            return self._clean_path(path[len(root) + 1:])
+        except NextcloudError:
+            return None
 
     @staticmethod
     def _extension(filename: str) -> str:

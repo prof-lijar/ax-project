@@ -176,7 +176,7 @@ export function RagPage() {
         <div>
           <h1>{t("Knowledge")}</h1>
           <p>
-            {t("Add source material your co-workers can use, then explore what they can find.")}
+            {t("Add source material your agents can use, then explore what they can find.")}
           </p>
         </div>
         <div
@@ -207,7 +207,7 @@ export function RagPage() {
       </header>
 
       <div className={styles.commandBar}>
-        <span>{t("Shared knowledge for your co-workers")}</span>
+        <span>{t("Shared knowledge for your agents")}</span>
         <div className={styles.headerActions}>
           <button
             type="button"
@@ -1015,7 +1015,7 @@ export function SearchPanel({
           </strong>
           <p>
             {emptyKnowledge
-              ? t("Add a document or paste notes to give your co-workers a shared source of knowledge.")
+              ? t("Add a document or paste notes to give your agents a shared source of knowledge.")
               : t("Enter a question or topic to explore passages from your sources.")}
           </p>
           {emptyKnowledge && onAddSource && (

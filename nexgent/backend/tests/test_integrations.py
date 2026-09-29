@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -5,7 +7,7 @@ from fastapi.testclient import TestClient
 from conftest import authenticated_headers, feature_app
 
 
-def setup_proxy(monkeypatch, *, status=200, response_headers=None, body=b'event: result\ndata: ok\n\n'):
+def setup_proxy(monkeypatch, *, admin=True, status=200, response_headers=None, body=b'event: result\ndata: ok\n\n'):
     received = []
     async def upstream(request):
         received.append((request, await request.aread()))
@@ -14,7 +16,13 @@ def setup_proxy(monkeypatch, *, status=200, response_headers=None, body=b'event:
     original = httpx.AsyncClient
     monkeypatch.setattr('app.integrations.httpx.AsyncClient',
                         lambda **kwargs: original(transport=httpx.MockTransport(upstream), **kwargs))
-    return TestClient(feature_app()), received
+    app = feature_app()
+    authenticate = app.state.identity_store.authenticate
+    def authenticate_with_role(token):
+        account = authenticate(token)
+        return replace(account, permissions=("access.manage",)) if account and admin else account
+    app.state.identity_store.authenticate = authenticate_with_role
+    return TestClient(app), received
 
 
 @pytest.mark.parametrize('prefix,upstream,path', [
@@ -82,3 +90,31 @@ def test_login_cookies_are_isolated_between_frontend_origins():
 def test_upstream_unauthorized_is_not_reported_as_an_expired_nexgent_login(monkeypatch):
     client, _ = setup_proxy(monkeypatch, status=401)
     assert client.get('/agent-server/ok', headers=authenticated_headers()).status_code == 502
+
+
+@pytest.mark.parametrize("prefix", ["rag-api", "scout-api", "scout-scheduler-api", "weekly-report-bulk-api"])
+@pytest.mark.parametrize("method", ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
+@pytest.mark.parametrize("admin", [False, True])
+def test_restricted_gateways_require_administrator_for_every_operation(monkeypatch, prefix, method, admin):
+    client, received = setup_proxy(monkeypatch, admin=admin)
+    response = client.request(method, f"/{prefix}/v1/resource", headers=authenticated_headers())
+    assert response.status_code == (200 if admin else 403)
+    assert len(received) == (1 if admin else 0)
+    if not admin and method != "HEAD":
+        assert response.json() == {"error": {"code": "permission_denied"}}
+
+
+def test_member_keeps_agent_server_chat_access(monkeypatch):
+    client, received = setup_proxy(monkeypatch, admin=False)
+    response = client.post("/agent-server/threads", headers=authenticated_headers(), json={})
+    assert response.status_code == 200
+    assert len(received) == 1
+
+
+def test_revoked_admin_access_is_checked_again_on_the_next_request(monkeypatch):
+    client, received = setup_proxy(monkeypatch)
+    assert client.get("/rag-api/rag/v1/data", headers=authenticated_headers()).status_code == 200
+    from conftest import FeatureIdentityStore
+    client.app.state.identity_store = FeatureIdentityStore()
+    assert client.get("/rag-api/rag/v1/data", headers=authenticated_headers()).status_code == 403
+    assert len(received) == 1

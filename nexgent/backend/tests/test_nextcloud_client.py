@@ -23,7 +23,7 @@ def test_webdav_url_encodes_path_segments(settings):
 
     assert url == (
         "https://nextor-ai-02.tail8e1643.ts.net"
-        "/remote.php/dav/files/lijar/AX%20Project/agent%20output.md"
+        "/remote.php/dav/files/lijar/Shared/AX%20Project/agent%20output.md"
     )
 
 
@@ -73,11 +73,11 @@ def test_parse_propfind_skips_requested_root(settings):
     xml = b"""<?xml version="1.0"?>
     <d:multistatus xmlns:d="DAV:">
       <d:response>
-        <d:href>/remote.php/dav/files/lijar/AX%20Project/</d:href>
+        <d:href>/remote.php/dav/files/lijar/Shared/AX%20Project/</d:href>
         <d:propstat><d:prop><d:resourcetype><d:collection /></d:resourcetype></d:prop></d:propstat>
       </d:response>
       <d:response>
-        <d:href>/remote.php/dav/files/lijar/AX%20Project/agent-test.md</d:href>
+        <d:href>/remote.php/dav/files/lijar/Shared/AX%20Project/agent-test.md</d:href>
         <d:propstat>
           <d:prop>
             <d:getcontentlength>19</d:getcontentlength>
@@ -249,3 +249,61 @@ def test_preview_xlsx_conversion_returns_pdf(settings, monkeypatch):
     assert preview.content_type == "application/pdf"
     assert preview.filename == "budget.pdf"
     assert preview.content == b"%PDF-sheet"
+
+
+def test_empty_path_is_shared_root(settings):
+    client = NextcloudClient(settings)
+    assert client._absolute_webdav_url("", trailing_slash=True).endswith("/files/lijar/Shared/")
+    assert client._absolute_webdav_url("/Reports/notes.md").endswith("/files/lijar/Shared/Reports/notes.md")
+
+
+@pytest.mark.parametrize("href", [
+    "/remote.php/dav/files/lijar/Private/secret.txt",
+    "/remote.php/dav/files/lijar/Shared-other/secret.txt",
+    "/remote.php/dav/files/other-user/Shared/secret.txt",
+    "/remote.php/dav/files/lijar/Shared/../Private/secret.txt",
+    "/remote.php/dav/files/lijar/Shared/%2e%2e/Private/secret.txt",
+    "https://other.example/remote.php/dav/files/lijar/Shared/secret.txt",
+])
+def test_listing_hrefs_outside_shared_are_ignored(settings, href):
+    assert NextcloudClient(settings)._path_from_href(href) is None
+
+
+def test_shared_hrefs_round_trip_unicode_spaces_and_percent_characters(settings):
+    client = NextcloudClient(settings)
+    path = "보고서/100% # 완료.md"
+    assert client._path_from_href(client._absolute_webdav_url(path)) == path
+
+
+def test_shared_listing_excludes_siblings_and_nested_files(settings):
+    client = NextcloudClient(settings)
+    hrefs = ["Shared/", "Shared/report.md", "Private/secret.md", "Shared/nested/deep.md"]
+    xml = ('<d:multistatus xmlns:d="DAV:">' + ''.join(
+        f'<d:response><d:href>/remote.php/dav/files/lijar/{href}</d:href>'
+        '<d:propstat><d:prop><d:resourcetype /></d:prop></d:propstat></d:response>'
+        for href in hrefs) + '</d:multistatus>').encode()
+    items = client._parse_propfind(xml, root_path="")
+    assert [item.path for item in items] == ["report.md"]
+
+
+def test_file_operations_and_copy_destination_stay_in_shared(settings, monkeypatch):
+    client = NextcloudClient(settings)
+    requests = []
+    async def request(method, url, **kwargs):
+        requests.append((method, url, kwargs))
+        return httpx.Response(201 if method in {"COPY", "MOVE", "MKCOL", "PUT"} else 200,
+                              content=b"contents", headers={"content-type": "text/plain"})
+    monkeypatch.setattr(client, "_request", request)
+    async def operations():
+        await client.download_file("report.txt")
+        await client.read_text_file("report.txt")
+        await client.preview_file("report.txt")
+        await client.copy("report.txt", "archive/copy.txt", False)
+        await client.move("report.txt", "archive/moved.txt", False)
+        await client.delete("old.txt")
+    asyncio.run(operations())
+    for _, url, kwargs in requests:
+        assert "/files/lijar/Shared/" in url
+        destination = kwargs.get("headers", {}).get("Destination")
+        if destination:
+            assert "/files/lijar/Shared/archive/" in destination

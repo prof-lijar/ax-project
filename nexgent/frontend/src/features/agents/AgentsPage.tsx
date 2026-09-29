@@ -1,3 +1,4 @@
+import { useAccount } from "../accounts/accountContext";
 import { t, useLanguage } from "../../shared/i18n";
 import {
   ArrowRight,
@@ -34,6 +35,7 @@ import styles from "./AgentsPage.module.css";
 
 interface AgentsPageViewProps {
   agents: AgentDefinition[];
+  canViewDetails?: boolean;
   search: string;
   onSearchChange?: (value: string) => void;
   onRetry?: () => void;
@@ -44,10 +46,12 @@ interface AgentsPageViewProps {
 
 export function AgentsPage() {
   useLanguage((state) => state.language);
+  const account = useAccount();
   const catalogQuery = useAgentCatalog();
   const [search, setSearch] = useState("");
   return (
     <AgentsPageView
+      canViewDetails={account.is_admin}
       agents={catalogQuery.data ?? []}
       search={search}
       onSearchChange={setSearch}
@@ -122,6 +126,7 @@ export function getAgentPresentation(agent: AgentDefinition) {
 
 export function AgentsPageView({
   agents,
+  canViewDetails = false,
   search,
   onSearchChange,
   onRetry,
@@ -141,6 +146,10 @@ export function AgentsPageView({
     event: MouseEvent<HTMLAnchorElement>,
     agent: AgentDefinition
   ) {
+    if (!canViewDetails) {
+      event.preventDefault();
+      return;
+    }
     if (
       event.button !== 0 ||
       event.metaKey ||
@@ -164,28 +173,28 @@ export function AgentsPageView({
     <section className={styles.page} aria-labelledby="coworkers-title">
       <header className={styles.pageHeader}>
         <div>
-          <h1 id="coworkers-title">{t("Your co-workers")}</h1>
+          <h1 id="coworkers-title">{t("Agents")}</h1>
           <p>
-            {t("Choose a co-worker. Open their workspace or start a conversation.")}
+            {t("Choose an agent. Open their workspace or start a conversation.")}
           </p>
         </div>
       </header>
       <div className={styles.catalogTools}>
         <p className={styles.resultCount} role="status">
           {isLoading
-            ? t("Loading co-workers…")
+            ? t("Loading agents…")
             : isError
-              ? t("Couldn't load co-workers")
+              ? t("Couldn't load agents")
               : search.trim()
-                ? t("{0} of {1} co-workers", { 0: visibleAgents.length, 1: agents.length })
-                : t("{0} co-worker{1}", { 0: agents.length, 1: agents.length === 1 ? "" : "s" })}
+                ? t("{0} of {1} agents", { 0: visibleAgents.length, 1: agents.length })
+                : t("{0} agent{1}", { 0: agents.length, 1: agents.length === 1 ? "" : "s" })}
         </p>
         <div className={styles.searchBox}>
           <Search size={17} aria-hidden />
           <input
             ref={searchRef}
-            aria-label={t("Find a co-worker")}
-            placeholder={t("Find a co-worker…")}
+            aria-label={t("Find an agent")}
+            placeholder={t("Find an agent…")}
             type="search"
             value={search}
             readOnly={!onSearchChange}
@@ -206,11 +215,14 @@ export function AgentsPageView({
           )}
         </div>
       </div>
+      {!canViewDetails && <p className={styles.accessNotice} role="status">
+        {t("Agent details and workspaces are available to administrators only.")}
+      </p>}
       {hasPreviewAgents && (
         <p className={styles.previewNotice}>
           <CircleAlert size={16} aria-hidden />
           <span>
-            {t("Preview data is marked on each sample co-worker. Their status and activity are examples.")}
+            {t("Preview data is marked on each sample agent. Their status and activity are examples.")}
           </span>
         </p>
       )}
@@ -229,7 +241,7 @@ export function AgentsPageView({
       {isError && (
         <div className={styles.catalogMessage} role="alert">
           <CircleAlert size={25} aria-hidden />
-          <h2>{t("Co-workers are unavailable")}</h2>
+          <h2>{t("Agents are unavailable")}</h2>
           <p>{t("Try loading your team again.")}</p>
           {onRetry && (
             <button
@@ -250,11 +262,11 @@ export function AgentsPageView({
           ) : (
             <UsersRound size={26} aria-hidden />
           )}
-          <h2>{agents.length ? t("No co-workers found") : t("No co-workers yet")}</h2>
+          <h2>{agents.length ? t("No agents found") : t("No agents yet")}</h2>
           <p>
             {agents.length
               ? t("Try a name, a role, or the work you need help with.")
-              : t("Connected co-workers will appear here.")}
+              : t("Connected agents will appear here.")}
           </p>
           {search && onSearchChange && (
             <button
@@ -267,7 +279,7 @@ export function AgentsPageView({
         </div>
       )}
       {showCatalog && visibleAgents.length > 0 && (
-        <div className={styles.agentList} role="list" aria-label={t("Co-workers")}>
+        <div className={styles.agentList} role="list" aria-label={t("Agents")}>
           {visibleAgents.map((agent) => {
             const presentation = getAgentPresentation(agent);
             const Icon = presentation.icon;
@@ -296,8 +308,18 @@ export function AgentsPageView({
                     className={`${styles.agentAvatar} ${styles[presentation.tone]}`}
                     aria-hidden
                   >
-                    <Icon size={23} strokeWidth={1.7} />
+                    <Icon size={18} strokeWidth={1.7} />
                   </span>
+                  <div className={styles.cardIdentity}>
+                    <h2 id={`coworker-${agent.id}`}>
+                      {canViewDetails ? <a
+                        href={href}
+                        onClick={(event) => openAgentDetail(event, agent)}
+                      >
+                        {t(agent.name)}
+                      </a> : <span>{t(agent.name)}</span>}
+                    </h2>
+                  </div>
                   <div className={styles.cardStatus}>
                     {agent.observationMode === "preview" && (
                       <Badge tone="amber">{t("Preview data")}</Badge>
@@ -307,37 +329,9 @@ export function AgentsPageView({
                     )}
                   </div>
                 </div>
-                <div className={styles.cardIdentity}>
-                  <p className={styles.specialty}>{presentation.specialty}</p>
-                  <h2 id={`coworker-${agent.id}`}>
-                    <a
-                      href={href}
-                      onClick={(event) => openAgentDetail(event, agent)}
-                    >
-                      {t(agent.name)}
-                    </a>
-                  </h2>
-                </div>
-                <p className={styles.cardDescription}>
+                <p className={styles.cardDescription} title={presentation.description}>
                   {presentation.description}
                 </p>
-                <ul
-                  className={styles.capabilities}
-                  aria-label={t("{0} can help with", { 0: agent.name })}
-                >
-                  {presentation.capabilities.map((capability) => (
-                    <li key={capability}>
-                      <CheckMark />
-                      <span>{capability}</span>
-                    </li>
-                  ))}
-                </ul>
-                {agent.currentWork && agent.observationMode !== null && (
-                  <p className={styles.currentWork}>
-                    <span>{t("Current work")}</span>
-                    {t(agent.currentWork)}
-                  </p>
-                )}
                 <footer className={styles.cardFooter}>
                   <div className={styles.cardContext}>
                     <span>{contextLabel}</span>
@@ -355,15 +349,19 @@ export function AgentsPageView({
                           <MessageSquare size={16} aria-hidden />
                           {t("Start chat")}
                         </button>
-                        <a
+                        {canViewDetails ? <a
                           className={styles.detailsLink}
                           href={href}
                           onClick={(event) => openAgentDetail(event, agent)}
                           aria-label={t("View {0} details", { 0: agent.name })}
                         >
                           {t("Details")} <ArrowRight size={14} aria-hidden />
-                        </a>
+                        </a> : <button type="button" className={styles.detailsLink} disabled title={t("Admin only")}>{t("Details")}</button>}
                       </>
+                    ) : !canViewDetails ? (
+                      <button type="button" className={styles.primaryAction} disabled title={t("Admin only")}>
+                        {agent.id === SUMIN_AGENT_ID ? t("View details") : t("Open workspace")}
+                      </button>
                     ) : (
                       <a
                         className={styles.primaryAction}
@@ -390,11 +388,6 @@ export function AgentsPageView({
       )}
     </section>
   );
-}
-
-function CheckMark() {
-  useLanguage((state) => state.language);
-  return <span className={styles.capabilityDot} aria-hidden />;
 }
 
 export function prepareAgentChatSelection(agent: AgentDefinition) {

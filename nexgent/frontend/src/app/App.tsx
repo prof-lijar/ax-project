@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from "react";
+import { AdminOnly } from "../features/accounts/AdminOnly";
 
 import { AgentDetailPage } from "../features/agents/AgentDetailPage";
 import { AgentsPage } from "../features/agents/AgentsPage";
@@ -55,15 +56,15 @@ export function App() {
       {activeSection === "nextcloud" && <NextcloudPage />}
       {activeSection === "agents" &&
         (agentsRoute.kind === "weekly-reporter" ? (
-          <WeeklyReporterPage />
+          <AdminOnly><WeeklyReporterPage /></AdminOnly>
         ) : agentsRoute.kind === "scout" ? (
-          <ScoutWorkbenchPage />
+          <AdminOnly><ScoutWorkbenchPage /></AdminOnly>
         ) : agentsRoute.kind === "detail" ? (
-          <AgentDetailPage agentId={agentsRoute.agentId} />
+          <AdminOnly><AgentDetailPage agentId={agentsRoute.agentId} /></AdminOnly>
         ) : (
           <AgentsPage />
         ))}
-      {activeSection === "rag" && <RagPage />}
+      {activeSection === "rag" && <AdminOnly><RagPage /></AdminOnly>}
       {activeSection === "settings" && <SettingsPage />}
     </AppShell>
   );

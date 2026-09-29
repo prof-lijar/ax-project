@@ -68,6 +68,7 @@
 }
 
 .navItem,
+.navItemDisabled,
 .navItemActive {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
@@ -86,11 +87,14 @@
 }
 
 .navItem span,
+.navItemDisabled span,
 .navItemActive span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.navItemDisabled { cursor: not-allowed; color: var(--color-text-soft); opacity: 0.7; }
+.navItemDisabled small { display: block; margin-top: 3px; font-size: 11px; }
 
 .navItemActive {
   color: #ffffff;
@@ -162,6 +166,7 @@
 
   .brand span:last-child,
   .navItem span,
+  .navItemDisabled span,
   .navItemActive span,
   .railStatus span {
     display: none;
@@ -173,6 +178,7 @@
   }
 
   .navItem,
+  .navItemDisabled,
   .navItemActive {
     grid-template-columns: 1fr;
     justify-items: center;

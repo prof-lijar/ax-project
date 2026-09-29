@@ -90,6 +90,16 @@ This documentation set defines the product architecture before implementation be
 
 - [English and Korean Interface Language](08-implementation/english-korean-interface-language.md): Korean-default interface localization, English switching, local-storage preference, translation boundaries, validation, and browser verification.
 
+- [Settings Account Profile](08-implementation/settings-account-profile.md): signed-in identity, account type and roles, localized profile labels, responsive layout, and validation.
+
+- [Password Reset Confirmation](08-implementation/password-reset-confirmation.md): matching password confirmation, localized validation, credential handling, and verification.
+
+- [Compact Agent Catalog Cards](08-implementation/compact-agent-cards.md): simplified card content, compact responsive layout, retained actions, and validation.
+
+- [Administrator-Only Knowledge and Agent Pages](08-implementation/admin-only-knowledge-agent-pages.md): page guards, disabled member controls, gateway permission enforcement, tests, and rollout requirements.
+
+- [Nextcloud Shared Folder Scope](08-implementation/nextcloud-shared-folder-scope.md): Shared-root browsing and file operations, WebDAV path boundaries, validation, and live verification limits.
+
 ## Stage-One Definition
 
 Stage one does not need full autonomous execution. It needs the durable product foundation:

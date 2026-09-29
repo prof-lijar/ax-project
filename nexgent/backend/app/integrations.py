@@ -2,9 +2,11 @@
 import os
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
+
+from app.identity.router import require_admin
 
 router = APIRouter()
 # Fixed server-side destinations: the browser cannot choose a host.
@@ -15,6 +17,8 @@ UPSTREAMS = {
     "scout-scheduler-api": ("AX_SCOUT_SCHEDULER_URL", "http://host.docker.internal:8092"),
     "rag-api": ("AX_RAG_SERVER_URL", "http://host.docker.internal:8765"),
 }
+# These gateways back the administrator-only Knowledge and agent workspaces.
+ADMIN_ONLY_UPSTREAMS = {"rag-api", "scout-api", "scout-scheduler-api", "weekly-report-bulk-api"}
 REQUEST_HEADERS = {"accept", "content-type", "range", "if-range"}
 RESPONSE_HEADERS = {"content-type", "content-disposition", "content-encoding",
                     "content-length", "content-range", "accept-ranges"}
@@ -65,4 +69,5 @@ def endpoint(variable, default):
 
 for prefix, (variable, default) in UPSTREAMS.items():
     router.add_api_route(f"/{prefix}/{{path:path}}", endpoint(variable, default),
-                         methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
+                         methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+                         dependencies=[Depends(require_admin)] if prefix in ADMIN_ONLY_UPSTREAMS else [])

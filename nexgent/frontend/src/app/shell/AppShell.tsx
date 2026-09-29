@@ -1,6 +1,8 @@
 import { LanguageSelect } from "../../shared/i18n/LanguageSelect";
 import { t, useLanguage } from "../../shared/i18n";
 import type { PropsWithChildren } from "react";
+import { LockKeyhole } from "lucide-react";
+import { useAccount } from "../../features/accounts/accountContext";
 
 import { navItems } from "../routes";
 import { useSystemHealth } from "../../shared/api/queries";
@@ -10,6 +12,7 @@ import styles from "./AppShell.module.css";
 
 export function AppShell({ children }: PropsWithChildren) {
   useLanguage((state) => state.language);
+  const account = useAccount();
   const activeSection = useUiStore((state) => state.activeSection);
   const healthQuery = useSystemHealth();
   const chatIsActive = activeSection === "chat";
@@ -32,6 +35,16 @@ export function AppShell({ children }: PropsWithChildren) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const selected = activeSection === item.id;
+
+            if (item.id === "rag" && !account.is_admin) {
+              return (
+                <button key={item.id} type="button" disabled className={styles.navItemDisabled}
+                  aria-label={`${t(item.label)} — ${t("Admin only")}`} title={t("Only administrators can access this page.")}>
+                  <Icon size={18} strokeWidth={2.1} aria-hidden />
+                  <span>{t(item.label)} <LockKeyhole size={12} aria-hidden /><small>{t("Admin only")}</small></span>
+                </button>
+              );
+            }
 
             return (
               <a
