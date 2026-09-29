@@ -100,6 +100,8 @@ This documentation set defines the product architecture before implementation be
 
 - [Nextcloud Shared Folder Scope](08-implementation/nextcloud-shared-folder-scope.md): Shared-root browsing and file operations, WebDAV path boundaries, validation, and live verification limits.
 
+- [Nextcloud Slack Folder Scope](08-implementation/nextcloud-slack-folder-scope.md): corrected Slack mount, boundary validation, and deployment/authentication verification limits.
+
 ## Stage-One Definition
 
 Stage one does not need full autonomous execution. It needs the durable product foundation:

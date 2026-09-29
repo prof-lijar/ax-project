@@ -17,7 +17,7 @@ from app.nextcloud.schemas import FileItem
 
 
 DAV_NS = "{DAV:}"
-SHARED_ROOT = "Shared"
+FILES_ROOT = "Slack"
 NC_OCS_META_STATUS_OK = {"ok", "100", "200"}
 OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx", "xlsx"}
 PDF_PREVIEW_EXTENSIONS = {"pdf"}
@@ -253,7 +253,7 @@ class NextcloudClient:
 
     def _absolute_webdav_url(self, path: str, trailing_slash: bool = False) -> str:
         clean_path = self._clean_path(path)
-        encoded_parts = [SHARED_ROOT, *[quote(part, safe="") for part in clean_path.split("/") if part]]
+        encoded_parts = [FILES_ROOT, *[quote(part, safe="") for part in clean_path.split("/") if part]]
         encoded_path = "/".join(encoded_parts)
         url = f"{self._base_url}/remote.php/dav/files/{quote(self._user, safe='')}/"
         if encoded_path:
@@ -328,7 +328,7 @@ class NextcloudClient:
         if parsed.netloc and (parsed.scheme, parsed.netloc) != (base.scheme, base.netloc):
             return None
         path = unquote(parsed.path)
-        root = f"{unquote(base.path).rstrip('/')}/remote.php/dav/files/{self._user}/{SHARED_ROOT}"
+        root = f"{unquote(base.path).rstrip('/')}/remote.php/dav/files/{self._user}/{FILES_ROOT}"
         if path.rstrip("/") == root:
             return ""
         if not path.startswith(root + "/"):

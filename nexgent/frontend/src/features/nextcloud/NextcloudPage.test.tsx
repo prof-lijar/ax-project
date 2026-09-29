@@ -38,7 +38,7 @@ describe("NextcloudPage", () => {
     );
 
     expect(markup).toContain("NextCloud");
-    expect(markup).toContain("Shared");
+    expect(markup).toContain("Slack");
     expect(markup).not.toContain("All files");
     expect(markup).not.toContain("Back one folder");
     expect(markup).toContain('aria-label="List view"');

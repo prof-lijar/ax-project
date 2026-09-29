@@ -23,7 +23,7 @@ def test_webdav_url_encodes_path_segments(settings):
 
     assert url == (
         "https://nextor-ai-02.tail8e1643.ts.net"
-        "/remote.php/dav/files/lijar/Shared/AX%20Project/agent%20output.md"
+        "/remote.php/dav/files/lijar/Slack/AX%20Project/agent%20output.md"
     )
 
 
@@ -73,11 +73,11 @@ def test_parse_propfind_skips_requested_root(settings):
     xml = b"""<?xml version="1.0"?>
     <d:multistatus xmlns:d="DAV:">
       <d:response>
-        <d:href>/remote.php/dav/files/lijar/Shared/AX%20Project/</d:href>
+        <d:href>/remote.php/dav/files/lijar/Slack/AX%20Project/</d:href>
         <d:propstat><d:prop><d:resourcetype><d:collection /></d:resourcetype></d:prop></d:propstat>
       </d:response>
       <d:response>
-        <d:href>/remote.php/dav/files/lijar/Shared/AX%20Project/agent-test.md</d:href>
+        <d:href>/remote.php/dav/files/lijar/Slack/AX%20Project/agent-test.md</d:href>
         <d:propstat>
           <d:prop>
             <d:getcontentlength>19</d:getcontentlength>
@@ -251,33 +251,34 @@ def test_preview_xlsx_conversion_returns_pdf(settings, monkeypatch):
     assert preview.content == b"%PDF-sheet"
 
 
-def test_empty_path_is_shared_root(settings):
+def test_empty_path_is_slack_root(settings):
     client = NextcloudClient(settings)
-    assert client._absolute_webdav_url("", trailing_slash=True).endswith("/files/lijar/Shared/")
-    assert client._absolute_webdav_url("/Reports/notes.md").endswith("/files/lijar/Shared/Reports/notes.md")
+    assert client._absolute_webdav_url("", trailing_slash=True).endswith("/files/lijar/Slack/")
+    assert client._absolute_webdav_url("/Reports/notes.md").endswith("/files/lijar/Slack/Reports/notes.md")
 
 
 @pytest.mark.parametrize("href", [
     "/remote.php/dav/files/lijar/Private/secret.txt",
-    "/remote.php/dav/files/lijar/Shared-other/secret.txt",
-    "/remote.php/dav/files/other-user/Shared/secret.txt",
-    "/remote.php/dav/files/lijar/Shared/../Private/secret.txt",
-    "/remote.php/dav/files/lijar/Shared/%2e%2e/Private/secret.txt",
-    "https://other.example/remote.php/dav/files/lijar/Shared/secret.txt",
+    "/remote.php/dav/files/lijar/Shared/secret.txt",
+    "/remote.php/dav/files/lijar/Slack-other/secret.txt",
+    "/remote.php/dav/files/other-user/Slack/secret.txt",
+    "/remote.php/dav/files/lijar/Slack/../Private/secret.txt",
+    "/remote.php/dav/files/lijar/Slack/%2e%2e/Private/secret.txt",
+    "https://other.example/remote.php/dav/files/lijar/Slack/secret.txt",
 ])
-def test_listing_hrefs_outside_shared_are_ignored(settings, href):
+def test_listing_hrefs_outside_slack_are_ignored(settings, href):
     assert NextcloudClient(settings)._path_from_href(href) is None
 
 
-def test_shared_hrefs_round_trip_unicode_spaces_and_percent_characters(settings):
+def test_slack_hrefs_round_trip_unicode_spaces_and_percent_characters(settings):
     client = NextcloudClient(settings)
     path = "보고서/100% # 완료.md"
     assert client._path_from_href(client._absolute_webdav_url(path)) == path
 
 
-def test_shared_listing_excludes_siblings_and_nested_files(settings):
+def test_slack_listing_excludes_siblings_and_nested_files(settings):
     client = NextcloudClient(settings)
-    hrefs = ["Shared/", "Shared/report.md", "Private/secret.md", "Shared/nested/deep.md"]
+    hrefs = ["Slack/", "Slack/report.md", "Private/secret.md", "Slack/nested/deep.md"]
     xml = ('<d:multistatus xmlns:d="DAV:">' + ''.join(
         f'<d:response><d:href>/remote.php/dav/files/lijar/{href}</d:href>'
         '<d:propstat><d:prop><d:resourcetype /></d:prop></d:propstat></d:response>'
@@ -286,7 +287,7 @@ def test_shared_listing_excludes_siblings_and_nested_files(settings):
     assert [item.path for item in items] == ["report.md"]
 
 
-def test_file_operations_and_copy_destination_stay_in_shared(settings, monkeypatch):
+def test_file_operations_and_copy_destination_stay_in_slack(settings, monkeypatch):
     client = NextcloudClient(settings)
     requests = []
     async def request(method, url, **kwargs):
@@ -303,7 +304,7 @@ def test_file_operations_and_copy_destination_stay_in_shared(settings, monkeypat
         await client.delete("old.txt")
     asyncio.run(operations())
     for _, url, kwargs in requests:
-        assert "/files/lijar/Shared/" in url
+        assert "/files/lijar/Slack/" in url
         destination = kwargs.get("headers", {}).get("Destination")
         if destination:
-            assert "/files/lijar/Shared/archive/" in destination
+            assert "/files/lijar/Slack/archive/" in destination
