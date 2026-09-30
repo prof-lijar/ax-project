@@ -17,7 +17,7 @@ from app.nextcloud.schemas import FileItem
 
 
 DAV_NS = "{DAV:}"
-FILES_ROOT = "Slack"
+FILES_ROOT = "Nexgent"
 NC_OCS_META_STATUS_OK = {"ok", "100", "200"}
 OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx", "xlsx"}
 PDF_PREVIEW_EXTENSIONS = {"pdf"}

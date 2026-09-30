@@ -212,7 +212,7 @@ export function NextcloudToolbar({
                 <ArrowLeft size={16} aria-hidden />
               </button>
               <button type="button" onClick={() => onOpenFolder("")}>
-                Slack
+                Nexgent
               </button>
               {pathParts(currentPath).map((part) => (
                 <span key={part.path}>
@@ -227,7 +227,7 @@ export function NextcloudToolbar({
               ))}
             </>
           ) : (
-            <span className={styles.currentLocation}>Slack</span>
+            <span className={styles.currentLocation}>Nexgent</span>
           )}
         </nav>
 

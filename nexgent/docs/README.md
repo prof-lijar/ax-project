@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Nextcloud Nexgent Folder Scope](08-implementation/nextcloud-nexgent-folder-scope.md): Nexgent-only browsing and file operations, breadcrumb update, validation, and live authentication limits.
+
 - [Slack Native Blocks](08-implementation/slack-notification-native-blocks.md): validated native Block Kit API, complete weekly-report tables, compatibility and rollout.
 
 - [Slack Notification Service](08-implementation/slack-notification-service.md): reusable queued API, frontend and agent authentication, Slack configuration, independent workers, retries, scaling, and validation.
