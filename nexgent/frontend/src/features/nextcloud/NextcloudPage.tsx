@@ -212,7 +212,7 @@ export function NextcloudToolbar({
                 <ArrowLeft size={16} aria-hidden />
               </button>
               <button type="button" onClick={() => onOpenFolder("")}>
-                Slack
+                Nexgent
               </button>
               {pathParts(currentPath).map((part) => (
                 <span key={part.path}>
@@ -227,7 +227,7 @@ export function NextcloudToolbar({
               ))}
             </>
           ) : (
-            <span className={styles.currentLocation}>Slack</span>
+            <span className={styles.currentLocation}>Nexgent</span>
           )}
         </nav>
 
@@ -520,7 +520,7 @@ function FileViewer({
   );
 }
 
-function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
+export function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
   useLanguage((state) => state.language);
   if (preview.viewerKind === "pdf" && preview.objectUrl) {
     return (

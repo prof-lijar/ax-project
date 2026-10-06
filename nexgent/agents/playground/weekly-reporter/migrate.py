@@ -14,6 +14,7 @@ from dotenv import dotenv_values, load_dotenv
 # Also runnable as a standalone script from the operator playground.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+SOURCE_TABLE = "archive.resources_ward_weekly_report"
 TABLE = "ansimk.resources_ward_weekly_report"
 COLUMNS = (
     "ward_id, week_start_date, week_end_date, weekly_score, weekly_status, "
@@ -61,7 +62,7 @@ async def migrate(source, target, *, write=False, week_start=None):
         if write:
             # Serialize target writes while planning and verifying this copy.
             await target.execute(f"LOCK TABLE {TABLE} IN SHARE ROW EXCLUSIVE MODE")
-        query = f"SELECT {COLUMNS} FROM {TABLE}"
+        query = f"SELECT {COLUMNS} FROM {SOURCE_TABLE}"
         args = []
         if week_start is not None:
             query += " WHERE week_start_date = $1"

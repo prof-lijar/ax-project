@@ -4,6 +4,67 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Shared backend notification settings (2026-10-06)
+
+The production scheduler and monitor read notification settings only from a
+read-only mount of `backend/prod.env`. Backend `NEXGENT_SLACK_ENABLED=true`
+enables both reporter completion and failure notifications without a second
+toggle. Both reuse `NEXGENT_NOTIFICATION_SERVICE_TOKEN`, the backend `default`
+channel alias, and the fixed internal backend API. Legacy scheduler-specific
+notification keys are removed from the example and ignored by the loader.
+Production Compose and the monitor overlay mount the same file used by backend
+and notification worker; development stacks do not receive these credentials.
+
+Rebuild/recreate the scheduler and monitor using the command in
+[notification deployment](weekly-report-failure-notification.md#deployment-and-recovery).
+No generation, migration, notification replay, or live Slack test was triggered.
+Docker deployment remains pending because daemon access requires interactive
+sudo authentication. Existing report-schema changes and production delivery
+gates are preserved.
+
+Validation: 767 tests passed and 25 opt-in tests skipped; changed-file Ruff,
+production/monitor and agent-only Compose rendering, LangGraph validation,
+skill validation, and whitespace checks passed. Loading the actual backend
+`prod.env` with the new parser confirmed notifications enabled, the default
+destination, and a configured service token without printing secrets. Tests
+verify both completion/failure submission, disabled behavior, ignored legacy
+overrides, redacted invalid settings, and shared production mount wiring.
+
+## Local archive schema (2026-10-06)
+
+Source reads and local report writes now use `archive` in the existing source
+database. Local output is `archive.resources_ward_weekly_report`, with a ward
+foreign key to `archive.resources_ward`. Migration `004` creates the local
+table if absent and preserves existing archive tables. This supersedes the
+local storage schema recorded in the September 3/4 sections below.
+
+The scheduler migration reads archive reports and writes the existing
+production `ansimk.resources_ward_weekly_report`. Production ward checks,
+coverage SQL, and schema are unchanged. Recovery follows the local archive
+writer. The optional operational outbox stays in local
+`ansimk.weekly_report_sync_outbox`, preserving pending deliveries and atomic
+enqueue within the same database. No historical reports are moved.
+
+Live read-only checks confirmed source column compatibility, all five queries,
+one bounded source-service request, and the archive report foreign/unique keys.
+Archive contained 6,646 wards, including 34 absent from the local `ansimk`
+roster. Rebuild source API, worker, and scheduler together between jobs; use
+fresh job keys and do not resume pre-switch partial jobs. Existing scheduler
+receipts still prevent automatic regeneration. No live writes or deployment
+were performed during implementation.
+
+Validation: 745 tests passed and 25 opt-in tests skipped in the full suite;
+16 storage/sync integration tests passed against a disposable PostgreSQL
+instance. Changed-file Ruff, LangGraph validation, Compose rendering, skill
+validation, and whitespace checks passed. Whole-tree Ruff retains two unrelated
+import/export-order findings in integrations and the RAG graph test.
+
+Deployment prerequisite: the configured source role can SELECT but cannot
+INSERT or UPDATE archive reports. Supply a writer through
+`WEEKLY_REPORT_STORAGE_DATABASE_DSN` with archive schema/table permissions.
+The live upsert was prepared successfully but never executed. Database grants
+and production data were not changed.
+
 ## Operational failure notification (2026-09-29)
 
 Scheduler attempts now persist stage, safe batch status/counts and heartbeat.
@@ -296,7 +357,7 @@ PostgreSQL raw tables
 
 ## Source and calculations
 
-Candidate wards are every row in `ansimk.resources_ward`, ordered by ID,
+Candidate wards are every row in `archive.resources_ward`, ordered by ID,
 irrespective of weekly records. Explicit ward IDs are also supported; missing
 IDs are returned in `skipped` by the source and cause the bulk run to fail.
 Automatic selection returns an opaque cursor bound to the week and timezone.
@@ -321,9 +382,11 @@ raw data. It implements the verified server semantics:
 Management notes, evaluation notes, dispatch descriptions, admin history, and
 raw rows never enter the model prompt.
 
-Every source relation is schema-qualified with `ansimk`. Matching relations in
-`ansimk_clone` and `archive` are not approved inputs and cannot be selected by
-the connection's PostgreSQL `search_path`.
+Every source relation is schema-qualified with `archive`, as requested on
+2026-10-06. Matching relations in `ansimk_clone` and `ansimk` cannot be selected
+by the connection's PostgreSQL `search_path`. The source database remains
+selected by `ANSIMK_DATABASE_DSN`. Production delivery and coverage remain
+bound to production schema `ansimk`.
 
 ## Private API
 

@@ -1,7 +1,10 @@
 # Weekly reporter database migration
 
 This tool copies saved weekly reports from the local database to the live
-production database. Both databases use `ansimk.resources_ward_weekly_report`.
+production database. It reads local `archive.resources_ward_weekly_report`
+and writes production `ansimk.resources_ward_weekly_report`. The production
+schema and ward checks remain unchanged. Existing local `ansimk` reports are
+not copied implicitly; this command reads the archive report table only.
 It transfers existing report data; it does not generate reports or call an LLM.
 
 The Monday scheduler also invokes this script automatically with `--write`

@@ -49,7 +49,7 @@ def chat(tmp_path, monkeypatch):
     engine = create_engine(url)
     if engine.dialect.name == "sqlite":
         engine = engine.execution_options(
-            schema_translate_map={"auth": None, "chat": None}
+            schema_translate_map={"auth": None, "chat": None, "file_storage": None}
         )
 
         @event.listens_for(engine, "connect")

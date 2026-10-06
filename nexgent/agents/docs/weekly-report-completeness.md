@@ -15,7 +15,7 @@ See [production delivery](weekly-report-production-sync.md).
 
 ## Acceptance and implementation
 
-- Discover every ward from `ansimk.resources_ward` in ID order. No daily-summary,
+- Discover every ward from `archive.resources_ward` in ID order. No daily-summary,
   evaluation, or dispatch record is required for membership. Missing data uses
   the existing unavailable displays without inventing measurements.
 - Retain one report per ward when the model fails, times out, or returns invalid
@@ -78,16 +78,17 @@ The second command regenerates all wards under the new policy, upserts that
 week's reports locally, and runs the existing whole-week production migration.
 It replaces existing reports for that week, also removing their old generation
 notices. Deploy the compatibility Agent Server separately if it is still used.
-Verify full coverage in each report database:
+Verify local archive coverage (use `ansimk` instead of `archive` when checking
+the production database):
 
 ```sql
 SELECT count(*) AS ward_count,
        count(*) FILTER (WHERE EXISTS (
-           SELECT 1 FROM ansimk.resources_ward_weekly_report r
+           SELECT 1 FROM archive.resources_ward_weekly_report r
            WHERE r.ward_id = w.id
              AND r.week_start_date = DATE '2026-09-14'
        )) AS report_count
-FROM ansimk.resources_ward w;
+FROM archive.resources_ward w;
 ```
 
 Do not treat `--skip-not-null` recovery or a legacy `partial` job as satisfying

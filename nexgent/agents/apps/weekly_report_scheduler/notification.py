@@ -6,13 +6,15 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import httpx
 from ax_integrations.notifications import NotificationError, submit_notification
 from dotenv import dotenv_values
+from pydantic import TypeAdapter
 
 from workflows.weekly_report.completion_notification import notification_payload
+
+PRODUCTION_NOTIFICATION_ENV = Path("/run/ax-notifications/prod.env")
 
 
 @dataclass(frozen=True)
@@ -24,38 +26,27 @@ class NotificationSettings:
 
     @classmethod
     def from_env(cls):
-        values = {
-            **dotenv_values(Path(__file__).resolve().parents[2] / ".env"),
-            **os.environ,
-        }
-        enabled = (values.get("WEEKLY_REPORT_NOTIFICATION_ENABLED") or "false").lower()
-        if enabled not in {"true", "false"}:
-            raise ValueError("invalid notification enabled setting")
-        if enabled == "false":
-            return cls()
-        base = values.get("WEEKLY_REPORT_NOTIFICATION_API_URL") or "http://backend:8000"
-        token = values.get("WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN") or ""
-        destination = values.get("WEEKLY_REPORT_NOTIFICATION_DESTINATION") or "default"
+        # The production backend file is the sole notification configuration.
+        # Cron need not preserve process environment; legacy agent keys are ignored.
+        values = dotenv_values(PRODUCTION_NOTIFICATION_ENV, interpolate=False)
         try:
-            parsed = urlsplit(base)
-            valid = (
-                parsed.scheme in {"http", "https"}
-                and parsed.hostname
-                and not parsed.username
-                and not parsed.password
-                and not parsed.query
-                and not parsed.fragment
+            enabled = TypeAdapter(bool).validate_python(
+                values.get("NEXGENT_SLACK_ENABLED") or "false"
             )
-            _ = parsed.port
-        except ValueError:
-            valid = False
-        if (
-            not valid
-            or not re.fullmatch(r"[\x21-\x7e]{32,512}", token)
-            or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", destination)
-        ):
-            raise ValueError("invalid notification configuration")
-        return cls(True, base.rstrip("/"), token, destination)
+            if not enabled:
+                return cls()
+            token = values.get("NEXGENT_NOTIFICATION_SERVICE_TOKEN") or ""
+            channels = json.loads(values.get("NEXGENT_SLACK_CHANNELS") or "{}")
+            if (
+                not re.fullmatch(r"[\x21-\x7e]{32,512}", token)
+                or not isinstance(channels, dict)
+                or not isinstance(channels.get("default"), str)
+                or not re.fullmatch(r"[CG][A-Z0-9]{8,31}", channels["default"])
+            ):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValueError("invalid production notification configuration") from None
+        return cls(enabled=True, token=token)
 
 
 def write_state(path, data):

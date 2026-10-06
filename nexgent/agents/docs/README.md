@@ -5,6 +5,7 @@
   native-block API.
 
 - [Weekly-report completion notification](weekly-report-completion-notification.md):
+  shared `backend/prod.env` enable flag and credentials for scheduler/monitor,
   production DB completion, address-based regional coverage for two weeks,
   native Korean Slack tables preserving both weeks, all counts and missing-rate
   comparisons, backend Slack API configuration and independent retry.
@@ -65,7 +66,8 @@
   server registry, environment-backed headers, discovery CLI, namespaced tool
   adapters, risk classification, and the configured read-only database MCP.
 - [Ansimk weekly reporter](../workflows/weekly_report/README.md): private
-  FastAPI/raw-PostgreSQL metadata source, deterministic current/prior metrics,
+  FastAPI/raw-PostgreSQL metadata source using the explicit `archive` schema
+  (production delivery retains `ansimk`), deterministic current/prior metrics,
   deterministic section evaluations, and an LLM-authored one-paragraph
   `한주 총평` generated from report-facing weekly data rather than a
   Python-selected sentence formula. Validation enforces body-only warm 해요체,
@@ -109,7 +111,7 @@
   Device detail uses covered days for normal reception and the remaining days
   in the selected week for power checks; the old power-pattern count is not
   rendered. The bulk finalizer populates the
-  `ansimk.resources_ward_weekly_report` JSONB store through a dedicated,
+  `archive.resources_ward_weekly_report` local JSONB store through a dedicated,
   atomic upsert writer without changing the read-only source boundary. The bulk
   worker admits four jobs per process by default while enforcing one shared
   report/model concurrency ceiling across them. Compose can reuse the currently

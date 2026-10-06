@@ -23,7 +23,7 @@ def test_webdav_url_encodes_path_segments(settings):
 
     assert url == (
         "https://nextor-ai-02.tail8e1643.ts.net"
-        "/remote.php/dav/files/lijar/Slack/AX%20Project/agent%20output.md"
+        "/remote.php/dav/files/lijar/Nexgent/AX%20Project/agent%20output.md"
     )
 
 
@@ -32,6 +32,102 @@ def test_clean_path_rejects_traversal(settings):
 
     with pytest.raises(NextcloudError):
         client._clean_path("../Readme.md")
+
+
+def test_private_storage_is_under_nexgent_and_hidden_from_shared_browser(settings):
+    from app.file_storage.service import PRIVATE_ROOT
+
+    private = NextcloudClient(settings, files_root=PRIVATE_ROOT)
+    shared = NextcloudClient(settings)
+    url = private._absolute_webdav_url("test/owner/blob")
+    assert url.endswith("/Nexgent/FileStorage/test/owner/blob")
+    assert shared._path_from_href(url) is None
+    assert private._path_from_href(shared._absolute_webdav_url("example.txt")) is None
+    with pytest.raises(NextcloudError):
+        shared._absolute_webdav_url("FileStorage/test/owner/blob")
+
+
+@pytest.mark.parametrize("path", ["FileStorage", "/FileStorage/", "./FileStorage/test/blob", "filestorage/test/blob"])
+def test_shared_operations_cannot_address_private_storage(settings, monkeypatch, path):
+    client = NextcloudClient(settings)
+
+    async def unexpected_request(*args, **kwargs):
+        pytest.fail("Private storage must be blocked before any upstream request")
+
+    monkeypatch.setattr(client, "_request", unexpected_request)
+
+    async def operations():
+        for call in (
+            lambda: client.list_files(path),
+            lambda: client.download_file(path),
+            lambda: client.read_text_file(path),
+            lambda: client.preview_file(path),
+            lambda: client.upload_file(path, b"overwrite"),
+            lambda: client.write_text_file(path, "overwrite", "text/plain"),
+            lambda: client.create_folder(path),
+            lambda: client.delete(path),
+            lambda: client.copy(path, "export", True),
+            lambda: client.copy("normal", path, True),
+            lambda: client.move(path, "export", True),
+            lambda: client.move("normal", path, True),
+        ):
+            with pytest.raises(NextcloudError) as error:
+                await call()
+            assert error.value.status_code == 404
+
+    asyncio.run(operations())
+
+
+@pytest.mark.parametrize("path", ["", "/", ".", "/./"])
+def test_shared_root_cannot_be_exported_or_replaced(settings, monkeypatch, path):
+    client = NextcloudClient(settings)
+
+    async def unexpected_request(*args, **kwargs):
+        pytest.fail("Root operations must be blocked before any upstream request")
+
+    monkeypatch.setattr(client, "_request", unexpected_request)
+
+    async def operations():
+        for call in (
+            lambda: client.download_file(path),
+            lambda: client.delete(path),
+            lambda: client.upload_file(path, b"overwrite"),
+            lambda: client.write_text_file(path, "overwrite", "text/plain"),
+            lambda: client.copy(path, "export", True),
+            lambda: client.move(path, "export", True),
+            lambda: client.copy("normal", path, True),
+            lambda: client.move("normal", path, True),
+        ):
+            with pytest.raises(NextcloudError) as error:
+                await call()
+            assert error.value.status_code == 403
+
+    asyncio.run(operations())
+
+
+def test_private_storage_requests_use_requested_nexgent_directory(settings, monkeypatch):
+    from app.file_storage.service import PRIVATE_ROOT
+
+    client = NextcloudClient(settings, files_root=PRIVATE_ROOT)
+    requests = []
+
+    async def request(method, url, **kwargs):
+        requests.append((method, url))
+        return httpx.Response(201 if method in {"MKCOL", "PUT"} else 200, content=b"original")
+
+    monkeypatch.setattr(client, "_request", request)
+
+    async def operations():
+        await client.create_folder("")
+        await client.create_folder("test")
+        await client.create_folder("test/owner")
+        await client.upload_file("test/owner/blob", b"original")
+        assert (await client.download_file("test/owner/blob")).content == b"original"
+        await client.delete("test/owner/blob")
+
+    asyncio.run(operations())
+    assert all("/files/lijar/Nexgent/FileStorage/" in url for _, url in requests)
+    assert requests[-1][1].endswith("/Nexgent/FileStorage/test/owner/blob")
 
 
 def test_ca_bundle_overrides_verify_ssl(monkeypatch):
@@ -73,11 +169,11 @@ def test_parse_propfind_skips_requested_root(settings):
     xml = b"""<?xml version="1.0"?>
     <d:multistatus xmlns:d="DAV:">
       <d:response>
-        <d:href>/remote.php/dav/files/lijar/Slack/AX%20Project/</d:href>
+        <d:href>/remote.php/dav/files/lijar/Nexgent/AX%20Project/</d:href>
         <d:propstat><d:prop><d:resourcetype><d:collection /></d:resourcetype></d:prop></d:propstat>
       </d:response>
       <d:response>
-        <d:href>/remote.php/dav/files/lijar/Slack/AX%20Project/agent-test.md</d:href>
+        <d:href>/remote.php/dav/files/lijar/Nexgent/AX%20Project/agent-test.md</d:href>
         <d:propstat>
           <d:prop>
             <d:getcontentlength>19</d:getcontentlength>
@@ -251,34 +347,36 @@ def test_preview_xlsx_conversion_returns_pdf(settings, monkeypatch):
     assert preview.content == b"%PDF-sheet"
 
 
-def test_empty_path_is_slack_root(settings):
+def test_empty_path_is_nexgent_root(settings):
     client = NextcloudClient(settings)
-    assert client._absolute_webdav_url("", trailing_slash=True).endswith("/files/lijar/Slack/")
-    assert client._absolute_webdav_url("/Reports/notes.md").endswith("/files/lijar/Slack/Reports/notes.md")
+    assert client._absolute_webdav_url("", trailing_slash=True).endswith("/files/lijar/Nexgent/")
+    assert client._absolute_webdav_url("/Reports/notes.md").endswith("/files/lijar/Nexgent/Reports/notes.md")
 
 
 @pytest.mark.parametrize("href", [
     "/remote.php/dav/files/lijar/Private/secret.txt",
     "/remote.php/dav/files/lijar/Shared/secret.txt",
-    "/remote.php/dav/files/lijar/Slack-other/secret.txt",
-    "/remote.php/dav/files/other-user/Slack/secret.txt",
-    "/remote.php/dav/files/lijar/Slack/../Private/secret.txt",
-    "/remote.php/dav/files/lijar/Slack/%2e%2e/Private/secret.txt",
-    "https://other.example/remote.php/dav/files/lijar/Slack/secret.txt",
+    "/remote.php/dav/files/lijar/Slack/secret.txt",
+    "/remote.php/dav/files/lijar/Nexgent-other/secret.txt",
+    "/remote.php/dav/files/other-user/Nexgent/secret.txt",
+    "/remote.php/dav/files/lijar/Nexgent/../Private/secret.txt",
+    "/remote.php/dav/files/lijar/Nexgent/%2e%2e/Private/secret.txt",
+    "https://other.example/remote.php/dav/files/lijar/Nexgent/secret.txt",
 ])
-def test_listing_hrefs_outside_slack_are_ignored(settings, href):
+def test_listing_hrefs_outside_nexgent_are_ignored(settings, href):
     assert NextcloudClient(settings)._path_from_href(href) is None
 
 
-def test_slack_hrefs_round_trip_unicode_spaces_and_percent_characters(settings):
+def test_nexgent_hrefs_round_trip_unicode_spaces_and_percent_characters(settings):
     client = NextcloudClient(settings)
     path = "보고서/100% # 완료.md"
     assert client._path_from_href(client._absolute_webdav_url(path)) == path
 
 
-def test_slack_listing_excludes_siblings_and_nested_files(settings):
+def test_nexgent_listing_excludes_siblings_and_nested_files(settings):
     client = NextcloudClient(settings)
-    hrefs = ["Slack/", "Slack/report.md", "Private/secret.md", "Slack/nested/deep.md"]
+    hrefs = ["Nexgent/", "Nexgent/report.md", "Private/secret.md", "Nexgent/nested/deep.md",
+             "Nexgent/FileStorage/", "Nexgent/FileStorage/test/owner/blob"]
     xml = ('<d:multistatus xmlns:d="DAV:">' + ''.join(
         f'<d:response><d:href>/remote.php/dav/files/lijar/{href}</d:href>'
         '<d:propstat><d:prop><d:resourcetype /></d:prop></d:propstat></d:response>'
@@ -287,7 +385,7 @@ def test_slack_listing_excludes_siblings_and_nested_files(settings):
     assert [item.path for item in items] == ["report.md"]
 
 
-def test_file_operations_and_copy_destination_stay_in_slack(settings, monkeypatch):
+def test_file_operations_and_copy_destination_stay_in_nexgent(settings, monkeypatch):
     client = NextcloudClient(settings)
     requests = []
     async def request(method, url, **kwargs):
@@ -304,7 +402,7 @@ def test_file_operations_and_copy_destination_stay_in_slack(settings, monkeypatc
         await client.delete("old.txt")
     asyncio.run(operations())
     for _, url, kwargs in requests:
-        assert "/files/lijar/Slack/" in url
+        assert "/files/lijar/Nexgent/" in url
         destination = kwargs.get("headers", {}).get("Destination")
         if destination:
-            assert "/files/lijar/Slack/archive/" in destination
+            assert "/files/lijar/Nexgent/archive/" in destination

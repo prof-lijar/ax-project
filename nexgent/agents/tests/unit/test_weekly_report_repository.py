@@ -90,7 +90,7 @@ def test_source_period_timestamps_are_timezone_aware() -> None:
     assert value.utcoffset() is not None
 
 
-def test_source_queries_are_bound_to_authoritative_ansimk_schema() -> None:
+def test_source_queries_are_bound_to_authoritative_archive_schema() -> None:
     combined = (
         f"{CANDIDATE_WARDS_SQL}\n{EXPLICIT_WARDS_SQL}\n{DAILY_ROWS_SQL}\n"
         f"{RISK_AGGREGATES_SQL}\n{DISPATCH_AGGREGATES_SQL}"
@@ -101,9 +101,9 @@ def test_source_queries_are_bound_to_authoritative_ansimk_schema() -> None:
         "analysis_wardevaluation",
         "dispatch_dispatchrequest",
     ):
-        assert f"ansimk.{table}" in combined
+        assert f"archive.{table}" in combined
     assert "ansimk_clone." not in combined
-    assert "archive." not in combined
+    assert "ansimk." not in combined
 
 
 @pytest.mark.asyncio
@@ -112,12 +112,19 @@ async def test_discovery_includes_every_ward_without_any_weekly_records() -> Non
         async def fetch(self, query, *args):
             if query == CANDIDATE_WARDS_SQL:
                 with sqlite3.connect(":memory:") as connection:
+                    connection.execute("ATTACH DATABASE ':memory:' AS archive")
                     connection.execute("ATTACH DATABASE ':memory:' AS ansimk")
                     connection.execute(
                         "CREATE TABLE ansimk.resources_ward (id INTEGER, full_name TEXT)"
                     )
+                    connection.execute(
+                        "INSERT INTO ansimk.resources_ward VALUES (99, 'other schema')"
+                    )
+                    connection.execute(
+                        "CREATE TABLE archive.resources_ward (id INTEGER, full_name TEXT)"
+                    )
                     connection.executemany(
-                        "INSERT INTO ansimk.resources_ward VALUES (?, ?)",
+                        "INSERT INTO archive.resources_ward VALUES (?, ?)",
                         [(10, "첫 대상"), (20, "둘째 대상"), (30, None)],
                     )
                     return [dict(zip(("ward_id", "full_name"), row, strict=True))

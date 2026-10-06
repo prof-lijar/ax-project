@@ -12,6 +12,18 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [File Storage Folder Uploads](08-implementation/file-storage-folder-upload.md): folder picker, recursive drag/drop, empty directories, atomic tree upload API, duplicate handling, and validation.
+
+- [Automatic File Storage Names](08-implementation/file-storage-duplicate-names.md): numbered duplicate filenames across uploads and folder operations, concurrency, and validation.
+
+- [File Storage Previews](08-implementation/file-storage-previews.md): private image, PDF, Markdown, text and Office viewers, conversion, API isolation, and browser validation.
+
+- [File Storage Frontend](08-implementation/file-storage-frontend.md): sidebar file manager, authenticated API integration, uploads, folder operations, trash recovery, localization, and browser validation.
+
+- [File Storage Service](08-implementation/file-storage-service.md): private per-user PostgreSQL metadata, reserved Nexgent/FileStorage contents, shared-browser isolation, API contract, cleanup, and validation.
+
+- [Nextcloud Nexgent Folder Scope](08-implementation/nextcloud-nexgent-folder-scope.md): Nexgent-only browsing and file operations, breadcrumb update, validation, and live authentication limits.
+
 - [Slack Native Blocks](08-implementation/slack-notification-native-blocks.md): validated native Block Kit API, complete weekly-report tables, compatibility and rollout.
 
 - [Slack Notification Service](08-implementation/slack-notification-service.md): reusable queued API, frontend and agent authentication, Slack configuration, independent workers, retries, scaling, and validation.

@@ -6,21 +6,24 @@ the existing `danger_days` fields used by the frontend.
 
 ## Data flow
 
-The private `apps.weekly_report_api` FastAPI process reads raw `ansimk` tables
+The private `apps.weekly_report_api` FastAPI process reads raw `archive` tables
 through a reusable pooled `asyncpg` integration. It returns versioned current
 and previous seven-day snapshots to the graph through a private-network HTTP
 client. The graph never receives database credentials and exposes no arbitrary
 SQL tool.
 
-The source service reads schema-qualified tables only from `ansimk`:
+The source service reads schema-qualified tables only from `archive`:
 
-- `ansimk.analysis_devicedailysummary` for environment, activity, and sleep;
-- `ansimk.analysis_wardevaluation` for risk events, danger days, score averages, and
+- `archive.analysis_devicedailysummary` for environment, activity, and sleep;
+- `archive.analysis_wardevaluation` for risk events, danger days, score averages, and
   `DANGER` to `STABLE` transitions;
-- `ansimk.dispatch_dispatchrequest` for requests and unresolved requests;
-- `ansimk.resources_ward` for ward identity.
+- `archive.dispatch_dispatchrequest` for requests and unresolved requests;
+- `archive.resources_ward` for ward identity.
 
-Matching tables under `ansimk_clone` and `archive` are deliberately excluded.
+Matching source tables under `ansimk_clone` and `ansimk` are deliberately excluded.
+The connection remains configured by `ANSIMK_DATABASE_DSN`; changing its
+database name or PostgreSQL `search_path` is not required. Production delivery
+and coverage queries continue to use the production `ansimk` schema.
 
 Python owns all arithmetic. Environment averages are measurement-count
 weighted, activity averages are arithmetic means, and clock times use the
@@ -212,9 +215,9 @@ keys for the same values.
 ## Report storage
 
 The approved table definition for JSON report persistence is available at
-`source/migrations/001_create_resources_ward_weekly_report.sql`. It creates
-`ansimk.resources_ward_weekly_report` with a foreign key to
-`ansimk.resources_ward`, one row per ward/week start, queryable score and status
+`source/migrations/004_create_archive_ward_weekly_report.sql`. It creates
+`archive.resources_ward_weekly_report` with a foreign key to
+`archive.resources_ward`, one row per ward/week start, queryable score and status
 columns, and non-null JSONB `report_data`.
 
 After all completed report artifacts and the ZIP export have been built, the
@@ -226,6 +229,26 @@ Sunday shown in the report; updates also advance `updated_at`. Interactive
 generation and the private source API never use this writer. For compatibility,
 the worker falls back to `ANSIMK_DATABASE_DSN` when the dedicated variable is
 unset; production should configure the dedicated least-privilege role.
+
+The scheduled migration reads local `archive.resources_ward_weekly_report`
+and writes production `ansimk.resources_ward_weekly_report`. Production ward
+checks and coverage queries stay in `ansimk`. The optional local sync outbox
+remains `ansimk.weekly_report_sync_outbox` in the same local database; pending
+deliveries are preserved and report/outbox writes still share one transaction.
+
+The archive source and storage switch requires rebuilding the source API, bulk
+worker, and scheduler together between jobs. Existing reports are not moved or
+regenerated. Use a fresh bulk-job idempotency key for archive generation; do not
+resume an old partially generated job across the schema change. Historical
+scheduler success receipts still prevent automatic regeneration of those weeks.
+
+The live read-only check on 2026-10-06 found that the currently configured
+source role has SELECT but lacks INSERT and UPDATE on the archive report
+table. Before deploying, configure `WEEKLY_REPORT_STORAGE_DATABASE_DSN` with
+a writer role that has schema USAGE and SELECT/INSERT/UPDATE on that table
+(plus sequence privileges if the table uses a serial default). The existing
+archive table uses an identity column. No permissions were changed during
+implementation.
 
 ## Input
 

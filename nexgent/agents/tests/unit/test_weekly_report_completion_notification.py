@@ -338,23 +338,112 @@ def test_read_only_coverage_command_never_adds_write_flag(monkeypatch, tmp_path)
     assert args[-2:] == ["--coverage-output", str(tmp_path / "coverage.json")]
 
 
-def test_notification_config_reads_mounted_env_and_redacts_token(monkeypatch):
-    for name in list(notification.os.environ):
-        if name.startswith("WEEKLY_REPORT_NOTIFICATION_"):
-            monkeypatch.delenv(name)
-    monkeypatch.setattr(
-        notification,
-        "dotenv_values",
-        lambda _: {
-            "WEEKLY_REPORT_NOTIFICATION_ENABLED": "true",
-            "WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN": "s" * 32,
-        },
+def write_production_notification_config(tmp_path, monkeypatch, **changes):
+    values = {
+        "NEXGENT_SLACK_ENABLED": "true",
+        "NEXGENT_NOTIFICATION_SERVICE_TOKEN": "s" * 32,
+        "NEXGENT_SLACK_CHANNELS": '{"default":"C0123456789"}',
+    }
+    values.update(changes)
+    path = tmp_path / "prod.env"
+    path.write_text("\n".join(f"{key}={value}" for key, value in values.items()))
+    monkeypatch.setattr(notification, "PRODUCTION_NOTIFICATION_ENV", path)
+    return path
+
+
+@pytest.mark.parametrize("enabled", ["true", "True", "1", "yes", "on"])
+def test_backend_flag_alone_enables_reporter_notifications(tmp_path, monkeypatch, enabled):
+    write_production_notification_config(
+        tmp_path, monkeypatch, NEXGENT_SLACK_ENABLED=enabled
     )
     settings = NotificationSettings.from_env()
     assert settings.enabled and settings.token == "s" * 32
+    assert settings.base_url == "http://backend:8000"
+    assert settings.destination == "default"
     assert settings.token not in repr(settings)
-    monkeypatch.setenv(
-        "WEEKLY_REPORT_NOTIFICATION_API_URL", "http://user:password@backend"
+
+
+def test_notification_settings_ignore_agent_and_process_overrides(tmp_path, monkeypatch):
+    write_production_notification_config(tmp_path, monkeypatch)
+    monkeypatch.setenv("NEXGENT_SLACK_ENABLED", "false")
+    monkeypatch.setenv("NEXGENT_NOTIFICATION_SERVICE_TOKEN", "wrong-process-token")
+    monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_ENABLED", "false")
+    monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN", "legacy-token")
+    monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_API_URL", "http://other-backend")
+    monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_DESTINATION", "other")
+    settings = NotificationSettings.from_env()
+    assert settings.enabled and settings.token == "s" * 32
+    assert settings.base_url == "http://backend:8000"
+    assert settings.destination == "default"
+
+
+@pytest.mark.parametrize("enabled", ["false", "False", "0", "no", "off"])
+def test_backend_disabled_suppresses_completion_and_failure(
+    tmp_path, monkeypatch, enabled
+):
+    from apps.weekly_report_scheduler.monitor import notify_failure
+
+    write_production_notification_config(
+        tmp_path, monkeypatch, NEXGENT_SLACK_ENABLED=enabled,
+        NEXGENT_NOTIFICATION_SERVICE_TOKEN="", NEXGENT_SLACK_CHANNELS="{}",
     )
-    with pytest.raises(ValueError, match="invalid notification configuration"):
+    monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_ENABLED", "true")
+    settings = NotificationSettings.from_env()
+    collect, send = Mock(), Mock()
+    assert not settings.enabled
+    notification.notify_completed_week(
+        "2026-09-21", tmp_path, settings=settings, collect=collect, send=send
+    )
+    notify_failure({}, tmp_path, settings=settings, send=send)
+    collect.assert_not_called()
+    send.assert_not_called()
+
+
+@pytest.mark.parametrize("changes", [
+    {"NEXGENT_SLACK_ENABLED": "invalid"},
+    {"NEXGENT_NOTIFICATION_SERVICE_TOKEN": ""},
+    {"NEXGENT_NOTIFICATION_SERVICE_TOKEN": "private-invalid-token"},
+    {"NEXGENT_SLACK_CHANNELS": "not-json"},
+    {"NEXGENT_SLACK_CHANNELS": "[]"},
+    {"NEXGENT_SLACK_CHANNELS": '{"other":"C0123456789"}'},
+    {"NEXGENT_SLACK_CHANNELS": '{"default":42}'},
+])
+def test_invalid_production_configuration_is_redacted(tmp_path, monkeypatch, changes):
+    write_production_notification_config(tmp_path, monkeypatch, **changes)
+    with pytest.raises(ValueError, match="^invalid production notification configuration$"):
         NotificationSettings.from_env()
+
+
+def test_without_production_mount_notifications_remain_disabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(notification, "PRODUCTION_NOTIFICATION_ENV", tmp_path / "missing")
+    monkeypatch.setenv("NEXGENT_SLACK_ENABLED", "true")
+    monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_ENABLED", "true")
+    assert not NotificationSettings.from_env().enabled
+
+
+def test_production_settings_drive_completion_submission(tmp_path, monkeypatch):
+    write_production_notification_config(tmp_path, monkeypatch)
+    send = Mock(return_value={"id": "accepted", "status": "queued"})
+    notification.notify_completed_week(
+        "2026-09-21", tmp_path, settings=NotificationSettings.from_env(),
+        collect=lambda week, path: path.write_text(json.dumps(snapshot())), send=send,
+    )
+    send.assert_called_once()
+    assert send.call_args.args[0]["payload"]["destination"] == "default"
+
+
+def test_production_settings_drive_failure_submission(tmp_path, monkeypatch):
+    from apps.weekly_report_scheduler.monitor import notify_failure
+
+    write_production_notification_config(tmp_path, monkeypatch)
+    send = Mock(return_value={"id": "accepted", "status": "queued"})
+    with pytest.raises(RuntimeError, match="generation failed"):
+        pipeline.run_pipeline(
+            SchedulerSettings(), state_root=tmp_path,
+            now=datetime(2026, 9, 27, 18, tzinfo=UTC),
+            submit=Mock(side_effect=RuntimeError("generation failed")),
+            failure_notify=lambda record, root: notify_failure(record, root, send=send),
+        )
+    send.assert_called_once()
+    assert send.call_args.args[0].token == "s" * 32
+    assert send.call_args.args[1]["payload"]["destination"] == "default"

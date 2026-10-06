@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, pool
 from app.identity.models import Base
 from app.chat import persistence  # noqa: F401 -- register chat metadata
 from app.notifications import persistence as notification_persistence  # noqa: F401
+from app.file_storage import persistence as storage_persistence  # noqa: F401
 
 url = os.environ["NEXGENT_DATABASE_URL"]
 postgresql = url.startswith("postgresql")
@@ -52,7 +53,7 @@ END $$
 """
 
 def include_name(name, type_, _parent_names):
-    return type_ != "schema" or name in {"auth", "chat", "notifications"}
+    return type_ != "schema" or name in {"auth", "chat", "notifications", "file_storage"}
 
 
 options = dict(target_metadata=Base.metadata, compare_type=True,

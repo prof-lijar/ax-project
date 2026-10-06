@@ -78,7 +78,7 @@ async def databases(monkeypatch):
         monkeypatch.setattr(
             report_store,
             "_UPSERT_REPORT_SQL",
-            report_store._UPSERT_REPORT_SQL.replace("ansimk.", "pg_temp."),
+            report_store._UPSERT_REPORT_SQL.replace("archive.", "pg_temp."),
         )
         yield pools
     finally:

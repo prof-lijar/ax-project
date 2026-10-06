@@ -25,3 +25,16 @@ def test_weekly_report_storage_schema_matches_approved_contract() -> None:
     assert "created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()" in sql
     assert "updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()" in sql
     assert "UNIQUE (ward_id, week_start_date)" in sql
+
+
+def test_local_archive_storage_preserves_production_schema() -> None:
+    from workflows.weekly_report.bulk.report_store import _UPSERT_REPORT_SQL
+    from workflows.weekly_report.sync.delivery import REPORT_TABLE, WARD_TABLE
+
+    sql = _MIGRATION.with_name("004_create_archive_ward_weekly_report.sql").read_text()
+    assert "CREATE TABLE IF NOT EXISTS archive.resources_ward_weekly_report" in sql
+    assert "REFERENCES archive.resources_ward(id)" in sql
+    assert "UNIQUE (ward_id, week_start_date)" in sql
+    assert "INSERT INTO archive.resources_ward_weekly_report" in _UPSERT_REPORT_SQL
+    assert REPORT_TABLE == "ansimk.resources_ward_weekly_report"
+    assert WARD_TABLE == "ansimk.resources_ward"

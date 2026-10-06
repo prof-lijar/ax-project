@@ -4,7 +4,7 @@ This private cron service starts durable Weekly Reporter generation every
 Monday at 01:00 in `Asia/Seoul`. The cron expression is `0 1 * * 1`.
 
 Each run targets the previous fully completed Monday-through-Sunday period and
-includes every ward in `resources_ward`, even without weekly records. Each job
+includes every ward in `archive.resources_ward`, even without weekly records. Each job
 requests up to 10,000 reports by default; the pipeline follows continuation
 cursors until discovery is exhausted. Idempotency keys include the reporting
 Monday, the all-ward policy, and a cursor hash for subsequent jobs.
@@ -41,7 +41,9 @@ a stopped scheduler cannot send its own alert.
 ## Production rollout and recovery
 
 Configure `playground/weekly-reporter/.env` using its README and ensure the
-source DSN resolves to the bulk worker's local report database. The scheduler
+source DSN resolves to the bulk worker's local report database. Migration
+reads local `archive.resources_ward_weekly_report` and writes production
+`ansimk.resources_ward_weekly_report`; production schema is unchanged. The scheduler
 image contains the migration scripts and SSH/Python dependencies; credentials
 are mounted read-only at runtime. Do not combine this whole-week migration
 with the optional outbox delivery overlay for the same reports.
@@ -91,10 +93,13 @@ For the all-ward policy rollout and regeneration of a legacy week, see
 Configuration:
 
 Optional completion notifications use the backend's durable Slack API after
-production migration. Set `WEEKLY_REPORT_NOTIFICATION_ENABLED=true`,
-`WEEKLY_REPORT_NOTIFICATION_API_URL`, `WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN`
-and `WEEKLY_REPORT_NOTIFICATION_DESTINATION` in the existing mounted agent
-`.env`. Both weeks' production report coverage is grouped by subscriber address
+production migration. `NEXGENT_SLACK_ENABLED=true` in `backend/prod.env`
+automatically enables completion and failure notifications. The scheduler and
+monitor read that file through a production-only read-only mount, reuse
+`NEXGENT_NOTIFICATION_SERVICE_TOKEN`, and submit to `http://backend:8000`
+with destination `default` from `NEXGENT_SLACK_CHANNELS`. Separate scheduler
+notification variables are retired; `agents/.env` is used only for other
+configuration. Both weeks' production report coverage is grouped by subscriber address
 with missing rates and percentage-point comparisons. Notification failure keeps
 the migration receipt and can be resumed independently. See [notification
 configuration and recovery](../../docs/weekly-report-completion-notification.md).

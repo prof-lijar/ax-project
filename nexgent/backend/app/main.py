@@ -15,6 +15,9 @@ from app.chat.store import ChatStore
 from app.identity.config import load_identity_settings
 from app.identity.router import AccountBoundary, access_error, database_error, router as account_router, validation_error
 from app.identity.store import AccessError, IdentityStore
+from app.file_storage.router import router as file_storage_router
+from app.file_storage.config import load_storage_settings
+from app.file_storage.store import StorageStore
 from app.integrations import router as integration_router
 from app.nextcloud.router import router as nextcloud_router
 from app.notifications.config import load_notification_settings
@@ -34,6 +37,11 @@ async def _lifespan(app: FastAPI):
         if not hasattr(app.state, "chat_store"):
             app.state.chat_store = ChatStore(app.state.identity_store.engine)
         await run_in_threadpool(app.state.chat_store.ready)
+        if not hasattr(app.state, "file_storage_store"):
+            app.state.file_storage_store = StorageStore(
+                app.state.identity_store.engine, load_storage_settings().deployment,
+            )
+        await run_in_threadpool(app.state.file_storage_store.ready)
         if app.state.notification_settings.enabled:
             await run_in_threadpool(NotificationStore(
                 app.state.identity_store.engine, app.state.notification_settings.deployment,
@@ -74,6 +82,7 @@ def create_app(*, identity_settings=None, identity_store=None, notification_sett
     app.include_router(chat_history_router, prefix="/api/chat", tags=["chat-history"])
     app.include_router(rag_chat_router, prefix="/api/rag/chat", tags=["rag-chat"])
     app.include_router(nextcloud_router, prefix="/api/nextcloud", tags=["nextcloud"])
+    app.include_router(file_storage_router)
     app.include_router(integration_router)
     app.include_router(notification_router)
     return app
