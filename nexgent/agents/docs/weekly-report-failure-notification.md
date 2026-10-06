@@ -60,11 +60,15 @@ activation file during normal recovery.
 
 ## Deployment and recovery
 
-Use the existing `WEEKLY_REPORT_NOTIFICATION_ENABLED=true`, API URL, service
-token and destination settings in `agents/.env`. Both processes use the same
-configuration and `/var/lib/ax/weekly-report-scheduler` volume. Notification
-disablement disables both completion and failure delivery. The monitor still
-records its activation baseline while disabled.
+Updated 2026-10-06: use only `backend/prod.env`. Its
+`NEXGENT_SLACK_ENABLED=true` enables both completion and failure notifications;
+`NEXGENT_NOTIFICATION_SERVICE_TOKEN` authenticates to the backend and
+`NEXGENT_SLACK_CHANNELS` must contain the `default` destination. No separate
+scheduler notification settings are used. Both processes mount the file
+read-only at `/run/ax-notifications/prod.env` and share the
+`/var/lib/ax/weekly-report-scheduler` volume. The monitor still records its
+activation baseline while disabled. Development does not mount production
+notification credentials.
 
 From `agents/`:
 
@@ -75,7 +79,8 @@ docker compose -f ../compose.prod.yaml -f compose.weekly-report-monitor.prod.yam
 The agents-owned overlay adds a separate monitor service with no scheduler or
 bulk API startup dependency. It mounts notification configuration and shared
 status storage, without the migration credentials/SSH mounts. Agent-only
-`compose.yaml` also includes it in the `scheduled` profile. Production remains
+`compose.yaml` includes it in the `scheduled` profile without production
+notification credentials. Production remains
 the single schedule owner; do not enable development scheduling concurrently.
 
 Inspect scheduler/monitor logs for safe failure event names and the persisted

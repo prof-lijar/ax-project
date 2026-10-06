@@ -4,6 +4,25 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Weekly-report shared production notification configuration (2026-10-06)
+
+The operator requires backend `prod.env` to be the only notification settings
+source. Production scheduler and monitor now mount `backend/prod.env` read-only
+at `/run/ax-notifications/prod.env`. `NEXGENT_SLACK_ENABLED=true` enables both
+completion and failure notifications automatically, using the same
+`NEXGENT_NOTIFICATION_SERVICE_TOKEN` as the backend and the `default` alias
+from `NEXGENT_SLACK_CHANNELS`. The internal API is fixed to
+`http://backend:8000`; the backend notification worker remains the Slack sender.
+
+All `WEEKLY_REPORT_NOTIFICATION_*` settings are retired. Notification loading
+ignores agent `.env` and process overrides, including dotenv interpolation, so
+cron and monitor use the same file. Missing mounts leave non-production
+notification clients disabled; production bind mounts reject missing host files.
+Development stacks do not mount production notification credentials. Source DB
+settings still use the separate agent `.env`. Existing success gates, immutable
+pending requests, accepted receipts, retry policy, and production DB schema are
+unchanged. No message is sent as part of implementation verification.
+
 ## Weekly-report local archive schema (2026-10-06)
 
 Per operator request, all weekly-report source queries now explicitly read

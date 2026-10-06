@@ -50,26 +50,42 @@ following the earlier service-token HTTP 401 responses.
 
 ## Configuration and deployment
 
-Add to `agents/.env`, already mounted read-only by the scheduler:
+Updated 2026-10-06: `backend/prod.env` is the sole notification configuration
+for the backend, notification worker, weekly-report scheduler, and monitor.
+There is no separate weekly-reporter enable flag or copied service token:
 
 ```dotenv
-WEEKLY_REPORT_NOTIFICATION_ENABLED=true
-WEEKLY_REPORT_NOTIFICATION_API_URL=http://backend:8000
-WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN=REPLACE_WITH_BACKEND_SERVICE_TOKEN
-WEEKLY_REPORT_NOTIFICATION_DESTINATION=default
+NEXGENT_SLACK_ENABLED=true
+NEXGENT_NOTIFICATION_SERVICE_TOKEN=YOUR_EXISTING_BACKEND_SERVICE_TOKEN
+NEXGENT_SLACK_BOT_TOKEN=YOUR_EXISTING_SLACK_BOT_TOKEN
+NEXGENT_SLACK_CHANNELS={"default":"YOUR_SLACK_CHANNEL_ID"}
 ```
 
-The feature defaults to disabled until configured. The service token must match
-backend `NEXGENT_NOTIFICATION_SERVICE_TOKEN`; this is not a Slack bot token.
-Destination must be an alias in backend `NEXGENT_SLACK_CHANNELS`. Enable backend
-notifications, apply its migrations and run its notification worker. See the
-[backend service contract](../../docs/08-implementation/slack-notification-service.md).
+When `NEXGENT_SLACK_ENABLED=true`, the reporter submits completion and failure
+notifications automatically. False disables both. The backend remains the only
+Slack sender; the scheduler uses the service token and the `default` destination
+alias at the fixed internal `http://backend:8000` API. The bot token and channel
+ID are consumed by the backend. Enabled reporter settings require a valid
+service token and `default` channel mapping; invalid values fail configuration
+without exposing secrets. Backend migrations and its notification worker must
+also be available. See the [backend service contract](../../docs/08-implementation/slack-notification-service.md).
 
-Settings are read from the mounted `.env`, with process environment overrides.
-No parent Compose edit or additional secret mount is needed. The agent-only
-Compose stack needs a reachable backend URL because it does not launch the
-product backend. Production remains the automatic schedule owner; leave
-development's `scheduled` profile disabled.
+Production Compose mounts `backend/prod.env` read-only at
+`/run/ax-notifications/prod.env` in the scheduler and independent monitor.
+Settings are read from that file for each notification/monitor attempt, so cron
+does not depend on inherited environment variables. Neither `agents/.env` nor
+process overrides supply notification settings; all old
+`WEEKLY_REPORT_NOTIFICATION_*` variables are retired and ignored. Production
+must have this file: the bind mount refuses to create a missing host path.
+Development/agent-only Compose does not mount production notification secrets
+and notifications stay disabled there. The scheduler still mounts `agents/.env`
+for its separate source-database/migration configuration.
+
+Recreate the production scheduler/monitor to add the new mount. Backend and
+notification-worker environment changes require their recreation as usual.
+Existing receipts and immutable pending payloads are retained. A pending payload
+created with a different backend URL still requires operator reconciliation;
+this change does not silently redirect or resend accepted messages.
 
 The scheduler image now installs frozen workspace dependencies to use the
 shared HTTP integration and workflow-owned aggregation/formatting code. Cron

@@ -4,6 +4,32 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Shared backend notification settings (2026-10-06)
+
+The production scheduler and monitor read notification settings only from a
+read-only mount of `backend/prod.env`. Backend `NEXGENT_SLACK_ENABLED=true`
+enables both reporter completion and failure notifications without a second
+toggle. Both reuse `NEXGENT_NOTIFICATION_SERVICE_TOKEN`, the backend `default`
+channel alias, and the fixed internal backend API. Legacy scheduler-specific
+notification keys are removed from the example and ignored by the loader.
+Production Compose and the monitor overlay mount the same file used by backend
+and notification worker; development stacks do not receive these credentials.
+
+Rebuild/recreate the scheduler and monitor using the command in
+[notification deployment](weekly-report-failure-notification.md#deployment-and-recovery).
+No generation, migration, notification replay, or live Slack test was triggered.
+Docker deployment remains pending because daemon access requires interactive
+sudo authentication. Existing report-schema changes and production delivery
+gates are preserved.
+
+Validation: 767 tests passed and 25 opt-in tests skipped; changed-file Ruff,
+production/monitor and agent-only Compose rendering, LangGraph validation,
+skill validation, and whitespace checks passed. Loading the actual backend
+`prod.env` with the new parser confirmed notifications enabled, the default
+destination, and a configured service token without printing secrets. Tests
+verify both completion/failure submission, disabled behavior, ignored legacy
+overrides, redacted invalid settings, and shared production mount wiring.
+
 ## Local archive schema (2026-10-06)
 
 Source reads and local report writes now use `archive` in the existing source

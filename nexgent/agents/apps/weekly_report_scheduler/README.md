@@ -93,10 +93,13 @@ For the all-ward policy rollout and regeneration of a legacy week, see
 Configuration:
 
 Optional completion notifications use the backend's durable Slack API after
-production migration. Set `WEEKLY_REPORT_NOTIFICATION_ENABLED=true`,
-`WEEKLY_REPORT_NOTIFICATION_API_URL`, `WEEKLY_REPORT_NOTIFICATION_SERVICE_TOKEN`
-and `WEEKLY_REPORT_NOTIFICATION_DESTINATION` in the existing mounted agent
-`.env`. Both weeks' production report coverage is grouped by subscriber address
+production migration. `NEXGENT_SLACK_ENABLED=true` in `backend/prod.env`
+automatically enables completion and failure notifications. The scheduler and
+monitor read that file through a production-only read-only mount, reuse
+`NEXGENT_NOTIFICATION_SERVICE_TOKEN`, and submit to `http://backend:8000`
+with destination `default` from `NEXGENT_SLACK_CHANNELS`. Separate scheduler
+notification variables are retired; `agents/.env` is used only for other
+configuration. Both weeks' production report coverage is grouped by subscriber address
 with missing rates and percentage-point comparisons. Notification failure keeps
 the migration receipt and can be resumed independently. See [notification
 configuration and recovery](../../docs/weekly-report-completion-notification.md).
