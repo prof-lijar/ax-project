@@ -1,6 +1,7 @@
 import {
   Bot,
   Cloud,
+  HardDrive,
   Database,
   MessageSquare,
   Settings
@@ -22,6 +23,7 @@ export const navItems: Array<{
     icon: MessageSquare,
     path: sectionPaths.chat
   },
+  { id: "file-storage", label: "File Storage", icon: HardDrive, path: sectionPaths["file-storage"] },
   {
     id: "nextcloud",
     label: "NextCloud",

@@ -5,6 +5,7 @@ import type { AgentDefinition } from "../types/agents";
 export type AppSection =
   | "chat"
   | "nextcloud"
+  | "file-storage"
   | "agents"
   | "rag"
   | "settings";

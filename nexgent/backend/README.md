@@ -2,6 +2,21 @@
 
 FastAPI backend for AX Chat, Nextcloud, and durable Slack notifications.
 
+## Private file storage
+
+`/api/file-storage` provides per-user browsing/search, file upload/download,
+folders, rename, move, recursive copy, trash, restore, and permanent deletion.
+PostgreSQL owns the logical filesystem; immutable contents live in the private
+Nextcloud `Nexgent/FileStorage/` directory. The shared Nextcloud browser hides and
+blocks that reserved directory. Requests use the existing session and CSRF protection.
+
+Run `uv run alembic upgrade head` before starting the API. Schedule
+`uv run python -m app.file_storage.maintenance --limit 100` periodically with the
+same environment to reclaim purged files and abandoned uploads. Configure limits
+and deployment isolation using the `FILE_STORAGE_*` settings in `example.env`.
+See [File storage service](../docs/08-implementation/file-storage-service.md)
+for the API contract, consistency behavior, validation, and rollout checks.
+
 ## Slack notifications
 
 `POST /api/notifications/slack` queues a notification and returns `202` with a

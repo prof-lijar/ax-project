@@ -7,6 +7,7 @@ import { ScoutWorkbenchPage } from "../features/agents/ScoutWorkbenchPage";
 import { ChatPage } from "../features/chat/ChatPage";
 import { createPersistentChatRunner } from "../features/chat/persistentChatRunner";
 import { useSavedChatHistory } from "../features/chat/useSavedChatHistory";
+import { FileStoragePage } from "../features/file-storage/FileStoragePage";
 import { NextcloudPage } from "../features/nextcloud/NextcloudPage";
 import { RagPage } from "../features/rag/RagPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
@@ -53,6 +54,7 @@ export function App() {
   return (
     <AppShell>
       {activeSection === "chat" && <ChatPage runner={chatRunner} history={chatHistory} />}
+      {activeSection === "file-storage" && <FileStoragePage />}
       {activeSection === "nextcloud" && <NextcloudPage />}
       {activeSection === "agents" &&
         (agentsRoute.kind === "weekly-reporter" ? (

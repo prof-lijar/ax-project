@@ -86,7 +86,7 @@ async def test_storage_upserts_more_than_six_thousand_reports_atomically_in_batc
     assert pool.acquire_context.entered == 1
     assert pool.acquire_context.exited == 1
     query = connection.calls[0][0]
-    assert "INSERT INTO ansimk.resources_ward_weekly_report" in query
+    assert "INSERT INTO archive.resources_ward_weekly_report" in query
     assert "ON CONFLICT (ward_id, week_start_date) DO UPDATE" in query
     assert "report_data = EXCLUDED.report_data" in query
     assert "updated_at = NOW()" in query

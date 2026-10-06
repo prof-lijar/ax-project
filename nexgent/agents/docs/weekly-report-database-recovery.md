@@ -4,7 +4,7 @@ Date: 2026-09-08
 
 The worker saves each completed report under its job's `reports/<ward_id>.json`
 artifact before counting it as completed. It upserts the frontend report JSON
-into `ansimk.resources_ward_weekly_report` only during finalization, after ZIP
+into `archive.resources_ward_weekly_report` only during finalization, after ZIP
 creation and before marking the job terminal. An earlier failure or a database
 transaction failure can therefore leave thousands of completed artifacts with
 no report rows. A browser polling failure does not establish the cause of a
@@ -57,7 +57,7 @@ Check the intended target database after success:
 
 ```sql
 SELECT count(*) AS stored_reports
-FROM ansimk.resources_ward_weekly_report
+FROM archive.resources_ward_weekly_report
 WHERE week_start_date = DATE '2026-08-31';
 ```
 

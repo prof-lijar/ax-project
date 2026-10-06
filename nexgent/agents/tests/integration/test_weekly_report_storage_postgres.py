@@ -27,7 +27,7 @@ async def test_repeated_reports_update_the_existing_ward_week(
         migration = (
             Path(__file__).parents[2]
             / "workflows/weekly_report/source/migrations"
-            / "001_create_resources_ward_weekly_report.sql"
+            / "004_create_archive_ward_weekly_report.sql"
         ).read_text()
         if not timestamp_defaults:
             migration = migration.replace(" DEFAULT NOW()", "")
@@ -38,13 +38,13 @@ async def test_repeated_reports_update_the_existing_ward_week(
             )
             await connection.execute(
                 migration.replace("CREATE TABLE", "CREATE TEMP TABLE").replace(
-                    "ansimk.", ""
+                    "archive.", ""
                 )
             )
         monkeypatch.setattr(
             report_store,
             "_UPSERT_REPORT_SQL",
-            report_store._UPSERT_REPORT_SQL.replace("ansimk.", "pg_temp."),
+            report_store._UPSERT_REPORT_SQL.replace("archive.", "pg_temp."),
         )
         store = report_store.AsyncpgWeeklyReportStore(
             report_store.WeeklyReportStorageSettings(dsn=dsn, batch_size=1)
@@ -131,7 +131,7 @@ async def test_not_null_recovery_uses_real_savepoints(monkeypatch):
         monkeypatch.setattr(
             report_store,
             "_UPSERT_REPORT_SQL",
-            report_store._UPSERT_REPORT_SQL.replace("ansimk.", "pg_temp."),
+            report_store._UPSERT_REPORT_SQL.replace("archive.", "pg_temp."),
         )
         store = report_store.AsyncpgWeeklyReportStore(
             report_store.WeeklyReportStorageSettings(dsn=dsn, batch_size=3)

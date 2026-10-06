@@ -3,6 +3,7 @@ import { useUiStore, type AppSection } from "../state/useUiStore";
 export const sectionPaths: Record<AppSection, string> = {
   chat: "/chat",
   nextcloud: "/nextcloud",
+  "file-storage": "/file-storage",
   agents: "/agents",
   rag: "/rag",
   settings: "/settings"
@@ -59,6 +60,10 @@ export function resolveSectionLocation(
     return { section: "chat", path: normalizedPathname };
   }
 
+  if (/^\/file-storage(?:\/trash|\/folders\/[0-9a-f-]{36})?$/i.test(normalizedPathname)) {
+    return { section: "file-storage", path: normalizedPathname };
+  }
+
   if (normalizedPathname === "/co-workers") {
     return { section: "agents", path: sectionPaths.agents };
   }
@@ -96,4 +101,14 @@ function normalizePath(pathname: string) {
     return pathname;
   }
   return pathname.replace(/\/+$/, "") || "/";
+}
+
+export function getStorageLocation(path: string): { parent: string | null; trash: boolean } {
+  const normalized = normalizePath(path);
+  const match = normalized.match(/^\/file-storage\/folders\/([0-9a-f-]{36})$/i);
+  return { parent: match?.[1] ?? null, trash: normalized === "/file-storage/trash" };
+}
+export function navigateToStorage(parent: string | null, trash = false) {
+  const path = trash ? "/file-storage/trash" : parent ? `/file-storage/folders/${encodeURIComponent(parent)}` : "/file-storage";
+  navigateToLocation("file-storage", path);
 }

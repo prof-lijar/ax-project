@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 import shutil
@@ -11,6 +11,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 import httpx
+from starlette.concurrency import run_in_threadpool
 
 from app.core.settings import Settings
 from app.nextcloud.schemas import FileItem
@@ -18,10 +19,12 @@ from app.nextcloud.schemas import FileItem
 
 DAV_NS = "{DAV:}"
 FILES_ROOT = "Nexgent"
+PRIVATE_FOLDER = "FileStorage"
+PRIVATE_FILES_ROOT = f"{FILES_ROOT}/{PRIVATE_FOLDER}"
 NC_OCS_META_STATUS_OK = {"ok", "100", "200"}
-OFFICE_PREVIEW_EXTENSIONS = {"docx", "pptx", "xlsx"}
+OFFICE_PREVIEW_EXTENSIONS = {"doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"}
 PDF_PREVIEW_EXTENSIONS = {"pdf"}
-TEXT_PREVIEW_EXTENSIONS = {"md", "markdown", "txt"}
+TEXT_PREVIEW_EXTENSIONS = {"md", "markdown", "txt", "csv", "json", "xml", "yaml", "yml", "log", "toml", "py", "js", "ts", "tsx", "rs"}
 IMAGE_PREVIEW_TYPES = {
     "image/png",
     "image/jpeg",
@@ -65,8 +68,9 @@ class PreviewedFile:
 
 
 class NextcloudClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, files_root: str = FILES_ROOT) -> None:
         self._settings = settings
+        self._files_root = files_root
         self._base_url = settings.nextcloud_url
         self._user = settings.nextcloud_user
         self._auth = (settings.nextcloud_user, settings.nextcloud_password)
@@ -86,6 +90,7 @@ class NextcloudClient:
         return self._parse_propfind(response.content, root_path=self._clean_path(path))
 
     async def download_file(self, path: str) -> DownloadedFile:
+        self._check_object_path(path)
         clean_path = self._clean_path(path)
         response = await self._request("GET", self._webdav_url(clean_path))
         self._raise_for_status(response)
@@ -106,8 +111,13 @@ class NextcloudClient:
 
     async def preview_file(self, path: str) -> PreviewedFile:
         downloaded = await self.download_file(path)
-        extension = self._extension(downloaded.filename)
-        normalized_content_type = self._normalized_content_type(downloaded.content_type)
+        return await run_in_threadpool(self.render_preview, downloaded)
+
+    @classmethod
+    def render_preview(cls, downloaded: DownloadedFile) -> PreviewedFile:
+        """Render downloaded bytes using their logical filename, not a blob key."""
+        extension = cls._extension(downloaded.filename)
+        normalized_content_type = cls._normalized_content_type(downloaded.content_type)
 
         if extension in PDF_PREVIEW_EXTENSIONS or normalized_content_type == "application/pdf":
             return PreviewedFile(
@@ -135,7 +145,10 @@ class NextcloudClient:
                 viewer_kind="image",
             )
 
-        if extension in TEXT_PREVIEW_EXTENSIONS or self._is_text_content_type(normalized_content_type):
+        if extension in OFFICE_PREVIEW_EXTENSIONS:
+            return cls._convert_office_preview(downloaded)
+
+        if extension in TEXT_PREVIEW_EXTENSIONS or cls._is_text_content_type(normalized_content_type):
             content_type = (
                 "text/markdown; charset=utf-8"
                 if extension in {"md", "markdown"}
@@ -143,14 +156,11 @@ class NextcloudClient:
             )
             return PreviewedFile(
                 path=downloaded.path,
-                content=self._decode_text_preview(downloaded).encode("utf-8"),
+                content=cls._decode_text_preview(downloaded).encode("utf-8"),
                 content_type=content_type,
                 filename=downloaded.filename,
                 viewer_kind="text",
             )
-
-        if extension in OFFICE_PREVIEW_EXTENSIONS:
-            return self._convert_office_preview(downloaded)
 
         raise NextcloudError("Preview is not available for this file type.", status_code=415)
 
@@ -160,6 +170,7 @@ class NextcloudClient:
         content: str,
         content_type: str,
     ) -> int:
+        self._check_object_path(path)
         response = await self._request(
             "PUT",
             self._webdav_url(path),
@@ -175,6 +186,7 @@ class NextcloudClient:
         content: bytes,
         content_type: str | None = None,
     ) -> int:
+        self._check_object_path(path)
         headers = {"Content-Type": content_type} if content_type else None
         response = await self._request(
             "PUT",
@@ -191,11 +203,14 @@ class NextcloudClient:
         return response.status_code
 
     async def delete(self, path: str) -> int:
+        self._check_object_path(path)
         response = await self._request("DELETE", self._webdav_url(path))
         self._raise_for_status(response, expected={200, 202, 204})
         return response.status_code
 
     async def copy(self, source_path: str, destination_path: str, overwrite: bool) -> int:
+        self._check_object_path(source_path)
+        self._check_object_path(destination_path)
         response = await self._request(
             "COPY",
             self._webdav_url(source_path),
@@ -208,6 +223,8 @@ class NextcloudClient:
         return response.status_code
 
     async def move(self, source_path: str, destination_path: str, overwrite: bool) -> int:
+        self._check_object_path(source_path)
+        self._check_object_path(destination_path)
         response = await self._request(
             "MOVE",
             self._webdav_url(source_path),
@@ -253,7 +270,9 @@ class NextcloudClient:
 
     def _absolute_webdav_url(self, path: str, trailing_slash: bool = False) -> str:
         clean_path = self._clean_path(path)
-        encoded_parts = [FILES_ROOT, *[quote(part, safe="") for part in clean_path.split("/") if part]]
+        self._check_private_path(clean_path)
+        encoded_parts = [quote(part, safe="") for part in self._files_root.split("/")]
+        encoded_parts.extend(quote(part, safe="") for part in clean_path.split("/") if part)
         encoded_path = "/".join(encoded_parts)
         url = f"{self._base_url}/remote.php/dav/files/{quote(self._user, safe='')}/"
         if encoded_path:
@@ -261,6 +280,20 @@ class NextcloudClient:
         if trailing_slash and not url.endswith("/"):
             url = f"{url}/"
         return url
+
+    def _check_private_path(self, clean_path: str) -> None:
+        # The path-based shared API must never bypass the storage service's
+        # owner checks, including by copying or moving the reserved directory.
+        if (self._files_root == FILES_ROOT
+                and clean_path.split("/", 1)[0].casefold() == PRIVATE_FOLDER.casefold()):
+            raise NextcloudError("File not found.", status_code=404)
+
+    def _check_object_path(self, path: str) -> None:
+        clean_path = self._clean_path(path)
+        self._check_private_path(clean_path)
+        if not clean_path:
+            # Operations on the shared root would also mutate/export private files.
+            raise NextcloudError("Operations on the storage root are not allowed.", status_code=403)
 
     @staticmethod
     def _clean_path(path: str) -> str:
@@ -328,13 +361,15 @@ class NextcloudClient:
         if parsed.netloc and (parsed.scheme, parsed.netloc) != (base.scheme, base.netloc):
             return None
         path = unquote(parsed.path)
-        root = f"{unquote(base.path).rstrip('/')}/remote.php/dav/files/{self._user}/{FILES_ROOT}"
+        root = f"{unquote(base.path).rstrip('/')}/remote.php/dav/files/{self._user}/{self._files_root}"
         if path.rstrip("/") == root:
             return ""
         if not path.startswith(root + "/"):
             return None
         try:
-            return self._clean_path(path[len(root) + 1:])
+            clean_path = self._clean_path(path[len(root) + 1:])
+            self._check_private_path(clean_path)
+            return clean_path
         except NextcloudError:
             return None
 
@@ -365,18 +400,19 @@ class NextcloudClient:
             charset = downloaded.content_type.rsplit("charset=", 1)[1].split(";", 1)[0].strip()
         try:
             return downloaded.content.decode(charset)
-        except UnicodeDecodeError as exc:
+        except (UnicodeDecodeError, LookupError) as exc:
             raise NextcloudError("File is not decodable as text.", status_code=415) from exc
 
-    def _convert_office_preview(self, downloaded: DownloadedFile) -> PreviewedFile:
+    @staticmethod
+    def _convert_office_preview(downloaded: DownloadedFile) -> PreviewedFile:
         converter = shutil.which("libreoffice") or shutil.which("soffice")
         if not converter:
             raise NextcloudError(
-                "LibreOffice is required to preview DOCX and PPTX files.",
+                "LibreOffice is required to preview Office files.",
                 status_code=501,
             )
 
-        filename = downloaded.filename or "preview"
+        filename = PurePosixPath(downloaded.filename).name or "preview"
         with tempfile.TemporaryDirectory(prefix="nexgent-preview-") as temp_dir:
             input_path = f"{temp_dir}/{filename}"
             with open(input_path, "wb") as file:
@@ -386,6 +422,7 @@ class NextcloudClient:
                 subprocess.run(
                     [
                         converter,
+                        f"-env:UserInstallation={Path(temp_dir, 'profile').as_uri()}",
                         "--headless",
                         "--convert-to",
                         "pdf",

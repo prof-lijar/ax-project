@@ -119,7 +119,7 @@ async def recover(args: argparse.Namespace) -> int:
         "job_status": job["status"],
         "verified_count": len(completed),
         "week_start": request.week_start.isoformat(),
-        "target": "ansimk.resources_ward_weekly_report",
+        "target": "archive.resources_ward_weekly_report",
         "written_count": 0,
         "skipped_count": 0,
         "skipped": [],

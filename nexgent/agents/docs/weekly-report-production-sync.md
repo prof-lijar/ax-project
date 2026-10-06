@@ -14,7 +14,10 @@ has no model, source API, graph, scheduler, or ZIP dependency.
 
 The production generation writer saves each frontend report and its delivery
 payload in the **same local report-database transaction**, in the existing
-bounded batches. The outbox is not in the separate bulk-job database. An enqueue
+bounded batches. Local reports use `archive.resources_ward_weekly_report`;
+the existing local outbox stays in `ansimk.weekly_report_sync_outbox` in that
+same database. Production reports and ward checks retain schema `ansimk`.
+The outbox is not in the separate bulk-job database. An enqueue
 failure rolls back report storage. An immutable, versioned JSON text payload
 and SHA-256 checksum preserve the original content even if local report rows
 change; text preserves JSON number encoding through PostgreSQL round trips.

@@ -2,13 +2,13 @@
 
 ## Authoritative sources
 
-- `ansimk.analysis_devicedailysummary`: environment, activity, and sleep rows.
-- `ansimk.analysis_wardevaluation`: risk events and scores.
-- `ansimk.dispatch_dispatchrequest`: dispatch events and current resolution state.
-- `ansimk.resources_ward`: ward identity.
+- `archive.analysis_devicedailysummary`: environment, activity, and sleep rows.
+- `archive.analysis_wardevaluation`: risk events and scores.
+- `archive.dispatch_dispatchrequest`: dispatch events and current resolution state.
+- `archive.resources_ward`: ward identity.
 
 Always schema-qualify these application-owned queries. The database also
-contains `ansimk_clone` and `archive` relations with matching names; neither is
+contains `ansimk_clone` and `ansimk` relations with matching names; neither is
 an approved weekly-report source, and PostgreSQL `search_path` must not select
 the source implicitly.
 
@@ -29,8 +29,8 @@ not an authoritative input.
   They do not render `이번 주`, `지난주`, or `지난 주`.
 - Default timezone: `Asia/Seoul`; accept valid IANA zones.
 - Accept either unique explicit ward IDs or an opaque cursor, never both.
-- Discover candidates from the union of current-period daily summaries,
-  evaluations, and dispatches. Sort by ward ID. Interactive graph requests stay
+- Discover every ward from `archive.resources_ward`, including wards without
+  observations. Sort by ward ID. Interactive graph requests stay
   capped at twenty-five wards; durable bulk-source pages are capped at one
   hundred.
 - Encode the last ward ID, week start, and timezone in an opaque cursor and
@@ -463,13 +463,17 @@ a generic query endpoint.
 
 ## Weekly-report storage schema
 
-The approved PostgreSQL target is `ansimk.resources_ward_weekly_report`, defined
+The local PostgreSQL target is `archive.resources_ward_weekly_report`, defined
 by
-`workflows/weekly_report/source/migrations/001_create_resources_ward_weekly_report.sql`.
+`workflows/weekly_report/source/migrations/004_create_archive_ward_weekly_report.sql`.
 It owns one row per ward and `week_start_date`, references
-`ansimk.resources_ward(id)` with `ON DELETE RESTRICT`, and stores the generated
+`archive.resources_ward(id)` in the same schema, and stores the generated
 frontend report JSON in the non-null `report_data` JSONB column. The score and
 status columns provide queryable weekly metadata beside the JSON document.
+Production delivery and coverage continue to use `ansimk`; migration reads
+local `archive` reports and writes production `ansimk` reports. The optional
+local operational outbox remains `ansimk.weekly_report_sync_outbox` in the same
+database, preserving pending deliveries and atomic report/outbox writes.
 
 The private source API remains read-only and the interactive graph does not
 persist previews. The durable bulk finalizer uses a separate

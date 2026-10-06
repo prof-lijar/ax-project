@@ -4,6 +4,37 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Weekly-report local archive schema (2026-10-06)
+
+Per operator request, all weekly-report source queries now explicitly read
+`archive.resources_ward`, `archive.analysis_devicedailysummary`,
+`archive.analysis_wardevaluation`, and `archive.dispatch_dispatchrequest`.
+This supersedes the August 19 source-schema decision and the September 21
+reference to the `ansimk` ward roster. All-ward discovery now pages the archive
+roster, including wards without observations. The database connection remains
+`ANSIMK_DATABASE_DSN`; no search-path override or database rename is involved.
+Production database schema, report delivery, and coverage queries retain
+`ansimk` per explicit operator instruction. Source calculations, paging,
+read-only transactions, and model boundaries are unchanged.
+
+The operator also approved local report storage in
+`archive.resources_ward_weekly_report`. Its ward foreign key stays within
+`archive`, avoiding missing-ward failures for archive-only identities. The
+local-only `004_create_archive_ward_weekly_report.sql` supports new installs
+without changing an existing archive table. The scheduler's migration now
+reads local archive reports while continuing to write production `ansimk`.
+Recovery uses the same archive writer. The optional operational outbox remains
+`ansimk.weekly_report_sync_outbox` in the same local database, preserving pending
+deliveries and transactional enqueue. Job tables and historical reports are
+unchanged; no production DDL or historical report copy is part of this switch.
+
+Live read-only verification confirmed matching source columns, all five source
+queries, a one-ward source request, and the existing archive report table's
+ward foreign key and ward/week unique key. The archive roster had 6,646 wards,
+34 absent from the local `ansimk` roster. Deployment requires coordinated
+source API, worker, and scheduler rebuilds between jobs. Start fresh jobs after
+the switch; old partial jobs and scheduler receipts are not reset automatically.
+
 ## Weekly-report failure monitoring (2026-09-29)
 
 The scheduler persists a UUID-scoped attempt record after obtaining its existing

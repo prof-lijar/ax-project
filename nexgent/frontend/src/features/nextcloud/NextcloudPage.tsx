@@ -520,7 +520,7 @@ function FileViewer({
   );
 }
 
-function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
+export function PreviewSurface({ preview }: { preview: NextcloudPreviewResponse }) {
   useLanguage((state) => state.language);
   if (preview.viewerKind === "pdf" && preview.objectUrl) {
     return (

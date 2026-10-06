@@ -2,7 +2,7 @@
 
 CANDIDATE_WARDS_SQL = """
 SELECT w.id AS ward_id, w.full_name
-FROM ansimk.resources_ward AS w
+FROM archive.resources_ward AS w
 WHERE w.id > $1
 ORDER BY w.id
 LIMIT $2
@@ -10,7 +10,7 @@ LIMIT $2
 
 EXPLICIT_WARDS_SQL = """
 SELECT id AS ward_id, full_name
-FROM ansimk.resources_ward
+FROM archive.resources_ward
 WHERE id = ANY($1::bigint[])
 ORDER BY id
 """
@@ -22,7 +22,7 @@ SELECT ward_id, device_id, date, temperature, humidity, light,
        temperature_count, humidity_count, light_count,
        min_temperature, max_temperature, min_humidity, max_humidity,
        min_light, max_light
-FROM ansimk.analysis_devicedailysummary
+FROM archive.analysis_devicedailysummary
 WHERE ward_id = ANY($1::bigint[]) AND date >= $2 AND date < $3
 ORDER BY ward_id, date, device_id
 """
@@ -36,7 +36,7 @@ period_events AS (
   SELECT p.period_index, e.ward_id, e.id, e.evaluated_at,
          e.risk_level, e.risk_score, TRUE AS in_period
   FROM periods p
-  JOIN ansimk.analysis_wardevaluation e
+  JOIN archive.analysis_wardevaluation e
     ON e.evaluated_at >= p.start_at AND e.evaluated_at < p.end_at
   JOIN selected s ON s.ward_id = e.ward_id
 ), seeds AS (
@@ -45,7 +45,7 @@ period_events AS (
   FROM periods p CROSS JOIN selected s
   JOIN LATERAL (
     SELECT id, evaluated_at, risk_level, risk_score
-    FROM ansimk.analysis_wardevaluation
+    FROM archive.analysis_wardevaluation
     WHERE ward_id = s.ward_id AND evaluated_at < p.start_at
     ORDER BY evaluated_at DESC, id DESC LIMIT 1
   ) e ON TRUE
@@ -78,7 +78,7 @@ SELECT p.period_index, s.ward_id,
        count(r.id) AS dispatch_request_count,
        count(r.id) FILTER (WHERE NOT r.is_resolved) AS unresolved_dispatch_count
 FROM periods p CROSS JOIN selected s
-LEFT JOIN ansimk.dispatch_dispatchrequest r
+LEFT JOIN archive.dispatch_dispatchrequest r
   ON r.ward_id = s.ward_id
  AND r.created_at >= p.start_at AND r.created_at < p.end_at
 GROUP BY p.period_index, s.ward_id

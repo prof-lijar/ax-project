@@ -53,17 +53,23 @@ class Database:
             raise
 
     async def cursor(self, query, *args, **kwargs):
+        assert "FROM archive.resources_ward_weekly_report" in query
+        assert "ansimk." not in query
         for row in self.rows:
             yield row
 
     async def fetchval(self, *args):
+        assert "FROM ansimk.resources_ward" in args[0]
         return self.ward_exists
 
     async def fetchrow(self, *args):
+        assert "FROM ansimk.resources_ward_weekly_report" in args[0]
         return self.existing
 
     async def execute(self, query, *args):
         assert not self.readonly
+        assert "ansimk.resources_ward_weekly_report" in query
+        assert "archive." not in query
         self.writes.append((query, args))
         return "INSERT 0 1"
 

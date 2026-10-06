@@ -15,7 +15,7 @@ from workflows.weekly_report.sync.outbox import enqueue
 from workflows.weekly_report.sync.settings import production_enabled
 
 _UPSERT_REPORT_SQL = """
-INSERT INTO ansimk.resources_ward_weekly_report (
+INSERT INTO archive.resources_ward_weekly_report (
     ward_id,
     week_start_date,
     week_end_date,
