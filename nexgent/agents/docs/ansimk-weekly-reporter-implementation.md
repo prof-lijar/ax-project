@@ -4,6 +4,26 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Guardian-action template catalog correction (2026-10-16)
+
+Guardian-action cards use the approved `GUI_` template IDs, and the
+activity-decrease and device-position descriptions match the catalog.
+Selection rules and variant numbers are unchanged. The complete-reception-
+absence card still has no template ID. Parameterized regression coverage
+checks the corrected descriptions and IDs in both JSON cards and Markdown.
+Previously stored reports require regeneration to adopt these corrections;
+no production regeneration or live service validation was performed.
+
+Validation: 100 focused unit tests passed, changed-file Ruff checks passed,
+and `git diff --check` passed. Pytest reported dependency deprecation warnings.
+Run the same checks from `nexgent/agents`:
+
+```bash
+.venv/bin/pytest tests/unit/test_weekly_report_guardian_guidance_policy.py tests/unit/test_weekly_report_rendering.py tests/unit/test_weekly_report_graph.py tests/unit/test_weekly_report_nodes.py
+.venv/bin/ruff check workflows/weekly_report/domain/guardian_guidance_policy.py tests/unit/test_weekly_report_guardian_guidance_policy.py
+git diff --check
+```
+
 ## Shared backend notification settings (2026-10-06)
 
 The production scheduler and monitor read notification settings only from a
@@ -508,7 +528,13 @@ The deterministic renderer uses the following order:
 For the approved activity, environment, and device statuses, the third stage
 uses code-owned guardian guides instead of model-authored mappings. Each guide
 includes an exact internal condition, displayed title, description, tag, and
-optional template ID. The condition is not rendered; the remaining approved
+optional template ID. Guardian-action IDs use the approved `GUI_` namespace:
+`GUI_GOOD_01`, `GUI_ACT_RISK_01`–`04`, `GUI_ENV_CAUTION_01`–`04`,
+`GUI_ENV_RISK_05`–`08`, `GUI_DEV_POWER_01`, and `GUI_DEV_POS_01`.
+Complete reception absence retains its separate power-check card with no
+template ID because the catalog supplies no ID for that case. Existing saved
+reports require regeneration to adopt the corrected IDs and approved copy.
+The condition is not rendered; the remaining approved
 fields form the action card. An unavailable-reception power check comes first;
 otherwise guides are ordered device, movement, remote control, then environment
 and capped at three. Model suggestions do not fill unused rendered slots

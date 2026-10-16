@@ -91,7 +91,8 @@
   particle by using forms such as `활동이`; correction and fallback enforce
   the same natural Korean grammar.
   Guardian cards use observation-style titles, and directional environment
-  CAUTION or RISK states share the approved `ENV_CAUTION_01`–`04` mappings;
+  CAUTION or RISK states share the approved `GUI_ENV_CAUTION_01`–`04` mappings;
+  all guardian-action template IDs use the approved `GUI_` namespace, and
   summary closing actions remain grounded in deterministic section copy.
   Known subscriber names replace generic honorifics. Complete lifestyle-data
   reception absence produces only the approved two-sentence information and

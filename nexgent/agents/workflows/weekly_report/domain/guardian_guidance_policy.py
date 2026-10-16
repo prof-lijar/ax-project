@@ -103,9 +103,9 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         variant=1,
         condition_label="활동 감소",
         title="활동이 줄었어요",
-        description="활동이 많이 줄어든 모습이에요.",
+        description="활동이 평소보다 많이 줄어든 모습이에요.",
         tag="안부 전화하기",
-        template_id="ACT_RISK_01",
+        template_id="GUI_ACT_RISK_01",
     ),
     ("guide_activity", "movement_count", 2): GuardianGuide(
         guide_type="guide_activity",
@@ -116,7 +116,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="활동이 늘었어요",
         description="활동이 평소보다 많이 늘어난 모습이에요.",
         tag="생활 확인하기",
-        template_id="ACT_RISK_02",
+        template_id="GUI_ACT_RISK_02",
     ),
     ("guide_activity", "remote_control_count", 4): GuardianGuide(
         guide_type="guide_activity",
@@ -127,7 +127,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="생활 패턴이 줄었어요",
         description="TV 이용 등 일상적인 생활 패턴이 많이 줄었어요.",
         tag="안부 전화하기",
-        template_id="ACT_RISK_03",
+        template_id="GUI_ACT_RISK_03",
     ),
     ("guide_activity", "remote_control_count", 5): GuardianGuide(
         guide_type="guide_activity",
@@ -138,7 +138,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="생활 패턴이 늘었어요",
         description="TV 이용 등 일상적인 생활 패턴이 많이 늘었어요.",
         tag="생활 확인하기",
-        template_id="ACT_RISK_04",
+        template_id="GUI_ACT_RISK_04",
     ),
     ("guide_env", "environment", 1): GuardianGuide(
         guide_type="guide_env",
@@ -149,7 +149,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="더운 환경에서 지내셨어요",
         description="집 안이 조금 더운 날이 있었어요.",
         tag="환경 확인하기",
-        template_id="ENV_CAUTION_01",
+        template_id="GUI_ENV_CAUTION_01",
     ),
     ("guide_env", "environment", 2): GuardianGuide(
         guide_type="guide_env",
@@ -160,7 +160,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="추운 환경에서 지내셨어요",
         description="집 안이 조금 추운 날이 있었어요.",
         tag="환경 확인하기",
-        template_id="ENV_CAUTION_02",
+        template_id="GUI_ENV_CAUTION_02",
     ),
     ("guide_env", "environment", 3): GuardianGuide(
         guide_type="guide_env",
@@ -171,7 +171,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="습한 환경에서 지내셨어요",
         description="집 안이 습한 날이 있었어요.",
         tag="환경 확인하기",
-        template_id="ENV_CAUTION_03",
+        template_id="GUI_ENV_CAUTION_03",
     ),
     ("guide_env", "environment", 4): GuardianGuide(
         guide_type="guide_env",
@@ -182,7 +182,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="건조한 환경에서 지내셨어요",
         description="집 안이 건조한 날이 있었어요.",
         tag="환경 확인하기",
-        template_id="ENV_CAUTION_04",
+        template_id="GUI_ENV_CAUTION_04",
     ),
     ("guide_env", "environment", 5): GuardianGuide(
         guide_type="guide_env",
@@ -193,7 +193,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="덥고 습한 환경에서 지내셨어요",
         description="덥고 습한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
-        template_id="ENV_RISK_05",
+        template_id="GUI_ENV_RISK_05",
     ),
     ("guide_env", "environment", 6): GuardianGuide(
         guide_type="guide_env",
@@ -204,7 +204,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="덥고 건조한 환경에서 지내셨어요",
         description="덥고 건조한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
-        template_id="ENV_RISK_06",
+        template_id="GUI_ENV_RISK_06",
     ),
     ("guide_env", "environment", 7): GuardianGuide(
         guide_type="guide_env",
@@ -215,7 +215,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="춥고 습한 환경에서 지내셨어요",
         description="춥고 습한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
-        template_id="ENV_RISK_07",
+        template_id="GUI_ENV_RISK_07",
     ),
     ("guide_env", "environment", 8): GuardianGuide(
         guide_type="guide_env",
@@ -226,7 +226,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="춥고 건조한 환경에서 지내셨어요",
         description="춥고 건조한 날이 여러 번 이어졌어요.",
         tag="환경 확인하기",
-        template_id="ENV_RISK_08",
+        template_id="GUI_ENV_RISK_08",
     ),
     ("guide_device_power", "device_data", 1): GuardianGuide(
         guide_type="guide_device_power",
@@ -237,7 +237,7 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         title="기기 전원 확인이 필요해요",
         description="생활 정보가 들어오지 않은 날이 있었어요.",
         tag="기기 확인하기",
-        template_id="DEV_POWER_01",
+        template_id="GUI_DEV_POWER_01",
     ),
     ("guide_device_pos", "device_data", 1): GuardianGuide(
         guide_type="guide_device_pos",
@@ -246,9 +246,9 @@ _GUIDES: dict[tuple[GuideType, str, int], GuardianGuide] = {
         variant=1,
         condition_label="위치 확인",
         title="기기 위치 확인이 필요해요",
-        description="생활 정보가 평소보다 적게 들어온 날이 있었어요.",
+        description="생활 정보가 적게 들어온 날이 있었어요.",
         tag="기기 확인하기",
-        template_id="DEV_POS_01",
+        template_id="GUI_DEV_POS_01",
     ),
     ("guide_device_no_data", "device_data", 1): GuardianGuide(
         guide_type="guide_device_no_data",
