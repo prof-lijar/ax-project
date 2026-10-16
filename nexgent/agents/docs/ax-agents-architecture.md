@@ -4,6 +4,17 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Guardian-action template catalog correction (2026-10-16)
+
+Guardian-action cards now use the operator-approved `GUI_` template IDs:
+`GUI_ACT_RISK_01`–`04`, `GUI_ENV_CAUTION_01`–`04`, `GUI_ENV_RISK_05`–`08`,
+`GUI_DEV_POWER_01`, and `GUI_DEV_POS_01`; stable cards retain `GUI_GOOD_01`.
+Activity-decrease and device-position descriptions match the supplied catalog.
+The separate complete-reception-absence card retains no template ID because
+the supplied catalog assigns none to that case. Selection rules and internal
+variant numbers remain unchanged. JSON and Markdown expose the corrected IDs;
+previously stored reports require regeneration to adopt them.
+
 ## Weekly-report shared production notification configuration (2026-10-06)
 
 The operator requires backend `prod.env` to be the only notification settings
