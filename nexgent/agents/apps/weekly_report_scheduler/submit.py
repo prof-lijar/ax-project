@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -114,8 +115,15 @@ def previous_completed_week_start(
     return current_week_start - timedelta(days=7)
 
 
+def validate_regeneration_key(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", value):
+        raise ValueError("regeneration key must be 1-32 letters, digits, hyphens or underscores")
+    return value
+
+
 def build_job_payload(
-    now: datetime, *, max_reports: int, cursor: str | None = None
+    now: datetime, *, max_reports: int, cursor: str | None = None,
+    regeneration_key: str | None = None,
 ) -> dict[str, str | int]:
     week_start = previous_completed_week_start(now)
     payload: dict[str, str | int] = {
@@ -124,6 +132,9 @@ def build_job_payload(
         "max_reports": max_reports,
         "idempotency_key": "cron-weekly-report-all-wards-" + week_start.isoformat(),
     }
+    if regeneration_key is not None:
+        key = validate_regeneration_key(regeneration_key)
+        payload["idempotency_key"] = f"regenerate-weekly-report-{week_start}:{key}"
     if cursor is not None:
         payload["cursor"] = cursor
         payload["idempotency_key"] = (
@@ -138,13 +149,15 @@ def submit_scheduled_job(
     *,
     now: datetime | None = None,
     cursor: str | None = None,
+    regeneration_key: str | None = None,
     opener: OpenUrl = urlopen,
     sleeper: Sleep = time.sleep,
     log_event: LogEvent | None = None,
 ) -> dict[str, Any]:
     requested_at = datetime.now(UTC) if now is None else now
     payload = build_job_payload(
-        requested_at, max_reports=settings.max_reports, cursor=cursor
+        requested_at, max_reports=settings.max_reports, cursor=cursor,
+        regeneration_key=regeneration_key,
     )
     encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     request = Request(

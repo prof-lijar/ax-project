@@ -4,6 +4,87 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## One-time previous-count correction (2026-10-17)
+
+The standalone operator tool in `playground/fix-oct5-previous-counts/` copies
+each ward's published September 28–October 4 activity and remote-control totals
+into the October 5–11 report's previous-week fields, recalculating the ratios
+and display strings. It reads and writes the production report table directly
+through its own SSH launcher, using the existing migration connection settings.
+The normal migration scripts are unchanged. Preview is read-only; `--write`
+saves a private original-row backup before committing one transaction.
+
+Per operator instruction, classification changes do not block this numeric
+correction. Existing classifications, summaries, and guardian guidance are
+preserved, even where they no longer agree with the corrected comparison.
+Missing September reports and malformed inputs are skipped explicitly. No
+generation, local archive update, or permanent comparison-policy change occurs.
+An ordinary regeneration or archive-to-production migration can overwrite this
+one-time correction. See the [operator commands and recovery notes](../playground/fix-oct5-previous-counts/README.md).
+
+The operator committed 5,546 corrections; 1,066 reports already matched and 42
+had no September baseline. A subsequent read-only production fetch verified
+both counts matched for all 6,612 comparable reports, with zero mismatches and
+zero remaining updates. Validation: 22 focused tests and the full suite of
+804 tests passed (25 opt-in skips), along with changed-file Ruff, LangGraph,
+production Compose rendering, and weekly-reporter skill validation.
+
+## Explicit weekly-report regeneration command (2026-10-17)
+
+The scheduler CLI accepts `--week-start YYYY-MM-DD --regenerate RUN_KEY` to
+regenerate a completed reporting week and then run the existing production
+migration. The bounded run key creates a separate stable bulk idempotency
+namespace, including cursor hashes for continuation batches, and a success
+receipt under `regenerations/<RUN_KEY>/<Monday>.json`. Repeating the key reuses
+jobs and resumes migration; a completed regeneration skips both stages. Original
+cron receipts and default scheduler keys are preserved.
+
+The existing global pipeline lock, heartbeat/failure tracking, all-batch storage
+checks, 24-hour generation deadline and production migration gate remain in
+force. No successful regeneration receipt is written before migration succeeds.
+A terminal failed generation requires correction and a new run key; a failed
+migration can reuse its completed jobs with the same key. Existing per-week
+completion notification receipts are reused without a new correction message.
+Rebuild the scheduler image before using the new option; no live generation,
+production writes or deployment were performed while implementing the CLI.
+See [scheduler commands](../apps/weekly_report_scheduler/README.md).
+
+Validation: 115 focused scheduler/notification tests passed; the full suite
+passed with 782 tests and 25 opt-in skips. Changed-file Ruff, CLI help,
+LangGraph validation, production Compose rendering, skill validation, and
+whitespace checks passed. Tests cover existing-receipt bypass, distinct stable
+job keys, continuation batches, migration retry, failed-generation gating,
+unsafe-key rejection, and explicit reporting-week selection.
+
+## Weekly-report source restored to ansimk (2026-10-17)
+
+Per operator instruction, all five source queries now explicitly read
+`ansimk.resources_ward`, `ansimk.analysis_devicedailysummary`,
+`ansimk.analysis_wardevaluation`, and `ansimk.dispatch_dispatchrequest`.
+This supersedes only the source-read portion of the October 6 archive decision.
+The connection remains `ANSIMK_DATABASE_DSN`; no search-path fallback is used.
+
+Investigation of October 5–11 found archive daily summaries with seven dates
+but partial-day counts. For the investigated ward, each summary matched exactly
+the raw measurements before 04:00 KST (48 samples/day), while raw measurements
+continued through approximately 23:58 (287 samples/day). The archive weekly
+activity/remote totals were 530/268; full-day raw totals and ansimk daily totals
+were 8,193/3,175. Date coverage alone does not establish full-day completeness.
+The upstream archive synchronization cause remains unconfirmed.
+
+Local report storage and recovery remain in `archive.resources_ward_weekly_report`;
+production migration/delivery and the optional outbox retain their existing
+boundaries. Source wards therefore still need archive ward parents for local
+storage. A read-only check found all 6,656 ansimk wards had archive parents.
+No database schema, credentials, calculation rules, or report content are changed
+by this source switch itself.
+
+Rebuild/recreate the source API between jobs and use fresh jobs so staged
+archive snapshots are not reused. Existing reports and scheduler success
+receipts are unchanged; affected weeks require explicit regeneration and
+migration. Regression tests bind each query to ansimk and exercise roster
+selection with a competing archive roster.
+
 ## Guardian-action template catalog correction (2026-10-16)
 
 Guardian-action cards use the approved `GUI_` template IDs, and the
@@ -377,7 +458,7 @@ PostgreSQL raw tables
 
 ## Source and calculations
 
-Candidate wards are every row in `archive.resources_ward`, ordered by ID,
+Candidate wards are every row in `ansimk.resources_ward`, ordered by ID,
 irrespective of weekly records. Explicit ward IDs are also supported; missing
 IDs are returned in `skipped` by the source and cause the bulk run to fail.
 Automatic selection returns an opaque cursor bound to the week and timezone.
@@ -402,8 +483,8 @@ raw data. It implements the verified server semantics:
 Management notes, evaluation notes, dispatch descriptions, admin history, and
 raw rows never enter the model prompt.
 
-Every source relation is schema-qualified with `archive`, as requested on
-2026-10-06. Matching relations in `ansimk_clone` and `ansimk` cannot be selected
+Every source relation is schema-qualified with `ansimk`, restored on
+2026-10-17. Matching relations in `ansimk_clone` and `archive` cannot be selected
 by the connection's PostgreSQL `search_path`. The source database remains
 selected by `ANSIMK_DATABASE_DSN`. Production delivery and coverage remain
 bound to production schema `ansimk`.

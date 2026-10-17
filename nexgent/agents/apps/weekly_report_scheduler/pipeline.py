@@ -25,6 +25,7 @@ from apps.weekly_report_scheduler.submit import (
     _write_event,
     previous_completed_week_start,
     submit_scheduled_job,
+    validate_regeneration_key,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -157,12 +158,15 @@ def run_pipeline(
     *,
     now=None,
     state_root=None,
+    regeneration_key=None,
     submit=submit_scheduled_job,
     wait=wait_for_storage,
     migrate=migrate_week,
     notify=None,
     failure_notify=None,
 ):
+    if regeneration_key is not None:
+        validate_regeneration_key(regeneration_key)
     now = datetime.now(UTC) if now is None else now
     week_start = previous_completed_week_start(now).isoformat()
     state_root = Path(
@@ -182,7 +186,7 @@ def run_pipeline(
             status.start()
             settings = settings or SchedulerSettings.from_env()
             _run_locked(settings, now, state_root, week_start, status, submit, wait,
-                        migrate, notify)
+                        migrate, notify, regeneration_key=regeneration_key)
             status.update(status="succeeded")
         except BaseException as exc:
             status.close()
@@ -200,8 +204,13 @@ def run_pipeline(
             status.close()
 
 
-def _run_locked(settings, now, state_root, week_start, status, submit, wait, migrate, notify):
-    receipt = state_root / (week_start + ".json")
+def _run_locked(settings, now, state_root, week_start, status, submit, wait, migrate, notify,
+                *, regeneration_key=None):
+    receipt_root = state_root
+    if regeneration_key is not None:
+        receipt_root = state_root / "regenerations" / regeneration_key
+        receipt_root.mkdir(parents=True, exist_ok=True)
+    receipt = receipt_root / (week_start + ".json")
     if receipt.exists() and json.loads(receipt.read_text()).get(
         "selection_policy"
     ) == SELECTION_POLICY:
@@ -224,7 +233,11 @@ def _run_locked(settings, now, state_root, week_start, status, submit, wait, mig
         if time.monotonic() >= deadline:
             raise ScheduledSubmissionError("scheduled ward discovery timed out")
         status.update(stage="submission")
-        job = submit(settings, now=now, cursor=cursor, log_event=_write_event)
+        submission_options = (
+            {"regeneration_key": regeneration_key} if regeneration_key is not None else {}
+        )
+        job = submit(settings, now=now, cursor=cursor, log_event=_write_event,
+                     **submission_options)
         status.update(stage="generation", job=job)
         progress = {"progress": lambda job: status.update(job=job)} if wait is wait_for_storage else {}
         completed = wait(
@@ -288,9 +301,15 @@ def main() -> int:
     parser.add_argument(
         "--week-start",
         type=date.fromisoformat,
-        help="Resume a specific reporting Monday without regenerating its job",
+        help="Select a reporting Monday; resumes its job unless --regenerate is supplied",
+    )
+    parser.add_argument(
+        "--regenerate", metavar="RUN_KEY", type=validate_regeneration_key,
+        help="Generate fresh jobs and migrate to production; reuse RUN_KEY to resume",
     )
     args = parser.parse_args()
+    if args.regenerate is not None and args.week_start is None:
+        parser.error("--regenerate requires --week-start")
     now = None
     if args.week_start is not None:
         if args.week_start.weekday() != 0:
@@ -325,7 +344,8 @@ def main() -> int:
 
         from apps.weekly_report_scheduler.monitor import notify_failure
 
-        run_pipeline(now=now, notify=notify, failure_notify=notify_failure)
+        run_pipeline(now=now, regeneration_key=args.regenerate,
+                     notify=notify, failure_notify=notify_failure)
     except Exception as exc:  # noqa: BLE001 - process boundary logs unexpected failures too
         _write_event(
             {

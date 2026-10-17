@@ -271,3 +271,91 @@ def test_old_receipt_does_not_suppress_all_ward_generation(tmp_path):
     submit.assert_called_once()
     migrate.assert_called_once_with("2026-08-31")
     assert json.loads(path.read_text())["selection_policy"] == pipeline.SELECTION_POLICY
+
+
+def test_regeneration_bypasses_old_receipt_and_preserves_it_across_all_batches(tmp_path):
+    original = tmp_path / "2026-08-31.json"
+    old_receipt = json.dumps({"selection_policy": pipeline.SELECTION_POLICY, "old": True})
+    original.write_text(old_receipt)
+    first = {**job("completed"), "selection_truncated": True, "next_cursor": "page-two"}
+    last = {**job("completed"), "job_id": "9ff04888-a682-4704-8d27-3d5cd2cb26cb"}
+    submit = Mock(side_effect=[first, last])
+    migrate = Mock()
+    kwargs = {
+        "now": datetime(2026, 9, 6, 18, tzinfo=UTC), "state_root": tmp_path,
+        "regeneration_key": "ansimk-v1", "submit": submit, "migrate": migrate,
+    }
+    pipeline.run_pipeline(SchedulerSettings(), **kwargs)
+    pipeline.run_pipeline(SchedulerSettings(), **kwargs)
+    assert submit.call_count == 2
+    assert [call.kwargs["cursor"] for call in submit.call_args_list] == [None, "page-two"]
+    assert all(call.kwargs["regeneration_key"] == "ansimk-v1"
+               for call in submit.call_args_list)
+    migrate.assert_called_once_with("2026-08-31")
+    assert original.read_text() == old_receipt
+    receipt = json.loads(
+        (tmp_path / "regenerations/ansimk-v1/2026-08-31.json").read_text()
+    )
+    assert receipt["job_ids"] == [first["job_id"], last["job_id"]]
+    assert receipt["report_count"] == 6
+
+
+def test_regeneration_resumes_migration_with_same_key_after_failure(tmp_path):
+    submit = Mock(return_value=job("completed"))
+    migrate = Mock(side_effect=[ScheduledSubmissionError("migration failed"), None])
+    kwargs = {
+        "now": datetime(2026, 9, 6, 18, tzinfo=UTC), "state_root": tmp_path,
+        "regeneration_key": "ansimk-v1", "submit": submit, "migrate": migrate,
+    }
+    receipt = tmp_path / "regenerations/ansimk-v1/2026-08-31.json"
+    with pytest.raises(ScheduledSubmissionError):
+        pipeline.run_pipeline(SchedulerSettings(), **kwargs)
+    assert not receipt.exists()
+    pipeline.run_pipeline(SchedulerSettings(), **kwargs)
+    assert receipt.exists()
+    assert submit.call_args_list[0] == submit.call_args_list[1]
+
+
+def test_regeneration_failed_batch_cannot_migrate(tmp_path):
+    migrate = Mock()
+    with pytest.raises(ScheduledSubmissionError):
+        pipeline.run_pipeline(
+            SchedulerSettings(), state_root=tmp_path, regeneration_key="ansimk-v1",
+            submit=Mock(return_value=job("failed")), migrate=migrate,
+        )
+    migrate.assert_not_called()
+    assert not list((tmp_path / "regenerations").rglob("*.json"))
+
+
+@pytest.mark.parametrize("key", ["../escape", "", "/tmp/escape", "x" * 33])
+def test_regeneration_rejects_unsafe_keys_before_submission(key, tmp_path):
+    submit = Mock()
+    with pytest.raises(ValueError, match="regeneration key"):
+        pipeline.run_pipeline(
+            SchedulerSettings(), state_root=tmp_path, regeneration_key=key, submit=submit,
+        )
+    submit.assert_not_called()
+    assert not list(tmp_path.iterdir())
+
+
+def test_regeneration_cli_selects_exact_week_and_key(monkeypatch):
+    run = Mock()
+    monkeypatch.setattr(pipeline, "run_pipeline", run)
+    monkeypatch.setattr(pipeline.sys, "argv", [
+        "pipeline", "--week-start", "2026-10-05", "--regenerate", "ansimk-v1",
+    ])
+    assert pipeline.main() == 0
+    assert run.call_args.kwargs["regeneration_key"] == "ansimk-v1"
+    assert pipeline.previous_completed_week_start(run.call_args.kwargs["now"]).isoformat() == (
+        "2026-10-05"
+    )
+
+
+def test_regeneration_cli_requires_explicit_week(monkeypatch):
+    run = Mock()
+    monkeypatch.setattr(pipeline, "run_pipeline", run)
+    monkeypatch.setattr(pipeline.sys, "argv", ["pipeline", "--regenerate", "ansimk-v1"])
+    with pytest.raises(SystemExit) as exc:
+        pipeline.main()
+    assert exc.value.code == 2
+    run.assert_not_called()
