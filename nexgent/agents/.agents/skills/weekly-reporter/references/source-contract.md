@@ -2,13 +2,13 @@
 
 ## Authoritative sources
 
-- `archive.analysis_devicedailysummary`: environment, activity, and sleep rows.
-- `archive.analysis_wardevaluation`: risk events and scores.
-- `archive.dispatch_dispatchrequest`: dispatch events and current resolution state.
-- `archive.resources_ward`: ward identity.
+- `ansimk.analysis_devicedailysummary`: environment, activity, and sleep rows.
+- `ansimk.analysis_wardevaluation`: risk events and scores.
+- `ansimk.dispatch_dispatchrequest`: dispatch events and current resolution state.
+- `ansimk.resources_ward`: ward identity.
 
 Always schema-qualify these application-owned queries. The database also
-contains `ansimk_clone` and `ansimk` relations with matching names; neither is
+contains `ansimk_clone` and `archive` relations with matching names; neither is
 an approved weekly-report source, and PostgreSQL `search_path` must not select
 the source implicitly.
 
@@ -29,7 +29,7 @@ not an authoritative input.
   They do not render `이번 주`, `지난주`, or `지난 주`.
 - Default timezone: `Asia/Seoul`; accept valid IANA zones.
 - Accept either unique explicit ward IDs or an opaque cursor, never both.
-- Discover every ward from `archive.resources_ward`, including wards without
+- Discover every ward from `ansimk.resources_ward`, including wards without
   observations. Sort by ward ID. Interactive graph requests stay
   capped at twenty-five wards; durable bulk-source pages are capped at one
   hundred.

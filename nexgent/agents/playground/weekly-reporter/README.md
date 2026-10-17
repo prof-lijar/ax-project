@@ -12,6 +12,11 @@ and `--week-start` set to the report week's Monday after the bulk job confirms
 local storage. See [scheduler deployment and recovery](../../apps/weekly_report_scheduler/README.md)
 for production configuration, saved receipts, and failure handling.
 
+To regenerate reports in production and then write them to the live database,
+use the [scheduler regeneration command](../../apps/weekly_report_scheduler/README.md#regenerate-a-week-and-write-to-the-live-database).
+That guide also documents [live progress monitoring](../../apps/weekly_report_scheduler/README.md#watch-live-progress)
+and [migration completion checks](../../apps/weekly_report_scheduler/README.md#confirm-the-live-database-write).
+
 Rows match on `(ward_id, week_start_date)`:
 
 | Production row | Result |
