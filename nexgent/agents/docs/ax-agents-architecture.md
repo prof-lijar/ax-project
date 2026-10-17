@@ -4,6 +4,55 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Explicit weekly-report regeneration command (2026-10-17)
+
+The scheduler CLI accepts `--week-start YYYY-MM-DD --regenerate RUN_KEY` to
+regenerate a completed reporting week and then run the existing production
+migration. The bounded run key creates a separate stable bulk idempotency
+namespace, including cursor hashes for continuation batches, and a success
+receipt under `regenerations/<RUN_KEY>/<Monday>.json`. Repeating the key reuses
+jobs and resumes migration; a completed regeneration skips both stages. Original
+cron receipts and default scheduler keys are preserved.
+
+The existing global pipeline lock, heartbeat/failure tracking, all-batch storage
+checks, 24-hour generation deadline and production migration gate remain in
+force. No successful regeneration receipt is written before migration succeeds.
+A terminal failed generation requires correction and a new run key; a failed
+migration can reuse its completed jobs with the same key. Existing per-week
+completion notification receipts are reused without a new correction message.
+Rebuild the scheduler image before using the new option; no live generation,
+production writes or deployment were performed while implementing the CLI.
+See [scheduler commands](../apps/weekly_report_scheduler/README.md).
+
+## Weekly-report source restored to ansimk (2026-10-17)
+
+Per operator instruction, all five source queries now explicitly read
+`ansimk.resources_ward`, `ansimk.analysis_devicedailysummary`,
+`ansimk.analysis_wardevaluation`, and `ansimk.dispatch_dispatchrequest`.
+This supersedes only the source-read portion of the October 6 archive decision.
+The connection remains `ANSIMK_DATABASE_DSN`; no search-path fallback is used.
+
+Investigation of October 5–11 found archive daily summaries with seven dates
+but partial-day counts. For the investigated ward, each summary matched exactly
+the raw measurements before 04:00 KST (48 samples/day), while raw measurements
+continued through approximately 23:58 (287 samples/day). The archive weekly
+activity/remote totals were 530/268; full-day raw totals and ansimk daily totals
+were 8,193/3,175. Date coverage alone does not establish full-day completeness.
+The upstream archive synchronization cause remains unconfirmed.
+
+Local report storage and recovery remain in `archive.resources_ward_weekly_report`;
+production migration/delivery and the optional outbox retain their existing
+boundaries. Source wards therefore still need archive ward parents for local
+storage. A read-only check found all 6,656 ansimk wards had archive parents.
+No database schema, credentials, calculation rules, or report content are changed
+by this source switch itself.
+
+Rebuild/recreate the source API between jobs and use fresh jobs so staged
+archive snapshots are not reused. Existing reports and scheduler success
+receipts are unchanged; affected weeks require explicit regeneration and
+migration. Regression tests bind each query to ansimk and exercise roster
+selection with a competing archive roster.
+
 ## Guardian-action template catalog correction (2026-10-16)
 
 Guardian-action cards now use the operator-approved `GUI_` template IDs:

@@ -15,7 +15,7 @@ See [production delivery](weekly-report-production-sync.md).
 
 ## Acceptance and implementation
 
-- Discover every ward from `archive.resources_ward` in ID order. No daily-summary,
+- Discover every ward from `ansimk.resources_ward` in ID order. No daily-summary,
   evaluation, or dispatch record is required for membership. Missing data uses
   the existing unavailable displays without inventing measurements.
 - Retain one report per ward when the model fails, times out, or returns invalid

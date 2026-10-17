@@ -62,7 +62,8 @@ def test_continuation_cursor_has_a_distinct_stable_idempotency_key() -> None:
     assert continuation == build_job_payload(now, max_reports=10_000, cursor="opaque-cursor")
 
 
-def test_submission_retries_transient_failure_with_same_request() -> None:
+@pytest.mark.parametrize("regeneration_key", [None, "ansimk-v1"])
+def test_submission_retries_transient_failure_with_same_request(regeneration_key) -> None:
     calls = []
     delays = []
     events = []
@@ -88,17 +89,42 @@ def test_submission_retries_transient_failure_with_same_request() -> None:
         opener=opener,
         sleeper=delays.append,
         log_event=events.append,
+        regeneration_key=regeneration_key,
     )
 
     first_payload = json.loads(calls[0][0].data)
     second_payload = json.loads(calls[1][0].data)
     assert first_payload == second_payload
+    if regeneration_key:
+        assert regeneration_key in first_payload["idempotency_key"]
     assert result["status"] == "pending"
     assert delays == [0.25]
     assert [event["event"] for event in events] == [
         "weekly_report_schedule_retry",
         "weekly_report_schedule_submitted",
     ]
+
+
+def test_regeneration_keys_are_fresh_resumable_and_cursor_specific():
+    from ax_contracts import WeeklyReportBulkJobRequest
+
+    now = datetime(2026, 10, 12, tzinfo=UTC)
+    original = build_job_payload(now, max_reports=10_000)
+    regenerated = build_job_payload(now, max_reports=10_000, regeneration_key="ansimk-v1")
+    assert regenerated["idempotency_key"] != original["idempotency_key"]
+    assert regenerated == build_job_payload(
+        now, max_reports=10_000, regeneration_key="ansimk-v1"
+    )
+    continuation = build_job_payload(
+        now, max_reports=10_000, regeneration_key="ansimk-v1", cursor="page-two"
+    )
+    assert continuation["idempotency_key"] != regenerated["idempotency_key"]
+    assert build_job_payload(
+        now, max_reports=10_000, regeneration_key="ansimk-v2"
+    )["idempotency_key"] != regenerated["idempotency_key"]
+    WeeklyReportBulkJobRequest.model_validate(build_job_payload(
+        now, max_reports=10_000, regeneration_key="x" * 32, cursor="page-two"
+    ))
 
 
 def test_submission_rejects_response_for_a_different_week() -> None:

@@ -4,7 +4,7 @@ This private cron service starts durable Weekly Reporter generation every
 Monday at 01:00 in `Asia/Seoul`. The cron expression is `0 1 * * 1`.
 
 Each run targets the previous fully completed Monday-through-Sunday period and
-includes every ward in `archive.resources_ward`, even without weekly records. Each job
+includes every ward in `ansimk.resources_ward`, even without weekly records. Each job
 requests up to 10,000 reports by default; the pipeline follows continuation
 cursors until discovery is exhausted. Idempotency keys include the reporting
 Monday, the all-ward policy, and a cursor hash for subsequent jobs.
@@ -82,15 +82,127 @@ To resume an interrupted or failed migration for a specific reporting week:
 docker compose -f ../compose.prod.yaml exec weekly-report-scheduler /app/.venv/bin/python -m apps.weekly_report_scheduler.pipeline --week-start 2026-09-07
 ```
 
-This does not regenerate a retained existing job. Inspect target state before
-retrying an uncertain commit. Retain `/var/lib/ax/weekly-report-scheduler`
-across container replacement; `WEEKLY_REPORT_SCHEDULE_STATE_ROOT` can override
-that directory for local execution. A failed generation job requires the
-existing generation/storage recovery procedure before manual migration.
-For the all-ward policy rollout and regeneration of a legacy week, see
-[full-coverage recovery](../../docs/weekly-report-completeness.md).
+The command without `--regenerate` does not regenerate a retained existing job.
+Retain `/var/lib/ax/weekly-report-scheduler` across container replacement;
+`WEEKLY_REPORT_SCHEDULE_STATE_ROOT` can override that directory for local execution.
 
-Configuration:
+## Regenerate a week and write to the live database
+
+Run these commands from the `agents/` directory. The example targets
+**October 5–11, 2026**, in `Asia/Seoul`; `--week-start` is the inclusive Monday.
+
+Deploy the corrected source API and the scheduler's regeneration option once,
+between jobs. Skip this step if these changes are already deployed; do not
+rebuild/recreate the containers while a generation or migration is running.
+
+```bash
+sudo docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-api weekly-report-scheduler
+```
+
+Start regeneration and keep this terminal open through the migration:
+
+```bash
+sudo docker compose -f ../compose.prod.yaml exec weekly-report-scheduler \
+  /app/.venv/bin/python -m apps.weekly_report_scheduler.pipeline \
+  --week-start 2026-10-05 --regenerate ansimk-v1
+```
+
+Deploy the corrected source API before starting regeneration. The run submits
+fresh jobs for every source ward, waits for all batches to commit local reports,
+and invokes the existing whole-week production upsert. A generation failure
+prevents migration. Production rows for absent wards are still skipped.
+
+`RUN_KEY` is 1–32 letters, digits, hyphens or underscores, starting with a letter
+or digit. It identifies a regeneration, not a change to the reporting week.
+Repeat the same key to reuse jobs and retry an interrupted migration; successful
+regenerations skip generation and migration on repeat. Use a new key only for
+another fresh generation (or after fixing a terminal generation failure).
+
+Regeneration receipts are stored under
+`regenerations/<RUN_KEY>/<Monday>.json`. Original cron receipts are preserved;
+the same global pipeline lock, durable attempt tracking, continuation checks,
+and migration success gate apply. Existing per-week completion notification
+receipts are reused, so this does not create a separate correction announcement.
+
+The scheduler submits the work to `weekly-report-worker`, which runs the agent.
+The scheduler then waits and migrates the saved reports automatically. You do
+not need to run `playground/weekly-reporter/migrate.sh` separately for this path.
+That standalone script only copies existing reports and cannot regenerate them.
+
+## Watch live progress
+
+Open a second terminal in `agents/`. Copy the `job_id` from the original
+terminal's `weekly_report_schedule_submitted` event. The ID below is the
+October 17 regeneration example; replace it with the submitted ID for another run.
+
+Watch progress every five seconds:
+
+```bash
+sudo watch -n 5 'docker compose -f ../compose.prod.yaml exec -T weekly-report-worker /app/.venv/bin/python -m apps.workers.weekly_report status e379208b-f40a-4f55-af50-4a573545730c'
+```
+
+Or check once:
+
+```bash
+sudo docker compose -f ../compose.prod.yaml exec -T weekly-report-worker \
+  /app/.venv/bin/python -m apps.workers.weekly_report status \
+  e379208b-f40a-4f55-af50-4a573545730c
+```
+
+| Field | Meaning |
+| --- | --- |
+| `status` | Current generation state; `completed` includes local report storage, not production migration. |
+| `discovered_count` | Wards found so far in this batch; may increase until `producer_done` is true. |
+| `completed_count` | Reports completed in this batch. |
+| `pending_count` / `running_count` | Reports waiting / currently being processed. |
+| `failed_count` | Failed reports; any failure prevents the scheduler from migrating the batch. |
+| `selection_truncated` / `next_cursor` | More wards require another batch; the scheduler submits it automatically and prints another job ID. |
+
+To follow worker logs:
+
+```bash
+sudo docker compose -f ../compose.prod.yaml logs -f --since 10m weekly-report-worker
+```
+
+Worker logs include other jobs; use the status command for this job's counts.
+`Ctrl+C` in the watch or log terminal stops monitoring only. Keep the original
+pipeline terminal running; do not rerun generation merely to check progress.
+
+## Confirm the live database write
+
+In the original pipeline terminal, look for these events in order:
+
+1. `weekly_report_migration_started`: all generation batches passed the local
+   storage checks and production migration is starting.
+2. `"mode": "committed"`: the migration transaction committed. Review its
+   `insert`, `update`, and `skipped` counts; wards absent from production are skipped.
+3. `weekly_report_migration_completed`: the scheduler recorded migration success.
+
+The manually executed pipeline writes its output to the original `docker compose
+exec` terminal; `docker compose logs weekly-report-scheduler` is not a substitute
+for that output. A job showing `completed` alone does not confirm a live DB write.
+
+You can also inspect this regeneration's durable migration-success receipt:
+
+```bash
+sudo docker compose -f ../compose.prod.yaml exec -T weekly-report-scheduler \
+  cat /var/lib/ax/weekly-report-scheduler/regenerations/ansimk-v1/2026-10-05.json
+```
+
+The receipt is written only after successful migration. Its `report_count` is
+the locally generated total, not the number inserted in production; use the
+migration summary for production skips. Adjust the run key/date and the state
+root if configured differently. Completion notification happens afterward and
+has its own acceptance state.
+
+For an interrupted migration, rerun the exact regeneration command with the
+same week and run key. Inspect target state before retrying an uncertain commit:
+an interrupted run may have committed before saving its receipt, and retrying
+can repeat the upsert. A terminal failed generation requires fixing the cause
+and using a new run key. See [full-coverage recovery](../../docs/weekly-report-completeness.md)
+for the completeness policy.
+
+## Configuration
 
 Optional completion notifications use the backend's durable Slack API after
 production migration. `NEXGENT_SLACK_ENABLED=true` in `backend/prod.env`

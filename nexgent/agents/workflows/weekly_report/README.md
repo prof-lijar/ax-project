@@ -12,13 +12,13 @@ and previous seven-day snapshots to the graph through a private-network HTTP
 client. The graph never receives database credentials and exposes no arbitrary
 SQL tool.
 
-The source service reads schema-qualified tables only from `archive`:
+The source service reads schema-qualified tables only from `ansimk`:
 
-- `archive.analysis_devicedailysummary` for environment, activity, and sleep;
-- `archive.analysis_wardevaluation` for risk events, danger days, score averages, and
+- `ansimk.analysis_devicedailysummary` for environment, activity, and sleep;
+- `ansimk.analysis_wardevaluation` for risk events, danger days, score averages, and
   `DANGER` to `STABLE` transitions;
-- `archive.dispatch_dispatchrequest` for requests and unresolved requests;
-- `archive.resources_ward` for ward identity.
+- `ansimk.dispatch_dispatchrequest` for requests and unresolved requests;
+- `ansimk.resources_ward` for ward identity.
 
 Matching source tables under `ansimk_clone` and `ansimk` are deliberately excluded.
 The connection remains configured by `ANSIMK_DATABASE_DSN`; changing its
@@ -236,11 +236,14 @@ checks and coverage queries stay in `ansimk`. The optional local sync outbox
 remains `ansimk.weekly_report_sync_outbox` in the same local database; pending
 deliveries are preserved and report/outbox writes still share one transaction.
 
-The archive source and storage switch requires rebuilding the source API, bulk
-worker, and scheduler together between jobs. Existing reports are not moved or
-regenerated. Use a fresh bulk-job idempotency key for archive generation; do not
-resume an old partially generated job across the schema change. Historical
-scheduler success receipts still prevent automatic regeneration of those weeks.
+On 2026-10-17, source reads returned to `ansimk` because archive daily summaries
+contained partial-day snapshots despite seven-day row coverage. Rebuild/recreate
+the source API between jobs. Local report storage remains in `archive`; every
+source ward must also exist in `archive.resources_ward` for its storage foreign
+key. The live roster check found no missing parents. Use fresh jobs after the
+switch: staged snapshots and existing reports are not recalculated by changing
+the source. Historical scheduler receipts still prevent automatic regeneration.
+Affected weeks require deliberate regeneration and production migration.
 
 The live read-only check on 2026-10-06 found that the currently configured
 source role has SELECT but lacks INSERT and UPDATE on the archive report

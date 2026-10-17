@@ -65,9 +65,16 @@
 - [MCP development and integration](mcp-integrations.md): declarative remote
   server registry, environment-backed headers, discovery CLI, namespaced tool
   adapters, risk classification, and the configured read-only database MCP.
+- [Weekly report production commands](../apps/weekly_report_scheduler/README.md#regenerate-a-week-and-write-to-the-live-database):
+  deploy the source API and scheduler, regenerate a selected week and write to
+  the live database, watch job counts and worker logs, confirm migration success,
+  and resume with the same regeneration key.
 - [Ansimk weekly reporter](../workflows/weekly_report/README.md): private
-  FastAPI/raw-PostgreSQL metadata source using the explicit `archive` schema
-  (production delivery retains `ansimk`), deterministic current/prior metrics,
+  FastAPI/raw-PostgreSQL metadata source restored to explicit `ansimk` reads
+  on 2026-10-17 after partial-day archive summaries were found. The scheduler
+  supports `--week-start YYYY-MM-DD --regenerate RUN_KEY` for resumable fresh
+  generation followed by production migration (local report
+  storage retains `archive`; production delivery uses `ansimk`), deterministic current/prior metrics,
   deterministic section evaluations, and an LLM-authored one-paragraph
   `한주 총평` generated from report-facing weekly data rather than a
   Python-selected sentence formula. Validation enforces body-only warm 해요체,
@@ -166,3 +173,7 @@
 - [Historical weekly-report migration](../playground/weekly-reporter/README.md):
   manual local-to-production preview and atomic ward/week upserts, updating all
   matches while preserving production creation timestamps and skipping missing target wards.
+
+- [One-time October previous-count correction](../playground/fix-oct5-previous-counts/README.md):
+  copy published September totals into October 5–11 comparison fields directly
+  in production, with read-only preview, backups, and atomic updates.
