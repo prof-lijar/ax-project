@@ -7,10 +7,14 @@ from typing import Literal
 
 from ax_contracts import WardWeeklyMetrics
 
-from .activity_policy import assess_activity
-from .device_reception_policy import assess_device_reception
-from .environment_policy import assess_environment
-from .risk_score_policy import assess_risk_score
+from .activity_policy import ActivityAssessment, assess_activity
+from .device_reception_policy import (
+    DeviceReceptionKind,
+    DeviceReceptionStatus,
+    assess_device_reception,
+)
+from .environment_policy import EnvironmentStatus, assess_environment
+from .risk_score_policy import RiskScoreStatus, assess_risk_score
 
 GuideType = Literal[
     "guide_activity",
@@ -39,16 +43,38 @@ class GuardianGuide:
 def build_guardian_guides(metrics: WardWeeklyMetrics) -> list[GuardianGuide]:
     """Return at most three approved guides in product-priority order."""
 
-    guides: list[GuardianGuide] = []
     reception = assess_device_reception(metrics.current)
-    if reception.kind == "device_no_data":
+    environment = assess_environment(metrics)
+    return select_guardian_guides(
+        activity=assess_activity(metrics),
+        environment_status=environment.status,
+        environment_variant=environment.variant,
+        reception_status=reception.status,
+        reception_kind=reception.kind,
+        risk_score_status=assess_risk_score(metrics.current.risk_score_avg).status,
+        risk_detected_count=metrics.current.risk_detected_count,
+    )
+
+
+def select_guardian_guides(
+    *,
+    activity: ActivityAssessment,
+    environment_status: EnvironmentStatus,
+    environment_variant: int | None,
+    reception_status: DeviceReceptionStatus,
+    reception_kind: DeviceReceptionKind,
+    risk_score_status: RiskScoreStatus,
+    risk_detected_count: int,
+) -> list[GuardianGuide]:
+    """Select approved cards from assessed conditions, including historical reports."""
+    guides: list[GuardianGuide] = []
+    if reception_kind == "device_no_data":
         guides.append(_GUIDES[("guide_device_no_data", "device_data", 1)])
-    elif reception.status == "CAUTION" and reception.kind == "device_power":
+    elif reception_status == "CAUTION" and reception_kind == "device_power":
         guides.append(_GUIDES[("guide_device_power", "device_data", 1)])
-    elif reception.status == "CAUTION" and reception.kind == "device_position":
+    elif reception_status == "CAUTION" and reception_kind == "device_position":
         guides.append(_GUIDES[("guide_device_pos", "device_data", 1)])
 
-    activity = assess_activity(metrics)
     if activity.movement.status == "RISK" and activity.movement.trend == "decrease":
         variant = 1
         guides.append(_GUIDES[("guide_activity", "movement_count", variant)])
@@ -67,28 +93,26 @@ def build_guardian_guides(metrics: WardWeeklyMetrics) -> list[GuardianGuide]:
     ):
         guides.append(_GUIDES[("guide_activity", "remote_control_count", 5)])
 
-    environment = assess_environment(metrics)
-    if environment.variant is not None and (
-        environment.status in {"CAUTION", "RISK"}
-        and environment.variant in {1, 2, 3, 4}
-        or environment.status == "RISK"
-        and environment.variant in {5, 6, 7, 8}
+    if environment_variant is not None and (
+        environment_status in {"CAUTION", "RISK"}
+        and environment_variant in {1, 2, 3, 4}
+        or environment_status == "RISK"
+        and environment_variant in {5, 6, 7, 8}
     ):
-        environment_guide = _GUIDES[("guide_env", "environment", environment.variant)]
-        guides.append(replace(environment_guide, status=environment.status))
+        environment_guide = _GUIDES[("guide_env", "environment", environment_variant)]
+        guides.append(replace(environment_guide, status=environment_status))
 
     report_area_statuses = (
         activity.movement.status,
         activity.remote_control.status,
-        environment.status,
-        reception.status,
+        environment_status,
+        reception_status,
     )
-    risk_score_status = assess_risk_score(metrics.current.risk_score_avg).status
     if (
         not guides
         and risk_score_status == "GOOD"
         and not any(status in {"CAUTION", "RISK"} for status in report_area_statuses)
-        and metrics.current.risk_detected_count == 0
+        and risk_detected_count == 0
     ):
         guides.append(_GUIDES[("guide_stable", "overall", 1)])
 

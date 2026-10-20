@@ -24,3 +24,13 @@ Override them when needed:
 ```bash
 python3 chat.py --url http://localhost:8000/v1/chat/completions --model gemma-4-31b
 ```
+
+
+## Saved weekly-report guardian template IDs
+
+[Preview or migrate legacy guardian IDs](migrate-guardian-template-ids/README.md)
+using current selection conditions in local and live report databases:
+
+```bash
+bash playground/migrate-guardian-template-ids/run.sh --target both
+```

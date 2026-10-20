@@ -971,3 +971,17 @@ the weekly-reporter skill validator, and diff whitespace checks pass. The full
 suite stalls in an unrelated async test and did not complete; whole-tree Ruff
 has two existing import/export ordering violations outside this change. The
 scheduler image has not been built or deployed, and no live migration was run.
+
+
+## Saved guardian template ID migration (2026-10-19)
+
+[The operator script](../playground/migrate-guardian-template-ids/README.md)
+reuses the current guardian selection function to correct legacy item IDs in
+local archive and live reports independently. Activity is recalculated from
+saved totals; environment/device use saved assessed status/tag because the
+rendered JSON omits required daily classification inputs. Matching card meaning
+and eligible conditions determine the new ID, not an old-ID prefix rewrite.
+No-data nulls, already-GUI IDs, parent IDs, text, and metrics are preserved.
+A read-only preview, flushed original/proposed JSON backups, target-local atomic
+updates, and conflict checks support review and idempotent recovery. The normal
+report generation policy is unchanged.

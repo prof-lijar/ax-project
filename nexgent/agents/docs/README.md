@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Guardian template ID migration](../playground/migrate-guardian-template-ids/README.md):
+  condition-verified legacy ID updates in local and live saved reports,
+  read-only previews, private backups, conflict checks, and independent recovery.
+
 - [Native Slack table review](weekly-report-native-table-review.md): full-information
   weekly comparison using documented Slack tables and the implemented backend
   native-block API.
