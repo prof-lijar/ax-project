@@ -36,25 +36,9 @@ AX Project는 Nextor.ai의 기존 제품과 업무에 AI 및 AI 에이전트를 
 
 ## 아키텍처
 
-```mermaid
-flowchart TD
-    UI[React / TypeScript 화면] --> Gateway[FastAPI 백엔드: 인증 및 게이트웨이]
-    Gateway --> DB[(PostgreSQL: 계정 및 애플리케이션 데이터)]
-    Gateway --> ChatWorker[영속 작업 기반 채팅 워커]
-    ChatWorker --> Agents[LangGraph Agent Server]
-    Gateway --> Files[Nextcloud]
-    Gateway --> Scout[Google ADK Scout]
-    Gateway --> Reports[주간 보고서 API 및 워커]
-    Gateway --> RAG[별도 RAG API]
-    Gateway --> Scheduler[별도 Scout 스케줄러]
-    Agents --> Model[OpenAI 호환 모델 엔드포인트]
-    Agents --> RAG
-    Scout --> Model
-    RAG --> VectorDB[(PostgreSQL / pgvector)]
-    Reports --> CareDB[(안심지키미 원본 및 보고서 DB)]
-    Slack[Slack] <--> Sumin[Sumin 리스너 및 워커]
-    Sumin --> Files
-```
+![시스템 아키텍처](nexgent/docs/03-architecture/diagrams/system-architecture.ko.svg)
+
+[다이어그램 원본](nexgent/docs/03-architecture/diagrams/system-architecture.ko.mmd)
 
 브라우저는 동일 출처의 백엔드 경로를 사용합니다. 백엔드는 인증을 적용하고 사전에 정해진 내부 서비스로 요청을 전달합니다. 채팅·알림 워커는 API와 별도로 실행됩니다. 기본 Compose 파일은 Agent Server를 내부 네트워크에만 노출합니다. 현재 `langgraph dev` 런타임은 메모리 기반이며 자체 인증이 없습니다. 제품의 영구 대화 기록은 이 런타임과 별개로 백엔드가 저장합니다.
 
