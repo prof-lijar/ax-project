@@ -36,25 +36,9 @@ Signed-in members can use Chat, files, account settings, and the agent catalog. 
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    UI[React / TypeScript UI] --> Gateway[FastAPI backend: authentication and gateway]
-    Gateway --> DB[(PostgreSQL: accounts and application data)]
-    Gateway --> ChatWorker[Durable chat worker]
-    ChatWorker --> Agents[LangGraph Agent Server]
-    Gateway --> Files[Nextcloud]
-    Gateway --> Scout[Google ADK Scout]
-    Gateway --> Reports[Weekly-report API and workers]
-    Gateway --> RAG[Separate RAG API]
-    Gateway --> Scheduler[Separate Scout scheduler]
-    Agents --> Model[OpenAI-compatible model endpoint]
-    Agents --> RAG
-    Scout --> Model
-    RAG --> VectorDB[(PostgreSQL / pgvector)]
-    Reports --> CareDB[(Ansimk source and report databases)]
-    Slack[Slack] <--> Sumin[Sumin listener and worker]
-    Sumin --> Files
-```
+![System architecture](nexgent/docs/03-architecture/diagrams/system-architecture.svg)
+
+[Diagram source](nexgent/docs/03-architecture/diagrams/system-architecture.mmd)
 
 The browser uses same-origin backend routes. The backend enforces authentication and proxies to fixed upstream services. Chat and notification workers run separately from the API. The main Compose files keep the Agent Server private; its current `langgraph dev` runtime uses in-memory state and has no native authentication. Durable product chat history is stored by the backend, independently of that runtime.
 

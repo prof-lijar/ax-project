@@ -1,0 +1,17 @@
+flowchart TD
+    UI[React / TypeScript 화면] --> Gateway[FastAPI 백엔드: 인증 및 게이트웨이]
+    Gateway --> DB[(PostgreSQL: 계정 및 애플리케이션 데이터)]
+    Gateway --> ChatWorker[영속 작업 기반 채팅 워커]
+    ChatWorker --> Agents[LangGraph Agent Server]
+    Gateway --> Files[Nextcloud]
+    Gateway --> Scout[Google ADK Scout]
+    Gateway --> Reports[주간 보고서 API 및 워커]
+    Gateway --> RAG[별도 RAG API]
+    Gateway --> Scheduler[별도 Scout 스케줄러]
+    Agents --> Model[OpenAI 호환 모델 엔드포인트]
+    Agents --> RAG
+    Scout --> Model
+    RAG --> VectorDB[(PostgreSQL / pgvector)]
+    Reports --> CareDB[(안심지키미 원본 및 보고서 DB)]
+    Slack[Slack] <--> Sumin[Sumin 리스너 및 워커]
+    Sumin --> Files

@@ -1,0 +1,17 @@
+flowchart TD
+    UI[React / TypeScript UI] --> Gateway[FastAPI backend: authentication and gateway]
+    Gateway --> DB[(PostgreSQL: accounts and application data)]
+    Gateway --> ChatWorker[Durable chat worker]
+    ChatWorker --> Agents[LangGraph Agent Server]
+    Gateway --> Files[Nextcloud]
+    Gateway --> Scout[Google ADK Scout]
+    Gateway --> Reports[Weekly-report API and workers]
+    Gateway --> RAG[Separate RAG API]
+    Gateway --> Scheduler[Separate Scout scheduler]
+    Agents --> Model[OpenAI-compatible model endpoint]
+    Agents --> RAG
+    Scout --> Model
+    RAG --> VectorDB[(PostgreSQL / pgvector)]
+    Reports --> CareDB[(Ansimk source and report databases)]
+    Slack[Slack] <--> Sumin[Sumin listener and worker]
+    Sumin --> Files
