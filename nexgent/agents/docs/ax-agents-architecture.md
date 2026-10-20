@@ -4,6 +4,26 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Saved guardian template ID migration (2026-10-19)
+
+The operator-only `playground/migrate-guardian-template-ids` program previews or
+updates legacy non-`GUI_` guardian-action item IDs independently in local
+`archive.resources_ward_weekly_report` and live
+`ansimk.resources_ward_weekly_report`. Normal generation and migration share
+`select_guardian_guides`; raw-metric assessment and normal selection behavior
+remain unchanged. Migration recalculates activity from saved totals, resolves
+saved environment/device conditions against current policy labels, and requires
+card semantics to match a selected guide. Historical JSON lacks the daily counts
+needed to recompute environment/device assessments from raw facts.
+
+Only verified legacy item IDs and row `updated_at` are changed. Existing GUI
+IDs, valid no-data nulls, parent IDs, report text, and metrics are preserved.
+Preview uses read-only snapshots; write mode requires an explicit flag, durable
+private before/after artifacts, row locks, and original-JSON comparisons. Any
+blocked report or update conflict prevents that target's changes. Local and live
+commits are independent; reruns are idempotent. Existing generation, scheduler,
+copy, and outbox boundaries are unchanged. See [operator commands and recovery](../playground/migrate-guardian-template-ids/README.md).
+
 ## Explicit weekly-report regeneration command (2026-10-17)
 
 The scheduler CLI accepts `--week-start YYYY-MM-DD --regenerate RUN_KEY` to
