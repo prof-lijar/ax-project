@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Monthly Risk Day and Recovery Migration](08-implementation/monthly-risk-count-migration.md): local danger/recovery day backfill, dev SSH copy, missing-ward skips, validation, and remaining live commands.
+
 - [File Storage Folder Uploads](08-implementation/file-storage-folder-upload.md): folder picker, recursive drag/drop, empty directories, atomic tree upload API, duplicate handling, and validation.
 
 - [Automatic File Storage Names](08-implementation/file-storage-duplicate-names.md): numbered duplicate filenames across uploads and folder operations, concurrency, and validation.
