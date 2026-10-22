@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Monthly risk day and recovery migration](../../docs/08-implementation/monthly-risk-count-migration.md):
+  archived daily risk/recovery counts and arrays, transactional dev SSH copy,
+  missing-ward skips, commands, and PostgreSQL verification.
+
 - [Guardian template ID migration](../playground/migrate-guardian-template-ids/README.md):
   condition-verified legacy ID updates in local and live saved reports,
   read-only previews, private backups, conflict checks, and independent recovery.

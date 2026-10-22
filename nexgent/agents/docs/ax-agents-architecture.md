@@ -4,6 +4,25 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Operator monthly risk migration (2026-10-22)
+
+The operator-only `playground/migrate` tools recalculate archived monthly danger
+and same-day recovery day counts, then optionally copy stored rows to live dev.
+Local reads and writes stay in `archive`; dev copies target the configured
+schema (default `ansimk`) through the `LIVE_DEV_*` SSH/database settings.
+Danger and recovery days are deduplicated by local date and stored as sorted
+integer arrays with matching counts. Recovery requires a strictly later STABLE
+evaluation on the same local date; weekly columns are no longer referenced.
+
+Local apply commits by month. Dev apply stages a full local snapshot, excludes
+rows for missing destination wards with explicit skip counts, validates all
+eligible data, and verifies the upsert before a single destination commit.
+Previews do not change business rows; reruns are idempotent. These manual tools
+add no graph nodes, scheduler hooks, deployment services, or notification paths.
+Their PostgreSQL tests use synthetic temporary data. The real dev preview passed;
+live dev apply remains an operator step. See [implementation and validation](../../docs/08-implementation/monthly-risk-count-migration.md)
+and [operator commands](../playground/migrate/README.md).
+
 ## Saved guardian template ID migration (2026-10-19)
 
 The operator-only `playground/migrate-guardian-template-ids` program previews or
