@@ -9,6 +9,7 @@ from uuid import UUID
 import httpx
 import pytest
 from ax_contracts import (
+    SkippedWard,
     WeeklyReportBulkJobRequest,
     WeeklyReportRequest,
     WeeklyReportSourceResponse,
@@ -705,7 +706,7 @@ async def test_item_becomes_failed_after_three_leased_attempts() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize("missing", [False, True, "no_device", "all_no_device"])
 async def test_selected_wards_generate_only_requested_reports_without_storage(tmp_path, missing):
     class SelectedSource(MockWeeklyReportSourceRepository):
         def __init__(self):
@@ -716,7 +717,15 @@ async def test_selected_wards_generate_only_requested_reports_without_storage(tm
             response = await super().load(request)
             if missing:
                 return response.model_copy(update={
-                    "items": [item for item in response.items if item.ward_id != 45],
+                    "items": [item for item in response.items
+                              if item.ward_id != 45 and missing != "all_no_device"],
+                    "skipped": [
+                        SkippedWard(ward_id=ward_id, reason="no_device")
+                        for ward_id in (
+                            request.ward_ids if missing == "all_no_device"
+                            else [45] if missing == "no_device" else []
+                        )
+                    ],
                 })
             return response
 
@@ -736,21 +745,24 @@ async def test_selected_wards_generate_only_requested_reports_without_storage(tm
         poll_seconds=0.001,
     ).run(job.job_id, concurrency=1)
 
-    assert status.status == ("failed" if missing else "completed")
+    assert status.status == ("failed" if missing is True else "completed")
     assert status.max_reports == 3
-    assert status.completed_count == (0 if missing else 3)
+    expected_ids = set() if missing == "all_no_device" else {23, 56} if missing else {23, 45, 56}
+    assert status.completed_count == (0 if missing is True else len(expected_ids))
     assert len(source.requests) == 1
     assert source.requests[0].ward_ids == [23, 45, 56]
     assert source.requests[0].cursor is None
     assert status.next_cursor is None
     assert status.selection_truncated is False
-    if missing:
+    if missing is True:
         assert status.export is None
         return
     assert status.export is not None
     with zipfile.ZipFile(artifacts.local_path(status.export.uri)) as archive:
         ids = {json.loads(line)["ward_id"] for line in archive.read("reports.jsonl").splitlines()}
-        assert ids == ({23, 56} if missing else {23, 45, 56})
+        assert ids == expected_ids
+        if missing in ("no_device", "all_no_device"):
+            assert "ward-45:no_device" in status.warnings
         assert json.loads(archive.read("manifest.json"))["request"]["persist_reports"] is False
 
 

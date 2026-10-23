@@ -13,6 +13,7 @@ WITH wards AS (
       WHEN address ~ '(^|[[:space:]])광명시?([[:space:]]|$)' THEN '광명'
       ELSE '기타' END AS region
     FROM ansimk.resources_ward
+    WHERE has_device IS NOT FALSE
 ), weeks(week_start) AS (VALUES ($1::date), ($1::date - 7)),
 coverage AS (
     SELECT w.region, p.week_start, EXISTS (

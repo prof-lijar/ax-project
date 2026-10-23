@@ -107,7 +107,7 @@ def test_source_queries_are_bound_to_authoritative_ansimk_schema(query, table) -
 
 
 @pytest.mark.asyncio
-async def test_discovery_includes_every_ward_without_any_weekly_records() -> None:
+async def test_discovery_skips_no_device_wards_and_keeps_eligible_no_data_wards() -> None:
     class RosterDatabase(FakeDatabase):
         async def fetch(self, query, *args):
             if query == CANDIDATE_WARDS_SQL:
@@ -121,11 +121,14 @@ async def test_discovery_includes_every_ward_without_any_weekly_records() -> Non
                         "INSERT INTO archive.resources_ward VALUES (99, 'other schema')"
                     )
                     connection.execute(
-                        "CREATE TABLE ansimk.resources_ward (id INTEGER, full_name TEXT)"
+                        "CREATE TABLE ansimk.resources_ward "
+                        "(id INTEGER, full_name TEXT, has_device BOOLEAN)"
                     )
                     connection.executemany(
-                        "INSERT INTO ansimk.resources_ward VALUES (?, ?)",
-                        [(10, "첫 대상"), (20, "둘째 대상"), (30, None)],
+                        "INSERT INTO ansimk.resources_ward VALUES (?, ?, ?)",
+                        [(5, "제외", False), (10, "첫 대상", True),
+                         (15, "제외", False), (20, "둘째 대상", True),
+                         (30, None, None), (40, "제외", False)],
                     )
                     return [dict(zip(("ward_id", "full_name"), row, strict=True))
                             for row in connection.execute(query, {"1": args[0], "2": args[1]})]
@@ -142,3 +145,30 @@ async def test_discovery_includes_every_ward_without_any_weekly_records() -> Non
     assert all(item.current.covered_days == 0 for item in items)
     assert all(item.current.risk_score_avg is None for item in items)
     assert all(item.current.movement_count_total is None for item in items)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("only_no_device", [False, True])
+async def test_explicit_selection_skips_no_device_before_loading_metrics(only_no_device):
+    class ExplicitDatabase(FakeDatabase):
+        async def fetch(self, query, *args):
+            if query == EXPLICIT_WARDS_SQL:
+                return [
+                    {"ward_id": ward_id, "full_name": str(ward_id), "has_device": ward_id != 20}
+                    for ward_id in args[0] if ward_id != 99
+                ]
+            return await super().fetch(query, *args)
+
+    database = ExplicitDatabase()
+    requested = [20] if only_no_device else [10, 20, 99]
+    result = await WeeklyReportSourceService(database).build(
+        WeeklyReportRequest(week_start=date(2026, 8, 3), ward_ids=requested)
+    )
+    assert [item.ward_id for item in result.items] == ([] if only_no_device else [10])
+    assert {(item.ward_id, item.reason) for item in result.skipped} == (
+        {(20, "no_device")} if only_no_device
+        else {(20, "no_device"), (99, "not_found")}
+    )
+    assert all(args[0] == [10] for _, args in database.calls)
+    if only_no_device:
+        assert database.calls == []

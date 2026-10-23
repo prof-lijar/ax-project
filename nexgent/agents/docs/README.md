@@ -23,7 +23,8 @@
 
 - [Persistent AX chat history](../../docs/08-implementation/persistent-ax-chat-history.md): product-owned conversation storage, independent worker, server-loaded context, durable attachments and browser reconnection.
 
-- [Weekly-report completeness](weekly-report-completeness.md): every ward,
+- [Weekly-report completeness](weekly-report-completeness.md): every eligible ward,
+  excluding `has_device=false`, explicit `no_device` skips, matching coverage,
   no-data reports, strict batch completion, scheduler continuation, internal-only
   fallback metadata, verification, and rollout checkpoint.
 

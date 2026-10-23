@@ -21,10 +21,11 @@ async def test_production_coverage_sql_with_postgres_fixtures(monkeypatch):
         .replace("ansimk.resources_ward", "fixture_wards")
         .replace(
             "WITH wards AS",
-            """WITH fixture_wards(id, address) AS (VALUES
-        (1, '경상북도 울진군 북면'), (2, '경북 영덕군 영덕읍'),
-        (3, '경기도 광명시 철산동'), (4, '서울특별시 광명로 1'),
-        (5, NULL), (6, ''), (7, '울진'), (8, '영덕군'), (9, '광명시')
+            """WITH fixture_wards(id, address, has_device) AS (VALUES
+        (1, '경상북도 울진군 북면', TRUE), (2, '경북 영덕군 영덕읍', TRUE),
+        (3, '경기도 광명시 철산동', TRUE), (4, '서울특별시 광명로 1', TRUE),
+        (5, NULL, TRUE), (6, '', NULL), (7, '울진', TRUE),
+        (8, '영덕군', TRUE), (9, '광명시', TRUE), (10, '울진', FALSE)
     ), fixture_reports(ward_id, week_start_date) AS (VALUES
         (1, DATE '2026-09-21'), (1, DATE '2026-09-21'),
         (2, DATE '2026-09-21'), (3, DATE '2026-09-21'),

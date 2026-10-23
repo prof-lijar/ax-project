@@ -3,13 +3,13 @@
 CANDIDATE_WARDS_SQL = """
 SELECT w.id AS ward_id, w.full_name
 FROM ansimk.resources_ward AS w
-WHERE w.id > $1
+WHERE w.id > $1 AND w.has_device IS NOT FALSE
 ORDER BY w.id
 LIMIT $2
 """
 
 EXPLICIT_WARDS_SQL = """
-SELECT id AS ward_id, full_name
+SELECT id AS ward_id, full_name, has_device
 FROM ansimk.resources_ward
 WHERE id = ANY($1::bigint[])
 ORDER BY id
