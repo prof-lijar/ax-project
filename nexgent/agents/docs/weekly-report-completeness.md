@@ -1,9 +1,13 @@
-# Every ward receives a weekly report
+# Every eligible ward receives a weekly report
 
 Date: 2026-09-21
 
-The operator requires the weekly report count to equal the `resources_ward`
-count, including wards without weekly records. The generation notice
+The operator requires the weekly report count to equal the eligible
+`resources_ward` count, including eligible wards without weekly records.
+As of 2026-10-23, wards with `has_device=false` are excluded before paging or
+generation; null flags retain existing eligibility. Explicit requests return
+`no_device` skips, which bulk selection accepts. Completion coverage excludes
+the same wards for both weeks. Existing reports are preserved. The generation notice
 `문구 생성이 어려워 검증된 안내 문구로 자동 대체됨` must not appear in
 guardian reports.
 
@@ -15,7 +19,7 @@ See [production delivery](weekly-report-production-sync.md).
 
 ## Acceptance and implementation
 
-- Discover every ward from `ansimk.resources_ward` in ID order. No daily-summary,
+- Discover every eligible ward from `ansimk.resources_ward` in ID order. No daily-summary,
   evaluation, or dispatch record is required for membership. Missing data uses
   the existing unavailable displays without inventing measurements.
 - Retain one report per ward when the model fails, times out, or returns invalid
@@ -26,7 +30,7 @@ See [production delivery](weekly-report-production-sync.md).
   model-prose requirements for name and material-topic coverage.
 - Keep generation mode/reason in report metadata. Markdown has no fallback
   note; `template_data.generation_notice` remains null for compatibility.
-- Reject skipped/missing selections, wrong periods, duplicate IDs, oversized
+- Reject skipped/missing selections other than explicit `no_device` exclusions, wrong periods, duplicate IDs, oversized
   pages and mismatched output identity. All staged items must complete before
   report storage; exhausted artifact/data errors fail the batch without
   committing a smaller set. Cancellation does not commit partial reports.

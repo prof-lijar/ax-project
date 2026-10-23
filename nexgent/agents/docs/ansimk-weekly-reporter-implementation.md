@@ -4,6 +4,22 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Weekly-report device eligibility (2026-10-23)
+
+Wards with `ansimk.resources_ward.has_device = false` are excluded before
+metrics or narrative generation. Discovery filters them before applying the
+page limit; explicit requests return `SkippedWard(reason="no_device")` and
+bulk selection accepts that intentional exclusion. Missing wards and other
+source skips still fail bulk completeness validation. Eligible wards without
+observations continue to receive no-data reports. Null device flags retain
+existing eligibility; only explicit false is excluded.
+
+Production completion coverage uses the same exclusion for both reporting
+weeks, so intentionally excluded wards do not count as missing reports.
+Existing stored reports, staged bulk inputs, and scheduler receipts are not
+rewritten. Rebuild the source API, worker, and scheduler together between jobs;
+use fresh jobs to apply the new selection policy.
+
 ## One-time previous-count correction (2026-10-17)
 
 The standalone operator tool in `playground/fix-oct5-previous-counts/` copies

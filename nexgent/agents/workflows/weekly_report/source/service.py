@@ -50,6 +50,14 @@ class WeeklyReportSourceService:
                 for ward_id in request.ward_ids
                 if ward_id not in found
             ]
+            skipped.extend(
+                SkippedWard(ward_id=int(row["ward_id"]), reason="no_device")
+                for row in ward_rows
+                if row.get("has_device") is False
+            )
+            ward_rows = [
+                row for row in ward_rows if row.get("has_device") is not False
+            ]
         else:
             after = self._decode_cursor(request) if request.cursor else 0
             ward_rows = await self.database.fetch(

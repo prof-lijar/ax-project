@@ -712,7 +712,7 @@ class NarrativeGenerationMetadata(ContractModel):
 
 class SkippedWard(ContractModel):
     ward_id: int = Field(ge=1)
-    reason: Literal["not_found", "source_error"]
+    reason: Literal["not_found", "source_error", "no_device"]
 
 
 class _WeeklyReportTemplateModel(BaseModel):

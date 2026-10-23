@@ -437,12 +437,16 @@ class WeeklyReportBulkRunner:
         items = await self.store.list_items(job_id)
         completed = [item for item in items if item.status == "completed"]
         request = WeeklyReportBulkJobRequest.model_validate(job.request)
+        selected_ids = {
+            ward_id for ward_id in request.ward_ids or []
+            if f"ward-{ward_id}:no_device" not in job.warnings
+        }
         if not job.cancel_requested and (
             not job.producer_done
             or len(completed) != len(items)
             or (
                 request.ward_ids is not None
-                and {int(item.item_key) for item in completed} != set(request.ward_ids)
+                and {int(item.item_key) for item in completed} != selected_ids
             )
         ):
             raise WeeklyReportBulkExecutionError(
@@ -575,8 +579,14 @@ class WeeklyReportBulkRunner:
         ):
             raise ValueError("weekly-report source returned a mismatched period")
         ward_ids = [item.ward_id for item in source.items]
-        if source.skipped:
+        if source.skipped and (
+            request.ward_ids is None
+            or any(item.reason != "no_device" for item in source.skipped)
+        ):
             raise ValueError("weekly-report source skipped requested wards")
+        skipped_ids = [item.ward_id for item in source.skipped]
+        if len(skipped_ids) != len(set(skipped_ids)) or set(skipped_ids) & set(ward_ids):
+            raise ValueError("weekly-report source returned duplicate wards")
         if len(ward_ids) > request.limit:
             raise ValueError("weekly-report source exceeded the requested page size")
         if any(
@@ -585,7 +595,7 @@ class WeeklyReportBulkRunner:
         ):
             raise ValueError("weekly-report source item has a mismatched period")
         if request.ward_ids is not None and (
-            set(ward_ids) != set(request.ward_ids)
+            set(ward_ids) | set(skipped_ids) != set(request.ward_ids)
             or source.next_cursor is not None
         ):
             raise ValueError("weekly-report source returned wards outside the selection")
