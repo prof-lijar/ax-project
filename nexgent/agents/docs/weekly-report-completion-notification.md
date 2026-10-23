@@ -10,7 +10,13 @@ contains aggregate counts only, never subscriber names, addresses or reports.
 ## Counting contract
 
 - Population: every subscriber currently present in production
-  `ansimk.resources_ward`, used identically for both weeks.
+  `ansimk.resources_ward` with `has_device IS NOT FALSE`, used identically for
+  both weeks. Null flags retain eligibility.
+- Skipped reports: current production wards with `has_device=false`, shown
+  separately by region and overall. They count as skipped even when a stored
+  report exists, and never enter eligible population, successes or missing rates.
+  These are current-roster exclusion counts, not historical device-state counts
+  or worker skip logs.
 - Region: municipality tokens in `address`: 울진/울진군, 영덕/영덕군,
   광명/광명시; all remaining and missing addresses are 기타. Street names such
   as 광명로 do not select 광명. Each subscriber belongs to exactly one group.
@@ -33,7 +39,9 @@ repeatable-read, read-only production transaction.
 
 The notification now uses the backend's validated native `blocks` API: header,
 summary, date context, divider, a real Slack table, divider and full calculation
-notes. The table has seven columns and ten data rows, pairing both weeks for
+notes. Version 2 coverage snapshots add an eighth column,
+`기기 미연결·제외(명)`, and an overall skipped count in the summary and fallback.
+The table has ten data rows, pairing both weeks for
 each region. It retains 가입자, 성공, 실패·누락, 누락률 and 전주 대비 누락률;
 percentage-point changes and all original definitions have been restored.
 Numbers are right-aligned and cells support wrapping. The complete content is
@@ -41,7 +49,8 @@ also available in the accessible fallback. No information is shortened away.
 
 See the [full example](weekly-report-native-table-review.md) and
 [backend API contract and rollout](../../docs/08-implementation/slack-notification-native-blocks.md).
-Frozen pending or accepted notifications retain their original layout on retry.
+Version 1 snapshots keep their original seven-column format. Frozen pending
+or accepted notifications retain their original layout on retry.
 Previous test messages in the private `#nexgent-test` channel exercised older
 layouts through the direct backend sender. The new native layout was subsequently delivered successfully through the backend
 sender to `#nexgent-test` (timestamp `1790670192.238509`), using the same verified
@@ -96,7 +105,7 @@ docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-sch
 ```
 
 No application schema migration is added. The existing production migration
-role needs SELECT on ward `id`/`address` and report ward/week columns.
+role needs SELECT on ward `id`/`address`/`has_device` and report ward/week columns.
 
 ## Recovery and delivery semantics
 

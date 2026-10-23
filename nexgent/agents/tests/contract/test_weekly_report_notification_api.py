@@ -11,7 +11,8 @@ from workflows.weekly_report.completion_notification import notification_payload
 from workflows.weekly_report.failure_notification import failure_payload
 
 
-def test_completion_payload_matches_backend_notification_contract():
+@pytest.mark.parametrize("version", [1, 2])
+def test_completion_payload_matches_backend_notification_contract(version):
     schema = (
         Path(__file__).resolve().parents[3] / "backend/app/notifications/schemas.py"
     )
@@ -21,7 +22,7 @@ def test_completion_payload_matches_backend_notification_contract():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     payload = notification_payload(
-        snapshot(), week_start="2026-09-21", destination="default"
+        snapshot(version=version), week_start="2026-09-21", destination="default"
     )
     parsed = module.SlackNotification.model_validate(payload)
     assert parsed.text == payload["text"]
@@ -48,7 +49,7 @@ def test_completion_payload_matches_backend_notification_contract():
     assert message["blocks"][0]["text"]["text"] == "주간 리포트 저장 현황"
     tables = [block for block in message["blocks"] if block["type"] == "table"]
     assert len(tables) == 1 and len(tables[0]["rows"]) == 11
-    assert all(len(row) == 7 for row in tables[0]["rows"])
+    assert all(len(row) == (8 if version == 2 else 7) for row in tables[0]["rows"])
     assert all(cell["type"] == "raw_text" for row in tables[0]["rows"] for cell in row)
     assert "WARNING" not in message["text"]
     for row in payload["blocks"][4]["rows"]:

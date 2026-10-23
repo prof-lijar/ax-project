@@ -4,6 +4,21 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Weekly-report skipped-device completion counts (2026-10-23)
+
+Completion coverage snapshots now use version 2 and retain regional `skipped`
+counts for production wards with `has_device=false`, alongside eligible totals
+and successes. The same read-only snapshot covers both weeks; excluded wards
+remain skipped even when historical reports exist. Null flags remain eligible.
+Slack shows the overall skipped count in its summary and fallback text, plus
+an eighth regional table column, `기기 미연결·제외(명)`. Missing rates continue
+to use only eligible wards. Both weeks use the current production roster and
+current device flags, rather than historical connection state or worker logs.
+
+Version 1 snapshots retain their existing seven-column format. Frozen pending
+payloads and accepted receipts are unchanged; no resend or new idempotency key
+is introduced. Rebuild the scheduler for new snapshots and messages.
+
 ## Weekly-report device eligibility (2026-10-23)
 
 Wards with `ansimk.resources_ward.has_device = false` are excluded before

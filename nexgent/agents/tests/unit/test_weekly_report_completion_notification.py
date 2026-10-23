@@ -18,8 +18,8 @@ from workflows.weekly_report.completion_notification import (
 )
 
 
-def snapshot():
-    return {
+def snapshot(version=1):
+    data = {
         "version": 1,
         "weeks": [
             {
@@ -35,6 +35,13 @@ def snapshot():
             for start, success in [("2026-09-21", 9), ("2026-09-14", 8)]
         ],
     }
+
+    if version == 2:
+        data["version"] = 2
+        for week in data["weeks"]:
+            for region, skipped in zip(REGIONS, (6, 3, 0, 1, 2), strict=True):
+                week["regions"][region]["skipped"] = skipped
+    return data
 
 
 def test_native_table_preserves_every_region_count_rate_and_definition():
@@ -109,11 +116,12 @@ async def test_aggregate_snapshot_is_read_only_and_fills_absent_groups():
 
         async def fetch(self, query, week):
             assert week == date(2026, 9, 21)
-            return [{"week_start": week, "region": "울진", "total": 3, "success": 2}]
+            return [{"week_start": week, "region": "울진", "total": 3, "success": 2, "skipped": 4}]
 
     result = await collect_coverage(Connection(), date(2026, 9, 21))
-    assert result["weeks"][0]["regions"]["전체"] == {"total": 3, "success": 2}
-    assert result["weeks"][1]["regions"]["광명"] == {"total": 0, "success": 0}
+    assert result["version"] == 2
+    assert result["weeks"][0]["regions"]["전체"] == {"total": 3, "success": 2, "skipped": 4}
+    assert result["weeks"][1]["regions"]["광명"] == {"total": 0, "success": 0, "skipped": 0}
 
 
 def test_failed_notification_resumes_without_generation_or_migration(tmp_path):
@@ -447,3 +455,37 @@ def test_production_settings_drive_failure_submission(tmp_path, monkeypatch):
     send.assert_called_once()
     assert send.call_args.args[0].token == "s" * 32
     assert send.call_args.args[1]["payload"]["destination"] == "default"
+
+
+@pytest.mark.parametrize("eligible", [True, False])
+def test_device_skip_counts_appear_in_summary_and_every_region(eligible):
+    data = snapshot(version=2)
+    if not eligible:
+        for week in data["weeks"]:
+            for counts in week["regions"].values():
+                counts.update(total=0, success=0)
+    payload = notification_payload(data, week_start="2026-09-21", destination="default")
+    skip_line = "기기 미연결로 리포트 생성 제외: 6명"
+    assert skip_line in payload["text"]
+    assert skip_line in payload["blocks"][1]["text"]["text"]
+    table = payload["blocks"][4]
+    rows = [[cell["text"] for cell in row] for row in table["rows"]]
+    assert len(rows) == 11 and all(len(row) == 8 for row in rows)
+    assert rows[0][5] == "기기 미연결·제외(명)"
+    assert [row[5] for row in rows[1:]] == ["6", "6", "3", "3", "0", "0", "1", "1", "2", "2"]
+    assert rows[1][2:5] == (["40", "36", "4"] if eligible else ["0", "0", "0"])
+    assert rows[1][6] == ("10.00%" if eligible else "산정 불가")
+    assert payload["severity"] == ("warning" if eligible else "success")
+    assert "누락률은 생성 대상만 집계" in payload["blocks"][-1]["text"]["text"]
+
+
+@pytest.mark.parametrize("bad", [-1, True, 1.5, "3", None, "missing", "sum"])
+def test_invalid_device_skip_counts_are_rejected(bad):
+    data = snapshot(version=2)
+    counts = data["weeks"][0]["regions"]["울진"]
+    if bad == "missing":
+        counts.pop("skipped")
+    else:
+        counts["skipped"] = 4 if bad == "sum" else bad
+    with pytest.raises((ValueError, KeyError)):
+        notification_payload(data, week_start="2026-09-21", destination="default")
