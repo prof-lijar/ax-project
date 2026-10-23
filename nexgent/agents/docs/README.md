@@ -14,7 +14,8 @@
 
 - [Weekly-report completion notification](weekly-report-completion-notification.md):
   shared `backend/prod.env` enable flag and credentials for scheduler/monitor,
-  production DB completion, address-based regional coverage for two weeks,
+  production DB completion, address-based regional coverage and device-disconnected
+  skipped-report counts for two weeks,
   native Korean Slack tables preserving both weeks, all counts and missing-rate
   comparisons, backend Slack API configuration and independent retry.
 

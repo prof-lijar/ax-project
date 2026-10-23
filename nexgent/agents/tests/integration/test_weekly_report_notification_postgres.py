@@ -25,11 +25,12 @@ async def test_production_coverage_sql_with_postgres_fixtures(monkeypatch):
         (1, '경상북도 울진군 북면', TRUE), (2, '경북 영덕군 영덕읍', TRUE),
         (3, '경기도 광명시 철산동', TRUE), (4, '서울특별시 광명로 1', TRUE),
         (5, NULL, TRUE), (6, '', NULL), (7, '울진', TRUE),
-        (8, '영덕군', TRUE), (9, '광명시', TRUE), (10, '울진', FALSE)
+        (8, '영덕군', TRUE), (9, '광명시', TRUE), (10, '울진', FALSE), (11, '영덕군', FALSE)
     ), fixture_reports(ward_id, week_start_date) AS (VALUES
         (1, DATE '2026-09-21'), (1, DATE '2026-09-21'),
         (2, DATE '2026-09-21'), (3, DATE '2026-09-21'),
         (4, DATE '2026-09-21'), (999, DATE '2026-09-21'),
+        (10, DATE '2026-09-21'),
         (1, DATE '2026-09-14'), (3, DATE '2026-09-14'),
         (2, DATE '2026-09-07')
     ), wards AS""",
@@ -42,9 +43,9 @@ async def test_production_coverage_sql_with_postgres_fixtures(monkeypatch):
     finally:
         await connection.close()
     current, previous = [week["regions"] for week in result["weeks"]]
-    assert current["전체"] == {"total": 9, "success": 4}
-    assert previous["전체"] == {"total": 9, "success": 2}
+    assert current["전체"] == {"total": 9, "success": 4, "skipped": 2}
+    assert previous["전체"] == {"total": 9, "success": 2, "skipped": 2}
     for region in ("울진", "영덕", "광명"):
-        assert current[region] == {"total": 2, "success": 1}
-    assert current["기타"] == {"total": 3, "success": 1}
-    assert previous["영덕"] == {"total": 2, "success": 0}
+        assert current[region] == {"total": 2, "success": 1, "skipped": int(region != "광명")}
+    assert current["기타"] == {"total": 3, "success": 1, "skipped": 0}
+    assert previous["영덕"] == {"total": 2, "success": 0, "skipped": 1}

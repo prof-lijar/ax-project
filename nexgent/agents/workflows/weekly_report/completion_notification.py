@@ -7,23 +7,23 @@ REGIONS = ("전체", "울진", "영덕", "광명", "기타")
 # Match municipality tokens, not street/building names such as 광명로.
 COVERAGE_SQL = """
 WITH wards AS (
-    SELECT id, CASE
+    SELECT id, has_device IS FALSE AS skipped, CASE
       WHEN address ~ '(^|[[:space:]])울진군?([[:space:]]|$)' THEN '울진'
       WHEN address ~ '(^|[[:space:]])영덕군?([[:space:]]|$)' THEN '영덕'
       WHEN address ~ '(^|[[:space:]])광명시?([[:space:]]|$)' THEN '광명'
       ELSE '기타' END AS region
     FROM ansimk.resources_ward
-    WHERE has_device IS NOT FALSE
 ), weeks(week_start) AS (VALUES ($1::date), ($1::date - 7)),
 coverage AS (
-    SELECT w.region, p.week_start, EXISTS (
+    SELECT w.region, w.skipped, p.week_start, NOT w.skipped AND EXISTS (
         SELECT 1 FROM ansimk.resources_ward_weekly_report r
         WHERE r.ward_id = w.id AND r.week_start_date = p.week_start
     ) AS success
     FROM wards w CROSS JOIN weeks p
 )
-SELECT week_start, region, count(*) AS total,
-       count(*) FILTER (WHERE success) AS success
+SELECT week_start, region, count(*) FILTER (WHERE NOT skipped) AS total,
+       count(*) FILTER (WHERE success) AS success,
+       count(*) FILTER (WHERE skipped) AS skipped
 FROM coverage GROUP BY week_start, region
 """
 
@@ -35,16 +35,18 @@ async def collect_coverage(connection, week_start):
         rows = await connection.fetch(COVERAGE_SQL, week_start)
     weeks = []
     for start in (week_start, week_start - timedelta(days=7)):
-        groups = {region: {"total": 0, "success": 0} for region in REGIONS}
+        groups = {region: {"total": 0, "success": 0, "skipped": 0} for region in REGIONS}
         for row in rows:
             if row["week_start"] == start:
-                groups[row["region"]] = {key: row[key] for key in ("total", "success")}
+                groups[row["region"]] = {
+                    key: row[key] for key in ("total", "success", "skipped")
+                }
         groups["전체"] = {
             key: sum(groups[region][key] for region in REGIONS[1:])
-            for key in ("total", "success")
+            for key in ("total", "success", "skipped")
         }
         weeks.append({"week_start": start.isoformat(), "regions": groups})
-    return {"version": 1, "weeks": weeks}
+    return {"version": 2, "weeks": weeks}
 
 
 def notification_payload(snapshot, *, week_start, destination):
@@ -52,10 +54,12 @@ def notification_payload(snapshot, *, week_start, destination):
     selected = date.fromisoformat(week_start)
     if (
         selected.weekday() != 0
-        or snapshot["version"] != 1
+        or snapshot["version"] not in (1, 2)
         or len(snapshot["weeks"]) != 2
     ):
         raise ValueError("invalid coverage snapshot")
+    include_skipped = snapshot["version"] == 2
+    count_keys = ("total", "success", "skipped") if include_skipped else ("total", "success")
     rates = []
     periods = []
     for index, week in enumerate(snapshot["weeks"]):
@@ -72,14 +76,14 @@ def notification_payload(snapshot, *, week_start, destination):
             counts = week["regions"][region]
             total, success = counts["total"], counts["success"]
             if (
-                any(type(n) is not int for n in (total, success))
+                any(type(counts[key]) is not int or counts[key] < 0 for key in count_keys)
                 or not 0 <= success <= total
             ):
                 raise ValueError("invalid coverage counts")
             failed = total - success
             rate = 100 * failed / total if total else None
             week_rates[region] = rate
-        for key in ("total", "success"):
+        for key in count_keys:
             if week["regions"]["전체"][key] != sum(
                 week["regions"][r][key] for r in REGIONS[1:]
             ):
@@ -104,6 +108,9 @@ def notification_payload(snapshot, *, week_start, destination):
         lines.append(
             f"가입자 {current['total']:,}명 중 {current['success']:,}명 저장 완료"
         )
+    if include_skipped:
+        lines.append(f"기기 미연결로 리포트 생성 제외: {current['skipped']:,}명")
+    summary_lines = list(lines)
     lines.extend(["", *periods])
     rows = []
     for region in REGIONS:
@@ -127,6 +134,7 @@ def notification_payload(snapshot, *, week_start, destination):
                     f"{counts['total']:,}",
                     f"{counts['success']:,}",
                     f"{counts['total'] - counts['success']:,}",
+                    *([f"{counts['skipped']:,}"] if include_skipped else []),
                     f"{rate:.2f}%" if rate is not None else "산정 불가",
                     change if index == 0 else "기준 주",
                 ]
@@ -144,11 +152,12 @@ def notification_payload(snapshot, *, week_start, destination):
                 "가입자(명)",
                 "성공(명)",
                 "실패·누락(명)",
+                *(["기기 미연결·제외(명)"] if include_skipped else []),
                 "누락률",
                 "전주 대비 누락률",
             ],
             "rows": rows,
-            "align": ["left", "left", "right", "right", "right", "right", "right"],
+            "align": ["left", "left"] + ["right"] * (6 if include_skipped else 5),
         },
         "footer": (
             "집계 기준\n"
@@ -160,13 +169,18 @@ def notification_payload(snapshot, *, week_start, destination):
             "• 과거 가입·탈퇴 및 주소 변경 이력 미반영 · 기존 저장 리포트도 성공에 포함"
         ),
     }
+    if include_skipped:
+        payload["footer"] += (
+            "\n• 기기 미연결·제외: 조회 시점 기기가 연결되지 않은 가입자 · 두 주에 동일 적용"
+            "\n• 가입자·성공·실패·누락률은 생성 대상만 집계 · 미연결은 기존 리포트가 있어도 제외"
+        )
 
     table = payload["table"]
     return {
         "destination": destination,
         "severity": payload["severity"],
         "locale": "ko",
-        "text": summary,
+        "text": "\n".join(summary_lines) if include_skipped else summary,
         "blocks": [
             {
                 "type": "header",
@@ -174,7 +188,10 @@ def notification_payload(snapshot, *, week_start, destination):
             },
             {
                 "type": "section",
-                "text": {"type": "plain_text", "text": "\n".join(lines[:2])},
+                "text": {
+                    "type": "plain_text",
+                    "text": "\n".join(summary_lines if include_skipped else lines[:2]),
+                },
             },
             {
                 "type": "context",
