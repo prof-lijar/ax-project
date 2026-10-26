@@ -1,5 +1,27 @@
 # AX Agents Architecture
 
+## Daily risk-count agent (2026-10-26)
+
+`workflows/daily_risk_counts` reconciles the full previous Asia/Seoul calendar
+day into `archive.resources_ward_monthly_risk_count`, reading only archive ward
+and evaluation tables. `apps/daily_risk_scheduler` runs this deterministic,
+model-free workflow daily at 05:15 (`15 5 * * *`), independently of weekly-report
+generation and the operator history migration. The operator confirmed a
+midnight-to-midnight window, including all of 23:59.
+
+Each ward's selected day is replaced in the monthly danger/recovery arrays;
+other day memberships and months are preserved. Recovery requires a strictly
+later same-date STABLE. Counts derive from sorted distinct arrays. A single
+repeatable-read transaction, serialized with the manual migration's target
+table lock, makes reruns and uncertain commits recoverable without increments.
+The committed business rows are the checkpoint; completion logs follow commit.
+New rows include only the selected date, so historical initialization still
+uses the manual migration. No live database copy, model call, schema change,
+or automatic missed-run catch-up is added. The scheduler is declared directly
+in root `compose.yaml` (development `scheduled` profile) and `compose.prod.yaml`
+(normal production startup), with no separate Compose file. Start or recreate
+the environment service to activate scheduling. See [operations and recovery](../apps/daily_risk_scheduler/README.md).
+
 Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
