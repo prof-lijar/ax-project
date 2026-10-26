@@ -1,5 +1,9 @@
 # Documentation map
 
+- [October 12 count correction](../playground/fix-oct12-counts/README.md):
+  preview and repair saved activity/remote-control counts using the following
+  week's previous counts, with private backups and transaction checks.
+
 - [Weekly Report Local Notification Coverage](../../docs/08-implementation/weekly-report-local-notification-coverage.md): local DB credentials for all Slack coverage reads, SSH bypass, validation, and notification recovery.
 
 - [Weekly-report five-second progress logs](../../docs/08-implementation/weekly-report-five-second-progress-logs.md): generation counters, status polling, verification, and rollout.
@@ -40,7 +44,7 @@
 - [Chat session memory](chat-session-memory.md): per-conversation LangGraph threads, bounded history, streaming, session lifetime, and verification.
 
 - [Weekly reporter schedule and migration](../apps/weekly_report_scheduler/README.md):
-  Monday 01:00 Seoul generation, migration after committed local storage using
+  Monday 04:00 Seoul generation, migration after committed local storage using
   the reporting Monday, production mounts, receipts, and recovery.
 
 - [Weekly Reporter Selected-Ward Tests](../../docs/08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
@@ -163,7 +167,7 @@
 - [Frontend weekly reporter workbench](../../docs/08-implementation/weekly-reporter-test-route.md):
   bulk-only `/agents/1` execution with durable 1–10,000 report job control,
   throughput monitoring, cancellation, verified export, an explicitly
-  non-persistent schedule editor preview, and a fixed Monday 01:00
+  non-persistent schedule editor preview, and a fixed Monday 04:00
   `Asia/Seoul` cron service that idempotently submits the previous completed
   week through the private bulk API; the former Quick Preview and Chat
   execution paths are retired.

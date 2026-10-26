@@ -26,7 +26,7 @@ STATE_ROOT = "/var/lib/ax/weekly-report-scheduler"
 
 def scheduled_due(now):
     local = now.astimezone(ZoneInfo("Asia/Seoul"))
-    due = local.replace(hour=1, minute=0, second=0, microsecond=0) - timedelta(
+    due = local.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(
         days=local.weekday()
     )
     if due > local:

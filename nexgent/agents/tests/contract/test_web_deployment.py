@@ -100,5 +100,5 @@ def test_weekly_report_scheduler_image_fixes_cron_to_seoul_time() -> None:
 
     assert "/usr/share/zoneinfo/Asia/Seoul" in dockerfile
     assert "TZ=Asia/Seoul" in dockerfile
-    assert any(line.startswith("0 1 * * 1 ") for line in crontab.splitlines())
+    assert any(line.startswith("0 4 * * 1 ") for line in crontab.splitlines())
     assert "apps.weekly_report_scheduler.pipeline" in crontab

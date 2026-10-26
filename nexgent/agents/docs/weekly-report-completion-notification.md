@@ -2,7 +2,7 @@
 
 Date: 2026-09-29
 
-The Monday 01:00 Asia/Seoul pipeline submits a Slack notification through the
+The Monday 04:00 Asia/Seoul pipeline submits a Slack notification through the
 product backend **after production migration commits**. For a September 28 run,
 it compares September 21–27 with September 14–20. This operational summary
 contains aggregate counts only, never subscriber names, addresses or reports.

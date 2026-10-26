@@ -4,6 +4,15 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Weekly-report schedule moved to 04:00 KST (2026-10-26)
+
+The fixed Monday cron now starts at 04:00 Asia/Seoul (`0 4 * * 1`),
+following the operator's backup/restore schedule change. The independent
+monitor uses the same start time and detects missed starts from 04:15 KST.
+The reporting period remains the previous completed Monday–Sunday week.
+Rebuild/recreate both scheduler and monitor between jobs to activate this change;
+see [scheduler deployment](../apps/weekly_report_scheduler/README.md#production-rollout-and-recovery).
+
 ## Local database for completion coverage (2026-10-26)
 
 Completion notification coverage now reads only the local database configured
@@ -325,7 +334,7 @@ Date: 2026-09-04
 
 `apps/weekly_report_scheduler` is a new independently deployable cron service.
 Its container timezone is fixed to `Asia/Seoul`, and BusyBox cron executes the
-submission command with `0 1 * * 1`: every Monday at 01:00 KST. The command
+submission command with `0 4 * * 1`: every Monday at 04:00 KST. The command
 selects the previous fully completed Monday-through-Sunday reporting period
 and submits a maximum 10,000-report job to the existing private bulk API.
 
@@ -1011,7 +1020,7 @@ is pending credentials and connection verification.
 
 ## Scheduled migration after local storage (2026-09-13)
 
-The fixed Monday 01:00 Asia/Seoul cron now runs the scheduler pipeline. It
+The fixed Monday 04:00 Asia/Seoul cron now runs the scheduler pipeline. It
 submits the previous completed week, polls until the bulk finalizer confirms
 committed local storage (`completed` with every discovered ward reported), and executes
 `playground/weekly-reporter/migrate.sh --write --week-start <reporting Monday>`.

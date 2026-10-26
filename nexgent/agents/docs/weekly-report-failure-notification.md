@@ -7,7 +7,7 @@ Date: 2026-09-29 (Asia/Seoul)
 The scheduler records each attempt and its current stage on the shared durable
 state volume. Normal errors and termination persist a failed attempt before
 trying the backend notification API. A separate monitor detects failed attempts,
-lost heartbeats, excessive runtime, and missed Monday 01:00 Asia/Seoul starts.
+lost heartbeats, excessive runtime, and missed Monday 04:00 Asia/Seoul starts.
 The monitor must run independently of the scheduler and bulk API.
 
 - Generation errors never proceed to production migration.
@@ -27,7 +27,7 @@ The monitor must run independently of the scheduler and bulk API.
 | Graceful process termination (SIGTERM/interrupt) | Record failure and attempt submission before exiting |
 | Abrupt process death, SIGKILL, or stopped container | Last heartbeat is at least five minutes old |
 | Alive process that never finishes | Attempt age reaches 27 hours |
-| Cron/scheduler never started | Monday 01:15 KST with no attempt or valid migration receipt for the reporting week |
+| Cron/scheduler never started | Monday 04:15 KST with no attempt or valid migration receipt for the reporting week |
 
 The monitor checks every 30 seconds. API submission is bounded by the shared
 three-attempt adapter; accepted submissions are queued, not yet proven delivered.

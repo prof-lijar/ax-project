@@ -4,6 +4,15 @@ Date: 2026-09-01
 
 Status: **Authoritative implementation specification**
 
+## Weekly-report schedule moved to 04:00 KST (2026-10-26)
+
+The fixed Monday cron now starts at 04:00 Asia/Seoul (`0 4 * * 1`),
+following the operator's backup/restore schedule change. The independent
+monitor uses the same start time and detects missed starts from 04:15 KST.
+The reporting period remains the previous completed Monday–Sunday week.
+Rebuild/recreate both scheduler and monitor between jobs to activate this change;
+see [scheduler deployment](../apps/weekly_report_scheduler/README.md#production-rollout-and-recovery).
+
 ## Local database for completion coverage (2026-10-26)
 
 Completion notification coverage now reads only the local database configured
@@ -227,7 +236,7 @@ stages, safe job status/counts and a 30-second heartbeat. Caught exceptions and
 termination persist failure before best-effort backend notification submission.
 An independent `apps.weekly_report_scheduler.monitor` process observes the same
 durable volume and detects failed attempts, five-minute heartbeat loss,
-27-hour runtime overruns and missed Monday 01:00 KST starts after 15 minutes.
+27-hour runtime overruns and missed Monday 04:00 KST starts after 15 minutes.
 The monitor has no bulk API/scheduler dependency or production DB access.
 
 Failure events retain immutable Korean native blocks and one idempotency key
@@ -599,7 +608,7 @@ has no first-party frontend caller.
 
 Weekly Reporter cron scheduling update on 2026-09-04: the independently
 deployable `apps/weekly_report_scheduler` service runs BusyBox cron at
-`0 1 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
+`0 4 * * 1` with the container clock fixed to `Asia/Seoul`. Each invocation
 calculates the previous fully completed Monday-through-Sunday period and
 submits up to 10,000 reports through the private bulk control API. It never
 accesses PostgreSQL or the model directly. A period-derived idempotency key
@@ -1677,7 +1686,7 @@ quality gates while keeping evaluator interfaces provider-neutral. [Evaluation c
 - The weekly reporter now calculates broad raw weekly metadata and produces
   validated warm Korean summaries. Manual submission remains available, and a
   fixed Compose cron service submits the previous completed week every Monday
-  at 01:00 `Asia/Seoul`. Cron has bounded request retries but no durable
+  at 04:00 `Asia/Seoul`. Cron has bounded request retries but no durable
   missed-run catch-up or editable schedule record. Durable bulk finalization
   persists rendered frontend JSON; interactive compatibility runs remain
   non-writing. An operator can explicitly deliver a completed batch to an
@@ -1796,7 +1805,7 @@ and SSH connectivity have not been verified.
 
 ## Scheduled post-storage migration (2026-09-13)
 
-The Monday 01:00 Asia/Seoul scheduler now owns submission, bounded status
+The Monday 04:00 Asia/Seoul scheduler now owns submission, bounded status
 polling, and a subsequent invocation of the existing playground migration
 script. It waits for `completed` or `partial`, which follow local report
 storage commit, then passes `--write --week-start` with the original report

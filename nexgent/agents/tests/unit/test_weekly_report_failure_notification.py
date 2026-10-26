@@ -15,7 +15,7 @@ from apps.weekly_report_scheduler.submit import (
 from tests.unit.test_weekly_report_schedule_pipeline import job
 from workflows.weekly_report.failure_notification import failure_payload
 
-NOW = datetime(2026, 9, 27, 16, tzinfo=UTC)  # Monday 01:00 in Korea
+NOW = datetime(2026, 9, 27, 19, tzinfo=UTC)  # Monday 04:00 in Korea
 SETTINGS = NotificationSettings(True, "http://backend:8000", "x" * 32, "default")
 ACCEPTED = {"id": "8ff04888-a682-4704-8d27-3d5cd2cb26cb", "status": "queued"}
 
@@ -124,11 +124,15 @@ def test_fresh_heartbeat_does_not_hide_excessive_runtime(tmp_path):
 
 def test_missed_start_grace_and_monitor_restart(tmp_path):
     send = Mock(return_value=ACCEPTED)
-    monitor.monitor_once(tmp_path, settings=SETTINGS, now=NOW - timedelta(minutes=1), send=send)
+    monitor.monitor_once(tmp_path, settings=SETTINGS, now=NOW - timedelta(hours=4), send=send)
+    # The former 01:15 KST deadline must no longer trigger a missed-start alert.
+    monitor.monitor_once(tmp_path, settings=SETTINGS, now=NOW - timedelta(hours=2, minutes=45), send=send)
+    send.assert_not_called()
     monitor.monitor_once(tmp_path, settings=SETTINGS, now=NOW + timedelta(minutes=14), send=send)
     send.assert_not_called()
     monitor.monitor_once(tmp_path, settings=SETTINGS, now=NOW + timedelta(minutes=15), send=send)
     assert "예약 실행 누락" in send.call_args.args[1]["payload"]["text"]
+    assert "월요일 04:00" in send.call_args.args[1]["payload"]["text"]
     assert "2026/09/21 ~ 09/27" in send.call_args.args[1]["payload"]["text"]
     monitor.monitor_once(tmp_path, settings=SETTINGS, now=NOW + timedelta(days=1), send=send)
     send.assert_called_once()
@@ -191,7 +195,7 @@ def test_failure_copy_distinguishes_notification_failure_from_storage_failure():
     record = {"week_start": "2026-09-21", "stage": "notification", "reason": "error"}
     text = failure_payload(record, observed_at=NOW.isoformat(), destination="default")["text"]
     assert "운영 DB 업데이트는 완료됐으나" in text
-    assert "2026/09/28 01:00:00" in text
+    assert "2026/09/28 04:00:00" in text
 
 
 def test_outbox_lock_defers_competing_sender_until_next_monitor_tick(tmp_path):
