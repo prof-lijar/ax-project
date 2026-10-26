@@ -44,12 +44,17 @@ def source_database_dsn():
     override = os.environ.get("SOURCE_DATABASE_DSN", "").strip()
     if override:
         return override
+    return local_database_dsn()
+
+
+def local_database_dsn():
+    """Use only local agent DB settings for notification coverage reads."""
     agent_env = dotenv_values(Path(__file__).resolve().parents[2] / ".env")
     for key in ("WEEKLY_REPORT_STORAGE_DATABASE_DSN", "ANSIMK_DATABASE_DSN"):
         value = os.environ.get(key) or agent_env.get(key)
         if value and value.strip():
             return value.strip()
-    raise ValueError("Missing source database DSN in agent .env or SOURCE_DATABASE_DSN")
+    raise ValueError("Missing local database DSN in agent .env")
 
 
 async def migrate(source, target, *, write=False, week_start=None):
@@ -98,10 +103,10 @@ async def migrate(source, target, *, write=False, week_start=None):
 
 
 async def run(args):
-    load_dotenv(Path(__file__).with_name(".env"), override=False)
     if getattr(args, "coverage_output", None):
         await export_coverage(args)
         return
+    load_dotenv(Path(__file__).with_name(".env"), override=False)
     source_dsn = source_database_dsn()
     target_user = required("TARGET_DB_USER")
     target_password = required("TARGET_DB_PASSWORD")
@@ -145,23 +150,20 @@ async def run(args):
 
 
 async def export_coverage(args):
-    """Read committed production state using the already-open SSH tunnel."""
+    """Read local roster, device links and archived reports without SSH."""
     from workflows.weekly_report.completion_notification import collect_coverage
 
     if args.write or args.week_start is None or args.week_start.weekday() != 0:
         raise ValueError("coverage export requires a Monday and cannot use --write")
-    target = await asyncpg.connect(
-        host=os.environ.get("TARGET_DB_HOST", "127.0.0.1"),
-        port=int(os.environ.get("TARGET_DB_PORT", "15432")),
-        database=os.environ.get("TARGET_DB_NAME", "ansimk"),
-        user=required("TARGET_DB_USER"), password=required("TARGET_DB_PASSWORD"),
-        ssl=os.environ.get("TARGET_DB_SSL", "require"), timeout=15,
+    print("Connecting to local database for notification coverage...", flush=True)
+    local = await asyncpg.connect(
+        local_database_dsn(), timeout=15,
         server_settings={"statement_timeout": "60000", "lock_timeout": "5000"},
     )
     try:
-        snapshot = await collect_coverage(target, args.week_start)
+        snapshot = await collect_coverage(local, args.week_start)
     finally:
-        await target.close()
+        await local.close()
     output = Path(args.coverage_output)
     temporary = output.with_suffix(".tmp")
     temporary.write_text(json.dumps(snapshot, ensure_ascii=False))
@@ -178,7 +180,7 @@ def main():
     )
     parser.add_argument(
         "--coverage-output", type=Path,
-        help="Read-only production coverage JSON for this and the preceding week; no migration",
+        help="Read-only local coverage JSON for this and the preceding week; no SSH or migration",
     )
     args = parser.parse_args()
     try:

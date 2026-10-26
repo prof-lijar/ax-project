@@ -62,7 +62,7 @@ def wait_for_storage(
     sleeper=time.sleep,
     clock=time.monotonic,
     wait_seconds=86400,
-    poll_seconds=30,
+    poll_seconds=5,
     progress=None,
 ):
     """Terminal success follows the bulk finalizer's committed storage write."""
@@ -87,6 +87,15 @@ def wait_for_storage(
             raise ScheduledSubmissionError("scheduled job did not finish local storage")
         if clock() >= deadline:
             raise ScheduledSubmissionError("timed out waiting for local storage")
+        _write_event({
+            "event": "weekly_report_schedule_progress",
+            "stage": "generation", "job_id": expected_id,
+            "week_start": job["week_start"], "job_status": job["status"],
+            **{key: job.get(key) for key in (
+                "discovered_count", "completed_count", "failed_count",
+                "pending_count", "running_count", "producer_done",
+            )},
+        })
         sleeper(min(poll_seconds, max(0, deadline - clock())))
         request = Request(
             settings.jobs_url + "/" + expected_id,
@@ -119,7 +128,7 @@ def migrate_week(week_start: str) -> None:
     run_database_command(week_start)
 
 
-def collect_production_coverage(week_start, output):
+def collect_local_coverage(week_start, output):
     run_database_command(week_start, coverage_output=output)
 
 
@@ -325,7 +334,7 @@ def main() -> int:
                 settings = NotificationSettings.from_env()
                 accepted = notify_completed_week(
                     week_start, state_root, settings=settings,
-                    collect=collect_production_coverage,
+                    collect=collect_local_coverage,
                 )
             except (ValueError, OSError, NotificationError, ScheduledSubmissionError,
                     subprocess.TimeoutExpired) as exc:

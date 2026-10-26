@@ -3,9 +3,9 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 python_bin="${PYTHON_BIN:-${script_dir}/../../.venv/bin/python}"
 
-# Help must not require credentials or open a connection.
+# Help and local coverage do not require production/SSH configuration.
 for arg in "$@"; do
-  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+  if [[ "$arg" == "--help" || "$arg" == "-h" || "$arg" == "--coverage-output" || "$arg" == --coverage-output=* ]]; then
     exec "$python_bin" "${script_dir}/migrate.py" "$@"
   fi
 done

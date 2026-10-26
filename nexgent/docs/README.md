@@ -12,6 +12,12 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Weekly Report Local Notification Coverage](08-implementation/weekly-report-local-notification-coverage.md): local DB credentials for all Slack coverage reads, SSH bypass, validation, and notification recovery.
+
+- [Weekly Report Five-Second Progress Logs](08-implementation/weekly-report-five-second-progress-logs.md): generation status logs, timing, verification, and scheduler rollout.
+
+- [Weekly Report Device Relationship Fix](08-implementation/weekly-report-device-relationship-fix.md): missing-column failure, verified device joins, coverage consistency, validation, deployment, and recovery.
+
 - [Monthly Risk Day and Recovery Migration](08-implementation/monthly-risk-count-migration.md): local danger/recovery day backfill, dev SSH copy, missing-ward skips, validation, and remaining live commands.
 
 - [File Storage Folder Uploads](08-implementation/file-storage-folder-upload.md): folder picker, recursive drag/drop, empty directories, atomic tree upload API, duplicate handling, and validation.

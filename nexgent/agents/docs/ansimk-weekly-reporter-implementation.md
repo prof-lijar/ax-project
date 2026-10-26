@@ -4,6 +4,31 @@ Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
 
+## Local database for completion coverage (2026-10-26)
+
+Completion notification coverage now reads only the local database configured
+by `WEEKLY_REPORT_STORAGE_DATABASE_DSN` or `ANSIMK_DATABASE_DSN` in the process
+environment/`agents/.env`. The local connection reads `ansimk` roster and device
+links plus `archive.resources_ward_weekly_report`. Coverage export bypasses SSH,
+playground target configuration and `SOURCE_DATABASE_DSN`. Migration still uses
+its separate production target and must commit before notification submission.
+The Slack footer labels success as local DB storage; it does not claim verified
+production coverage. Existing frozen notification payloads and accepted receipts
+retain their idempotency behavior. See [local notification coverage](../../docs/08-implementation/weekly-report-local-notification-coverage.md).
+
+## Device relationship correction (2026-10-26)
+
+The October 23 sections below incorrectly described `has_device` as a physical
+ward column. The source schema has no such column. Current eligibility uses
+`resources_device.location_id -> resources_location.id` and
+`resources_location.ward_id -> resources_ward.id`, all in `ansimk`.
+A shared `EXISTS` predicate filters discovery, derives `has_device` for explicit
+requests, and determines completion coverage skips. Multiple devices/locations
+do not duplicate wards. Offline but linked devices remain eligible; wards
+without a linked device are skipped. This supersedes the earlier null-flag rule.
+See [device relationship fix](../../docs/08-implementation/weekly-report-device-relationship-fix.md)
+for validation, permissions, deployment, and failed-week recovery.
+
 ## Weekly-report skipped-device completion counts (2026-10-23)
 
 Completion coverage snapshots now use version 2 and retain regional `skipped`

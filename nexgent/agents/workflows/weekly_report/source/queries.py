@@ -1,18 +1,27 @@
 """Static parameterized SQL owned by the weekly-report source service."""
 
-CANDIDATE_WARDS_SQL = """
+WARD_HAS_DEVICE_SQL = """
+EXISTS (
+    SELECT 1
+    FROM ansimk.resources_location AS l
+    JOIN ansimk.resources_device AS d ON d.location_id = l.id
+    WHERE l.ward_id = w.id
+)
+"""
+
+CANDIDATE_WARDS_SQL = f"""
 SELECT w.id AS ward_id, w.full_name
 FROM ansimk.resources_ward AS w
-WHERE w.id > $1 AND w.has_device IS NOT FALSE
+WHERE w.id > $1 AND {WARD_HAS_DEVICE_SQL}
 ORDER BY w.id
 LIMIT $2
 """
 
-EXPLICIT_WARDS_SQL = """
-SELECT id AS ward_id, full_name, has_device
-FROM ansimk.resources_ward
-WHERE id = ANY($1::bigint[])
-ORDER BY id
+EXPLICIT_WARDS_SQL = f"""
+SELECT w.id AS ward_id, w.full_name, {WARD_HAS_DEVICE_SQL} AS has_device
+FROM ansimk.resources_ward AS w
+WHERE w.id = ANY($1::bigint[])
+ORDER BY w.id
 """
 
 DAILY_ROWS_SQL = """

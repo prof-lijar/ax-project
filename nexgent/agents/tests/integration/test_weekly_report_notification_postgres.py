@@ -10,22 +10,30 @@ from workflows.weekly_report import completion_notification as coverage
 
 
 @pytest.mark.asyncio
-async def test_production_coverage_sql_with_postgres_fixtures(monkeypatch):
+async def test_local_coverage_sql_with_postgres_fixtures(monkeypatch):
     dsn = os.environ.get("WEEKLY_REPORT_TEST_DATABASE_DSN")
     if not dsn:
         pytest.skip("WEEKLY_REPORT_TEST_DATABASE_DSN is required")
     query = (
         coverage.COVERAGE_SQL.replace(
-            "ansimk.resources_ward_weekly_report", "fixture_reports"
+            "archive.resources_ward_weekly_report", "fixture_reports"
         )
         .replace("ansimk.resources_ward", "fixture_wards")
+        .replace("ansimk.resources_location", "fixture_locations")
+        .replace("ansimk.resources_device", "fixture_devices")
         .replace(
             "WITH wards AS",
-            """WITH fixture_wards(id, address, has_device) AS (VALUES
-        (1, '경상북도 울진군 북면', TRUE), (2, '경북 영덕군 영덕읍', TRUE),
-        (3, '경기도 광명시 철산동', TRUE), (4, '서울특별시 광명로 1', TRUE),
-        (5, NULL, TRUE), (6, '', NULL), (7, '울진', TRUE),
-        (8, '영덕군', TRUE), (9, '광명시', TRUE), (10, '울진', FALSE), (11, '영덕군', FALSE)
+            """WITH fixture_wards(id, address) AS (VALUES
+        (1, '경상북도 울진군 북면'), (2, '경북 영덕군 영덕읍'),
+        (3, '경기도 광명시 철산동'), (4, '서울특별시 광명로 1'),
+        (5, NULL), (6, ''), (7, '울진'),
+        (8, '영덕군'), (9, '광명시'), (10, '울진'), (11, '영덕군')
+    ), fixture_locations(id, ward_id) AS (VALUES
+        (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7),
+        (8, 8), (9, 9), (10, 10), (12, 1)
+    ), fixture_devices(id, location_id) AS (VALUES
+        (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7),
+        (8, 8), (9, 9), (12, 12), (13, 1), (14, NULL)
     ), fixture_reports(ward_id, week_start_date) AS (VALUES
         (1, DATE '2026-09-21'), (1, DATE '2026-09-21'),
         (2, DATE '2026-09-21'), (3, DATE '2026-09-21'),
