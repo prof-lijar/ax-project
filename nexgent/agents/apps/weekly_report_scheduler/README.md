@@ -1,7 +1,7 @@
 # Weekly Report Scheduler
 
 This private cron service starts durable Weekly Reporter generation every
-Monday at 01:00 in `Asia/Seoul`. The cron expression is `0 1 * * 1`.
+Monday at 04:00 in `Asia/Seoul`. The cron expression is `0 4 * * 1`.
 
 Each run targets the previous fully completed Monday-through-Sunday period and
 includes every ward in `ansimk.resources_ward`, even without weekly records. Each job

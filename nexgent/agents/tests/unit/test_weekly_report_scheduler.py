@@ -155,7 +155,7 @@ def test_settings_reject_credentials_in_bulk_api_url() -> None:
         )
 
 
-def test_crontab_runs_every_monday_at_one_in_container_time() -> None:
+def test_crontab_runs_every_monday_at_four_in_container_time() -> None:
     crontab = (
         Path(__file__).parents[2]
         / "apps"
@@ -163,4 +163,4 @@ def test_crontab_runs_every_monday_at_one_in_container_time() -> None:
         / "crontab"
     ).read_text()
 
-    assert any(line.startswith("0 1 * * 1 ") for line in crontab.splitlines())
+    assert any(line.startswith("0 4 * * 1 ") for line in crontab.splitlines())
