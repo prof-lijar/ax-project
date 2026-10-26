@@ -200,6 +200,18 @@ services:
     restart: unless-stopped
     stop_grace_period: 5s
 
+  daily-risk-scheduler:
+    build:
+      context: ./agents
+      dockerfile: apps/daily_risk_scheduler/Dockerfile
+    image: ax-daily-risk-scheduler-prod:local
+    env_file:
+      - ./agents/.env
+    network_mode: host
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+
   weekly-report-scheduler:
     build:
       context: ./agents

@@ -1,0 +1,2 @@
+# Container system timezone is Asia/Seoul. Full previous calendar day.
+15 5 * * * cd /app && /app/.venv/bin/python -m apps.daily_risk_scheduler.run --apply >> /proc/1/fd/1 2>> /proc/1/fd/2

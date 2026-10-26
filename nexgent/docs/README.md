@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Daily risk-count scheduler](08-implementation/daily-risk-count-scheduler.md): previous-day risk updates at 05:15 Seoul in the existing dev and production Compose stacks.
+
 - [Weekly Report Local Notification Coverage](08-implementation/weekly-report-local-notification-coverage.md): local DB credentials for all Slack coverage reads, SSH bypass, validation, and notification recovery.
 
 - [Weekly Report Five-Second Progress Logs](08-implementation/weekly-report-five-second-progress-logs.md): generation status logs, timing, verification, and scheduler rollout.
