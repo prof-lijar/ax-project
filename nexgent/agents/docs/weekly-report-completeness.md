@@ -4,8 +4,12 @@ Date: 2026-09-21
 
 The operator requires the weekly report count to equal the eligible
 `resources_ward` count, including eligible wards without weekly records.
-As of 2026-10-23, wards with `has_device=false` are excluded before paging or
-generation; null flags retain existing eligibility. Explicit requests return
+Updated 2026-10-26: eligibility requires a device linked through
+`ansimk.resources_device.location_id -> resources_location.id -> resources_location.ward_id`.
+The October 23 implementation incorrectly assumed a physical `has_device` ward
+column; the corrected SQL derives that value with `EXISTS`. Wards without a
+linked device are excluded before paging or generation; linked offline devices
+remain eligible. Explicit requests return
 `no_device` skips, which bulk selection accepts. Completion coverage excludes
 the same wards for both weeks. Existing reports are preserved. The generation notice
 `문구 생성이 어려워 검증된 안내 문구로 자동 대체됨` must not appear in

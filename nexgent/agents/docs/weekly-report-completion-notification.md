@@ -7,12 +7,26 @@ product backend **after production migration commits**. For a September 28 run,
 it compares September 21–27 with September 14–20. This operational summary
 contains aggregate counts only, never subscriber names, addresses or reports.
 
+## Local database coverage (2026-10-26)
+
+All new completion-notification coverage reads now use the local agent database
+configuration. No target database credentials or SSH tunnel are used. This
+supersedes the earlier production-coverage permission guidance. Migration still
+commits to production before completion notification; its connection is unchanged.
+See [local coverage implementation and recovery](../../docs/08-implementation/weekly-report-local-notification-coverage.md).
+
+## Device relationship correction (2026-10-26)
+
+Selection and coverage now share an `EXISTS` check through the location/device
+relationship. `has_device` is a derived value, not a physical ward column.
+See [fix and rollout](../../docs/08-implementation/weekly-report-device-relationship-fix.md).
+
 ## Counting contract
 
-- Population: every subscriber currently present in production
-  `ansimk.resources_ward` with `has_device IS NOT FALSE`, used identically for
-  both weeks. Null flags retain eligibility.
-- Skipped reports: current production wards with `has_device=false`, shown
+- Population: every subscriber currently present in the local database
+  `ansimk.resources_ward` with a device linked through `resources_location`,
+  used identically for both weeks. Offline but linked devices remain eligible.
+- Skipped reports: current local wards without a linked device, shown
   separately by region and overall. They count as skipped even when a stored
   report exists, and never enter eligible population, successes or missing rates.
   These are current-roster exclusion counts, not historical device-state counts
@@ -20,12 +34,11 @@ contains aggregate counts only, never subscriber names, addresses or reports.
 - Region: municipality tokens in `address`: 울진/울진군, 영덕/영덕군,
   광명/광명시; all remaining and missing addresses are 기타. Street names such
   as 광명로 do not select 광명. Each subscriber belongs to exactly one group.
-- Success: a production `resources_ward_weekly_report` row exists for the
+- Success: a local `archive.resources_ward_weekly_report` row exists for the
   subscriber and reporting Monday. Existing reports count; these counts measure
   coverage, not this run's SQL insert count.
-- Failure (missing): population minus success. Locally generated reports that
-  were not stored in production cannot count as success. Wards absent from the
-  production roster, including migration skips, are excluded.
+- Failure (missing): population minus success. Counts measure local storage, including reports skipped by production
+  migration. They do not verify production coverage.
 - Missing rate: failure / population × 100; empty groups display `—`.
   Both weekly rates and their percentage-point difference are shown. The
   headline additionally compares missing counts.
@@ -33,7 +46,7 @@ contains aggregate counts only, never subscriber names, addresses or reports.
 The schema has no ward enrollment timestamp. This explicitly compares the
 current roster, not reconstructed historical membership. Deleted subscribers
 and historical address changes cannot be recovered. Both weeks are read in one
-repeatable-read, read-only production transaction.
+repeatable-read, read-only local transaction.
 
 ## Native Korean Slack layout
 
@@ -104,17 +117,21 @@ invokes `/app/.venv/bin/python`. Rebuild from `agents/`:
 docker compose -f ../compose.prod.yaml up -d --build --no-deps weekly-report-scheduler
 ```
 
-No application schema migration is added. The existing production migration
-role needs SELECT on ward `id`/`address`/`has_device` and report ward/week columns.
+No application schema migration is added. Coverage uses
+`WEEKLY_REPORT_STORAGE_DATABASE_DSN`, falling back to `ANSIMK_DATABASE_DSN`,
+from the process environment or `agents/.env`. `SOURCE_DATABASE_DSN` and target
+credentials are not used for coverage. The local role needs SELECT on ward
+`id`/`address`, location `id`/`ward_id`, device `location_id`, and local archive
+report ward/week columns. Slack delivery configuration remains in `backend/prod.env`.
 
 ## Recovery and delivery semantics
 
 1. Generation and migration retain their strict success gates. Failed/partial
    generation or failed migration never emits a completion notification.
 2. The scheduler writes its per-week migration receipt first.
-3. A separate invocation of the existing SSH script runs
+3. A separate invocation of the database helper runs
    `--week-start YYYY-MM-DD --coverage-output PATH`, without `--write`.
-   This mode only reads production coverage and saves aggregate JSON.
+   This mode bypasses SSH and only reads local coverage and saves aggregate JSON.
 4. The frozen message, backend URL and stable idempotency key
    `weekly-report:production:YYYY-MM-DD:coverage-v1` are persisted before POST.
    Retain the scheduler volume containing snapshots and immutable requests.

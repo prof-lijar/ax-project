@@ -76,6 +76,40 @@ def test_timeout_is_bounded():
         )
 
 
+def test_generation_logs_latest_counts_every_five_seconds_including_outage(capsys):
+    running = {**job("running"), "completed_count": 1, "pending_count": 1,
+               "running_count": 1, "private_data": "must not be logged"}
+    responses = iter([URLError("offline"), running, job("completed")])
+    now = [0]
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    def opener(*args, **kwargs):
+        result = next(responses)
+        if isinstance(result, Exception):
+            raise result
+        response = FakeResponse(result)
+        response.status = 200
+        return response
+
+    result = pipeline.wait_for_storage(
+        SchedulerSettings(), job(), opener=opener,
+        sleeper=sleep, clock=lambda: now[0],
+    )
+    assert result["status"] == "completed"
+    assert sleeps == [5, 5, 5]
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert len(events) == 3
+    assert all(event["event"] == "weekly_report_schedule_progress" for event in events)
+    assert all(event["job_id"] == job()["job_id"] for event in events)
+    assert [event["completed_count"] for event in events] == [0, 0, 1]
+    assert events[-1]["pending_count"] == events[-1]["running_count"] == 1
+    assert all(event["timestamp"] and "private_data" not in event for event in events)
+
+
 def test_failed_job_logs_identity_and_counts(capsys):
     with pytest.raises(ScheduledSubmissionError):
         pipeline.wait_for_storage(SchedulerSettings(), job("failed"))

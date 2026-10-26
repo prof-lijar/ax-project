@@ -1,5 +1,11 @@
 # Documentation map
 
+- [Weekly Report Local Notification Coverage](../../docs/08-implementation/weekly-report-local-notification-coverage.md): local DB credentials for all Slack coverage reads, SSH bypass, validation, and notification recovery.
+
+- [Weekly-report five-second progress logs](../../docs/08-implementation/weekly-report-five-second-progress-logs.md): generation counters, status polling, verification, and rollout.
+
+- [Weekly-report device relationship fix](../../docs/08-implementation/weekly-report-device-relationship-fix.md): verified ward/location/device eligibility, failure cause, tests, deployment, and recovery.
+
 - [Monthly risk day and recovery migration](../../docs/08-implementation/monthly-risk-count-migration.md):
   archived daily risk/recovery counts and arrays, transactional dev SSH copy,
   missing-ward skips, commands, and PostgreSQL verification.
@@ -25,7 +31,7 @@
 - [Persistent AX chat history](../../docs/08-implementation/persistent-ax-chat-history.md): product-owned conversation storage, independent worker, server-loaded context, durable attachments and browser reconnection.
 
 - [Weekly-report completeness](weekly-report-completeness.md): every eligible ward,
-  excluding `has_device=false`, explicit `no_device` skips, matching coverage,
+  excluding wards without linked devices, explicit `no_device` skips, matching coverage,
   no-data reports, strict batch completion, scheduler continuation, internal-only
   fallback metadata, verification, and rollout checkpoint.
 

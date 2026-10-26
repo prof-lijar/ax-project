@@ -1,22 +1,24 @@
-"""Deterministic production report coverage; never sends subscriber data."""
+"""Deterministic local report coverage; never sends subscriber data."""
 
 from datetime import date, timedelta
+
+from .source.queries import WARD_HAS_DEVICE_SQL
 
 REGIONS = ("전체", "울진", "영덕", "광명", "기타")
 
 # Match municipality tokens, not street/building names such as 광명로.
-COVERAGE_SQL = """
+COVERAGE_SQL = f"""
 WITH wards AS (
-    SELECT id, has_device IS FALSE AS skipped, CASE
+    SELECT w.id, NOT {WARD_HAS_DEVICE_SQL} AS skipped, CASE
       WHEN address ~ '(^|[[:space:]])울진군?([[:space:]]|$)' THEN '울진'
       WHEN address ~ '(^|[[:space:]])영덕군?([[:space:]]|$)' THEN '영덕'
       WHEN address ~ '(^|[[:space:]])광명시?([[:space:]]|$)' THEN '광명'
       ELSE '기타' END AS region
-    FROM ansimk.resources_ward
+    FROM ansimk.resources_ward AS w
 ), weeks(week_start) AS (VALUES ($1::date), ($1::date - 7)),
 coverage AS (
     SELECT w.region, w.skipped, p.week_start, NOT w.skipped AND EXISTS (
-        SELECT 1 FROM ansimk.resources_ward_weekly_report r
+        SELECT 1 FROM archive.resources_ward_weekly_report r
         WHERE r.ward_id = w.id AND r.week_start_date = p.week_start
     ) AS success
     FROM wards w CROSS JOIN weeks p
@@ -161,7 +163,7 @@ def notification_payload(snapshot, *, week_start, destination):
         },
         "footer": (
             "집계 기준\n"
-            "• 성공: 운영 DB에 해당 주 리포트가 있음 · 실패(누락): 리포트가 없음\n"
+            "• 성공: 로컬 DB에 해당 주 리포트가 있음 · 실패(누락): 리포트가 없음\n"
             "• 누락률 = 실패 ÷ 가입자 수 × 100 · 가입자 0명은 산정·비교 불가\n"
             "• 전주 대비 = 지난주 누락률 − 2주 전 누락률 · 감소할수록 개선\n"
             "• %p는 퍼센트포인트(두 비율의 차이) · 원자료로 계산 후 소수 둘째 자리 반올림\n"

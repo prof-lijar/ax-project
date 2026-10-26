@@ -116,6 +116,10 @@ async def test_aggregate_snapshot_is_read_only_and_fills_absent_groups():
 
         async def fetch(self, query, week):
             assert week == date(2026, 9, 21)
+            assert "archive.resources_ward_weekly_report" in query
+            assert "ansimk.resources_ward_weekly_report" not in query
+            assert "ansimk.resources_location" in query
+            assert "ansimk.resources_device" in query
             return [{"week_start": week, "region": "울진", "total": 3, "success": 2, "skipped": 4}]
 
     result = await collect_coverage(Connection(), date(2026, 9, 21))
@@ -340,7 +344,7 @@ def test_read_only_coverage_command_never_adds_write_flag(monkeypatch, tmp_path)
     process.wait.return_value = 0
     command.return_value = process
     monkeypatch.setattr(pipeline.subprocess, "Popen", command)
-    pipeline.collect_production_coverage("2026-09-21", tmp_path / "coverage.json")
+    pipeline.collect_local_coverage("2026-09-21", tmp_path / "coverage.json")
     args = command.call_args.args[0]
     assert "--write" not in args
     assert args[-2:] == ["--coverage-output", str(tmp_path / "coverage.json")]

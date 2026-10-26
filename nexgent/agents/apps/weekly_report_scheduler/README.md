@@ -9,8 +9,12 @@ requests up to 10,000 reports by default; the pipeline follows continuation
 cursors until discovery is exhausted. Idempotency keys include the reporting
 Monday, the all-ward policy, and a cursor hash for subsequent jobs.
 
-After submission, the service polls the private bulk control API every 30
-seconds. All batches share a 24-hour generation/polling deadline. Only
+After submission, the service polls the private bulk control API every 5
+seconds and emits a flushed JSON `weekly_report_schedule_progress` event with
+job ID, reporting week, status, and discovered/completed/failed/pending/running
+counts while generation is nonterminal. HTTP request time adds to that interval;
+a transient status outage logs the last observed counts. Migration retains its
+existing start/end events and script output. All batches share a 24-hour generation/polling deadline. Only
 `completed` with matching completed/discovered counts and no failed or unfinished
 items confirms complete batch storage. After the last continuation batch, it runs
 `playground/weekly-reporter/migrate.sh --write --week-start YYYY-MM-DD`, using
@@ -211,7 +215,10 @@ monitor read that file through a production-only read-only mount, reuse
 `NEXGENT_NOTIFICATION_SERVICE_TOKEN`, and submit to `http://backend:8000`
 with destination `default` from `NEXGENT_SLACK_CHANNELS`. Separate scheduler
 notification variables are retired; `agents/.env` is used only for other
-configuration. Both weeks' production report coverage is grouped by subscriber address
+configuration and local coverage. Both weeks' local report coverage reads the
+ward/location/device tables in `ansimk` and saved reports in `archive`, using
+`WEEKLY_REPORT_STORAGE_DATABASE_DSN` or `ANSIMK_DATABASE_DSN` from the local
+agent environment, without SSH or target database credentials. Counts are grouped by subscriber address
 with missing rates and percentage-point comparisons. Notification failure keeps
 the migration receipt and can be resumed independently. See [notification
 configuration and recovery](../../docs/weekly-report-completion-notification.md).

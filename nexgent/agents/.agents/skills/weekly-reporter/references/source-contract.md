@@ -497,3 +497,12 @@ for a timed-out item and continue the batch. Send verified ZIP artifacts in
 bounded chunks and advertise the verified artifact byte size as
 `Content-Length`; never initialize a streamed ZIP with a zero-length response
 header.
+
+## Device eligibility correction (2026-10-26)
+
+`has_device` is not a column on `ansimk.resources_ward`. Check for a device via
+`ansimk.resources_location.ward_id = resources_ward.id` and
+`ansimk.resources_device.location_id = resources_location.id`, using `EXISTS`
+to avoid duplicate wards. Linked devices remain eligible even when offline.
+Discovery filters before pagination; explicit selection derives `has_device`
+and returns `no_device` skips. Completion coverage shares the same predicate.

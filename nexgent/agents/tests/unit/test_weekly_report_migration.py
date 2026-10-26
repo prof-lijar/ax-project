@@ -1,7 +1,12 @@
 import importlib.util
+import json
+import subprocess
+import sys
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -33,6 +38,72 @@ def test_source_credentials_are_separate(monkeypatch, override, storage, expecte
         },
     )
     assert migration.source_database_dsn() == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("storage", ["local-storage", ""])
+async def test_notification_coverage_uses_only_local_agent_database(
+    monkeypatch, tmp_path, storage,
+):
+    monkeypatch.setenv("SOURCE_DATABASE_DSN", "migration-override")
+    monkeypatch.setenv("TARGET_DB_USER", "production-user")
+    monkeypatch.setenv("TARGET_DB_PASSWORD", "production-password")
+    for key in ("WEEKLY_REPORT_STORAGE_DATABASE_DSN", "ANSIMK_DATABASE_DSN"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(migration, "dotenv_values", lambda path: {
+        "WEEKLY_REPORT_STORAGE_DATABASE_DSN": storage,
+        "ANSIMK_DATABASE_DSN": "local-source",
+    })
+    load = lambda *a, **kw: pytest.fail("coverage must not load production config")
+    monkeypatch.setattr(migration, "load_dotenv", load)
+    connection = AsyncMock()
+    connect = AsyncMock(return_value=connection)
+    monkeypatch.setattr(migration.asyncpg, "connect", connect)
+    from workflows.weekly_report import completion_notification as coverage
+    collect = AsyncMock(return_value={"version": 2, "weeks": []})
+    monkeypatch.setattr(coverage, "collect_coverage", collect)
+    output = tmp_path / "coverage.json"
+    args = SimpleNamespace(write=False, week_start=date(2026, 10, 19), coverage_output=output)
+    await migration.run(args)
+    assert connect.call_args.args == (storage or "local-source",)
+    assert not {"user", "password", "host", "port"} & connect.call_args.kwargs.keys()
+    collect.assert_awaited_once_with(connection, args.week_start)
+    connection.close.assert_awaited_once()
+    assert json.loads(output.read_text()) == {"version": 2, "weeks": []}
+
+
+@pytest.mark.asyncio
+async def test_notification_coverage_closes_local_connection_on_failure(monkeypatch, tmp_path):
+    from workflows.weekly_report import completion_notification as coverage
+    monkeypatch.setattr(migration, "local_database_dsn", lambda: "local-source")
+    connection = AsyncMock()
+    monkeypatch.setattr(migration.asyncpg, "connect", AsyncMock(return_value=connection))
+    monkeypatch.setattr(coverage, "collect_coverage", AsyncMock(side_effect=ValueError("failed")))
+    output = tmp_path / "coverage.json"
+    with pytest.raises(ValueError, match="failed"):
+        await migration.export_coverage(SimpleNamespace(
+            write=False, week_start=date(2026, 10, 19), coverage_output=output,
+        ))
+    connection.close.assert_awaited_once()
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("option", ["--coverage-output", "--coverage-output=coverage.json"])
+def test_coverage_shell_bypasses_ssh_and_production_credentials(tmp_path, option):
+    script = tmp_path / "migrate.sh"
+    script.write_text(SCRIPT.with_suffix(".sh").read_text())
+    python = tmp_path / "fake-python"
+    python.write_text(f"#!{sys.executable}\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n")
+    python.chmod(0o700)
+    args = [option] + (["coverage.json"] if option == "--coverage-output" else [])
+    result = subprocess.run(
+        ["bash", str(script), "--week-start", "2026-10-19", *args],
+        env={"PATH": "/usr/bin:/bin", "PYTHON_BIN": str(python)},
+        capture_output=True, text=True, timeout=5, check=True,
+    )
+    assert json.loads(result.stdout) == [
+        str(tmp_path / "migrate.py"), "--week-start", "2026-10-19", *args,
+    ]
 
 
 class Database:

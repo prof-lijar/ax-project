@@ -26,6 +26,16 @@ Rows match on `(ward_id, week_start_date)`:
 | Already has identical report fields | Update it anyway and refresh `updated_at` |
 | Ward is absent from production `resources_ward` | Skip its report and print the ward ID and report week |
 
+## Local notification coverage (2026-10-26)
+
+`migrate.sh --week-start YYYY-MM-DD --coverage-output PATH` bypasses SSH and
+production settings. It reads `WEEKLY_REPORT_STORAGE_DATABASE_DSN`, falling
+back to `ANSIMK_DATABASE_DSN`, from process settings or `agents/.env`. Coverage
+joins the local `ansimk` roster/location/device tables and the local `archive`
+report table for both weeks. `SOURCE_DATABASE_DSN` is a migration-only override.
+Slack credentials remain in `backend/prod.env`; target credentials are only
+required for report migration. See [implementation and recovery](../../../docs/08-implementation/weekly-report-local-notification-coverage.md).
+
 ## Files
 
 | File | Purpose |

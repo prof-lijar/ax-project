@@ -106,32 +106,36 @@ def test_source_queries_are_bound_to_authoritative_ansimk_schema(query, table) -
     assert "archive." not in query
 
 
+def roster_connection():
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute("ATTACH DATABASE ':memory:' AS ansimk")
+    connection.executescript("""
+        CREATE TABLE ansimk.resources_ward (id INTEGER, full_name TEXT);
+        CREATE TABLE ansimk.resources_location (id INTEGER, ward_id INTEGER);
+        CREATE TABLE ansimk.resources_device
+            (id INTEGER, location_id INTEGER, is_disconnected BOOLEAN);
+        INSERT INTO ansimk.resources_ward VALUES
+            (5, 'no location'), (10, 'first'), (15, 'empty location'),
+            (20, 'second'), (30, NULL), (40, 'no device');
+        INSERT INTO ansimk.resources_location VALUES
+            (100, 10), (101, 10), (150, 15), (200, 20), (300, 30), (400, 40);
+        INSERT INTO ansimk.resources_device VALUES
+            (1, 100, FALSE), (2, 100, FALSE), (3, 101, TRUE),
+            (4, 200, FALSE), (5, 300, TRUE), (6, NULL, FALSE);
+    """)
+    return connection
+
+
 @pytest.mark.asyncio
 async def test_discovery_skips_no_device_wards_and_keeps_eligible_no_data_wards() -> None:
     class RosterDatabase(FakeDatabase):
         async def fetch(self, query, *args):
             if query == CANDIDATE_WARDS_SQL:
-                with sqlite3.connect(":memory:") as connection:
-                    connection.execute("ATTACH DATABASE ':memory:' AS archive")
-                    connection.execute("ATTACH DATABASE ':memory:' AS ansimk")
-                    connection.execute(
-                        "CREATE TABLE archive.resources_ward (id INTEGER, full_name TEXT)"
-                    )
-                    connection.execute(
-                        "INSERT INTO archive.resources_ward VALUES (99, 'other schema')"
-                    )
-                    connection.execute(
-                        "CREATE TABLE ansimk.resources_ward "
-                        "(id INTEGER, full_name TEXT, has_device BOOLEAN)"
-                    )
-                    connection.executemany(
-                        "INSERT INTO ansimk.resources_ward VALUES (?, ?, ?)",
-                        [(5, "제외", False), (10, "첫 대상", True),
-                         (15, "제외", False), (20, "둘째 대상", True),
-                         (30, None, None), (40, "제외", False)],
-                    )
-                    return [dict(zip(("ward_id", "full_name"), row, strict=True))
-                            for row in connection.execute(query, {"1": args[0], "2": args[1]})]
+                with roster_connection() as connection:
+                    return [dict(row) for row in connection.execute(
+                        query, {"1": args[0], "2": args[1]}
+                    )]
             return []
 
     service = WeeklyReportSourceService(RosterDatabase())
@@ -153,21 +157,24 @@ async def test_explicit_selection_skips_no_device_before_loading_metrics(only_no
     class ExplicitDatabase(FakeDatabase):
         async def fetch(self, query, *args):
             if query == EXPLICIT_WARDS_SQL:
-                return [
-                    {"ward_id": ward_id, "full_name": str(ward_id), "has_device": ward_id != 20}
-                    for ward_id in args[0] if ward_id != 99
-                ]
+                placeholders = ", ".join("?" for _ in args[0])
+                query = query.replace("= ANY($1::bigint[])", f"IN ({placeholders})")
+                with roster_connection() as connection:
+                    rows = [dict(row) for row in connection.execute(query, args[0])]
+                for row in rows:
+                    row["has_device"] = bool(row["has_device"])
+                return rows
             return await super().fetch(query, *args)
 
     database = ExplicitDatabase()
-    requested = [20] if only_no_device else [10, 20, 99]
+    requested = [15] if only_no_device else [10, 15, 99]
     result = await WeeklyReportSourceService(database).build(
         WeeklyReportRequest(week_start=date(2026, 8, 3), ward_ids=requested)
     )
     assert [item.ward_id for item in result.items] == ([] if only_no_device else [10])
     assert {(item.ward_id, item.reason) for item in result.skipped} == (
-        {(20, "no_device")} if only_no_device
-        else {(20, "no_device"), (99, "not_found")}
+        {(15, "no_device")} if only_no_device
+        else {(15, "no_device"), (99, "not_found")}
     )
     assert all(args[0] == [10] for _, args in database.calls)
     if only_no_device:

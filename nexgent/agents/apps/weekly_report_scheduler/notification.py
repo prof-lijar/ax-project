@@ -83,7 +83,7 @@ def notify_completed_week(week_start, state_root, *, settings, collect, send=Non
                 destination=settings.destination,
             )
         except (ValueError, KeyError, TypeError):
-            raise NotificationError("invalid production coverage snapshot") from None
+            raise NotificationError("invalid local coverage snapshot") from None
         event = {
             "key": f"weekly-report:production:{week_start}:coverage-v1",
             "payload": payload,
