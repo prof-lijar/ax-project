@@ -208,6 +208,15 @@ services:
     env_file:
       - ./agents/.env
     network_mode: host
+    environment:
+      DAILY_RISK_NOTIFICATION_BASE_URL: "http://127.0.0.1:${PROD_BACKEND_PORT:-8001}"
+    volumes:
+      - type: bind
+        source: ./backend/prod.env
+        target: /run/ax-notifications/prod.env
+        read_only: true
+        bind:
+          create_host_path: false
     init: true
     restart: unless-stopped
     stop_grace_period: 60s

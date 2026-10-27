@@ -9,6 +9,7 @@ dependencies = [
     "ax-contracts",
     "httpx>=0.27,<1.0",
     "mcp>=2.0,<3.0",
+    "python-dotenv>=1.0,<2.0",
     "slack-sdk>=3.39,<4.0",
     "trafilatura>=2.1,<3.0",
 ]

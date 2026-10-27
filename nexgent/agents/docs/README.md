@@ -1,6 +1,6 @@
 # Documentation map
 
-- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul previous-day archive risk/recovery updates, idempotence, existing dev/production Compose integration and replay.
+- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul previous-day archive risk/recovery updates, idempotence, existing dev/production Compose integration, backend-queued Slack completion/failure status and replay.
 
 - [October 12 count correction](../playground/fix-oct12-counts/README.md):
   preview and repair saved activity/remote-control counts using the following

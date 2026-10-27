@@ -1,5 +1,37 @@
 # AX Agents Architecture
 
+## Daily risk-count Slack status (2026-10-27)
+
+Applied daily-risk runs now submit English completion/failure status
+through `ax_integrations.notifications` to the backend's durable Slack queue.
+The shared `BackendNotificationSettings` loads only mounted backend `prod.env`;
+the weekly reporter retains its existing settings interface and behavior using
+this shared parser. The production daily scheduler mounts the same file read-only
+and uses its existing host network to reach the published backend loopback port
+(`PROD_BACKEND_PORT`, default 8001). Development has no production secrets mount.
+The existing backend enable flag and service token are reused. Daily alerts use
+the dedicated `daily_risk` destination mapped to `C0C24T2124E` in backend
+`NEXGENT_SLACK_CHANNELS`, leaving the weekly reporter's `default` mapping intact.
+There is no fallback to `default` if the daily destination is missing. Recreate
+the backend and notification worker after changing their environment mapping.
+
+Workflow-local notification copy contains exactly status (`Success`/`Fail`),
+title (`Daily Risk Count`), actual run start/end timestamps in KST, and message.
+Success says `Successfully done!`; failures identify the failed database stage
+and direct operators to sanitized logs. Counts and archive storage details are
+omitted. Exception bodies, credentials and ward data are excluded. The app submits after
+reconciliation and connection cleanup, never from inside the DB transaction.
+Cleanup errors cannot relabel a confirmed commit as failed. Preview runs never
+submit. Configuration or submission failure is logged independently and does
+not change the database outcome or cause automatic database retries.
+
+Each invocation uses a unique request key; bounded transport retries keep its
+payload and key unchanged. Backend acceptance delegates durable Slack delivery
+and retries to the existing worker. No local outbox is added: submission failure
+before acceptance is best effort, with operator replay required. Replays report
+their own counts and send a fresh message. Missed starts and terminated processes
+remain outside this completion hook. See [configuration and recovery](../apps/daily_risk_scheduler/README.md#slack-status-notifications).
+
 ## Daily risk-count agent (2026-10-26)
 
 `workflows/daily_risk_counts` reconciles the full previous Asia/Seoul calendar
