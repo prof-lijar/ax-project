@@ -182,7 +182,6 @@ services:
       WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS: ${WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS:-2}
     volumes:
       - ./.env:/app/.env:ro
-      - ./playground/weekly-reporter/.env:/app/playground/weekly-reporter/.env:ro
       - weekly-report-scheduler-state:/var/lib/ax/weekly-report-scheduler
       - weekly-report-scheduler-ssh:/root/.ssh
     depends_on:

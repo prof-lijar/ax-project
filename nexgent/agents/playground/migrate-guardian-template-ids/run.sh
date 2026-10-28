@@ -34,32 +34,43 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(sys.argv[1]).parent / 'weekly-reporter/.env', override=False)
-for key in ('TARGET_DB_USER', 'TARGET_DB_PASSWORD', 'SSH_PASSWORD'):
+load_dotenv(Path(sys.argv[1]).parent.parent / '.env', override=False)
+for key in ('LIVE_PROD_DB_USER', 'LIVE_PROD_DB_PASSWORD', 'LIVE_PROD_SSH_PASSWORD'):
     if not os.environ.get(key, '').strip():
-        sys.exit(f'Missing {key}; configure playground/weekly-reporter/.env')
+        sys.exit(f'Missing {key}; configure agents/.env')
 try:
-    port = int(os.environ.get('TARGET_DB_PORT', '15432'))
+    port = int(os.environ.get('LIVE_PROD_TUNNEL_PORT', '15432'))
     if not 1 <= port <= 65535:
         raise ValueError
 except ValueError:
-    sys.exit('TARGET_DB_PORT must be between 1 and 65535')
-if os.environ.get('TARGET_DB_HOST', '127.0.0.1') not in ('127.0.0.1', 'localhost'):
-    sys.exit('TARGET_DB_HOST must use the local SSH tunnel: 127.0.0.1 or localhost')
+    sys.exit('LIVE_PROD_TUNNEL_PORT must be between 1 and 65535')
 print(port)
 for key, default, pattern in (
-    ('SSH_HOST', '211.188.52.211', r'[A-Za-z0-9][A-Za-z0-9.-]*'),
-    ('SSH_ID', 'root', r'[A-Za-z0-9_][A-Za-z0-9_.-]*'),
+    ('LIVE_PROD_SSH_HOST', '', r'[A-Za-z0-9][A-Za-z0-9.-]*'),
+    ('LIVE_PROD_SSH_ID', 'root', r'[A-Za-z0-9_][A-Za-z0-9_.-]*'),
 ):
     value = os.environ.get(key, default)
     if not re.fullmatch(pattern, value):
         sys.exit(f'Invalid {key}')
     print(value)
+remote_host = os.environ.get('LIVE_PROD_DB_HOST', '')
+if remote_host.isdecimal() or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]*', remote_host):
+    sys.exit('Invalid or missing LIVE_PROD_DB_HOST; configure agents/.env')
+try:
+    remote_port = int(os.environ.get('LIVE_PROD_DB_PORT', '5432'))
+    if not 1 <= remote_port <= 65535:
+        raise ValueError
+except ValueError:
+    sys.exit('LIVE_PROD_DB_PORT must be between 1 and 65535')
+print(remote_host)
+print(remote_port)
 PY
 )"
 mapfile -t tunnel_settings <<< "$tunnel_config"
 tunnel_port="${tunnel_settings[0]}"
 ssh_destination="${tunnel_settings[2]}@${tunnel_settings[1]}"
+remote_host="${tunnel_settings[3]}"
+remote_port="${tunnel_settings[4]}"
 control_dir="$(mktemp -d /tmp/guardian-template-migration-ssh.XXXXXXXX)"
 control_socket="${control_dir}/control"
 cleanup() {
@@ -79,15 +90,15 @@ sshpass -d 3 ssh -F /dev/null -M -S "$control_socket" -fNT \
   -o ConnectTimeout=15 \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 \
-  -L "127.0.0.1:${tunnel_port}:pg-34le5q.vpc-cdb-kr.ntruss.com:5432" \
+  -L "127.0.0.1:${tunnel_port}:${remote_host}:${remote_port}" \
   "$ssh_destination" 3< <("$python_bin" - "$script_dir" <<'PY'
 import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(sys.argv[1]).parent / 'weekly-reporter/.env', override=False)
-sys.stdout.write(os.environ['SSH_PASSWORD'] + '\n')
+load_dotenv(Path(sys.argv[1]).parent.parent / '.env', override=False)
+sys.stdout.write(os.environ['LIVE_PROD_SSH_PASSWORD'] + '\n')
 PY
 )
 

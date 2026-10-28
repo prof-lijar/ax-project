@@ -41,6 +41,40 @@ def test_source_credentials_are_separate(monkeypatch, override, storage, expecte
 
 
 @pytest.mark.asyncio
+async def test_migration_loads_root_env_and_namespaced_production_credentials(monkeypatch):
+    loaded = []
+    monkeypatch.setattr(migration, "load_dotenv", lambda path, **kw: loaded.append(path))
+    monkeypatch.setattr(migration, "source_database_dsn", lambda: "local-source")
+    for key, value in {
+        "LIVE_PROD_DB_USER": "production-user",
+        "LIVE_PROD_DB_PASSWORD": "production-password",
+        "LIVE_PROD_DB_NAME": "production-reports",
+        "LIVE_PROD_DB_SSL": "require",
+        "LIVE_PROD_TUNNEL_PORT": "16543",
+        "LIVE_PROD_DB_HOST": "remote-db.example",
+        "TARGET_DB_HOST": "obsolete-db.example",
+        "TARGET_DB_USER": "obsolete-user",
+    }.items():
+        monkeypatch.setenv(key, value)
+    source, target = AsyncMock(), AsyncMock()
+    source.fetchrow.return_value = "local-identity"
+    target.fetchrow.return_value = "production-identity"
+    connect = AsyncMock(side_effect=[source, target])
+    monkeypatch.setattr(migration.asyncpg, "connect", connect)
+    transfer = AsyncMock(return_value={"source": 0})
+    monkeypatch.setattr(migration, "migrate", transfer)
+    await migration.run(SimpleNamespace(write=False, week_start=date(2026, 10, 19)))
+    assert loaded == [SCRIPT.resolve().parents[2] / ".env"]
+    assert connect.call_args.kwargs["host"] == "127.0.0.1"
+    assert connect.call_args.kwargs["port"] == 16543
+    assert connect.call_args.kwargs["user"] == "production-user"
+    assert connect.call_args.kwargs["password"] == "production-password"
+    assert connect.call_args.kwargs["database"] == "production-reports"
+    source.close.assert_awaited_once()
+    target.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("storage", ["local-storage", ""])
 async def test_notification_coverage_uses_only_local_agent_database(
     monkeypatch, tmp_path, storage,

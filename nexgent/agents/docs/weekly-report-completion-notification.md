@@ -1,5 +1,11 @@
 # Weekly report completion notification
 
+Configuration update (2026-10-27): agent processes use only `agents/.env`.
+See [unified configuration](unified-environment.md). This supersedes historical
+instructions below about backend env mounts and separate sync env files.
+The backend and its Slack sender retain their own deployment configuration;
+agent service tokens and destination aliases must match it.
+
 Date: 2026-09-29
 
 The Monday 04:00 Asia/Seoul pipeline submits a Slack notification through the

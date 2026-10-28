@@ -3,50 +3,24 @@
 import asyncio
 import json
 import os
-import re
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-from ax_integrations.notifications import NotificationError, submit_notification
-from dotenv import dotenv_values
-from pydantic import TypeAdapter
+from ax_integrations.notifications import (
+    BackendNotificationSettings,
+    NotificationError,
+    submit_notification,
+)
 
 from workflows.weekly_report.completion_notification import notification_payload
 
-PRODUCTION_NOTIFICATION_ENV = Path("/run/ax-notifications/prod.env")
+AGENT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
-@dataclass(frozen=True)
-class NotificationSettings:
-    enabled: bool = False
-    base_url: str = "http://backend:8000"
-    token: str = field(default="", repr=False)
-    destination: str = "default"
-
+class NotificationSettings(BackendNotificationSettings):
     @classmethod
     def from_env(cls):
-        # The production backend file is the sole notification configuration.
-        # Cron need not preserve process environment; legacy agent keys are ignored.
-        values = dotenv_values(PRODUCTION_NOTIFICATION_ENV, interpolate=False)
-        try:
-            enabled = TypeAdapter(bool).validate_python(
-                values.get("NEXGENT_SLACK_ENABLED") or "false"
-            )
-            if not enabled:
-                return cls()
-            token = values.get("NEXGENT_NOTIFICATION_SERVICE_TOKEN") or ""
-            channels = json.loads(values.get("NEXGENT_SLACK_CHANNELS") or "{}")
-            if (
-                not re.fullmatch(r"[\x21-\x7e]{32,512}", token)
-                or not isinstance(channels, dict)
-                or not isinstance(channels.get("default"), str)
-                or not re.fullmatch(r"[CG][A-Z0-9]{8,31}", channels["default"])
-            ):
-                raise ValueError
-        except (ValueError, TypeError):
-            raise ValueError("invalid production notification configuration") from None
-        return cls(enabled=True, token=token)
+        return cls.from_file(AGENT_ENV_FILE)
 
 
 def write_state(path, data):

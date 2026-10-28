@@ -41,7 +41,7 @@ class MigrationError(ValueError):
 def required(name, *, secret=False):
     value = os.environ.get(name, "")
     if not value.strip():
-        raise MigrationError(f"Missing {name}; configure playground/.env.")
+        raise MigrationError(f"Missing {name}; configure agents/.env.")
     return value if secret else value.strip()
 
 

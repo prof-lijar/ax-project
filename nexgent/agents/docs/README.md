@@ -1,6 +1,8 @@
 # Documentation map
 
-- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul previous-day archive risk/recovery updates, idempotence, existing dev/production Compose integration and replay.
+- [Unified agent environment](unified-environment.md): agents/.env as the single configuration source, namespaced production/development migration settings, notification configuration, and rollout.
+
+- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul previous-day archive risk/recovery updates, idempotence, existing dev/production Compose integration, backend-queued Slack completion/failure status and replay.
 
 - [October 12 count correction](../playground/fix-oct12-counts/README.md):
   preview and repair saved activity/remote-control counts using the following
@@ -25,7 +27,7 @@
   native-block API.
 
 - [Weekly-report completion notification](weekly-report-completion-notification.md):
-  shared `backend/prod.env` enable flag and credentials for scheduler/monitor,
+  unified `agents/.env` enable flag and service credentials for scheduler/monitor,
   production DB completion, address-based regional coverage and device-disconnected
   skipped-report counts for two weeks,
   native Korean Slack tables preserving both weeks, all counts and missing-rate

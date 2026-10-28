@@ -1,5 +1,10 @@
 # Migrate guardian-action template IDs
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 Date: 2026-10-19
 
 Recalculate legacy guardian-action item IDs in saved weekly reports using the
@@ -89,13 +94,13 @@ remove, reorder, or regenerate cards or report prose.
 | Target | Table | Configuration |
 | --- | --- | --- |
 | `local` | `archive.resources_ward_weekly_report` | Existing `SOURCE_DATABASE_DSN` override, otherwise `WEEKLY_REPORT_STORAGE_DATABASE_DSN` / `ANSIMK_DATABASE_DSN` from `agents/.env` |
-| `live` | `ansimk.resources_ward_weekly_report` | Existing `TARGET_DB_*` and `SSH_*` settings in `playground/weekly-reporter/.env` |
+| `live` | `ansimk.resources_ward_weekly_report` | Existing `LIVE_PROD_DB_*` and `LIVE_PROD_SSH_*` settings in `agents/.env` |
 
 Exported settings take precedence over dotenv files. The script reuses existing
 settings without modifying them. Local mode needs no live credentials or SSH.
 For `live`/`both`, the launcher opens and cleans up its own tunnel using the same
 endpoint and SSH policy as the existing operator migration. It rejects a busy
-forwarding port and non-loopback `TARGET_DB_HOST`. Help/invalid arguments do not
+forwarding port and malformed `LIVE_PROD_DB_HOST`. Help/invalid arguments do not
 open SSH. Requirements: workspace `.venv`, `asyncpg`, `python-dotenv`, and, for
 live access, OpenSSH and `sshpass`.
 

@@ -359,7 +359,7 @@ def write_production_notification_config(tmp_path, monkeypatch, **changes):
     values.update(changes)
     path = tmp_path / "prod.env"
     path.write_text("\n".join(f"{key}={value}" for key, value in values.items()))
-    monkeypatch.setattr(notification, "PRODUCTION_NOTIFICATION_ENV", path)
+    monkeypatch.setattr(notification, "AGENT_ENV_FILE", path)
     return path
 
 
@@ -375,7 +375,7 @@ def test_backend_flag_alone_enables_reporter_notifications(tmp_path, monkeypatch
     assert settings.token not in repr(settings)
 
 
-def test_notification_settings_ignore_agent_and_process_overrides(tmp_path, monkeypatch):
+def test_notification_settings_read_only_unified_file(tmp_path, monkeypatch):
     write_production_notification_config(tmp_path, monkeypatch)
     monkeypatch.setenv("NEXGENT_SLACK_ENABLED", "false")
     monkeypatch.setenv("NEXGENT_NOTIFICATION_SERVICE_TOKEN", "wrong-process-token")
@@ -422,12 +422,12 @@ def test_backend_disabled_suppresses_completion_and_failure(
 ])
 def test_invalid_production_configuration_is_redacted(tmp_path, monkeypatch, changes):
     write_production_notification_config(tmp_path, monkeypatch, **changes)
-    with pytest.raises(ValueError, match="^invalid production notification configuration$"):
+    with pytest.raises(ValueError, match="^invalid notification configuration$"):
         NotificationSettings.from_env()
 
 
-def test_without_production_mount_notifications_remain_disabled(tmp_path, monkeypatch):
-    monkeypatch.setattr(notification, "PRODUCTION_NOTIFICATION_ENV", tmp_path / "missing")
+def test_without_unified_file_notifications_remain_disabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(notification, "AGENT_ENV_FILE", tmp_path / "missing")
     monkeypatch.setenv("NEXGENT_SLACK_ENABLED", "true")
     monkeypatch.setenv("WEEKLY_REPORT_NOTIFICATION_ENABLED", "true")
     assert not NotificationSettings.from_env().enabled

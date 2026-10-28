@@ -9,16 +9,16 @@ from datetime import date, datetime
 from pathlib import Path
 
 import asyncpg
-from dotenv import dotenv_values, load_dotenv
+from dotenv import dotenv_values
 
+from apps.daily_risk_scheduler.notification import notify_status
 from workflows.daily_risk_counts.workflow import TIMEZONE, previous_day, reconcile_day
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def database_dsn() -> str:
-    # Match the existing manual migration's local connection precedence.
-    load_dotenv(ROOT / "playground/.env", override=False)
+    # Only the unified workspace file and explicit process overrides are used.
     settings = dotenv_values(ROOT / ".env")
     for key in (
         "SOURCE_DATABASE_DSN",
@@ -26,7 +26,7 @@ def database_dsn() -> str:
         "ANSIMK_DATABASE_DSN",
     ):
         value = os.environ.get(key)
-        if key != "SOURCE_DATABASE_DSN" and not value:
+        if not value:
             value = settings.get(key)
         if value and value.strip():
             return value.strip()
@@ -43,18 +43,48 @@ def event(name: str, **fields) -> None:
 
 
 async def run(day: date, *, apply: bool) -> None:
+    started_at = datetime.now(TIMEZONE)
     event("daily_risk_started", date=day.isoformat(), apply=apply)
-    connection = await asyncpg.connect(
-        database_dsn(),
-        timeout=15,
-        command_timeout=1830,
-        server_settings={"application_name": "daily_risk_counts"},
-    )
+    stage = "Database configuration"
     try:
-        result = await reconcile_day(connection, day, apply=apply)
-        event("daily_risk_completed", **result)
-    finally:
-        await connection.close(timeout=10)
+        dsn = database_dsn()
+        stage = "Database connection"
+        connection = await asyncpg.connect(
+            dsn,
+            timeout=15,
+            command_timeout=1830,
+            server_settings={"application_name": "daily_risk_counts"},
+        )
+        try:
+            stage = "Database reconciliation or commit confirmation"
+            result = await reconcile_day(connection, day, apply=apply)
+        finally:
+            # Connection cleanup must not turn a committed run into a failure.
+            try:
+                await connection.close(timeout=10)
+            except Exception as exc:  # noqa: BLE001 -- sanitize cleanup failures
+                event("daily_risk_cleanup_failed", error_type=type(exc).__name__)
+    except Exception as exc:
+        event(
+            "daily_risk_failed",
+            date=day.isoformat(),
+            error_type=type(exc).__name__,
+            sqlstate=getattr(exc, "sqlstate", None),
+        )
+        if apply:
+            await notify_status(
+                day,
+                started_at=started_at,
+                ended_at=datetime.now(TIMEZONE),
+                issue=f"{stage} failed. Check daily_risk_failed logs for details.",
+                event=event,
+            )
+        raise
+    event("daily_risk_completed", **result)
+    if apply:
+        await notify_status(
+            day, started_at=started_at, ended_at=datetime.now(TIMEZONE), event=event
+        )
 
 
 def main(argv=None) -> int:
@@ -75,14 +105,7 @@ def main(argv=None) -> int:
         asyncio.run(run(day, apply=args.apply))
     except KeyboardInterrupt:
         return 130
-    except Exception as exc:  # noqa: BLE001 -- sanitize failures at the CLI boundary
-        # Never include driver messages, DSNs, credentials or ward data.
-        event(
-            "daily_risk_failed",
-            date=day.isoformat(),
-            error_type=type(exc).__name__,
-            sqlstate=getattr(exc, "sqlstate", None),
-        )
+    except Exception:  # noqa: BLE001 -- already sanitized and logged in run()
         return 1
     return 0
 

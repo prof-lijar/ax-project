@@ -1,5 +1,10 @@
 # October 12 motion and remote-control count correction
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 Date: 2026-10-26 (Asia/Seoul)
 
 Copies each ward's **October 19–25, 2026 previous-week counts** into that
@@ -45,9 +50,10 @@ are selected; missing October 12 rows are outside the selected set. Exit codes:
 
 The launcher uses `../.venv/bin/python` (override with `PYTHON_BIN`), `asyncpg`,
 `python-dotenv`, OpenSSH and `sshpass`. Connection settings come from
-`playground/weekly-reporter/.env`; exported variables take precedence.
-It opens and closes its own production SSH tunnel. `TARGET_DB_HOST` must be
-`127.0.0.1` or `localhost`; an occupied tunnel port aborts the command.
+`agents/.env`; exported variables take precedence.
+It opens and closes its own production SSH tunnel using `LIVE_PROD_SSH_*` and
+`LIVE_PROD_DB_HOST`. Python connects to the local loopback listener; an occupied
+`LIVE_PROD_TUNNEL_PORT` aborts the command.
 `bash fix-oct12-counts/run.sh --help` does not open a connection.
 
 Every run saves original rows for both weeks and the plan in an ignored

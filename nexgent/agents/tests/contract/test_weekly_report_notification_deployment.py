@@ -1,35 +1,60 @@
-"""Scheduler and monitor share the production backend's notification settings."""
+"""Agent notification clients read the unified env, independently of backend env."""
 
 from pathlib import Path
 
 import yaml
 
-from apps.weekly_report_scheduler.notification import PRODUCTION_NOTIFICATION_ENV
+from apps.weekly_report_scheduler.notification import AGENT_ENV_FILE
 
 ROOT = Path(__file__).parents[2]
+CONTAINER_ENV = "/app/.env"
 
 
-def test_production_consumers_share_one_read_only_backend_config():
-    services = yaml.safe_load((ROOT.parent / "compose.prod.yaml").read_text())["services"]
+def unified_mount(consumer, source):
+    mounts = consumer.get("volumes", [])
+    return any(
+        (isinstance(mount, str) and mount == f"{source}:{CONTAINER_ENV}:ro")
+        or (
+            isinstance(mount, dict)
+            and mount.get("source") == source
+            and mount.get("target") == CONTAINER_ENV
+            and mount.get("read_only") is True
+        )
+        for mount in mounts
+    )
+
+
+def test_workspace_clients_share_root_configuration():
+    assert AGENT_ENV_FILE == ROOT / ".env"
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    for name in ("weekly-report-scheduler", "weekly-report-monitor"):
+        assert unified_mount(services[name], "./.env")
+        assert "playground/weekly-reporter/.env" not in str(services[name])
     monitor = yaml.safe_load(
         (ROOT / "compose.weekly-report-monitor.prod.yaml").read_text()
     )["services"]["weekly-report-monitor"]
-    backend_env = services["backend"]["env_file"][0]
-    assert services["notification-worker"]["env_file"] == [backend_env]
-    for consumer in (services["weekly-report-scheduler"], monitor):
-        mounts = [mount for mount in consumer["volumes"] if isinstance(mount, dict)
-                  and mount.get("target") == str(PRODUCTION_NOTIFICATION_ENV)]
-        assert len(mounts) == 1
-        assert mounts[0]["source"] == backend_env
-        assert mounts[0]["read_only"] is True
-        assert mounts[0]["bind"]["create_host_path"] is False
-        assert not any(key.startswith("WEEKLY_REPORT_NOTIFICATION_")
-                       for key in consumer.get("environment", {}))
+    assert unified_mount(monitor, "./agents/.env")
 
 
-def test_development_does_not_mount_production_notification_credentials():
-    for path in (ROOT / "compose.yaml", ROOT.parent / "compose.yaml"):
-        services = yaml.safe_load(path.read_text())["services"]
-        for name in ("weekly-report-scheduler", "weekly-report-monitor"):
-            if name in services:
-                assert str(PRODUCTION_NOTIFICATION_ENV) not in str(services[name])
+def test_parent_production_scheduler_clients_use_unified_file():
+    services = yaml.safe_load((ROOT.parent / "compose.prod.yaml").read_text())[
+        "services"
+    ]
+    for name in ("daily-risk-scheduler", "weekly-report-scheduler"):
+        assert unified_mount(services[name], "./agents/.env"), (
+            "Apply the reviewed docs/unified-env-parent-compose.patch after approval"
+        )
+        assert "/run/ax-notifications/prod.env" not in str(services[name])
+        assert "playground/weekly-reporter/.env" not in str(services[name])
+    # Backend and its sender remain outside the agents/ configuration boundary.
+    assert (
+        services["notification-worker"]["env_file"] == services["backend"]["env_file"]
+    )
+
+
+def test_parent_development_scheduler_clients_use_unified_file():
+    services = yaml.safe_load((ROOT.parent / "compose.yaml").read_text())["services"]
+    for name in ("daily-risk-scheduler", "weekly-report-scheduler"):
+        assert unified_mount(services[name], "./agents/.env"), (
+            "Apply the reviewed docs/unified-env-parent-compose.patch after approval"
+        )

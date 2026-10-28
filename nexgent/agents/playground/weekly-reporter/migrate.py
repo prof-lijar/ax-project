@@ -106,22 +106,22 @@ async def run(args):
     if getattr(args, "coverage_output", None):
         await export_coverage(args)
         return
-    load_dotenv(Path(__file__).with_name(".env"), override=False)
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
     source_dsn = source_database_dsn()
-    target_user = required("TARGET_DB_USER")
-    target_password = required("TARGET_DB_PASSWORD")
+    target_user = required("LIVE_PROD_DB_USER")
+    target_password = required("LIVE_PROD_DB_PASSWORD")
     settings = {"statement_timeout": "60000", "lock_timeout": "5000"}
     print("Connecting to source database...", flush=True)
     source = await asyncpg.connect(source_dsn, timeout=15, server_settings=settings)
     try:
         print("Source connected. Connecting to production through SSH...", flush=True)
         target = await asyncpg.connect(
-            host=os.environ.get("TARGET_DB_HOST", "127.0.0.1"),
-            port=int(os.environ.get("TARGET_DB_PORT", "15432")),
-            database=os.environ.get("TARGET_DB_NAME", "ansimk"),
+            host="127.0.0.1",
+            port=int(os.environ.get("LIVE_PROD_TUNNEL_PORT", "15432")),
+            database=os.environ.get("LIVE_PROD_DB_NAME", "ansimk"),
             user=target_user,
             password=target_password,
-            ssl=os.environ.get("TARGET_DB_SSL", "require"),
+            ssl=os.environ.get("LIVE_PROD_DB_SSL", "require"),
             timeout=15,
             server_settings=settings,
         )

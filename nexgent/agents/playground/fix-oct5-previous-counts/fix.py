@@ -26,7 +26,7 @@ from workflows.weekly_report.domain.rendering import (
 )
 
 HERE = Path(__file__).resolve().parent
-ENV_FILE = HERE.parent / "weekly-reporter/.env"
+ENV_FILE = HERE.parent.parent / ".env"
 TABLE = "ansimk.resources_ward_weekly_report"
 WEEK = date(2026, 10, 5)
 BASELINE_WEEK = date(2026, 9, 28)
@@ -199,11 +199,11 @@ async def correct(connection, *, write, output_dir):
 async def run(args):
     load_dotenv(ENV_FILE, override=False)
     connection = await asyncpg.connect(
-        host=os.environ.get("TARGET_DB_HOST", "127.0.0.1"),
-        port=int(os.environ.get("TARGET_DB_PORT", "15432")),
-        database=os.environ.get("TARGET_DB_NAME", "ansimk"),
-        user=required("TARGET_DB_USER"), password=required("TARGET_DB_PASSWORD"),
-        ssl=os.environ.get("TARGET_DB_SSL", "require"), timeout=15,
+        host="127.0.0.1",
+        port=int(os.environ.get("LIVE_PROD_TUNNEL_PORT", "15432")),
+        database=os.environ.get("LIVE_PROD_DB_NAME", "ansimk"),
+        user=required("LIVE_PROD_DB_USER"), password=required("LIVE_PROD_DB_PASSWORD"),
+        ssl=os.environ.get("LIVE_PROD_DB_SSL", "require"), timeout=15,
         server_settings={"statement_timeout": "60000", "lock_timeout": "5000"},
     )
     try:

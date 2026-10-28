@@ -1,5 +1,10 @@
 # Weekly Report Scheduler
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 This private cron service starts durable Weekly Reporter generation every
 Monday at 04:00 in `Asia/Seoul`. The cron expression is `0 4 * * 1`.
 
@@ -44,7 +49,7 @@ a stopped scheduler cannot send its own alert.
 
 ## Production rollout and recovery
 
-Configure `playground/weekly-reporter/.env` using its README and ensure the
+Configure `agents/.env` using its README and ensure the
 source DSN resolves to the bulk worker's local report database. Migration
 reads local `archive.resources_ward_weekly_report` and writes production
 `ansimk.resources_ward_weekly_report`; production schema is unchanged. The scheduler
@@ -209,13 +214,14 @@ for the completeness policy.
 ## Configuration
 
 Optional completion notifications use the backend's durable Slack API after
-production migration. `NEXGENT_SLACK_ENABLED=true` in `backend/prod.env`
+production migration. `NEXGENT_SLACK_ENABLED=true` in `agents/.env`
 automatically enables completion and failure notifications. The scheduler and
-monitor read that file through a production-only read-only mount, reuse
+monitor read that file through a read-only `/app/.env` mount, reuse
 `NEXGENT_NOTIFICATION_SERVICE_TOKEN`, and submit to `http://backend:8000`
 with destination `default` from `NEXGENT_SLACK_CHANNELS`. Separate scheduler
-notification variables are retired; `agents/.env` is used only for other
-configuration and local coverage. Both weeks' local report coverage reads the
+notification variables are retired. The same unified file supplies migration
+settings and local coverage. Apply the pending parent Compose patch before
+recreating the scheduler. Both weeks' local report coverage reads the
 ward/location/device tables in `ansimk` and saved reports in `archive`, using
 `WEEKLY_REPORT_STORAGE_DATABASE_DSN` or `ANSIMK_DATABASE_DSN` from the local
 agent environment, without SSH or target database credentials. Counts are grouped by subscriber address

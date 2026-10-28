@@ -1,5 +1,10 @@
 # Daily risk-count agent
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 Runs every day at **05:15 Asia/Seoul**, using cron `15 5 * * *`. Each run
 processes the **full previous local calendar day**: midnight inclusive through
 the next midnight exclusive, including every instant in 23:59. For example,
@@ -43,10 +48,9 @@ From `agents/`, preview first or apply an explicit completed date:
 
 Default date is yesterday in Seoul, independent of the caller's system timezone.
 Current/future dates are rejected. The CLI previews by default; cron uses `--apply`.
-Database settings follow the existing migration: exported values and
-`playground/.env`, then `SOURCE_DATABASE_DSN`, or
-`WEEKLY_REPORT_STORAGE_DATABASE_DSN`, or `ANSIMK_DATABASE_DSN` (the latter two
-also fall back to `agents/.env`). No new credentials or DDL are needed.
+Database settings use only exported values and `agents/.env`, selecting
+`SOURCE_DATABASE_DSN`, then `WEEKLY_REPORT_STORAGE_DATABASE_DSN`, then
+`ANSIMK_DATABASE_DSN`. No nested playground env file is read.
 
 The scheduler belongs to the existing root environment stacks; it has no
 separate Compose file. From `nexgent/`, start development (opt-in `scheduled`
@@ -75,10 +79,68 @@ missing `daily_risk_completed` events and explicitly replay missed dates
 oldest first. Replaying an older date preserves all other saved dates.
 Rebuild/recreate the container to activate code or cron changes.
 
+## Slack status notifications
+
+Every `--apply` invocation, including cron and manual replay, submits an
+English operational status to the backend's durable Slack queue after reconciliation.
+Both success and failure messages use these five fields, with actual run timestamps
+in Korea time:
+
+```text
+Status: Success
+Title: Daily Risk Count
+Start time: 2026-10-27 05:15:00 KST
+End time: 2026-10-27 05:16:00 KST
+Message: Successfully done!
+```
+
+Failures use `Status: Fail` and an English issue identifying configuration,
+connection, or reconciliation/commit confirmation failure, with a reference to
+`daily_risk_failed` logs. Raw exception messages and credentials are excluded.
+The message omits ward counts, write counts and archive storage details.
+An uncertain commit is not reported as a confirmed rollback. Previews do not
+send notifications. A manual rerun produces a new status message.
+
+The pending parent Compose patch mounts `agents/.env` read-only at
+`/app/.env`, sharing the weekly reporter's
+`NEXGENT_SLACK_ENABLED`, `NEXGENT_NOTIFICATION_SERVICE_TOKEN`, and
+`NEXGENT_SLACK_CHANNELS` configuration. The backend owns the Slack bot and
+`daily_risk` destination, mapped to `C0C24T2124E` in `NEXGENT_SLACK_CHANNELS`.
+The existing `default` alias remains available for other notifications.
+Agent notification client credentials now live in `agents/.env`. An explicit
+false enable flag disables notifications; a missing unified file also leaves
+them disabled. Apply the parent Compose patch before recreating this service.
+
+Because the scheduler uses host networking, production submits through
+`http://127.0.0.1:${PROD_BACKEND_PORT:-8001}`, configured by Compose as
+`DAILY_RISK_NOTIFICATION_BASE_URL`. Backend authentication and its notification
+worker must be available. Rebuild/recreate from `nexgent/` after updating code:
+
+```bash
+sudo docker compose -f compose.prod.yaml up -d --build daily-risk-scheduler
+sudo docker compose -f compose.prod.yaml up -d --force-recreate backend notification-worker
+```
+
+Recreate the backend and notification worker when changing channel mappings
+because Compose loads their environment at container creation. The Slack bot
+must be a member of `C0C24T2124E`. Missing `daily_risk` configuration fails
+notification submission rather than falling back to another channel.
+
+`daily_risk_notification_accepted` records backend queue acceptance, not confirmed
+Slack delivery. The backend worker owns delivery and its retries. Submission
+uses three bounded attempts with one immutable idempotency key and payload.
+Configuration/submission errors emit `daily_risk_notification_failed` without
+changing the database run's exit status; database failures still exit nonzero.
+Before backend acceptance there is no local notification outbox or automatic
+resend. Inspect failures and replay the date if another status is needed; replay
+reconciles the database again and reports that invocation's counts. Disabled
+notifications emit `daily_risk_notification_disabled`. No missed-run monitoring
+or automatic catch-up is added.
+
 ## Verification
 
 ```bash
-.venv/bin/python -m pytest tests/unit/test_daily_risk_counts.py
+.venv/bin/python -m pytest tests/unit/test_daily_risk_counts.py tests/unit/test_daily_risk_notification.py
 DAILY_RISK_TEST_DATABASE_DSN=postgresql://... .venv/bin/python -m pytest tests/integration/test_daily_risk_counts_postgres.py
 ```
 

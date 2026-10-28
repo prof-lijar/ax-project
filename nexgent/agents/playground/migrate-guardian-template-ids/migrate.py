@@ -27,7 +27,7 @@ from workflows.weekly_report.domain.guardian_guidance_policy import (
 from workflows.weekly_report.domain.risk_score_policy import assess_risk_score
 
 HERE = Path(__file__).resolve().parent
-ENV_FILE = HERE.parent / "weekly-reporter/.env"
+ENV_FILE = HERE.parent.parent / ".env"
 TABLES = {
     "local": "archive.resources_ward_weekly_report",
     "live": "ansimk.resources_ward_weekly_report",
@@ -345,7 +345,7 @@ def local_dsn():
         "ANSIMK_DATABASE_DSN",
     ):
         value = os.environ.get(key) or (
-            values.get(key) if key != "SOURCE_DATABASE_DSN" else None
+            values.get(key)
         )
         if value and value.strip():
             return value.strip()
@@ -367,12 +367,12 @@ async def run(args):
             )
         else:
             connection = await asyncpg.connect(
-                host=os.environ.get("TARGET_DB_HOST", "127.0.0.1"),
-                port=int(os.environ.get("TARGET_DB_PORT", "15432")),
-                database=os.environ.get("TARGET_DB_NAME", "ansimk"),
-                user=required("TARGET_DB_USER"),
-                password=required("TARGET_DB_PASSWORD"),
-                ssl=os.environ.get("TARGET_DB_SSL", "require"),
+                host="127.0.0.1",
+                port=int(os.environ.get("LIVE_PROD_TUNNEL_PORT", "15432")),
+                database=os.environ.get("LIVE_PROD_DB_NAME", "ansimk"),
+                user=required("LIVE_PROD_DB_USER"),
+                password=required("LIVE_PROD_DB_PASSWORD"),
+                ssl=os.environ.get("LIVE_PROD_DB_SSL", "require"),
                 timeout=15,
                 server_settings=settings,
             )

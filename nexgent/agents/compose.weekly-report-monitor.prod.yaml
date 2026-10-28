@@ -10,8 +10,8 @@ services:
     command: ["/app/.venv/bin/python", "-m", "apps.weekly_report_scheduler.monitor"]
     volumes:
       - type: bind
-        source: ./backend/prod.env
-        target: /run/ax-notifications/prod.env
+        source: ./agents/.env
+        target: /app/.env
         read_only: true
         bind:
           create_host_path: false

@@ -1,5 +1,8 @@
 # AX Agents Workspace
 
+All components in this workspace use `agents/.env`. See
+[unified environment configuration](docs/unified-environment.md).
+
 This is a greenfield Python environment for building production-oriented AX
 agents with LangGraph. The workspace is split into focused packages for
 contracts, runtime, tools, integrations, persistence, observability, and

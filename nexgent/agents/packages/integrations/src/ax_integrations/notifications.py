@@ -1,9 +1,54 @@
 """Authenticated submission to the backend's durable notification queue."""
 
 import asyncio
+import json
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
 from uuid import UUID
 
 import httpx
+from dotenv import dotenv_values
+from pydantic import TypeAdapter
+
+
+@dataclass(frozen=True)
+class BackendNotificationSettings:
+    enabled: bool = False
+    base_url: str = "http://backend:8000"
+    token: str = field(default="", repr=False)
+    destination: str = "default"
+
+    @classmethod
+    def from_file(
+        cls,
+        path: Path,
+        *,
+        base_url: str = "http://backend:8000",
+        destination: str = "default",
+    ):
+        """Read notification settings from the unified agents/.env, including in cron."""
+        values = dotenv_values(path, interpolate=False)
+        try:
+            enabled = TypeAdapter(bool).validate_python(
+                values.get("NEXGENT_SLACK_ENABLED") or "false"
+            )
+            if not enabled:
+                return cls()
+            token = values.get("NEXGENT_NOTIFICATION_SERVICE_TOKEN") or ""
+            channels = json.loads(values.get("NEXGENT_SLACK_CHANNELS") or "{}")
+            if (
+                not re.fullmatch(r"[\x21-\x7e]{32,512}", token)
+                or not isinstance(channels, dict)
+                or not isinstance(channels.get(destination), str)
+                or not re.fullmatch(r"[CG][A-Z0-9]{8,31}", channels[destination])
+            ):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValueError("invalid notification configuration") from None
+        return cls(
+            enabled=True, base_url=base_url, token=token, destination=destination
+        )
 
 
 class NotificationError(RuntimeError):
@@ -19,7 +64,10 @@ async def submit_notification(
             async with asyncio.timeout(15):
                 response = await client.post(
                     base_url.rstrip("/") + "/api/notifications/slack",
-                    headers={"Authorization": f"Bearer {token}", "Idempotency-Key": key},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Idempotency-Key": key,
+                    },
                     json=payload,
                     timeout=15,
                     follow_redirects=False,
