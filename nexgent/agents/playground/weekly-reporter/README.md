@@ -1,5 +1,10 @@
 # Weekly reporter database migration
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 This tool copies saved weekly reports from the local database to the live
 production database. It reads local `archive.resources_ward_weekly_report`
 and writes production `ansimk.resources_ward_weekly_report`. The production
@@ -33,7 +38,7 @@ production settings. It reads `WEEKLY_REPORT_STORAGE_DATABASE_DSN`, falling
 back to `ANSIMK_DATABASE_DSN`, from process settings or `agents/.env`. Coverage
 joins the local `ansimk` roster/location/device tables and the local `archive`
 report table for both weeks. `SOURCE_DATABASE_DSN` is a migration-only override.
-Slack credentials remain in `backend/prod.env`; target credentials are only
+Slack credentials remain in `agents/.env`; target credentials are only
 required for report migration. See [implementation and recovery](../../../docs/08-implementation/weekly-report-local-notification-coverage.md).
 
 ## Files
@@ -42,8 +47,8 @@ required for report migration. See [implementation and recovery](../../../docs/0
 | --- | --- |
 | `migrate.sh` | Entry point: opens SSH, runs the migration, then closes SSH |
 | `migrate.py` | Reads source reports, previews changes, and applies transactional upserts |
-| `.env.example` | Configuration template without passwords |
-| `.env` | Your private connection settings; ignored by Git |
+| `../../.env.example` | Unified configuration template without passwords |
+| `../../.env` | Unified private connection settings; ignored by Git |
 
 ## Connection settings
 
@@ -53,37 +58,30 @@ to `ANSIMK_DATABASE_DSN`. Leave `SOURCE_DATABASE_DSN` blank to use this behavior
 An explicit `SOURCE_DATABASE_DSN` overrides it. Exported environment variables
 take precedence over dotenv values.
 
-Configure production and SSH in `playground/weekly-reporter/.env`:
+Configure production and SSH in `agents/.env`:
 
 ```dotenv
-# Optional; blank uses the weekly reporter agent's source configuration.
 SOURCE_DATABASE_DSN=
-
-# SSH server login, separate from the PostgreSQL login.
-SSH_HOST=211.188.52.211
-SSH_ID=root
-SSH_PASSWORD='your-ssh-password'
-
-# PostgreSQL connection through the local SSH tunnel.
-TARGET_DB_HOST=127.0.0.1
-TARGET_DB_PORT=15432
-TARGET_DB_NAME=ansimk
-TARGET_DB_USER=your-production-db-user
-TARGET_DB_PASSWORD='your-production-db-password'
-TARGET_DB_SSL=require
+LIVE_PROD_SSH_HOST=your-bastion-host
+LIVE_PROD_SSH_ID=root
+LIVE_PROD_SSH_PASSWORD='your-ssh-password'
+LIVE_PROD_DB_HOST=your-private-db-host
+LIVE_PROD_DB_PORT=5432
+LIVE_PROD_DB_NAME=ansimk
+LIVE_PROD_DB_USER=your-production-db-user
+LIVE_PROD_DB_PASSWORD='your-production-db-password'
+LIVE_PROD_DB_SSL=require
+LIVE_PROD_TUNNEL_PORT=15432
 ```
 
-`SSH_HOST` is the server that can reach the private production database.
-`TARGET_DB_HOST=127.0.0.1` is correct: the script opens a local forwarding port
-that carries the database connection through SSH. The remote forwarding
- destination is currently fixed in `migrate.sh` as
-`pg-34le5q.vpc-cdb-kr.ntruss.com:5432`.
+`LIVE_PROD_DB_HOST` and `LIVE_PROD_DB_PORT` select the remote forward destination.
+The Python database connection uses `127.0.0.1:LIVE_PROD_TUNNEL_PORT`.
 
 ```text
 Migration -> 127.0.0.1:15432 -> SSH server -> private production PostgreSQL:5432
 ```
 
-SSH reads `SSH_PASSWORD` automatically through a file descriptor. The password
+SSH reads `LIVE_PROD_SSH_PASSWORD` automatically through a file descriptor. The password
 is not printed or placed in command-line arguments. No separate terminal or
 interactive password entry is needed. New SSH host keys are accepted and saved;
 changed keys are rejected. A verified key can be placed in `~/.ssh/known_hosts`
@@ -93,7 +91,7 @@ hostname that both resolves to the tunnel and matches the certificate.
 
 The configured production endpoint rejected PostgreSQL TLS negotiation during
 connection testing. With operator approval, the local migration `.env` now uses
-`TARGET_DB_SSL=disable`; the template retains `require`. SSH still encrypts the
+`LIVE_PROD_DB_SSL=disable`; the template retains `require`. SSH still encrypts the
 connection to the SSH server, while the SSH-server-to-database leg uses no
 PostgreSQL TLS. The source DSN retains its separate required-TLS setting.
 
@@ -109,8 +107,8 @@ If `.env` does not exist yet, create it from the template. Keep an already
 configured `.env`:
 
 ```bash
-[ -f .env ] || cp .env.example .env
-chmod 600 .env
+[ -f ../../.env ] || cp ../../.env.example ../../.env
+chmod 600 ../../.env
 ```
 
 Fill in the settings above. The scripts require the workspace `.venv` with
@@ -214,7 +212,7 @@ the database schema.
 
 The SSH tunnel closes on normal completion, migration failure, or handled
 interruption. A forwarding port already in use aborts the run; choose another
-free `TARGET_DB_PORT` or close the existing tunnel. A generic database failure
+free `LIVE_PROD_TUNNEL_PORT` or close the existing tunnel. A generic database failure
 requires checking database credentials, connectivity, TLS, schema, and grants.
 The script intentionally avoids printing database error details that may
 contain report content or credentials.

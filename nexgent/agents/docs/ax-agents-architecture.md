@@ -1,5 +1,39 @@
 # AX Agents Architecture
 
+## Approved daily-risk environment mount (2026-10-28)
+
+The production `daily-risk-scheduler` now mounts unified `agents/.env` read-only
+at `/app/.env`, replacing the old backend notification-settings mount. This is
+an explicitly approved deployment correction for the existing notification
+reader; cron, database calculations, and Slack payloads are unchanged. Compose
+validation passed. Runtime recreation remains an operator step because sudo
+requires interactive authentication. Other parent scheduler changes remain
+pending; the reviewed patch was refreshed to exclude this applied change.
+
+## Unified workspace environment (2026-10-27)
+
+The operator consolidated configuration into `agents/.env` for every process
+and tool under this workspace. This supersedes older sections requiring
+playground env files, mounted backend `prod.env`, and a separate external sync
+env. Existing environment consumers retain their typed settings and validation;
+LangGraph and Compose inject the unified file, and migration scripts resolve it
+from their workspace root. Cron notification readers use `/app/.env` instead of
+the backend settings mount. Backend services outside `agents/` retain their own
+configuration; their service token and destination mappings must match clients.
+
+Production migration and correction tools now use the unified `LIVE_PROD_*`
+connection keys. SSH routing reads the remote database host/port from those keys
+instead of hardcoding an endpoint; Python connects through a loopback tunnel.
+Development migration retains `LIVE_DEV_*`. No business SQL, delivery policy,
+schedule, retry, or checkpoint semantics change. The optional production sync
+overlay uses the unified file but retains its explicit production enable gates.
+External key/known-hosts/CA artifacts remain files with paths in configuration.
+
+The parent scheduler Compose patch is prepared but unapplied after automatic
+approval review rejected changing secret mounts. Runtime adoption requires
+that patch and scheduler/monitor recreation. See [configuration, precedence,
+and rollout checkpoint](unified-environment.md).
+
 ## Daily risk-count Slack status (2026-10-27)
 
 Applied daily-risk runs now submit English completion/failure status

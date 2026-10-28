@@ -1,5 +1,10 @@
 # Monthly danger-day and recovery-day migration
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 From `playground/migrate`, preview or apply the full evaluation history:
 
 ```bash
@@ -25,7 +30,7 @@ bash run.sh --start-month 2026-10 --end-month 2026-10 --apply
 The launcher uses the existing `agents/.venv/bin/python`; `PYTHON_BIN` can
 override it. Connection settings match the other playground migrations:
 
-1. Load `playground/.env`, preserving exported variables.
+1. Load `agents/.env`, preserving exported variables.
 2. Use a nonblank `SOURCE_DATABASE_DSN` if configured.
 3. Otherwise read `WEEKLY_REPORT_STORAGE_DATABASE_DSN`, then `ANSIMK_DATABASE_DSN`,
    from the environment or `agents/.env`, with environment values taking
@@ -153,10 +158,10 @@ existing virtual environment:
 ../../.venv/bin/python migrate-to-live.py --migrate-to-live -target dev
 ```
 
-The script loads `playground/.env`, preserving exported environment variables,
+The script loads `agents/.env`, preserving exported environment variables,
 and resolves the local source DSN using the same rules described above. Dev
-connection settings are independent of the older `TARGET_DB_*` and `SSH_*`
-settings:
+connection settings use `LIVE_DEV_*`, independently of production
+`LIVE_PROD_*` settings:
 
 | Variable | Purpose / default |
 | --- | --- |

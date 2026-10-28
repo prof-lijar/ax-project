@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import dotenv_values, load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
-ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+ENV_FILE = ROOT / ".env"
 
 
 def log(message, *, file=None):

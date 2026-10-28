@@ -1,5 +1,10 @@
 # One-time October 5–11 previous-count correction
 
+Configuration update (2026-10-27): all agent configuration now comes from
+`agents/.env`; see [unified environment](../../docs/unified-environment.md).
+Production migration uses `LIVE_PROD_*` and development migration uses
+`LIVE_DEV_*`. Older per-tool env files are no longer read.
+
 This standalone program matches every saved production report for **October
 5–11, 2026** with the same ward's saved **September 28–October 4, 2026** report.
 It copies the September report's actual activity and remote-control counts into
@@ -86,12 +91,12 @@ set. The printed `reports` count refers to saved October reports, not the ward r
 
 The independent launcher opens its own SSH tunnel, runs `fix.py`, and closes
 the tunnel. It reads the already-configured connection settings from
-`playground/weekly-reporter/.env`; it does not edit that file or the existing
+`agents/.env`; it does not edit that file or the existing
 migration scripts. Exported environment variables take precedence. It requires
 the workspace `.venv`, `asyncpg`, `python-dotenv`, OpenSSH, and `sshpass`.
-`TARGET_DB_HOST` must be `127.0.0.1` or `localhost`. The SSH destination and
-database forwarding endpoint match the existing operator connection. A port
-already in use aborts the command; choose another `TARGET_DB_PORT` if needed.
+`LIVE_PROD_DB_HOST` selects the remote database endpoint; the local database
+connection always uses the loopback tunnel. SSH uses `LIVE_PROD_SSH_*`. A port
+already in use aborts the command; choose another `LIVE_PROD_TUNNEL_PORT` if needed.
 
 Every run creates a unique private JSON artifact under this directory's ignored
 `backups/` folder (or `--output-dir PATH`). It includes full original rows for

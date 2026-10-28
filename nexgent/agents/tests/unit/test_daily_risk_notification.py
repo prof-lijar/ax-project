@@ -22,7 +22,7 @@ def configure(tmp_path, monkeypatch, enabled="true"):
         f"NEXGENT_NOTIFICATION_SERVICE_TOKEN={'s' * 32}\n"
         'NEXGENT_SLACK_CHANNELS={"daily_risk":"C0C24T2124E"}\n'
     )
-    monkeypatch.setattr(notification, "PRODUCTION_NOTIFICATION_ENV", path)
+    monkeypatch.setattr(notification, "AGENT_ENV_FILE", path)
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,57 @@
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -213,6 +213,8 @@
+     network_mode: host
+     profiles:
+       - scheduled
++    volumes:
++      - ./agents/.env:/app/.env:ro
+     init: true
+     restart: unless-stopped
+     stop_grace_period: 60s
+@@ -222,6 +224,8 @@
+       context: ./agents
+       dockerfile: apps/weekly_report_scheduler/Dockerfile
+     image: ax-weekly-report-scheduler-dev:local
++    env_file:
++      - ./agents/.env
+     environment:
+       WEEKLY_REPORT_BULK_API_URL: http://weekly-report-bulk-api:8090
+       WEEKLY_REPORT_SCHEDULE_MAX_REPORTS: "${WEEKLY_REPORT_SCHEDULE_MAX_REPORTS:-10000}"
+@@ -233,6 +237,8 @@
+         condition: service_healthy
+     profiles:
+       - scheduled
++    volumes:
++      - ./agents/.env:/app/.env:ro
+     init: true
+     restart: unless-stopped
+     stop_grace_period: 5s
+--- a/compose.prod.yaml
++++ b/compose.prod.yaml
+@@ -226,6 +226,8 @@
+       context: ./agents
+       dockerfile: apps/weekly_report_scheduler/Dockerfile
+     image: ax-weekly-report-scheduler-prod:local
++    env_file:
++      - ./agents/.env
+     environment:
+       WEEKLY_REPORT_BULK_API_URL: http://weekly-report-bulk-api:8090
+       WEEKLY_REPORT_SCHEDULE_MAX_REPORTS: "${WEEKLY_REPORT_SCHEDULE_MAX_REPORTS:-10000}"
+@@ -233,14 +235,12 @@
+       WEEKLY_REPORT_SCHEDULE_ATTEMPTS: "${WEEKLY_REPORT_SCHEDULE_ATTEMPTS:-3}"
+       WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS: "${WEEKLY_REPORT_SCHEDULE_RETRY_DELAY_SECONDS:-2}"
+     volumes:
+-      - ./agents/.env:/app/.env:ro
+       - type: bind
+-        source: ./backend/prod.env
+-        target: /run/ax-notifications/prod.env
++        source: ./agents/.env
++        target: /app/.env
+         read_only: true
+         bind:
+           create_host_path: false
+-      - ./agents/playground/weekly-reporter/.env:/app/playground/weekly-reporter/.env:ro
+       - weekly-report-scheduler-state:/var/lib/ax/weekly-report-scheduler
+       - weekly-report-scheduler-ssh:/root/.ssh
+     depends_on:

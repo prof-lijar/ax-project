@@ -1,5 +1,11 @@
 # Weekly report production delivery
 
+Configuration update (2026-10-27): agent processes use only `agents/.env`.
+See [unified configuration](unified-environment.md). This supersedes historical
+instructions below about backend env mounts and separate sync env files.
+The backend and its Slack sender retain their own deployment configuration;
+agent service tokens and destination aliases must match it.
+
 Status: implemented; production activation requires the local migration and
 operator-supplied SSH/database configuration. No production writes are part of
 implementation validation. The operator confirmed that local and production
@@ -96,8 +102,8 @@ subsequent production operations so the enqueue flags and services remain set.
 3. Give the production sync role schema USAGE, SELECT on the ward table,
    SELECT/INSERT on the report table, and USAGE on its identity sequence. It
    does not need UPDATE, DELETE, DDL, or access to source metrics.
-4. Copy `apps/weekly_report_tunnel/sync.env.example` to
-   `/etc/nexgent/weekly-report-sync.env`, mode 0600, and populate its values.
+4. Populate the optional sync DSNs and SSH/artifact paths in `agents/.env`
+   using the root `agents/.env.example`; preserve its private permissions.
    Percent-encode reserved characters in DSN credentials. The local DSN points
    to the same database used by the production generation writer, using the
    separate sync role. The target DSN is explicit and has no local fallback.
@@ -105,9 +111,8 @@ subsequent production operations so the enqueue flags and services remain set.
    at the paths in the overlay. Verify the server host key independently.
    The SSH account should permit forwarding only to the required DB host/port;
    it needs no interactive shell or agent forwarding. The key is mounted only
-   into the tunnel container; production DB credentials only into the sync
-   container. The tunnel receives SSH host/user and target address, not DSNs.
-6. The target DSN host must equal `WEEKLY_REPORT_TARGET_HOST` and match the DB
+   into the tunnel container; the sync container reads the unified agent env. The tunnel receives SSH host/user and target address, not DSNs.
+6. The target DSN host must equal `LIVE_PROD_DB_HOST` and match the DB
    certificate, with port **15432**. A dedicated Docker bridge aliases that
    hostname to the tunnel. The tunnel resolves the actual destination from the
    SSH server. Keep `sslmode=verify-full` and the supplied CA: SSH alone does not
@@ -119,19 +124,18 @@ subsequent production operations so the enqueue flags and services remain set.
 From the parent `nexgent/` directory, use:
 
 ```sh
-docker compose --env-file /etc/nexgent/weekly-report-sync.env \
+docker compose --env-file agents/.env \
   -f compose.prod.yaml -f agents/compose.weekly-report-sync.prod.yaml \
   config --quiet
 
-docker compose --env-file /etc/nexgent/weekly-report-sync.env \
+docker compose --env-file agents/.env \
   -f compose.prod.yaml -f agents/compose.weekly-report-sync.prod.yaml \
   up -d --build weekly-report-worker weekly-report-sync-tunnel weekly-report-sync
 ```
 
 If the base production stack relies on additional Compose interpolation files,
-pass those first with additional `--env-file` arguments. The sync env file is
-also read into the sync container. The generation worker retains its existing
-local source/model configuration and gets no sync target DSN.
+pass those first with additional `--env-file` arguments. The unified env file is also read into the sync container and other configured
+agent services. Production enable flags remain explicit in the overlay.
 
 ## Operations and recovery
 

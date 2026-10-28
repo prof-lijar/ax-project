@@ -9,7 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import asyncpg
-from dotenv import dotenv_values, load_dotenv
+from dotenv import dotenv_values
 
 from apps.daily_risk_scheduler.notification import notify_status
 from workflows.daily_risk_counts.workflow import TIMEZONE, previous_day, reconcile_day
@@ -18,8 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def database_dsn() -> str:
-    # Match the existing manual migration's local connection precedence.
-    load_dotenv(ROOT / "playground/.env", override=False)
+    # Only the unified workspace file and explicit process overrides are used.
     settings = dotenv_values(ROOT / ".env")
     for key in (
         "SOURCE_DATABASE_DSN",
@@ -27,7 +26,7 @@ def database_dsn() -> str:
         "ANSIMK_DATABASE_DSN",
     ):
         value = os.environ.get(key)
-        if key != "SOURCE_DATABASE_DSN" and not value:
+        if not value:
             value = settings.get(key)
         if value and value.strip():
             return value.strip()

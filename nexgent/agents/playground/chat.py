@@ -102,7 +102,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    load_dotenv(Path(__file__).with_name(".env"))
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     args = parse_args()
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:

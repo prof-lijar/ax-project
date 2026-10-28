@@ -12,14 +12,14 @@ from ax_integrations.notifications import (
 
 from workflows.daily_risk_counts.notification import status_payload
 
-PRODUCTION_NOTIFICATION_ENV = Path("/run/ax-notifications/prod.env")
+AGENT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 async def notify_status(day, *, started_at, ended_at, issue=None, event):
     """Slack failure never changes the database outcome or triggers a DB retry."""
     try:
         settings = BackendNotificationSettings.from_file(
-            PRODUCTION_NOTIFICATION_ENV,
+            AGENT_ENV_FILE,
             destination="daily_risk",
             # This scheduler uses host networking for its local database.
             base_url=os.environ.get(

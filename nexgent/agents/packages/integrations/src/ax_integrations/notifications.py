@@ -27,7 +27,7 @@ class BackendNotificationSettings:
         base_url: str = "http://backend:8000",
         destination: str = "default",
     ):
-        """Use only the backend's mounted settings, including for cron jobs."""
+        """Read notification settings from the unified agents/.env, including in cron."""
         values = dotenv_values(path, interpolate=False)
         try:
             enabled = TypeAdapter(bool).validate_python(
@@ -45,7 +45,7 @@ class BackendNotificationSettings:
             ):
                 raise ValueError
         except (ValueError, TypeError):
-            raise ValueError("invalid production notification configuration") from None
+            raise ValueError("invalid notification configuration") from None
         return cls(
             enabled=True, base_url=base_url, token=token, destination=destination
         )

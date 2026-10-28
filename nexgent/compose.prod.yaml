@@ -212,8 +212,8 @@ services:
       DAILY_RISK_NOTIFICATION_BASE_URL: "http://127.0.0.1:${PROD_BACKEND_PORT:-8001}"
     volumes:
       - type: bind
-        source: ./backend/prod.env
-        target: /run/ax-notifications/prod.env
+        source: ./agents/.env
+        target: /app/.env
         read_only: true
         bind:
           create_host_path: false

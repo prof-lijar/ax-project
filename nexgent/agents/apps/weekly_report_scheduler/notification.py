@@ -14,13 +14,13 @@ from ax_integrations.notifications import (
 
 from workflows.weekly_report.completion_notification import notification_payload
 
-PRODUCTION_NOTIFICATION_ENV = Path("/run/ax-notifications/prod.env")
+AGENT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class NotificationSettings(BackendNotificationSettings):
     @classmethod
     def from_env(cls):
-        return cls.from_file(PRODUCTION_NOTIFICATION_ENV)
+        return cls.from_file(AGENT_ENV_FILE)
 
 
 def write_state(path, data):

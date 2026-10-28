@@ -24,7 +24,8 @@ def test_sync_overlay_limits_eligibility_and_credentials():
     assert "ports" not in tunnel and "ports" not in worker
     assert set(tunnel["networks"]) == {"weekly-report-sync-transport"}
     assert worker["networks"] == ["default", "weekly-report-sync-transport"]
-    assert "./agents/.env" not in str(worker)
+    assert worker["env_file"] == ["./agents/.env"]
+    assert tunnel["environment"]["WEEKLY_REPORT_TARGET_HOST"] == "${LIVE_PROD_DB_HOST:?required}"
     assert "ssh_key" not in str(worker["volumes"])
     for path in (ROOT / "compose.yaml", ROOT.parent / "compose.yaml"):
         if path.exists():

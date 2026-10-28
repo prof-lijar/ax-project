@@ -49,7 +49,7 @@ services:
 
   agent-server:
     image: ${IMAGE_NAME}
-    env_file: ${COMPOSE_ENV_FILE:-.env}
+    env_file: ../../.env
     environment:
       DATABASE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URI: redis://redis:6379
@@ -90,7 +90,7 @@ services:
 
   weekly-report-worker:
     image: ${WEEKLY_REPORT_WORKER_IMAGE}
-    env_file: ${COMPOSE_ENV_FILE:-.env}
+    env_file: ../../.env
     environment:
       WEEKLY_REPORT_JOB_DATABASE_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports
@@ -110,7 +110,7 @@ services:
 
   weekly-report-bulk-api:
     image: ${WEEKLY_REPORT_BULK_API_IMAGE}
-    env_file: ${COMPOSE_ENV_FILE:-.env}
+    env_file: ../../.env
     environment:
       WEEKLY_REPORT_JOB_DATABASE_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       WEEKLY_REPORT_ARTIFACT_ROOT: /var/lib/ax/weekly-reports

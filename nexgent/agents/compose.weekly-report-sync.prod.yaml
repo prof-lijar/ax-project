@@ -12,15 +12,15 @@ services:
       context: ./agents
       dockerfile: apps/weekly_report_tunnel/Dockerfile
     environment:
-      WEEKLY_REPORT_SSH_HOST: ${WEEKLY_REPORT_SSH_HOST:?required}
-      WEEKLY_REPORT_SSH_USER: ${WEEKLY_REPORT_SSH_USER:?required}
-      WEEKLY_REPORT_SSH_PORT: ${WEEKLY_REPORT_SSH_PORT:-22}
-      WEEKLY_REPORT_TARGET_HOST: ${WEEKLY_REPORT_TARGET_HOST:?required}
-      WEEKLY_REPORT_TARGET_PORT: ${WEEKLY_REPORT_TARGET_PORT:-5432}
+      WEEKLY_REPORT_SSH_HOST: ${LIVE_PROD_SSH_HOST:?required}
+      WEEKLY_REPORT_SSH_USER: ${LIVE_PROD_SSH_ID:?required}
+      WEEKLY_REPORT_SSH_PORT: ${LIVE_PROD_SSH_PORT:-22}
+      WEEKLY_REPORT_TARGET_HOST: ${LIVE_PROD_DB_HOST:?required}
+      WEEKLY_REPORT_TARGET_PORT: ${LIVE_PROD_DB_PORT:-5432}
     networks:
       weekly-report-sync-transport:
         aliases:
-          - ${WEEKLY_REPORT_TARGET_HOST:?required}
+          - ${LIVE_PROD_DB_HOST:?required}
     volumes:
       - ${WEEKLY_REPORT_SSH_KEY_FILE:-/etc/nexgent/weekly-report-sync-key}:/run/secrets/ssh_key:ro
       - ${WEEKLY_REPORT_SSH_KNOWN_HOSTS_FILE:-/etc/nexgent/weekly-report-sync-known-hosts}:/run/secrets/known_hosts:ro
@@ -43,7 +43,7 @@ services:
     image: ax-weekly-report-worker-prod:local
     command: ["/app/.venv/bin/python", "-m", "apps.workers.weekly_report_sync", "serve"]
     env_file:
-      - ${WEEKLY_REPORT_SYNC_ENV_FILE:-/etc/nexgent/weekly-report-sync.env}
+      - ./agents/.env
     environment:
       WEEKLY_REPORT_DEPLOYMENT: production
       WEEKLY_REPORT_SYNC_ENABLED: "true"

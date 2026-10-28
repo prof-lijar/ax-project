@@ -1,5 +1,9 @@
 # Ansimk weekly reporter implementation
 
+Configuration update (2026-10-27): all agent clients and migration scripts use
+`agents/.env`. See [unified environment](unified-environment.md); this supersedes
+the older separate notification and migration settings described below.
+
 Date: 2026-08-24
 
 Status: **Implemented backend compatibility graph and durable bulk reporting**
