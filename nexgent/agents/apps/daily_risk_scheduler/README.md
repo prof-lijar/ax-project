@@ -14,7 +14,11 @@ October's monthly row.
 The deterministic workflow reads `archive.resources_ward` and
 `archive.analysis_wardevaluation`, then updates
 `archive.resources_ward_monthly_risk_count` in the same local database.
-It makes no model calls. It does not copy rows to live dev or production.
+It makes no model calls. The production container now explicitly selects
+`DAILY_RISK_SYNC_TARGET=dev` and copies the reconciled month to
+`LIVE_DEV_DB_*`, schema `ansimk`, using `LIVE_DEV_SSH_*`. It never uses
+`LIVE_PROD_*` for this copy. Other containers default to `local`. Preview
+remains local-only.
 The existing manual history migration remains available for backfills.
 
 For every source ward, the selected date is replaced in `risk_days` and
@@ -34,7 +38,19 @@ membership instead of incrementing totals and preserve IDs/creation timestamps.
 Unchanged rows retain their update timestamps. Failure rolls back the date;
 an uncertain commit can be reconciled by rerunning the same date.
 JSON start/completion/failure events go to container logs. Completion is emitted
-only after commit. Failures exit nonzero without exposing database messages.
+only after both the local and selected live-dev commits. Failures exit nonzero
+without exposing database messages. A live-copy failure leaves the local commit
+intact and reports that stage; replaying the date safely retries the copy.
+
+The live copy shares the manual migration implementation. It streams only the
+reconciled month into a temporary target staging table, validates arrays/counts,
+skips wards missing from dev, and verifies eligible keys before committing.
+It copies source counts, arrays and timestamps, preserving target IDs and
+unmatched keys. Other months stay untouched. Receipt field `live` includes
+eligible, skipped, inserted, updated and unchanged row counts. Source history
+for the month must already be initialized when full month-to-date totals are
+needed. `LIVE_DEV_DB_SCHEMA` defaults to `ansimk`; other schemas are rejected
+by the scheduler. The container image includes `ssh` and `sshpass`.
 
 ## Run and recovery
 
@@ -79,10 +95,23 @@ missing `daily_risk_completed` events and explicitly replay missed dates
 oldest first. Replaying an older date preserves all other saved dates.
 Rebuild/recreate the container to activate code or cron changes.
 
+For the October 30 local-only success, activate the live-dev fix and replay
+October 29 from `nexgent/`:
+
+```bash
+sudo docker compose -f compose.prod.yaml up -d --build daily-risk-scheduler
+sudo docker compose -f compose.prod.yaml exec daily-risk-scheduler /app/.venv/bin/python -m apps.daily_risk_scheduler.run --date 2026-10-29 --apply
+```
+
+The running container must be recreated; updating files alone does not change
+the deployed schedule. On October 30 validation passed against temporary local
+PostgreSQL tables and rendered production Compose. Container recreation and
+live-dev replay were not performed because Docker requires interactive sudo.
+
 ## Slack status notifications
 
 Every `--apply` invocation, including cron and manual replay, submits an
-English operational status to the backend's durable Slack queue after reconciliation.
+English operational status to the backend's durable Slack queue after local reconciliation and the configured live-dev copy.
 Both success and failure messages use these five fields, with actual run timestamps
 in Korea time:
 
@@ -140,7 +169,7 @@ or automatic catch-up is added.
 ## Verification
 
 ```bash
-.venv/bin/python -m pytest tests/unit/test_daily_risk_counts.py tests/unit/test_daily_risk_notification.py
+.venv/bin/python -m pytest tests/unit/test_daily_risk_counts.py tests/unit/test_daily_risk_notification.py tests/unit/test_daily_risk_live.py
 DAILY_RISK_TEST_DATABASE_DSN=postgresql://... .venv/bin/python -m pytest tests/integration/test_daily_risk_counts_postgres.py
 ```
 

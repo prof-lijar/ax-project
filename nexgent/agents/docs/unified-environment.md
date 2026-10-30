@@ -32,7 +32,7 @@ uv run --env-file .env python -m apps.workers.weekly_report --help
 | Weekly-report local writer | `WEEKLY_REPORT_STORAGE_DATABASE_DSN` with existing source fallback |
 | Manual/scheduled migration source | `SOURCE_DATABASE_DSN`, then storage DSN, then source DSN |
 | Scheduled production migration and correction tools | `LIVE_PROD_DB_*`, `LIVE_PROD_SSH_*`, `LIVE_PROD_TUNNEL_PORT` |
-| Manual development migration | `LIVE_DEV_DB_*`, `LIVE_DEV_SSH_*` |
+| Production daily-risk live-dev copy / manual development migration | `LIVE_DEV_DB_*`, `LIVE_DEV_SSH_*` |
 | Optional outbox delivery worker | `WEEKLY_REPORT_SYNC_LOCAL_DSN`, `WEEKLY_REPORT_SYNC_TARGET_DSN`; production overlay still required |
 | Notification clients | `NEXGENT_SLACK_ENABLED`, `NEXGENT_NOTIFICATION_SERVICE_TOKEN`, `NEXGENT_SLACK_CHANNELS` |
 
@@ -55,6 +55,11 @@ uses `LIVE_PROD_*` for SSH routing. Its key-based tunnel still requires a key,
 known-hosts and PostgreSQL CA file. File paths belong in the unified env; the
 key/certificate bytes stay in their existing files. Unifying configuration does
 not automatically enable outbox enqueue or deploy its workers.
+
+The production daily-risk container sets `DAILY_RISK_SYNC_TARGET=dev` explicitly.
+It uses `LIVE_DEV_DB_*` and `LIVE_DEV_SSH_*`, with schema `ansimk`, after local
+reconciliation. This does not select the `LIVE_PROD_*` destination. Other
+containers default to local-only; preview never copies to live dev.
 
 ## Deployment checkpoint
 
