@@ -11,10 +11,21 @@ from pathlib import Path
 import asyncpg
 from dotenv import dotenv_values
 
+from apps.daily_risk_scheduler.live import sync_month
 from apps.daily_risk_scheduler.notification import notify_status
 from workflows.daily_risk_counts.workflow import TIMEZONE, previous_day, reconcile_day
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def sync_target() -> str:
+    settings = dotenv_values(ROOT / ".env")
+    target = os.environ.get(
+        "DAILY_RISK_SYNC_TARGET", settings.get("DAILY_RISK_SYNC_TARGET", "local")
+    )
+    if target not in {"local", "dev"}:
+        raise ValueError("DAILY_RISK_SYNC_TARGET must be local or dev")
+    return target
 
 
 def database_dsn() -> str:
@@ -48,6 +59,7 @@ async def run(day: date, *, apply: bool) -> None:
     stage = "Database configuration"
     try:
         dsn = database_dsn()
+        target = sync_target()
         stage = "Database connection"
         connection = await asyncpg.connect(
             dsn,
@@ -58,6 +70,16 @@ async def run(day: date, *, apply: bool) -> None:
         try:
             stage = "Database reconciliation or commit confirmation"
             result = await reconcile_day(connection, day, apply=apply)
+            if apply and target == "dev":
+                stage = "Live dev copy or commit confirmation (local archive already committed)"
+                event(
+                    "daily_risk_live_started",
+                    date=day.isoformat(),
+                    month=result["month"],
+                )
+                result["live"] = await sync_month(
+                    connection, result["month"], env_file=ROOT / ".env", event=event
+                )
         finally:
             # Connection cleanup must not turn a committed run into a failure.
             try:

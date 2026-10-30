@@ -1,8 +1,10 @@
 # Documentation map
 
+- [Daily risk live-dev sync](daily-risk-live-dev-sync.md): production scheduler destination, commit-dependent success, month boundaries, validation and rollout checkpoint.
+
 - [Unified agent environment](unified-environment.md): agents/.env as the single configuration source, namespaced production/development migration settings, notification configuration, and rollout.
 
-- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul previous-day archive risk/recovery updates, idempotence, existing dev/production Compose integration, backend-queued Slack completion/failure status and replay.
+- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul archive reconciliation and production-container live-dev monthly copy to schema `ansimk`, idempotence, existing dev/production Compose integration, backend-queued Slack completion/failure status and replay.
 
 - [October 12 count correction](../playground/fix-oct12-counts/README.md):
   preview and repair saved activity/remote-control counts using the following

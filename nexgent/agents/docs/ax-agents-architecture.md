@@ -1,5 +1,29 @@
 # AX Agents Architecture
 
+## Production daily risk copy to live dev (2026-10-30)
+
+The production `daily-risk-scheduler` explicitly sets `DAILY_RISK_SYNC_TARGET=dev`.
+After committing the previous Seoul day's local reconciliation, it copies the
+selected month's stored rows to `LIVE_DEV_DB_*`, schema `ansimk`, through the
+existing `LIVE_DEV_SSH_*` tunnel. This destination is intentional even though
+the scheduler runs in the production container. Development retains local-only
+behavior unless explicitly configured. The image now includes SSH and sshpass.
+
+The workflow owns the copy implementation, shared with the manual migration.
+It stages and validates a bounded stream, skips wards absent from dev, upserts
+source-owned counts, arrays and timestamps, verifies eligible keys, and commits
+one atomic destination transaction. Other destination months are untouched.
+Historical dates in the selected month come from the archive snapshot. Monthly
+historical initialization still requires the manual archive migration.
+
+Success/completion follows both commits; live-copy failure exits nonzero and
+reports that the local archive already committed. No cross-database transaction
+or automatic retry is implied. Replaying the date reconciles locally again and
+retries the idempotent month copy. Preview remains local-only and sends no
+notification. Production database credentials are never selected for this copy.
+Runtime recreation and replay are required to repair the previously reported
+local-only success. See [daily risk operations](../apps/daily_risk_scheduler/README.md).
+
 ## Approved daily-risk environment mount (2026-10-28)
 
 The production `daily-risk-scheduler` now mounts unified `agents/.env` read-only

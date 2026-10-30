@@ -215,3 +215,7 @@ timestamp copying, idempotence, destination ID preservation, skipping all months
 of missing dev parents (including when all parents are missing), and invalid
 source arrays. It uses temporary tables on the configured local
 connection; no business table is written during tests.
+
+The production daily-risk scheduler now reuses the workflow-owned copy
+implementation for only the reconciled month, after the local daily commit.
+The manual command above retains its full-history scope and preview default.

@@ -4,7 +4,7 @@ import io
 import os
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -124,7 +124,7 @@ class LiveCopySQLTests(unittest.IsolatedAsyncioTestCase):
             "CREATE TEMP TABLE resources_ward(id bigint PRIMARY KEY)"
         )
         await self.target.execute("INSERT INTO pg_temp.resources_ward VALUES (1),(2)")
-        self.stamp = datetime(2026, 10, 22, 1, tzinfo=timezone.utc)
+        self.stamp = datetime(2026, 10, 22, 1, tzinfo=UTC)
         self.rows = [
             (1, "2026.10", 2, [14, 20], 1, [14], self.stamp, self.stamp),
             (2, "2026.10", 0, [], 0, [], self.stamp, self.stamp),
@@ -136,7 +136,10 @@ class LiveCopySQLTests(unittest.IsolatedAsyncioTestCase):
             f"INSERT INTO pg_temp.live_source_fixture ({fields}) VALUES ({params})",
             self.rows,
         )
-        self.patch = patch.object(live, "SOURCE_TABLE", "pg_temp.live_source_fixture")
+        self.patch = patch(
+            "workflows.daily_risk_counts.live_copy.SOURCE_TABLE",
+            "pg_temp.live_source_fixture",
+        )
         self.patch.start()
 
     async def asyncTearDown(self):
@@ -144,11 +147,31 @@ class LiveCopySQLTests(unittest.IsolatedAsyncioTestCase):
         await self.target.close()
         await self.source.close()
 
-    async def copy(self, write=False):
+    async def copy(self, write=False, month=None):
         with contextlib.redirect_stdout(io.StringIO()):
             return await live.copy_rows(
-                self.source, self.target, schema="pg_temp", write=write, batch_size=2
+                self.source,
+                self.target,
+                schema="pg_temp",
+                write=write,
+                batch_size=2,
+                month=month,
             )
+
+    async def test_scheduled_copy_only_replaces_selected_month(self):
+        await self.copy(True)
+        await self.target.execute(
+            "UPDATE pg_temp.resources_ward_monthly_risk_count SET risk_days=ARRAY[1], total_risk_count=1 WHERE month='2026.09'"
+        )
+        result = await self.copy(True, month="2026.10")
+        self.assertEqual(result["source_rows"], 2)
+        self.assertEqual(result["written"], 0)
+        self.assertEqual(
+            await self.target.fetchval(
+                "SELECT risk_days FROM pg_temp.resources_ward_monthly_risk_count WHERE month='2026.09'"
+            ),
+            [1],
+        )
 
     async def test_preview_rolls_back_and_copy_is_idempotent_with_exact_values(self):
         result = await self.copy()

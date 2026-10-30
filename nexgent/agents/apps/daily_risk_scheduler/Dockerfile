@@ -1,6 +1,6 @@
 FROM python:3.12-alpine
 
-RUN apk add --no-cache tzdata \
+RUN apk add --no-cache tzdata openssh-client sshpass \
     && cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
     && echo "Asia/Seoul" > /etc/timezone
 WORKDIR /app
