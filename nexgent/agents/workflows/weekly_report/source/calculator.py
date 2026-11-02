@@ -20,6 +20,7 @@ def calculate_metrics(
     daily_rows: list[dict[str, Any]],
     risk_rows: list[dict[str, Any]],
     dispatch_rows: list[dict[str, Any]],
+    previous_activity_totals: dict[int, dict[str, float | None]],
 ) -> list[WardWeeklyMetrics]:
     by_period: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
     for row in daily_rows:
@@ -36,6 +37,7 @@ def calculate_metrics(
             by_period[(ward_id, 0)],
             risk.get((ward_id, 0)),
             dispatch.get((ward_id, 0)),
+            activity_totals=previous_activity_totals.get(ward_id, {}),
         )
         current = _snapshot(
             by_period[(ward_id, 1)],
@@ -60,6 +62,8 @@ def _snapshot(
     rows: list[dict[str, Any]],
     risk: dict[str, Any] | None,
     dispatch: dict[str, Any] | None,
+    *,
+    activity_totals: dict[str, float | None] | None = None,
 ) -> WardWeeklyMetricSnapshot:
     risk = risk or {}
     dispatch = dispatch or {}
@@ -87,8 +91,14 @@ def _snapshot(
         light_on_time_minutes_avg=_average(rows, "light_on_time_minutes"),
         movement_count_avg=_average(rows, "movement_count"),
         remote_control_count_avg=_average(rows, "remote_control_count"),
-        movement_count_total=_total(rows, "movement_count"),
-        remote_control_count_total=_total(rows, "remote_control_count"),
+        movement_count_total=(
+            _total(rows, "movement_count") if activity_totals is None
+            else activity_totals.get("movement_count_total")
+        ),
+        remote_control_count_total=(
+            _total(rows, "remote_control_count") if activity_totals is None
+            else activity_totals.get("remote_control_count_total")
+        ),
         **reception,
         wake_up_time_avg=_average_time(rows, "wake_up_time"),
         sleep_time_avg=_average_time(rows, "sleep_time"),

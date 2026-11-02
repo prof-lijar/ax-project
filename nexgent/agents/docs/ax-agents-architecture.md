@@ -1,5 +1,87 @@
 # AX Agents Architecture
 
+## October 26 saved-count correction tool (2026-11-02)
+
+`playground/fix-oct26-previous-counts/run.sh` previews or applies a fixed-week
+repair for all saved October 26–November 1 reports. It copies each ward's
+October 19–25 actual motion and remote-control totals into the newer report's
+previous counts, then updates comparison percentages and displays. Current
+counts, classifications, narrative, scores and guardian actions are preserved.
+Local archive and production are separately selectable and default to both;
+each reads its own prior saved report. The live preview confirmed identical
+plans for both targets. This is an operator tool, not a scheduler or graph hook.
+
+Writes use separate repeatable-read transactions, row locks, private flushed
+backups, original-JSON checks and full patched-JSON verification before commit.
+Missing baselines or invalid reports are skipped explicitly. Local commits
+first; cross-database atomicity is not promised. Rerun preview after partial
+failure and retry the failed target. Exports are not rewritten. Tests cover
+scope, date/identity validation, field preservation, idempotence, missing/null/
+zero/invalid values, backup failure, conflict rollback, readback failure and
+partial-target cleanup. Applied and verified on 2026-11-02: each database
+updated 5,571 reports, retained 717 already-matching reports and skipped nine
+missing baselines. Post-commit previews showed zero eligible updates, and
+before/after comparisons verified preservation of baseline and unrelated
+fields. The 27 correction tests passed. See [commands, execution receipts and recovery](../playground/fix-oct26-previous-counts/README.md).
+
+
+## Saved previous-week activity counts (2026-11-02)
+
+The source API now copies previous motion and remote-control totals from the
+same ward's saved report in local `archive.resources_ward_weekly_report` for
+exactly the preceding Monday–Sunday. It reads
+`living_activity.activity_detection.metrics.current_week` and
+`living_activity.remote_control_usage.metrics.current_week`; it never
+recalculates these two comparison totals from historical daily summaries.
+Current-week totals still come from `ansimk.analysis_devicedailysummary`.
+Percentages, classifications, narrative facts and guardian guidance use the
+copied comparison totals through the existing deterministic policy.
+
+The bounded, parameterized read uses the source API's `ANSIMK_DATABASE_DSN`
+and requires SELECT on the local archive report table. This database must
+contain the reports committed by the bulk writer (including when a separate
+storage DSN is configured). Raw observations remain exclusively in `ansimk`;
+this saved-report read is the explicit archive exception. Both interactive
+and bulk generation share the source API. No full report JSON enters graph
+state, and no new write path, connection setting or public schema is added.
+
+Missing prior reports, missing/null fields and malformed, negative or
+non-finite counts produce unavailable comparison values and the source warning
+`ward-<id>: previous_activity_counts_unavailable`. Valid signals are copied
+independently. Zero remains zero and retains the unavailable-ratio policy.
+There is no raw-count fallback or lookup of an older report. A database read
+failure follows the existing source error/retry path. Other previous-week
+metrics, including risk events and compatibility activity averages, retain
+their existing source calculations.
+
+Acceptance: changing historical daily counts cannot change either saved
+comparison total; current counts and risk metrics stay source-derived; exact
+ward/week selection, null/zero/invalid counts and source failure are tested.
+The regression reproduces the observed 2,278/1,123 saved counts versus
+3,002/1,606 refreshed source totals with synthetic ward IDs.
+
+Rollout: rebuild/recreate the source API between jobs and verify its archive
+SELECT access. Start fresh jobs; already-staged bulk metrics and completed
+reports retain their original values. Historical changes require explicit
+regeneration, earliest week first when regenerating adjacent weeks, followed
+by normal migration. Production-only manual corrections are not mirrored into
+local archive reports, so reconcile the local baseline before expecting those
+corrections to carry forward. Correcting incomplete current-week source data is
+a separate concern; copying prior counts intentionally preserves the saved
+report's value. Implementation does not deploy or rewrite stored reports.
+
+Validation: 162 targeted source, graph, renderer, activity-policy, API and
+quality tests passed. The PostgreSQL selection test passed with synthetic
+inline rows in a read-only transaction. A read-only source-service check for
+ward 13554 returned current 2,710/1,967 and copied previous 2,278/1,123, with
+no warnings. Changed-file Ruff, LangGraph validation, local Compose rendering
+and the weekly-reporter skill validator passed. Full-suite validation remains
+incomplete: two existing notification deployment contracts fail against parent
+Compose configuration, and broad runs stalled (including the existing bulk
+source-timeout test). Whole-tree Ruff also reports existing ordering issues in
+`packages/integrations/src/ax_integrations/__init__.py` and
+`tests/unit/test_rag_chat_graph.py`. No parent Compose files were modified.
+
 ## Scheduled daily risk copy to production (2026-11-02)
 
 The existing parent production Compose service now selects

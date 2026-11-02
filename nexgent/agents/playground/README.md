@@ -34,3 +34,14 @@ using current selection conditions in local and live report databases:
 ```bash
 bash playground/migrate-guardian-template-ids/run.sh --target both
 ```
+
+
+## October 26 previous-week counts
+
+[Preview, apply and verify this week's count correction](fix-oct26-previous-counts/README.md)
+in local archive and production:
+
+```bash
+bash playground/fix-oct26-previous-counts/run.sh
+bash playground/fix-oct26-previous-counts/run.sh --write
+```

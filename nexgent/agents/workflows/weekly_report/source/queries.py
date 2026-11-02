@@ -36,6 +36,18 @@ WHERE ward_id = ANY($1::bigint[]) AND date >= $2 AND date < $3
 ORDER BY ward_id, date, device_id
 """
 
+PREVIOUS_ACTIVITY_COUNTS_SQL = """
+SELECT ward_id,
+       report_data #> '{living_activity,activity_detection,metrics,current_week}'
+           AS movement_count_total,
+       report_data #> '{living_activity,remote_control_usage,metrics,current_week}'
+           AS remote_control_count_total
+FROM archive.resources_ward_weekly_report
+WHERE ward_id = ANY($1::bigint[])
+  AND week_start_date = $2 AND week_end_date = $3
+ORDER BY ward_id
+"""
+
 RISK_AGGREGATES_SQL = """
 WITH periods(period_index, start_at, end_at) AS (
   VALUES (0, $2::timestamptz, $3::timestamptz),

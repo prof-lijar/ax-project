@@ -6,13 +6,13 @@ the existing `danger_days` fields used by the frontend.
 
 ## Data flow
 
-The private `apps.weekly_report_api` FastAPI process reads raw `archive` tables
+The private `apps.weekly_report_api` FastAPI process reads raw `ansimk` tables
 through a reusable pooled `asyncpg` integration. It returns versioned current
 and previous seven-day snapshots to the graph through a private-network HTTP
 client. The graph never receives database credentials and exposes no arbitrary
 SQL tool.
 
-The source service reads schema-qualified tables only from `ansimk`:
+The source service reads schema-qualified raw tables from `ansimk`:
 
 - `ansimk.analysis_devicedailysummary` for environment, activity, and sleep;
 - `ansimk.analysis_wardevaluation` for risk events, danger days, score averages, and
@@ -20,7 +20,13 @@ The source service reads schema-qualified tables only from `ansimk`:
 - `ansimk.dispatch_dispatchrequest` for requests and unresolved requests;
 - `ansimk.resources_ward` for ward identity.
 
-Matching source tables under `ansimk_clone` and `ansimk` are deliberately excluded.
+Matching raw source tables under `ansimk_clone` and `archive` are deliberately excluded.
+For previous motion and remote-control totals only, the service reads the
+preceding saved report from local `archive.resources_ward_weekly_report`.
+The source database must contain the bulk writer's saved reports, and its role
+needs SELECT on this table. Missing or invalid prior counts are unavailable,
+with a source warning and no recalculation fallback. Production-only manual
+corrections must also be reflected in the local baseline to carry forward.
 The connection remains configured by `ANSIMK_DATABASE_DSN`; changing its
 database name or PostgreSQL `search_path` is not required. Production delivery
 and coverage queries continue to use the production `ansimk` schema.
@@ -74,8 +80,9 @@ including signal-loss counts and management-note details, are omitted rather
 than inferred or rendered as empty placeholder sections.
 
 The `활동감지` and `리모컨 이용` children sum the raw `movement_count` and
-`remote_control_count` columns respectively for each seven-day period and
-evaluate each signal independently from
+`remote_control_count` columns respectively for the current seven-day period.
+Their previous totals are copied from the same ward's saved preceding report's
+`current_week` fields. They evaluate each signal independently from
 the current-to-previous total percentage. It renders `GOOD` for 70% up to but
 not including 150%, `CAUTION` for 40% up to 70% or 150% through 250%, and
 `RISK` below 40% or above 250%, using the

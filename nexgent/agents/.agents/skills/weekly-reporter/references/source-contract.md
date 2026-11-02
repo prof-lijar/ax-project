@@ -6,10 +6,14 @@
 - `ansimk.analysis_wardevaluation`: risk events and scores.
 - `ansimk.dispatch_dispatchrequest`: dispatch events and current resolution state.
 - `ansimk.resources_ward`: ward identity.
+- `archive.resources_ward_weekly_report`: saved previous-week motion and
+  remote-control totals only, using the same ward and exact preceding week.
+  Read each signal's `metrics.current_week` from `living_activity`. This is
+  the explicit saved-report exception to the raw-source schema rule below.
 
 Always schema-qualify these application-owned queries. The database also
 contains `ansimk_clone` and `archive` relations with matching names; neither is
-an approved weekly-report source, and PostgreSQL `search_path` must not select
+an approved raw-observation source, and PostgreSQL `search_path` must not select
 the source implicitly.
 
 The product owner promoted the wording/rule chart at spreadsheet document
@@ -45,15 +49,21 @@ not an authoritative input.
   across devices for promoted-sheet affected-day classification. Preserve the
   lowest minimum and highest maximum separately for rendered weekly extrema.
 - Arithmetic-average activity and night-awake values over non-null rows.
-- Sum non-null `movement_count` and `remote_control_count` values separately
-  for each week, and use those totals for the approved activity policy below.
+- Sum non-null `movement_count` and `remote_control_count` for the current week.
+  Copy the previous totals from the immediately preceding saved local archive
+  report without recalculating them. Missing/null/invalid counts are unavailable
+  independently, with `previous_activity_counts_unavailable` in source warnings;
+  never fall back to daily rows or an older report. Preserve zero. Use these
+  totals for the activity policy below. The source role needs archive SELECT
+  access, and the source database must contain the bulk writer's saved reports.
 - Evaluate device reception from each raw device-daily-summary row before
   weekly aggregation, using the approved policy below.
 - Average clock times linearly to preserve existing service behavior.
 - Count `DANGER` evaluations; count distinct local danger dates separately.
 - Count `DANGER` to `STABLE` transitions, seeded by the final pre-period event.
 - Average non-null risk scores, then apply the approved presentation policy below.
-- Recompute both weeks from raw records.
+- Recompute other metrics for both weeks from raw records; saved activity
+  comparison totals are the exception.
 
 Sleep and dispatch compatibility fields may remain inside the private source
 contract during migration, but they are not reporting inputs. They must not

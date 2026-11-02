@@ -1,5 +1,11 @@
 # Documentation map
 
+
+- [October 26 previous-count correction](../playground/fix-oct26-previous-counts/README.md): copy October 19 saved actual counts into October 26 comparisons across local archive and production, with backups and verification.
+
+
+- [Saved previous-week activity counts](ansimk-weekly-reporter-implementation.md#saved-previous-week-activity-counts-2026-11-02): copy motion and remote-control comparison totals from the preceding saved local report, missing-baseline policy, regression coverage and rollout.
+
 - [Manual monthly risk copy](../playground/migrate/README.md): local archive to live dev or production through unified environment settings, preview and atomic commit.
 
 - [Chat 50 MiB upload limit](../../docs/08-implementation/chat-upload-50-mib-limit.md): aligned frontend, backend, saved-file and agent limits.
