@@ -81,7 +81,7 @@ class ChatAttachmentRef(ContractModel):
     kind: Literal["document", "image"]
     media_type: str = Field(min_length=1, max_length=128)
     uri: str = Field(min_length=1, max_length=4_096)
-    byte_size: int = Field(ge=1, le=10 * 1024 * 1024)
+    byte_size: int = Field(ge=1, le=50 * 1024 * 1024)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("filename")

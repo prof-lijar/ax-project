@@ -81,8 +81,8 @@ export function ChatComposer({
     }
     const files = deduplicateFiles([...conversation.files, ...incoming]);
     const all = [...files, ...(conversation.selectedFiles ?? [])];
-    const error = validateSelectedFiles(files) || (all.length > 5 || all.reduce((sum, f) => sum + f.size, 0) > 25 * 1024 * 1024
-      ? t("Select at most five files totaling 25 MiB.") : null);
+    const error = validateSelectedFiles(files) || (all.length > 5 || all.reduce((sum, f) => sum + f.size, 0) > 50 * 1024 * 1024
+      ? t("Select at most five files totaling 50 MiB.") : null);
     patchChat(conversation.id, error ? { error } : { files, error: null });
   }
   return (
@@ -221,7 +221,7 @@ export function ChatComposer({
             <Paperclip size={19} />
           </button>
           <span className={styles.attachmentHint}>
-            {textOnly ? t("Text only") : t("Up to 5 files · 25 MB total")}
+            {textOnly ? t("Text only") : t("Up to 5 files · 50 MB total")}
           </span>
           {ownRequest ? (
             <button

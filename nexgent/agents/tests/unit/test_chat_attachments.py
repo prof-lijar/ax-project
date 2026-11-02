@@ -4,6 +4,14 @@ from pathlib import Path
 import pytest
 from ax_contracts import ChatAttachmentRef
 from ax_integrations import AttachmentReadError, ChatAttachmentReader
+from pydantic import ValidationError
+
+
+def test_attachment_contract_accepts_50_mib_and_rejects_one_extra_byte(tmp_path):
+    limit = 50 * 1024 * 1024
+    assert _reference(tmp_path / "large.png", b"", byte_size=limit).byte_size == limit
+    with pytest.raises(ValidationError):
+        _reference(tmp_path / "large.png", b"", byte_size=limit + 1)
 
 
 def _reference(

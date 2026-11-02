@@ -1,5 +1,10 @@
 # Documentation map
 
+- [Chat 50 MiB upload limit](../../docs/08-implementation/chat-upload-50-mib-limit.md): aligned frontend, backend, saved-file and agent limits.
+
+- [AX768](../workflows/ax768/README.md): local-model Google Sheets tools, runtime
+  skills, headless user OAuth setup, bounded execution, partial-failure recovery, and CLI.
+
 - [Daily risk live-dev sync](daily-risk-live-dev-sync.md): production scheduler destination, commit-dependent success, month boundaries, validation and rollout checkpoint.
 
 - [Unified agent environment](unified-environment.md): agents/.env as the single configuration source, namespaced production/development migration settings, notification configuration, and rollout.

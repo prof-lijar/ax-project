@@ -20,8 +20,8 @@ from app.chat.errors import ChatRequestError
 from app.chat.models import ChatAttachmentRef
 
 MAX_FILES = 5
-MAX_FILE_BYTES = 10 * 1024 * 1024
-MAX_TOTAL_BYTES = 25 * 1024 * 1024
+MAX_FILE_BYTES = 50 * 1024 * 1024
+MAX_TOTAL_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_CHARACTERS = 100_000
 MAX_DOCX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 MAX_DOCX_MEMBERS = 10_000
@@ -105,7 +105,7 @@ class AttachmentProcessor:
                 if total_bytes > MAX_TOTAL_BYTES:
                     raise ChatRequestError(
                         "total_size_exceeded",
-                        "The combined attachment size exceeds 25 MiB.",
+                        "The combined attachment size exceeds 50 MiB.",
                         status_code=413,
                         filename=filename,
                     )
@@ -142,7 +142,7 @@ class AttachmentProcessor:
                 if len(normalized) > MAX_FILE_BYTES:
                     raise ChatRequestError(
                         "normalized_file_too_large",
-                        "The normalized attachment exceeds 10 MiB.",
+                        "The normalized attachment exceeds 50 MiB.",
                         status_code=413,
                         filename=filename,
                     )
@@ -185,7 +185,7 @@ async def _read_upload(upload: UploadFile, filename: str) -> bytes:
         if size > MAX_FILE_BYTES:
             raise ChatRequestError(
                 "file_too_large",
-                "Each attachment must be 10 MiB or smaller.",
+                "Each attachment must be 50 MiB or smaller.",
                 status_code=413,
                 filename=filename,
             )
@@ -480,7 +480,7 @@ def _normalize_image(
     if len(normalized_bytes) > MAX_FILE_BYTES:
         raise ChatRequestError(
             "normalized_image_too_large",
-            "The normalized image exceeds 10 MiB.",
+            "The normalized image exceeds 50 MiB.",
             status_code=413,
             filename=filename,
         )

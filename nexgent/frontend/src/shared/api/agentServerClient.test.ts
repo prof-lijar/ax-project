@@ -215,7 +215,7 @@ describe("agentServerClient", () => {
             error: {
               schema_version: "1",
               code: "attachment_too_large",
-              message: "brief.pdf exceeds the 10 MB per-file limit.",
+              message: "brief.pdf exceeds the 50 MB per-file limit.",
               filename: "brief.pdf"
             }
           }),

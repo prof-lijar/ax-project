@@ -12,7 +12,7 @@ class ChatAttachmentRef(BaseModel):
     kind: Literal["document", "image"]
     media_type: str = Field(min_length=1, max_length=100)
     uri: str = Field(pattern=r"^file:///")
-    byte_size: int = Field(gt=0, le=10 * 1024 * 1024)
+    byte_size: int = Field(gt=0, le=50 * 1024 * 1024)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 

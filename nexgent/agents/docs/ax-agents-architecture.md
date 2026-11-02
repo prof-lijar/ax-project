@@ -1,5 +1,64 @@
 # AX Agents Architecture
 
+## AX768 Google user OAuth (2026-10-30)
+
+AX768 now defaults to user OAuth, selected explicitly in the unified local .env.
+`ax_integrations.google_oauth` owns token loading, refresh, file locking, and
+atomic mode-0600 token replacement; `apps.ax768.oauth_login` owns one-time consent.
+Google's installed-app library handles PKCE and OAuth state. A Desktop OAuth
+client plus an SSH-forwarded loopback listener permits login from a laptop
+browser while the agent stays on the terminal-only Linux server. Consent waits
+up to five minutes; no interactive authorization runs in a graph node.
+
+The graph selects exactly one authentication mode, with no fallback to another
+identity. Service-account mode remains an explicit option. User OAuth inherits
+the user's file permissions and requests the Sheets scope; the fixed configured
+spreadsheet still bounds tool execution. Token material stays outside graph
+state, model prompts and results. Token directories must support writes for
+refresh and locking; revoked grants require login again. Google external Testing
+mode can expire these refresh tokens after seven days. Live consent and row 81
+verification remain pending the user's Desktop client file and browser sign-in.
+See [headless OAuth setup](../workflows/ax768/README.md).
+
+## Chat upload limit increased to 50 MiB (2026-10-30)
+
+Chat now permits 50 MiB per file and 50 MiB combined per turn, retaining the
+five-file cap. Frontend selection and saved-file checks, backend upload and
+reference validation, durable-file reads, and agent contracts/readers use the
+same byte limits. Extraction and image pixel limits remain independent.
+Deployment requires rebuilding the Agent Server and chat worker images; the
+development frontend/backend source mounts can reload their local changes.
+See [validation and rollout](../../docs/08-implementation/chat-upload-50-mib-limit.md).
+
+## AX768 local-model spreadsheet agent (2026-10-30)
+
+`workflows/ax768` introduces the private `ax768` graph, initially serving manual
+Google Sheets tasks. It reuses the workspace OpenAI-compatible local model
+settings and has no cloud fallback. Runtime skill instructions are workflow-local;
+the decision schema is in `ax_contracts.sheets` and the async Sheets v4 transport
+and service-account token adapter are in `ax_integrations.google_sheets`.
+`apps/ax768/run.py` provides a manual CLI using the unified `agents/.env`.
+The product chat API routing is unchanged.
+
+An operator fixes one spreadsheet link/ID and private credentials path in
+configuration. The model cannot change the target or issue arbitrary API calls.
+Strict typed actions cover bounded cell reads/writes/appends/clears, tab changes,
+and row/column deletion. The graph initializes metadata, then checkpoints each
+decision/tool step independently, capped at ten actions. Observations preserve
+arguments and Google receipts, structural writes refresh metadata, and failures
+stop immediately with partial progress available. Reads and verification are
+required by runtime instructions; model semantic correctness remains subject to
+live evaluation. Missing sheet/auth configuration returns blocked without calls.
+
+Tools have no automatic retries. Google writes and graph checkpoints are not
+atomic; uncertain append/delete results require inspection before replay. The
+CLI has no durable checkpoint, and this first workflow does not promise unattended
+recovery, rollback, serialized concurrent editing, or exactly-once writes. Agent
+Server remains responsible for thread persistence. See [AX768 setup, contract,
+limits and acceptance criteria](../workflows/ax768/README.md). A live local-model
+structured-action check passed with synthetic metadata. End-to-end Google
+evaluation awaits the user's sheet link and service-account access.
+
 ## Production daily risk copy to live dev (2026-10-30)
 
 The production `daily-risk-scheduler` explicitly sets `DAILY_RISK_SYNC_TARGET=dev`.
@@ -1668,8 +1727,8 @@ capability assertion, not automatic model detection.
 
 The transient chat attachment reader is an integration boundary because it
 owns filesystem access and provider-payload assembly. The gateway passes only
-`ChatAttachmentRef` objects. The reader enforces five files, 10 MiB per file,
-25 MiB combined, and 100,000 extracted document characters. It accepts
+`ChatAttachmentRef` objects. The reader enforces five files, 50 MiB per file,
+50 MiB combined, and 100,000 extracted document characters. It accepts
 normalized UTF-8 plain/Markdown/CSV text and normalized PNG/JPEG/WebP bytes.
 Every attachment and original filename is explicitly labeled untrusted in the
 model request so multi-file prompts can still refer to files by name.
