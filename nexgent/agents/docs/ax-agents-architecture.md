@@ -1,5 +1,39 @@
 # AX Agents Architecture
 
+## Scheduled daily risk copy to production (2026-11-02)
+
+The existing parent production Compose service now selects
+`DAILY_RISK_SYNC_TARGET=both`. After the previous Seoul day's archive commit,
+the scheduler copies the processed month to live dev, then live production,
+using isolated `LIVE_DEV_*` and `LIVE_PROD_*` SSH/database settings and schema
+`ansimk`. Production TLS defaults to `require`. The existing workflow-owned
+copy preserves month scoping, staged validation, missing-ward skips,
+idempotent upserts and destination verification. No new service is introduced.
+
+Completion and success notification require every selected commit. Failure
+stops subsequent copies, identifies the destination, and retains earlier
+commits. Per-destination completion events and `live_targets` receipts expose
+progress; `live` retains its previous dev receipt meaning. Replaying the same
+date reconciles locally and retries both copies. Cross-database atomicity,
+automatic retry and missed-run catch-up are not provided. Preview remains
+local-only; `local`, `dev`, and `prod` modes remain individually selectable.
+
+Tests cover commit ordering, dev/prod failure and replay, preview isolation,
+local failure gating, settings isolation, schema/identity guards and month
+scoping. Rebuild/recreate the scheduler to activate the new configuration.
+See [daily risk operations](../apps/daily_risk_scheduler/README.md).
+
+## Manual monthly risk copy to production (2026-11-02)
+
+The operator CLI `playground/migrate/run.sh -target prod` previews the full
+local archive risk table against production; `--migrate-to-live` commits.
+It loads unified `agents/.env`, selects only `LIVE_PROD_*` destination settings,
+and defaults production TLS to `require`. The workflow-owned copy implementation
+retains staging validation, missing-parent skips, idempotent upserts, verification,
+and one atomic destination commit. The scheduler now supports both live
+destinations as described above.
+See [commands and recovery](../playground/migrate/README.md).
+
 ## AX768 Google user OAuth (2026-10-30)
 
 AX768 now defaults to user OAuth, selected explicitly in the unified local .env.
@@ -60,6 +94,8 @@ structured-action check passed with synthetic metadata. End-to-end Google
 evaluation awaits the user's sheet link and service-account access.
 
 ## Production daily risk copy to live dev (2026-10-30)
+
+Historical checkpoint: superseded by the November 2 dual-destination update above.
 
 The production `daily-risk-scheduler` explicitly sets `DAILY_RISK_SYNC_TARGET=dev`.
 After committing the previous Seoul day's local reconciliation, it copies the

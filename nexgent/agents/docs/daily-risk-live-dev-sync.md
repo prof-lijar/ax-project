@@ -1,6 +1,31 @@
-# Daily risk-count production scheduler live-dev sync
+# Daily risk-count scheduler live database sync
 
-Date: 2026-10-30
+## Production copy added (2026-11-02)
+
+The existing `compose.prod.yaml` now selects `DAILY_RISK_SYNC_TARGET=both`.
+Each applied run commits the local reconciliation, copies the processed month
+to live dev, then copies it to `LIVE_PROD_DB_*` through `LIVE_PROD_SSH_*`.
+Both destinations use `ansimk`; production credentials never fall back to dev.
+Success follows all three commits. Previews perform neither live copy.
+
+A failure stops the sequence and identifies the destination. Earlier commits
+remain intact, with per-target completion events available in the logs.
+Replaying the same date safely reconciles and recopies the month. The final
+receipt includes `live_targets.dev` and `live_targets.prod`; `live` remains the
+dev receipt for compatibility. Missing wards are skipped separately per target.
+
+Rebuild/recreate the existing scheduler using the commands below to activate
+this change. The November 2 implementation has not been deployed or verified
+against live databases in this session.
+
+Verification: 55 focused scheduler/notification/migration tests passed; five
+opt-in PostgreSQL copy tests were skipped. Ruff, formatting, diff checks and
+production Compose rendering passed. Both live destinations' settings validated
+without opening database connections or displaying credentials.
+
+## Live-dev rollout checkpoint (2026-10-30)
+
+The following records the earlier dev-only behavior, superseded above.
 
 The scheduler previously reported success after updating only the local archive.
 Production Compose now explicitly sets `DAILY_RISK_SYNC_TARGET=dev`. After the
