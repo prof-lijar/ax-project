@@ -140,3 +140,5 @@ Stage one does not need full autonomous execution. It needs the durable product 
 ## Default Product Stance
 
 AX Project should feel like a calm co-worker workspace, not a chatbot, system monitor, or generic task board. Chat can exist, but the primary interface is command: current work, co-worker focus, decisions, evidence, responsibility, and follow-up.
+
+- [Chat 50 MiB upload limit](08-implementation/chat-upload-50-mib-limit.md): per-file and combined upload limits across chat, saved files and Agent Server.

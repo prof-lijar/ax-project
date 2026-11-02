@@ -138,7 +138,7 @@ New clients use `POST /api/chat/conversations` and
 All requests require the existing authenticated cookie, Origin, and CSRF token.
 Supported attachments are embedded-text PDF,
 UTF-8 TXT/Markdown/CSV, DOCX paragraphs and tables, and PNG/JPEG/WebP images.
-Each file is limited to 10 MiB, the request is limited to 25 MiB, and extracted
+Each file is limited to 50 MiB, the request is limited to 50 MiB, and extracted
 document text is limited to 100,000 characters.
 
 The backend retains original and normalized files in `AX_CHAT_FILE_ROOT`, a

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,7 @@ from .queries import (
     DAILY_ROWS_SQL,
     DISPATCH_AGGREGATES_SQL,
     EXPLICIT_WARDS_SQL,
+    PREVIOUS_ACTIVITY_COUNTS_SQL,
     RISK_AGGREGATES_SQL,
 )
 
@@ -90,7 +92,7 @@ class WeeklyReportSourceService:
             )
 
         ward_ids = sorted(ward_names)
-        daily_rows, risk_rows, dispatch_rows = await asyncio.gather(
+        daily_rows, risk_rows, dispatch_rows, previous_report_rows = await asyncio.gather(
             self.database.fetch(DAILY_ROWS_SQL, ward_ids, previous_start, week_end),
             self.database.fetch(
                 RISK_AGGREGATES_SQL,
@@ -103,6 +105,12 @@ class WeeklyReportSourceService:
             self.database.fetch(
                 DISPATCH_AGGREGATES_SQL, ward_ids, previous_at, week_at, end_at
             ),
+            self.database.fetch(
+                PREVIOUS_ACTIVITY_COUNTS_SQL,
+                ward_ids,
+                previous_start,
+                request.week_start - timedelta(days=1),
+            ),
         )
         items = calculate_metrics(
             ward_names=ward_names,
@@ -110,12 +118,25 @@ class WeeklyReportSourceService:
             daily_rows=daily_rows,
             risk_rows=risk_rows,
             dispatch_rows=dispatch_rows,
+            previous_activity_totals={
+                int(row["ward_id"]): {
+                    field: _saved_count(row.get(field))
+                    for field in ("movement_count_total", "remote_control_count_total")
+                }
+                for row in previous_report_rows
+            },
         )
         warnings = [
             f"ward-{item.ward_id}: incomplete_daily_coverage"
             for item in items
             if item.current.covered_days < 7
         ]
+        warnings.extend(
+            f"ward-{item.ward_id}: previous_activity_counts_unavailable"
+            for item in items
+            if item.previous.movement_count_total is None
+            or item.previous.remote_control_count_total is None
+        )
         return WeeklyReportSourceResponse(
             week_start=request.week_start,
             week_end=week_end,
@@ -156,3 +177,20 @@ class WeeklyReportSourceService:
             raise
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise SourceRequestError("cursor is invalid") from exc
+
+
+def _saved_count(value: object) -> float | None:
+    """Accept saved JSON numbers, preserving null and rejecting malformed counts."""
+    # asyncpg returns JSONB scalars as JSON-encoded strings by default.
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, RecursionError):
+            return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return number if math.isfinite(number) and number >= 0 else None

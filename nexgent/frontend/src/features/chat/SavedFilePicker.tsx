@@ -11,8 +11,8 @@ export function selectSavedFile(chat: ChatConversation, file: ChatAttachmentSumm
   const selected = [...(chat.selectedFiles ?? []), file];
   const all = [...chat.files, ...selected];
   const state = useChatStore.getState();
-  if (all.length > 5 || all.reduce((sum, f) => sum + f.size, 0) > 25 * 1024 * 1024) {
-    state.patchChat(chat.id, { error: t("Select at most five files totaling 25 MiB.") }); return;
+  if (all.length > 5 || all.reduce((sum, f) => sum + f.size, 0) > 50 * 1024 * 1024) {
+    state.patchChat(chat.id, { error: t("Select at most five files totaling 50 MiB.") }); return;
   }
   state.patchChat(chat.id, { selectedFiles: selected, error: null });
 }

@@ -6,6 +6,11 @@ function file(name: string, size: number, lastModified = 1) {
   return { name, size, lastModified, type: "text/plain" } as File;
 }
 describe("attachment validation", () => {
+  it("accepts exactly 50 MiB per file and combined, but rejects one extra byte", () => {
+    expect(validateSelectedFiles([file("large.pdf", 50 * 1024 * 1024)])).toBeNull();
+    expect(validateSelectedFiles([file("a.pdf", 25 * 1024 * 1024), file("b.pdf", 25 * 1024 * 1024)])).toBeNull();
+    expect(validateSelectedFiles([file("a.pdf", 50 * 1024 * 1024), file("b.pdf", 1)])).toContain("50 MB total");
+  });
   it("accepts existing supported formats and removes duplicate selections", () => {
     const attachment = file("notes.txt", 50);
     expect(deduplicateFiles([attachment, attachment])).toEqual([attachment]);
@@ -19,8 +24,8 @@ describe("attachment validation", () => {
     );
     expect(validateSelectedFiles([file("empty.txt", 0)])).toContain("empty");
     expect(
-      validateSelectedFiles([file("big.pdf", 10 * 1024 * 1024 + 1)])
-    ).toContain("10 MB");
+      validateSelectedFiles([file("big.pdf", 50 * 1024 * 1024 + 1)])
+    ).toContain("50 MB");
     expect(
       validateSelectedFiles(
         Array.from({ length: 6 }, (_, i) => file(`${i}.txt`, 1))
@@ -28,9 +33,9 @@ describe("attachment validation", () => {
     ).toContain("no more than 5");
     expect(
       validateSelectedFiles(
-        Array.from({ length: 3 }, (_, i) => file(`${i}.pdf`, 9 * 1024 * 1024))
+        Array.from({ length: 3 }, (_, i) => file(`${i}.pdf`, 20 * 1024 * 1024))
       )
-    ).toContain("25 MB total");
+    ).toContain("50 MB total");
   });
 });
 describe("transcript follow threshold", () => {

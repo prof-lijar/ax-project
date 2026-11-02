@@ -1,10 +1,23 @@
 # Documentation map
 
-- [Daily risk live-dev sync](daily-risk-live-dev-sync.md): production scheduler destination, commit-dependent success, month boundaries, validation and rollout checkpoint.
+
+- [October 26 previous-count correction](../playground/fix-oct26-previous-counts/README.md): copy October 19 saved actual counts into October 26 comparisons across local archive and production, with backups and verification.
+
+
+- [Saved previous-week activity counts](ansimk-weekly-reporter-implementation.md#saved-previous-week-activity-counts-2026-11-02): copy motion and remote-control comparison totals from the preceding saved local report, missing-baseline policy, regression coverage and rollout.
+
+- [Manual monthly risk copy](../playground/migrate/README.md): local archive to live dev or production through unified environment settings, preview and atomic commit.
+
+- [Chat 50 MiB upload limit](../../docs/08-implementation/chat-upload-50-mib-limit.md): aligned frontend, backend, saved-file and agent limits.
+
+- [AX768](../workflows/ax768/README.md): local-model Google Sheets tools, runtime
+  skills, headless user OAuth setup, bounded execution, partial-failure recovery, and CLI.
+
+- [Daily risk live database sync](daily-risk-live-dev-sync.md): sequential dev and production copies, commit-dependent success, month boundaries, validation and rollout checkpoints.
 
 - [Unified agent environment](unified-environment.md): agents/.env as the single configuration source, namespaced production/development migration settings, notification configuration, and rollout.
 
-- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul archive reconciliation and production-container live-dev monthly copy to schema `ansimk`, idempotence, existing dev/production Compose integration, backend-queued Slack completion/failure status and replay.
+- [Daily risk-count agent](../apps/daily_risk_scheduler/README.md): daily 05:15 Seoul archive reconciliation and production-container dev and production monthly copies to schema `ansimk`, idempotence, existing dev/production Compose integration, backend-queued Slack completion/failure status and replay.
 
 - [October 12 count correction](../playground/fix-oct12-counts/README.md):
   preview and repair saved activity/remote-control counts using the following

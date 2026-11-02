@@ -1,4 +1,4 @@
-"""Copy local monthly risk rows to live dev; --migrate-to-live commits the copy."""
+"""Copy local monthly risk rows to live dev or prod; --migrate-to-live commits."""
 
 import argparse
 import asyncio
@@ -25,16 +25,16 @@ from workflows.daily_risk_counts.live_copy import (  # noqa: F401
 
 async def run(args):
     load_dotenv(ENV_FILE, override=False)
-    settings = DevSettings.from_env()
+    settings = DevSettings.from_env(target=args.target)
     dsn = source_database_dsn()
     async with progress("Connecting to local archive database"):
         source = await asyncpg.connect(dsn, timeout=15, command_timeout=1830)
     try:
         async with (
-            progress("Opening dev SSH tunnel"),
+            progress(f"Opening {args.target} SSH tunnel"),
             dev_tunnel(settings) as local_port,
         ):
-            async with progress("Connecting to live dev database"):
+            async with progress(f"Connecting to live {args.target} database"):
                 target = await asyncpg.connect(
                     host="127.0.0.1",
                     port=local_port,
@@ -45,7 +45,7 @@ async def run(args):
                     timeout=15,
                     command_timeout=1830,
                     server_settings={
-                        "application_name": "migrate_risk_counts_to_live_dev"
+                        "application_name": f"migrate_risk_counts_to_live_{args.target}"
                     },
                 )
             try:
@@ -54,12 +54,13 @@ async def run(args):
                     raise MigrationError(
                         "Source and destination appear identical; copy aborted."
                     )
-                async with progress("Copying local monthly risk data to dev"):
+                async with progress(f"Copying local monthly risk data to {args.target}"):
                     result = await copy_rows(
                         source,
                         target,
                         schema=settings.db_schema,
                         write=args.migrate_to_live,
+                        target_name=args.target,
                     )
                 print(json.dumps(result), flush=True)
             finally:
@@ -73,15 +74,16 @@ def parse_args(argv=None):
     parser.add_argument(
         "--migrate-to-live",
         action="store_true",
-        help="Commit all local risk rows to dev; otherwise preview.",
+        help="Commit all local risk rows to the selected target; otherwise preview.",
     )
-    parser.add_argument("-target", "--target", choices=["dev"], required=True)
+    parser.add_argument("-target", "--target", choices=["dev", "prod"], required=True)
     return parser.parse_args(argv)
 
 
 def main():
     args = parse_args()
-    log(f"Target: dev; mode: {'APPLY' if args.migrate_to_live else 'PREVIEW'}")
+    log(f"Environment: {ENV_FILE}")
+    log(f"Target: {args.target}; mode: {'APPLY' if args.migrate_to_live else 'PREVIEW'}")
     try:
         asyncio.run(run(args))
     except MigrationError as exc:
@@ -92,7 +94,7 @@ def main():
         return 130
     except Exception as exc:  # noqa: BLE001 -- keep credentials out of CLI errors
         log(
-            f"Dev copy failed ({type(exc).__name__}, SQLSTATE={getattr(exc, 'sqlstate', None) or 'n/a'}). "
+            f"{args.target} copy failed ({type(exc).__name__}, SQLSTATE={getattr(exc, 'sqlstate', None) or 'n/a'}). "
             "No success confirmed. Resolve the failing stage and rerun; an uncertain commit is safe to reconcile.",
             file=sys.stderr,
         )

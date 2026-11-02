@@ -1,5 +1,8 @@
 # Workflow modules
 
+[`ax768`](ax768/README.md) is the extensible local-model agent with Google Sheets
+as its first capability, available through a manual CLI and private Agent Server.
+
 Each workflow owns its graph topology, state, nodes, prompts, and any local
 agent subgraphs. Shared infrastructure belongs in `packages/`; deployable
 processes belong in `apps/`.

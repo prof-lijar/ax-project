@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from app.chat.attachments import (
     MAX_EXTRACTED_CHARACTERS,
     MAX_FILES,
+    MAX_FILE_BYTES,
     MAX_TOTAL_BYTES,
     ArtifactBatch,
     AttachmentProcessor,
@@ -100,7 +101,7 @@ class FileVault:
             with os.fdopen(fd, "rb") as handle:
                 if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
                     raise ValueError("not a regular file")
-                data = handle.read(10 * 1024 * 1024 + 1)
+                data = handle.read(MAX_FILE_BYTES + 1)
             expected = file if kind == "original" else file["normalized"]
             size = expected.get("size", expected.get("byte_size"))
             if len(data) != size or sha256(data).hexdigest() != expected["sha256"]:
@@ -117,7 +118,7 @@ class FileVault:
         if len(files) > MAX_FILES or sum(f["size"] for f in files) > MAX_TOTAL_BYTES:
             raise ChatRequestError(
                 "attachment_limit",
-                "Select at most five files totaling 25 MiB.",
+                "Select at most five files totaling 50 MiB.",
                 status_code=413,
             )
         size, characters = 0, 0

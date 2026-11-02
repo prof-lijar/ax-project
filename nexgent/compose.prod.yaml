@@ -209,7 +209,7 @@ services:
       - ./agents/.env
     network_mode: host
     environment:
-      DAILY_RISK_SYNC_TARGET: dev
+      DAILY_RISK_SYNC_TARGET: both
       DAILY_RISK_NOTIFICATION_BASE_URL: "http://127.0.0.1:${PROD_BACKEND_PORT:-8001}"
     volumes:
       - type: bind

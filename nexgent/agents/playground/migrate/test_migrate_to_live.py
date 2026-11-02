@@ -32,6 +32,10 @@ class LiveCopyConfigTests(unittest.TestCase):
             live.parse_args(["--migrate-to-live", "-target", "dev"]).migrate_to_live
         )
         self.assertFalse(live.parse_args(["-target", "dev"]).migrate_to_live)
+        self.assertFalse(live.parse_args(["-target", "prod"]).migrate_to_live)
+        self.assertTrue(
+            live.parse_args(["--migrate-to-live", "-target", "prod"]).migrate_to_live
+        )
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             live.parse_args(["--migrate-to-live", "-target", "production"])
 
@@ -48,6 +52,35 @@ class LiveCopyConfigTests(unittest.TestCase):
         self.assertIn("operator@bastion.example", command)
         self.assertNotIn("ssh-secret", command)
         self.assertNotIn("db-secret", command)
+
+    def test_prod_settings_are_isolated_and_require_tls_by_default(self):
+        env = self.environment()
+        env.update({
+            key.replace("LIVE_DEV_", "LIVE_PROD_"): value
+            for key, value in self.environment().items() if key.startswith("LIVE_DEV_")
+        })
+        env["LIVE_PROD_DB_USER"] = "prod_user"
+        env["LIVE_PROD_DB_HOST"] = "production.internal"
+        original = env.copy()
+        settings = live.DevSettings.from_env(env, target="prod")
+        self.assertEqual(settings.target, "prod")
+        self.assertEqual(settings.db_user, "prod_user")
+        self.assertEqual(settings.db_host, "production.internal")
+        self.assertEqual(settings.db_ssl, "require")
+        self.assertEqual(env, original)
+        self.assertNotIn("secret", repr(settings))
+        env["LIVE_PROD_DB_SSL"] = "verify-full"
+        self.assertEqual(live.DevSettings.from_env(env, target="prod").db_ssl, "verify-full")
+        del env["LIVE_PROD_DB_PASSWORD"]
+        with self.assertRaisesRegex(live.MigrationError, "Missing LIVE_PROD_DB_PASSWORD"):
+            live.DevSettings.from_env(env, target="prod")
+
+    def test_prod_validation_names_production_setting(self):
+        env = {key.replace("LIVE_DEV_", "LIVE_PROD_"): value
+               for key, value in self.environment().items()}
+        env["LIVE_PROD_DB_HOST"] = "-invalid"
+        with self.assertRaisesRegex(live.MigrationError, "LIVE_PROD_DB_HOST"):
+            live.DevSettings.from_env(env, target="prod")
 
     def test_related_env_overrides(self):
         env = {

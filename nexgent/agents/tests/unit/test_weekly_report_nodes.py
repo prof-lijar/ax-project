@@ -80,6 +80,7 @@ def test_calculator_matches_weighted_and_linear_average_semantics() -> None:
             }
         ],
         dispatch_rows=[],
+        previous_activity_totals={},
     )[0]
     assert metrics.current.temperature_avg == 27.5
     assert metrics.current.movement_count_avg == 15

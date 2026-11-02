@@ -1,4 +1,4 @@
-"""Copy local monthly risk rows to live dev; --migrate-to-live commits the copy."""
+"""Copy local monthly risk rows to a selected live database; --migrate-to-live commits the copy."""
 
 import asyncio
 import contextlib
@@ -8,7 +8,7 @@ import shutil
 import signal
 import socket
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from urllib.parse import urlsplit
 
@@ -89,10 +89,26 @@ class DevSettings:
     db_schema: str = "ansimk"
     db_ssl: str = "prefer"
     ssh_port: int = 22
+    target: str = "dev"
 
     @classmethod
-    def from_env(cls, environment=None):
+    def from_env(cls, environment=None, *, target="dev"):
+        if target not in {"dev", "prod"}:
+            raise MigrationError("Target must be dev or prod.")
         environment = os.environ if environment is None else environment
+        if target == "prod":
+            # Reuse validation with an isolated mapping; never fall back to dev.
+            mapped = {
+                "LIVE_DEV_" + key.removeprefix("LIVE_PROD_"): value
+                for key, value in environment.items()
+                if key.startswith("LIVE_PROD_")
+            }
+            mapped.setdefault("LIVE_DEV_DB_SSL", "require")
+            try:
+                settings = cls.from_env(mapped)
+            except MigrationError as exc:
+                raise MigrationError(str(exc).replace("LIVE_DEV_", "LIVE_PROD_")) from None
+            return replace(settings, target="prod")
 
         def setting(name, *, secret=False):
             return required(name, secret=secret, environment=environment)
@@ -209,7 +225,7 @@ async def dev_tunnel(settings):
         while True:
             if process.returncode is not None:
                 raise MigrationError(
-                    f"Dev SSH tunnel failed (exit={process.returncode}); check SSH settings and known_hosts."
+                    f"{settings.target} SSH tunnel failed (exit={process.returncode}); check SSH settings and known_hosts."
                 )
             try:
                 _, writer = await asyncio.wait_for(
@@ -221,7 +237,7 @@ async def dev_tunnel(settings):
             except (OSError, TimeoutError):
                 if asyncio.get_running_loop().time() >= deadline:
                     raise MigrationError(
-                        "Dev SSH tunnel did not become ready within 25 seconds."
+                        f"{settings.target} SSH tunnel did not become ready within 25 seconds."
                     ) from None
                 await asyncio.sleep(0.2)
         yield local_port
@@ -251,8 +267,10 @@ def row_values(alias):
 
 
 async def copy_rows(
-    source, target, *, schema, write=False, batch_size=5000, month=None
+    source, target, *, schema, write=False, batch_size=5000, month=None, target_name="dev"
 ):
+    if target_name not in {"dev", "prod"}:
+        raise MigrationError("Target must be dev or prod.")
     table, wards = target_tables(schema)
     fields = ", ".join(COPY_FIELDS)
     transaction = target.transaction(isolation="repeatable_read")
@@ -278,7 +296,7 @@ async def copy_rows(
                 f"Target table {table} is missing columns: {', '.join(sorted(missing_columns))}."
             )
         if write:
-            log("Locking dev target for an atomic copy")
+            log(f"Locking {target_name} target for an atomic copy")
             await target.execute(f"LOCK TABLE {table} IN SHARE ROW EXCLUSIVE MODE")
         await target.execute("""
             CREATE TEMP TABLE risk_live_stage (
@@ -328,7 +346,7 @@ async def copy_rows(
                 raise MigrationError(
                     "Local snapshot count differs from staged count; copy aborted."
                 )
-        log(f"Staged all {staged:,} rows; validating arrays and dev ward references")
+        log(f"Staged all {staged:,} rows; validating arrays and {target_name} ward references")
         invalid = await target.fetchval(f"""
             SELECT count(*) FROM {STAGE}
             WHERE total_risk_count <> cardinality(risk_days)
@@ -387,7 +405,7 @@ async def copy_rows(
         )
         if write:
             assignments = ", ".join(f"{name}=EXCLUDED.{name}" for name in VALUE_FIELDS)
-            log("Applying dev upserts")
+            log(f"Applying {target_name} upserts")
             written = await target.fetchval(f"""
                 WITH written AS (
                     INSERT INTO {table} AS t ({fields}) SELECT {fields} FROM {STAGE} WHERE TRUE
@@ -397,7 +415,7 @@ async def copy_rows(
                 ) SELECT count(*) FROM written
             """)
             if written != summary["inserts"] + summary["updates"]:
-                raise MigrationError("Unexpected dev write count; rolling back.")
+                raise MigrationError(f"Unexpected {target_name} write count; rolling back.")
             mismatches = await target.fetchval(f"""
                 SELECT count(*) FROM {STAGE} s LEFT JOIN {table} t
                 ON t.ward_id=s.ward_id AND t.month=s.month
@@ -407,13 +425,13 @@ async def copy_rows(
                 raise MigrationError(
                     f"{mismatches:,} copied rows failed verification; rolling back."
                 )
-            log("All eligible source keys verified in dev; committing")
+            log(f"All eligible source keys verified in {target_name}; committing")
             await transaction.commit()
             summary["written"] = written
         else:
             await transaction.rollback()
         return {
-            "target": "dev",
+            "target": target_name,
             "table": table,
             "mode": "committed" if write else "preview",
             **summary,

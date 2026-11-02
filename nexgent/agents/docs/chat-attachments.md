@@ -27,8 +27,8 @@ Each `ChatAttachmentRef` has this JSON shape:
 Document media types are `text/plain`, `text/markdown`, and `text/csv`; the
 stored bytes must already be normalized UTF-8 extracted text. Image media types
 are `image/png`, `image/jpeg`, and `image/webp`; the stored bytes must already
-be validated and normalized. A request may contain five files, 10 MiB per file,
-25 MiB combined, and 100,000 document characters.
+be validated and normalized. A request may contain five files, 50 MiB per file,
+50 MiB combined, and 100,000 document characters.
 
 `uri` must be an absolute local `file://` URI reachable beneath the Agent
 Server's absolute `AX_CHAT_ARTIFACT_ROOT`. The product backend and Agent Server

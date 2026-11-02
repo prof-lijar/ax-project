@@ -134,7 +134,22 @@ empty arrays, stale values, and idempotent inserts/updates.
 Editing the script does not update stored counts. Run with `--apply` to populate
 the new recovery fields, then regenerate the PDF if an updated report is needed.
 
-## Copy the local risk table to live dev
+## Copy the local risk table to live dev or production
+
+Production uses `LIVE_PROD_*` from the shared `agents/.env` (exported variables
+retain precedence). Preview and apply the full local table with:
+
+```bash
+bash run.sh -target prod
+bash run.sh --migrate-to-live -target prod
+```
+
+Production accepts the same suffixes as the dev settings below, with
+`LIVE_PROD_` in place of `LIVE_DEV_`. Production TLS defaults to `require`;
+explicit `LIVE_PROD_DB_SSL` is honored. Missing production settings fail without
+falling back to dev. Both targets use the same validation, missing-ward skip,
+atomic upsert and verification rules. Only `--migrate-to-live` commits.
+The daily scheduler retains its separately configured dev destination.
 
 `migrate-to-live.py` copies every stored row from
 `archive.resources_ward_monthly_risk_count` on the local database into

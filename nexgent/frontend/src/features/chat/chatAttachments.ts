@@ -2,8 +2,8 @@ import { t } from "../../shared/i18n";
 import type { ChatAttachmentSummary } from "../../shared/state/useChatStore";
 
 const MAX_ATTACHMENT_COUNT = 5;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 const ACCEPTED_ATTACHMENT_EXTENSIONS = new Set([
   "csv",
   "docx",
@@ -34,12 +34,12 @@ export function validateSelectedFiles(files: File[]) {
       return t("{name} is empty.", { name: file.name });
     }
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      return t("{name} exceeds the 10 MB per-file limit.", { name: file.name });
+      return t("{name} exceeds the 50 MB per-file limit.", { name: file.name });
     }
   }
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
   if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-    return t("Attachments exceed the 25 MB total limit.");
+    return t("Attachments exceed the 50 MB total limit.");
   }
   return null;
 }

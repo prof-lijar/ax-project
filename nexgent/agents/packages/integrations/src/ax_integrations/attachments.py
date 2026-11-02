@@ -21,8 +21,8 @@ from ax_contracts import ChatAttachmentRef, ChatErrorPayload
 from .chat import ChatContentPart
 
 MAX_ATTACHMENT_COUNT = 5
-MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
-MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+MAX_TOTAL_ATTACHMENT_BYTES = 50 * 1024 * 1024
 MAX_TOTAL_DOCUMENT_CHARACTERS = 100_000
 
 AttachmentErrorCode = Literal[

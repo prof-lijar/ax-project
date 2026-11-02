@@ -23,8 +23,8 @@ def sync_target() -> str:
     target = os.environ.get(
         "DAILY_RISK_SYNC_TARGET", settings.get("DAILY_RISK_SYNC_TARGET", "local")
     )
-    if target not in {"local", "dev"}:
-        raise ValueError("DAILY_RISK_SYNC_TARGET must be local or dev")
+    if target not in {"local", "dev", "prod", "both"}:
+        raise ValueError("DAILY_RISK_SYNC_TARGET must be local, dev, prod or both")
     return target
 
 
@@ -70,15 +70,34 @@ async def run(day: date, *, apply: bool) -> None:
         try:
             stage = "Database reconciliation or commit confirmation"
             result = await reconcile_day(connection, day, apply=apply)
-            if apply and target == "dev":
-                stage = "Live dev copy or commit confirmation (local archive already committed)"
+            destinations = ("dev", "prod") if target == "both" else (target,)
+            for destination in destinations if apply and target != "local" else ():
+                stage = (
+                    f"Live {destination} copy or commit confirmation "
+                    "(local archive already committed)"
+                )
                 event(
                     "daily_risk_live_started",
                     date=day.isoformat(),
                     month=result["month"],
+                    target=destination,
                 )
-                result["live"] = await sync_month(
-                    connection, result["month"], env_file=ROOT / ".env", event=event
+                receipt = await sync_month(
+                    connection,
+                    result["month"],
+                    env_file=ROOT / ".env",
+                    event=event,
+                    target_name=destination,
+                )
+                result.setdefault("live_targets", {})[destination] = receipt
+                if destination == "dev":
+                    result["live"] = receipt  # Preserve the existing dev receipt.
+                event(
+                    "daily_risk_live_completed",
+                    date=day.isoformat(),
+                    month=result["month"],
+                    target=destination,
+                    receipt=receipt,
                 )
         finally:
             # Connection cleanup must not turn a committed run into a failure.
@@ -92,6 +111,7 @@ async def run(day: date, *, apply: bool) -> None:
             date=day.isoformat(),
             error_type=type(exc).__name__,
             sqlstate=getattr(exc, "sqlstate", None),
+            stage=stage,
         )
         if apply:
             await notify_status(
