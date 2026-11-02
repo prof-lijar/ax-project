@@ -12,6 +12,8 @@ This documentation set defines the product architecture before implementation be
 
 ## Document Map
 
+- [Weekly Report Activity Description Deduplication](08-implementation/weekly-report-activity-description-deduplication.md): shared activity-card guidance shown once across JSON and Markdown, with regression validation.
+
 - [Daily risk-count scheduler](08-implementation/daily-risk-count-scheduler.md): previous-day risk updates at 05:15 Seoul in the existing dev and production Compose stacks.
 
 - [Weekly Report Local Notification Coverage](08-implementation/weekly-report-local-notification-coverage.md): local DB credentials for all Slack coverage reads, SSH bypass, validation, and notification recovery.

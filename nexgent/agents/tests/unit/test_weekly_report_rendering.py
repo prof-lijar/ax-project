@@ -359,9 +359,49 @@ def test_activity_signals_render_inside_one_living_activity_section() -> None:
             ],
             "조금 감소",
         ),
+        (
+            30.0, 100.0, 30.0, 100.0,
+            [
+                "활동이 많이 줄었어요.",
+                "TV 이용 등 일상적인 생활 패턴이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+            ],
+            "많이 감소",
+        ),
+        (
+            300.0, 100.0, 300.0, 100.0,
+            [
+                "활동이 많이 늘었어요.",
+                "TV 이용 등 일상적인 생활 패턴이 많이 늘었어요. 최근 생활에 달라진 점이 있는지 살펴봐 주세요.",
+            ],
+            "많이 증가",
+        ),
+        (
+            30.0, 100.0, 300.0, 100.0,
+            [
+                "활동이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+                "TV 이용 등 일상적인 생활 패턴이 많이 늘었어요. 최근 생활에 달라진 점이 있는지 살펴봐 주세요.",
+            ],
+            "많이 감소",
+        ),
+        (
+            100.0, 100.0, 30.0, 100.0,
+            [
+                "활동은 비슷한 수준으로 이어졌어요.",
+                "TV 이용 등 일상적인 생활 패턴이 많이 줄었어요. 안부를 한 번 확인해 주세요.",
+            ],
+            "많이 감소",
+        ),
+        (
+            100.0, 100.0, 200.0, 100.0,
+            [
+                "활동은 비슷한 수준으로 이어졌어요.",
+                "TV 이용 등 일상적인 생활 패턴이 조금 늘었어요.",
+            ],
+            "조금 증가",
+        ),
     ],
 )
-def test_activity_section_combines_missing_information_descriptions(
+def test_activity_section_combines_descriptions(
     movement_current: float,
     movement_previous: float,
     remote_current: float,
@@ -406,6 +446,15 @@ def test_activity_section_combines_missing_information_descriptions(
     assert f"- 태그: {expected_tag}" in report.markdown
     for description in descriptions:
         assert f"- {description}" in report.markdown
+    activity_markdown = report.markdown.split("## 생활 활동\n", 1)[1].split(
+        "### 활동감지", 1
+    )[0]
+    for action in (
+        "안부를 한 번 확인해 주세요.",
+        "생활에 달라진 점이 있는지 살펴봐 주세요.",
+    ):
+        assert " ".join(descriptions).count(action) <= 1
+        assert activity_markdown.count(action) <= 1
 
 
 @pytest.mark.parametrize(

@@ -56,6 +56,10 @@ activity signals share one unnumbered `생활 활동` section with the child
 headings `활동감지` and `리모컨 이용`. Their descriptions are combined above the
 children, and one `태그` reflects the worse signal status. The remaining
 sections are indoor environment, device-data reception, and risk management.
+When both activity signals have the same `RISK` trend, the combined descriptions
+retain both observations and include their shared action only after the second
+observation. This also combines the equivalent increase guidance with and
+without “최근”. Different actions and single-signal guidance remain intact.
 The basic information
 omits the score-band legend. The exclusive period end is displayed as the
 inclusive Sunday. The approved year-round ranges include their boundaries:
