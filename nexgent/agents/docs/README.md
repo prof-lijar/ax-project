@@ -1,5 +1,34 @@
 # Documentation map
 
+- [AX768 comma-separated AS highlighting](../workflows/ax768/README.md#comma-separated-as-lookup):
+  case 6.3 finds the latest AS name/address row and applies yellow background.
+
+- [AX768 comma-separated roster lookup](../workflows/ax768/README.md#comma-separated-roster-lookup):
+  case 6.2 parses address, name and request text, then returns the city and latest row.
+
+- [AX768 AS signal-request highlighting](../workflows/ax768/README.md#as-signal-request-lookup):
+  case 4.3 accepts address/name signal shorthand and highlights the latest AS row.
+
+- [AX768 ordered user-sheet lookup](../workflows/ax768/README.md#ordered-user-sheet-lookup):
+  case 4.2 searches 울진 → 광명 → 영덕, returning the city and latest matching row.
+
+- [AX768 highlight completion warnings](ax-agents-architecture.md#ax768-saved-highlight-completion-with-warnings-2026-11-03):
+  cases 2.2/2.3 complete when yellow is saved, with warnings for visible overrides.
+
+- [AX768 formatting response-size fix](ax-agents-architecture.md#ax768-formatting-readback-size-fix-2026-11-03):
+  background-only verification avoids oversized row formatting responses.
+
+- [AX768 AS name/address matching](../workflows/ax768/README.md#as-sheet-name-and-address-search):
+  case 2.3, bottom-up same-row matching and verified yellow row highlighting.
+
+- [AX768 address search](../workflows/ax768/README.md#address-row-search):
+  case 2.2, separate spreadsheet/tab configuration, address matching,
+  and verified yellow highlighting of the bottom-most matching row.
+
+- [AX768 name highlighting](../workflows/ax768/README.md#name-search-and-yellow-highlight):
+  case 1.1 CLI selection, Korean signal-check shorthand, latest-row name matching,
+  tab scope and verified yellow formatting.
+
 
 - [October 26 previous-count correction](../playground/fix-oct26-previous-counts/README.md): copy October 19 saved actual counts into October 26 comparisons across local archive and production, with backups and verification.
 
