@@ -339,6 +339,14 @@ def _activity_descriptions(assessment: ActivityAssessment) -> list[str]:
         if remote_missing
         else activity_description("remote_control", assessment.remote_control),
     ]
+    if (
+        assessment.movement.status == assessment.remote_control.status == "RISK"
+        and assessment.movement.trend == assessment.remote_control.trend
+    ):
+        # Both descriptions appear together. Keep the shared action only after
+        # the second observation, including the near-identical increase advice.
+        observation, _, _ = descriptions[0].partition(". ")
+        descriptions[0] = observation + "."
     return descriptions
 
 

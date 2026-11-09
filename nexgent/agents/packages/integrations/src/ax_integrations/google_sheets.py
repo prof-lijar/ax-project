@@ -12,8 +12,14 @@ from ax_contracts.sheets import (
     ClearCells,
     DeleteDimension,
     DeleteTab,
+    FindAndHighlightAddressRow,
+    FindAndHighlightName,
+    FindAndHighlightPersonRow,
     ReadCells,
     RenameTab,
+    SearchAddress,
+    SearchName,
+    SearchPersonRow,
     WriteCells,
 )
 
@@ -91,12 +97,28 @@ class ServiceAccountToken:
 
 
 class GoogleSheetsClient:
-    def __init__(self, sheet: str, token_provider, *, client: httpx.AsyncClient):
+    def __init__(
+        self,
+        sheet: str,
+        token_provider,
+        *,
+        client: httpx.AsyncClient,
+        search_sheet_id: int | None = None,
+        address_columns: str | None = None,
+        person_name_column: str | None = None,
+        person_address_column: str | None = None,
+        search_start_row: int = 1,
+    ):
         self.base = "https://sheets.googleapis.com/v4/spreadsheets/" + spreadsheet_id(
             sheet
         )
         self.token_provider = token_provider
         self.client = client
+        self.search_sheet_id = search_sheet_id
+        self.address_columns = address_columns
+        self.person_name_column = person_name_column
+        self.person_address_column = person_address_column
+        self.search_start_row = search_start_row
 
     async def _request(self, method, suffix="", **kwargs):
         token = await self.token_provider()
@@ -131,6 +153,60 @@ class GoogleSheetsClient:
         )
 
     async def execute(self, action):
+        if isinstance(action, (SearchPersonRow, FindAndHighlightPersonRow)):
+            from ax_integrations.sheets_person import (
+                find_and_highlight_person,
+                search_person,
+            )
+
+            if self.search_sheet_id is None or self.search_sheet_id < 0:
+                raise ValueError("Configure the person-search tab ID")
+            operation = (
+                search_person
+                if isinstance(action, SearchPersonRow)
+                else find_and_highlight_person
+            )
+            return await operation(
+                self,
+                sheet_id=self.search_sheet_id,
+                name=action.name,
+                address=action.address,
+                name_column=self.person_name_column,
+                address_column=self.person_address_column,
+                start_row=self.search_start_row,
+            )
+        if isinstance(action, (SearchAddress, FindAndHighlightAddressRow)):
+            from ax_integrations.sheets_address import (
+                highlight_address_row,
+                search_address,
+            )
+
+            if self.search_sheet_id is None or self.search_sheet_id < 0:
+                raise ValueError("configure the address-search tab ID before searching")
+            operation = (
+                highlight_address_row
+                if isinstance(action, FindAndHighlightAddressRow)
+                else search_address
+            )
+            return await operation(
+                self,
+                sheet_id=self.search_sheet_id,
+                address=action.address,
+                columns=self.address_columns,
+            )
+        if isinstance(action, (SearchName, FindAndHighlightName)):
+            from ax_integrations.sheets_highlight import find_and_highlight, search_name
+
+            if self.search_sheet_id is None or self.search_sheet_id < 0:
+                raise ValueError(
+                    "configure AX768_NAME_SEARCH_SHEET_ID before searching names"
+                )
+            operation = (
+                search_name if isinstance(action, SearchName) else find_and_highlight
+            )
+            return await operation(
+                self, sheet_id=self.search_sheet_id, name=action.name
+            )
         if isinstance(action, (ReadCells, WriteCells, ClearCells)):
             validate_range(action.range)
             suffix = "/values/" + quote(action.range, safe="")

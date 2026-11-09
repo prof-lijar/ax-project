@@ -9,6 +9,7 @@ export const RAG_CHAT_AGENT_ID = "7";
 export const RAG_CHAT_GRAPH_ID = "rag_chat";
 export const SCOUT_AGENT_ID = "ansimk_scout_agent";
 export const SUMIN_AGENT_ID = "sumin";
+export const AX768_AGENT_ID = "ax768";
 
 export interface AgentCatalogRecord extends Omit<AgentDefinition, "readiness" | "recentRuns"> {
   readiness: string | null;
@@ -204,13 +205,26 @@ const suminAgentRecord: AgentCatalogRecord = {
   recentRuns: []
 };
 
+const ax768Record: AgentCatalogRecord = {
+  id: AX768_AGENT_ID, name: "AX768", role: "Spreadsheet collaborator",
+  description: "Find matching users and the latest AS records.",
+  graphId: "ax768", canRunInChat: false, readiness: null, currentWork: null,
+  runtimeLabel: "LangGraph", lastObservedAt: null, observationMode: null,
+  capabilities: ["Find users across city rosters", "Find the latest AS row"],
+  inputs: [{ name: "case_id", description: "Choose one of seven workflow cases", required: true },
+    { name: "message", description: "Name, address and request text for the selected case", required: true }],
+  outputDescription: "Matched city, sheet and latest row.",
+  configuration: [], limitations: ["Cases search without changing sheet values or formatting"], recentRuns: []
+};
+
 export const agentCatalogClient = {
   async listAgents(): Promise<AgentDefinition[]> {
     return normalizeAgentCatalog([
       weeklyReporterRecord,
       ragChatRecord,
       scoutAgentRecord,
-      suminAgentRecord
+      suminAgentRecord,
+      ax768Record
     ]);
   }
 };

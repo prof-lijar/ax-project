@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { getAgentsRoute } from "./App";
 
 describe("App agent routing", () => {
+  it("opens AX768 in its real case workspace", () => {
+    expect(getAgentsRoute("ax768")).toEqual({ kind: "ax768" });
+  });
   it("renders Weekly Reporter with its durable bulk workbench", () => {
     expect(getAgentsRoute("1")).toEqual({ kind: "weekly-reporter" });
   });

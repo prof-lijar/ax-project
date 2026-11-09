@@ -104,11 +104,17 @@ def test_restricted_gateways_require_administrator_for_every_operation(monkeypat
         assert response.json() == {"error": {"code": "permission_denied"}}
 
 
-def test_member_keeps_agent_server_chat_access(monkeypatch):
+@pytest.mark.parametrize("method,path", [
+    ("POST", "threads"), ("POST", "runs/wait"),
+    ("GET", "threads/example/state"), ("POST", "assistants/search"),
+    ("POST", "ok"),
+])
+def test_member_cannot_bypass_agent_workspace_permissions(monkeypatch, method, path):
     client, received = setup_proxy(monkeypatch, admin=False)
-    response = client.post("/agent-server/threads", headers=authenticated_headers(), json={})
-    assert response.status_code == 200
-    assert len(received) == 1
+    response = client.request(method, f"/agent-server/{path}", headers=authenticated_headers(), json={})
+    assert response.status_code == 403
+    assert received == []
+    assert client.get("/agent-server/ok", headers=authenticated_headers()).status_code == 200
 
 
 def test_revoked_admin_access_is_checked_again_on_the_next_request(monkeypatch):

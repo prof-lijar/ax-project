@@ -70,6 +70,44 @@ class Finish(Action):
     response: str = Field(min_length=1, max_length=8000)
 
 
+class FindAndHighlightName(Action):
+    tool: Literal["find_and_highlight_name"]
+    name: str = Field(min_length=1, max_length=100)
+
+
+class SearchName(Action):
+    tool: Literal["search_name"]
+    name: str = Field(min_length=1, max_length=100)
+
+
+class SearchPersonRow(Action):
+    tool: Literal["search_person_row"]
+    name: str = Field(min_length=1, max_length=100)
+    address: str = Field(min_length=1, max_length=200)
+
+
+class SearchAddress(Action):
+    tool: Literal["search_address"]
+    address: str = Field(min_length=1, max_length=200)
+
+
+class FindAndHighlightAddressRow(Action):
+    tool: Literal["find_and_highlight_address_row"]
+    address: str = Field(min_length=1, max_length=200)
+
+
+class FindAndHighlightPersonRow(Action):
+    tool: Literal["find_and_highlight_person_row"]
+    name: str = Field(min_length=1, max_length=100)
+    address: str = Field(min_length=1, max_length=200)
+
+
+class SearchUserSheets(Action):
+    tool: Literal["search_user_sheets"]
+    name: str = Field(min_length=1, max_length=100)
+    address: str = Field(min_length=1, max_length=200)
+
+
 SheetAction = Annotated[
     ReadCells
     | WriteCells
@@ -78,6 +116,13 @@ SheetAction = Annotated[
     | RenameTab
     | DeleteTab
     | DeleteDimension
+    | FindAndHighlightName
+    | SearchAddress
+    | SearchName
+    | SearchPersonRow
+    | FindAndHighlightAddressRow
+    | FindAndHighlightPersonRow
+    | SearchUserSheets
     | Finish,
     Field(discriminator="tool"),
 ]

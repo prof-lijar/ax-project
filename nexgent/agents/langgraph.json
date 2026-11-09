@@ -1,11 +1,14 @@
 {
-  "dependencies": ["."],
+  "dependencies": [
+    "."
+  ],
   "graphs": {
     "ax768": "./workflows/ax768/graph.py:graph",
     "agent": "./workflows/smoke/graph.py:graph",
     "chat": "./workflows/chat/graph.py:graph",
     "rag_chat": "./workflows/rag_chat/graph.py:graph",
-    "ansimk_weekly_reporter": "./workflows/weekly_report/graph.py:graph"
+    "ansimk_weekly_reporter": "./workflows/weekly_report/graph.py:graph",
+    "ax768_workflow": "./workflows/ax768/unified_graph.py:graph"
   },
   "env": ".env"
 }

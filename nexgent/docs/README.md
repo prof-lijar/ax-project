@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [AX768 case workspace](08-implementation/ax768-case-workspace.md): Test/Workflow/Sheets tabs, IMEI signal checks, unified roster-to-AS lookup, unique name correction, automatic source city, verified S/X/Y completion, loading/results, spreadsheet links and runtime setup.
+
 - [Weekly Reporter Selected-Ward Tests](08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.
 
 - [Weekly Report Five-ZIP Retention](08-implementation/weekly-report-five-zip-retention.md): automatic ZIP cleanup, preserved report data, manual command, and rollout checks.
@@ -11,6 +13,8 @@ AX Project is a Linux desktop application built with Tauri. Its first stage is a
 This documentation set defines the product architecture before implementation begins.
 
 ## Document Map
+
+- [Weekly Report Activity Description Deduplication](08-implementation/weekly-report-activity-description-deduplication.md): shared activity-card guidance shown once across JSON and Markdown, with regression validation.
 
 - [Daily risk-count scheduler](08-implementation/daily-risk-count-scheduler.md): previous-day risk updates at 05:15 Seoul in the existing dev and production Compose stacks.
 

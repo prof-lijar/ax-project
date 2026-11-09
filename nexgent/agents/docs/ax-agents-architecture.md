@@ -1,5 +1,389 @@
 # AX Agents Architecture
 
+## AX768 IMEI signal Test case (2026-11-04)
+
+`--case imei` is a deterministic case in the existing `ax768` graph and Test
+workspace. It parses the person's name (and optional typed address), searches
+the existing fixed rosters in 울진 → 광명 → 영덕 order, chooses the largest
+matching row and rechecks name/address while reading the configured IMEI cell.
+Invalid/missing IMEI stops at that person. It never edits Sheets, calls the AS
+completion graph, chooses a different person to get an IMEI, or calls the LLM.
+
+The workflow owns roster/column policy and the two required Korean messages.
+The shared `ax_integrations.ansimk` adapter owns the fixed-origin admin login,
+private cookie cache and signal API validation. Input uses the API's `sn` field
+with a 15-digit IMEI; the response must contain that IMEI, a string serial number,
+a boolean connection state and (for positives) fresh evidence. The user-facing
+S/N comes from the response, preserving leading zeros. Other HTTP or auth errors
+remain unknown/failed checks and never produce the disconnected-device message.
+Raw device payloads, subscriber records, phone numbers, login codes and cookies
+are excluded from the returned graph receipts.
+
+A valid cached/seeded cookie is reused. One explicit HTTP 401 allows one login
+and one resubmission; 403, timeout and server failures are not retried. Codes
+remain in a private file; refreshed cookies are atomically saved with mode 600.
+The dev container has read-only mounts for code and initial session plus a
+private named volume for renewed sessions. Standard authenticated HTTPX access
+works; no browser process or new Python dependency is required. Roster and
+signal stages have 150s/75s bounds inside the existing product API timeout.
+
+The existing `/api/ax768/runs` boundary adds case ID `imei`, requires the graph's
+`imei_case_version: Literal["1"]`, validates source/IMEI/S/N/connection receipts
+and only exposes bounded fields. The Test tab displays the requested Korean
+message, city, row, source link, IMEI column/value, serial number and signal
+strength, with separate connected, disconnected and failed outcomes. Existing
+numbered cases and the unified AS completion workflow retain their contracts.
+
+See [case usage and credential setup](../workflows/ax768/README.md#imei-test-case).
+
+## AX768 AS completion update (2026-11-04)
+
+Unified workflow version 3 adds `as_update_step` after a successful AS lookup.
+Only the selected AS row changes: S is `처리완료`, X is the current Asia/Seoul
+date, and Y is `위치점검완료` when C is `기기위치 점검` or `전원연결완료`
+when C is `기기전원 연결`. Other C values leave Y untouched. The seven numbered
+Test cases remain search-only. No background highlighting or device action occurs.
+
+Workflow-owned `as_update.py` validates the selected spreadsheet/tab/row against
+the configured AS client, refreshes metadata and rechecks name/address on that
+row before reading C. It submits one `spreadsheets.batchUpdate` with two or three
+single-cell UpdateCells requests, then reads back identity/C and changed values.
+X uses a numeric Sheets date with only its number format set to `yyyy-mm-dd`;
+S/Y use literal strings. Value fields and X's number format are the only write
+masks. Other values, formulas and background formatting are excluded.
+
+The update receipt records target row, Korea date, requested S/X/Y values,
+Y unchanged/updated policy and readback verification. Completion requires a
+verified update, not just a successful lookup. Pre-dispatch failure reports no
+write sent. After-dispatch errors, timeout, identity/C changes or readback
+mismatch report an unknown update and retain roster/AS evidence. No automatic
+mutation retries are configured. Sheets offers no conditional compare-and-set
+for these cells; concurrent row changes can race the recheck, and failed
+readback does not roll back a write. An uncertain result must be inspected
+before manually rerunning. Existing server checkpoints do not provide an
+exactly-once guarantee after a process crash.
+
+Rosters have a 150s budget, AS lookup 60s and update 40s, within the existing
+270s API / 285s browser limits. The admin API requires workflow version 3,
+validates exact S/X/Y receipts and returns a third stage to the UI. Browser
+copy discloses the write before Run, shows verified versus requested values,
+and preserves lookup receipts when the update fails. No new input parameter,
+credential or process is added. See
+[implementation and checks](../../docs/08-implementation/ax768-case-workspace.md#as-completion-step-2026-11-04).
+
+## AX768 automatic region from ordered rosters (2026-11-04)
+
+The operator removed manual region selection. Unified workflow version 2 accepts
+text and an optional confirmed candidate name only; the UI, API and CLI no longer
+accept a region. Every request, including name-only, searches 울진 → 광명 → 영덕
+and stops at the first matching roster, returning that roster's city and latest
+row. A missing match advances to the next roster; a read failure stops. If none
+matches, AS is skipped. Name-only requests then search AS by name only, selecting
+the bottom-most exact name; name/address requests keep both fields. The reported
+city is the roster source, not a separate assertion about the AS row's address.
+
+The product API requires `workflow_version: Literal["2"]` so an old version that
+skips rosters for name-only input is blocked before execution. No credential,
+write policy, target order or process boundary changed. This supersedes the
+manual-region and name-only skipping behavior documented in version 1 below.
+
+## AX768 unified roster and AS workflow (2026-11-04)
+
+`ax768_workflow` is a separate versioned graph in the existing AX768 capability.
+It parses one text request deterministically, then searches fixed rosters in order
+울진 → 광명 → 영덕 and hands the matched name/address to the bottom-up AS lookup.
+Name-only requests skip rosters; an optional user-selected KakaoTalk room region
+is recorded as context, never inferred from a same-name person or used as an AS
+filter. The seven Test cases keep their existing contracts.
+
+The shared GET-only `sheets_lookup` helper normalizes internal name whitespace,
+requires name/address on the same row, selects the largest row number, and
+rechecks the selected cells. It preserves the 100,000-cell target bound, 2000-cell
+pages and existing response cap. The workflow prefers an exact match in any
+roster over earlier suggestions. When no exact match exists, exactly one complete,
+address-matched suggestion differing by one Korean syllable (3–5 syllable names)
+is re-read and automatically used for AS; the correction is disclosed. Multiple
+candidates or truncated suggestions require a name selection and a fresh lookup.
+No AS fuzzy matching, LLM name invention, sheet writes or device operations occur.
+
+The admin/CSRF product boundary `POST /api/ax768/workflow/runs` accepts only text,
+optional region and an explicitly selected candidate name. It checks the private
+assistant's `workflow_version: Literal["1"]` schema before dispatch, normalizes
+bounded stage receipts and generates safe row links. Missing/older runtime returns
+409. Roster failures stop fallback; AS failures retain the earlier roster receipt.
+Rosters have a 180-second budget, AS 60 seconds, API 270 seconds and browser 285
+seconds. No automatic retry follows an uncertain transport result. Web runs are
+stateless and deleted on completion; browser drafts/results live only in component
+memory and survive tab switches, not page/account changes. There is no job store.
+
+The Workflow tab has combined input, optional region, elapsed loading and two
+result stages with source city/sheet/row. Images remain local previews; execution
+requires text and no attachments, with an explicit transcription instruction.
+Actual OCR and KakaoTalk integration remain future work. Deployment requires
+rebuilding Agent Server to register the new graph. See
+[workflow behavior and validation](../../docs/08-implementation/ax768-case-workspace.md#unified-roster-and-as-workflow-2026-11-04).
+
+## AX768 searches without highlighting (2026-11-04)
+
+The operator disabled yellow highlighting. All seven numbered cases now perform
+read-only lookup; case 1.1 and the name shorthand use `search_name`, case 2.2 uses
+`search_address`, and AS cases 2.3/4.3/6.3 use `search_person_row`. Ordered roster
+cases 4.2/6.2 are unchanged. Latest-row selection, target configuration and result
+links remain. New read-only shared actions reuse existing bounded matching;
+shared highlight tools remain for compatibility but AX768 rejects their execution,
+including stale saved decisions. Existing sheet formatting is left untouched.
+
+The graph input schema advertises `case_policy: Literal["search_only"]`. Before
+submitting a web run the product API checks the private assistant schema for that
+policy; an older graph receives no run and the browser reports that Agent Server
+needs a restart. This prevents a live old image from highlighting after the UI
+has switched to search-only labels. No general-purpose write capability is
+exposed through the numbered-case API.
+
+See [search-only rollout and checks](../../docs/08-implementation/ax768-case-workspace.md#search-only-update-2026-11-04).
+
+## AX768 browser case workspace (2026-11-04)
+
+The Nexgent frontend exposes an admin-only `/agents/ax768` case runner for the
+seven existing deterministic workflows. The product backend accepts only an
+explicit case ID and text at `POST /api/ax768/runs`, checks admin/CSRF permissions,
+and invokes private Agent Server assistant `ax768`. It returns bounded,
+normalized receipts instead of raw graph state. The workflow remains the owner
+of parsing, target configuration, latest-row selection and highlight verification.
+No new graph, shared-package dependency, persistent job store or general prompt
+execution path is introduced.
+
+Raw Agent Server proxy endpoints require admin access, except authenticated
+GET/HEAD `/ok`; normal chat retains its product API boundary. The dev Agent Server
+receives the existing service-account key through a read-only file mount.
+Browser drafts/results are session memory only (last 20 runs), cleared on refresh
+or identity/access changes. Loading uses elapsed time, not inferred stage progress.
+A timeout yields an unknown outcome and no automatic retry. Stored yellow with
+conditional-formatting overrides completes with a visible warning.
+
+See [implementation, validation and pending runtime restart](../../docs/08-implementation/ax768-case-workspace.md).
+
+## AX768 comma-separated AS lookup, case 6.3 (2026-11-03)
+
+`--case 6.3 "왕피길83-15,정영자,기기위치조정 수신확인요~"` uses case 6.2's
+comma-separated address/name/request parser and the existing AS person-row
+highlight action. It reuses `AX768_CASE_2_3_*` configuration and the same bounded
+bottom-up search, same-row matching, recheck and background-only write as cases
+2.3/4.3. The request text is retained in the input but not executed or matched.
+No match causes no write; saved yellow with visible overrides completes with a
+warning, while missing stored yellow fails. No city-roster search, signal check
+or device operation occurs. Tests cover parsing, AS target isolation, action
+restrictions and completion with warnings. Existing checkpoint/retry semantics
+are unchanged; no new contract or target configuration was introduced.
+The supplied live case 6.3 input returned `not_found` with no write; 136 focused
+AX768/contract tests passed.
+
+## AX768 comma-separated roster lookup, case 6.2 (2026-11-03)
+
+`--case 6.2 "왕피길83-15,정영자,기기위치조정 수신확인요~"` splits the first
+two commas into address, name and request text. Nonempty fields, a numbered
+address and a Korean name are required. Surrounding whitespace and optional
+`님` on the name are removed; commas after the second remain part of the request.
+The original message retains that request in state, but only name/address enter
+the existing typed `search_user_sheets` action. No device operation or receipt
+check is performed.
+
+Case 6.2 shares case 4.2's fixed targets, auth and deterministic read-only path:
+울진 → 광명 → 영덕, advancing only after no match, stopping on the first
+bottom-most same-row match or on an error. It returns city, alias, row, source
+link and ordered attempts. It neither highlights nor edits. Existing bounds,
+checkpoints and retry policy apply; no new schema or target configuration was
+needed. Tests cover comma parsing, malformed inputs, request-text isolation,
+all target positions, missing matches, failures and mutation rejection.
+The supplied live example found 울진군 row 369 without writes. All 122 focused
+AX768/contract tests passed.
+
+## AX768 AS signal-request lookup, case 4.3 (2026-11-03)
+
+`--case 4.3 "울진북로 164 김순옥님 신호확인요."` uses case 4.2's optional
+signal-request suffix parsing and case 2.3's AS lookup/highlight operation.
+It emits the existing `find_and_highlight_person_row` action and uses the same
+`AX768_CASE_2_3_*` target settings: AS 관리, name I, address H, data from row 7.
+No new integration, credentials or duplicate target configuration is needed.
+It searches bottom-up for both fields on one row, rechecks them and highlights
+only that row. Missing matches cause no write. Saved yellow across the row
+completes with warnings for visible overrides; missing saved yellow still fails.
+It neither searches city rosters nor checks device signals. The graph restricts
+this case to the AS action, with existing bounds, checkpoints and no automatic
+write retry. Tests cover CLI/suffix parsing, AS target isolation, forbidden
+actions, and completion with warnings.
+Live execution selected AS row 689 and confirmed saved yellow across A689:AJ689;
+the run completed with visible-format override warnings. All 104 focused
+AX768/contract tests passed.
+
+## AX768 ordered user-sheet lookup, case 4.2 (2026-11-03)
+
+`--case 4.2 "울진북로 164 김순옥님 신호확인요."` parses the address and name
+into a typed `search_user_sheets` action. The workflow-owned `city_search.py`
+holds the three approved targets and their order: uljin-users (울진군),
+gwangmyeon-users (광명시), yeongdeok-users (영덕군). These are the supplied user
+rosters, not the AS tab used by case 2.3. No input/model output can substitute
+another spreadsheet. Existing auth is reused; no separate target env vars are
+needed. The fixed case bypasses the model and performs no writes or signal checks.
+
+The shared `search_person` integration is extracted from case 2.3's search path.
+It finds and rechecks the bottom-most row where name and address match together,
+without formatting it. Case 2.3 wraps that search with its existing highlight.
+Case 4.2 tries targets sequentially, advances only on `not_found`, and stops on
+the first match or any read/auth/configuration failure. A failure remains a
+failure, with prior attempts recorded; it never implies a city was searched
+successfully. A match returns city, configured alias, spreadsheet/tab IDs, row,
+matched address cell, name cell and a direct sheet/row URL. Earlier sheets have
+priority; row numbers are compared only within each sheet.
+
+Verified layouts: 울진 C/H from row 6, 광명 D/G from row 5, 영덕 C/H from row 6
+(name/address columns). The same 100,000-cell per-target bound, 2000-cell page
+bound, 128,000-byte response cap, timeout and no-automatic-retry behavior apply.
+Only matched fields and compact attempt receipts enter graph state. Case 4.2
+rejects mutation actions; its tool is unavailable in other modes. Existing
+server checkpoints retain the result; the CLI remains stateless.
+
+The supplied live example found 울진군 row 44 and stopped before accessing later
+targets. All three target tabs and headers were read successfully. Tests cover
+ordered second/third-sheet fallback, all-not-found, same-row matching, bottom-most
+selection, early stop, read failures, parsing, case isolation and no writes.
+See [command and target map](../workflows/ax768/README.md#ordered-user-sheet-lookup).
+
+## AX768 saved-highlight completion with warnings (2026-11-03)
+
+Cases 2.2/2.3 now separate saved background verification (`stored_verified`)
+from visible yellow verification (`verified`, retaining its existing meaning).
+When every existing cell has saved yellow but some display another color, the
+tool returns `highlighted_with_warnings`; the graph reports `completed` and the
+CLI exits successfully. The response identifies overridden cells without claiming
+the whole row appears yellow. Missing stored yellow or incomplete row readback
+still fails. Case 1.1 retains its existing strict name-cell verification policy.
+This changes only completion semantics, not spreadsheet conditional formatting.
+Regression checks cover both cases, true missing-format failures, incomplete
+readback and the normal visible-yellow path.
+Live retest of `오봉길 24 주정수` completed at row 985 with saved yellow across
+A985:AJ985 and warnings for C985/O985. All 85 focused AX768/contract tests pass.
+
+## AX768 formatting readback size fix (2026-11-03)
+
+Case 2.2 address `상밤터1길 59-4` selected row 3548, but requesting all stored
+and effective formatting returned 128,726 bytes, exceeding the transport's
+128,000-byte limit. Address search pages themselves were below the limit.
+Row verification (cases 2.2/2.3) and name-cell verification (case 1.1) now request
+only `backgroundColor` and `backgroundColorStyle` inside both format objects;
+name verification also retains `formattedValue`. This preserves stored/visible
+yellow checks while excluding irrelevant borders, text styles and other formats.
+The response limit, search page sizes, mutation masks and no-write-retry policy
+are unchanged. A large-format regression fixture exercises the real byte guard.
+Live readback dropped to 38,524 bytes. Row 3548's stored backgrounds are yellow,
+but C3548 and E3548 remain effectively blue. The initial strict visibility
+policy reported failure; the saved-background policy below now treats this as
+completion with a warning. Results now report up to 20 `overridden_cells` and the full
+`overridden_cell_count`; user responses identify these cells without modifying
+existing conditional-format rules.
+
+## AX768 AS Sheet name/address matching, case 2.3 (2026-11-03)
+
+`--case 2.3 "후포로 158 김동명"` deterministically parses the final whitespace-
+separated Korean name and preceding address into `find_and_highlight_person_row`.
+Malformed input is rejected before external access. This case has its own
+`AX768_CASE_2_3_*` spreadsheet, numeric tab ID, name/address column and first-data-row
+settings. The live AS Sheet uses tab `AS 관리` (2142794645), column I for 가입자,
+H for 주소 and data beginning at row 7. Other cases keep their targets and behavior.
+
+The integration reads at most 100,000 configured grid cells in pages of at most
+2000 cells, visiting pages and rows bottom-up. The entire name cell must match
+after NFC normalization and trimming; the address uses the existing literal
+fragment matcher with whitespace normalization and numeric boundaries. Both must
+match on one row. It stops at the first qualifying row (largest row number),
+rechecks both cells, and highlights only that row across all existing columns
+(up to 2000). Shared background-only formatting verifies stored and effective
+yellow for every cell. Saved yellow across the row is sufficient for completion;
+visible overrides produce a warning. No match performs no write. `match_count` is 0 or 1,
+describing the selected row, not a total of earlier matches. No model is called.
+
+The graph rejects unrelated actions in case 2.3 and this case's action in other
+modes. Read/write failures stop without automatic retry; concurrent edits may
+still race the recheck. Existing checkpoint and partial-write recovery semantics
+apply. Tests cover same-row requirements, numeric false positives, descending
+pagination, latest selection, no match, changed name/address, read failure,
+conditional-format verification and case isolation. See
+[configuration and command](../workflows/ax768/README.md#as-sheet-name-and-address-search).
+Live execution of the supplied name/address returned `not_found` without writes.
+All 80 focused AX768/contract tests passed; live highlighting for a case 2.3
+match remains unverified.
+
+## AX768 address search, case 2.2 (2026-11-03)
+
+`--case 2.2 "후포로 158"` selects a deterministic `find_and_highlight_address_row`
+action. The workflow selects `AX768_CASE_2_2_SPREADSHEET` and
+`AX768_CASE_2_2_SHEET_ID` using the existing auth provider; optional
+`AX768_CASE_2_2_ADDRESS_COLUMNS` restricts the search to a column span. Case 1.1 and general
+mode retain their existing target. The shared typed action cannot supply a
+spreadsheet ID. Execution permits only address search and row highlighting in
+case 2.2 and rejects these tools outside that case before opening a Sheets client.
+The old `search_address` action remains read-only for existing recorded decisions.
+
+The integration scans the configured tab/column span in pages of at most 2000 cells,
+capped at 100,000 scanned grid cells and 100 matched cells. The live target uses
+G:H, identified from its road-address headers; its full 47-column grid exceeds
+the scan limit. Matching is a literal substring
+after NFC normalization, whitespace removal and case folding, with numeric
+boundaries to avoid matching 1580 for 158. Each address must occur within one
+cell; adjacent cells are not combined. Results contain matching row numbers and
+address cells, sorted by descending row number, with `selected_row` identifying
+the bottom-most match. The selected row's matching addresses are rechecked before
+a single background-only repeatCell batch colors the entire row yellow, from A
+through the tab's last column (up to 2000 cells). No match means no write. Both
+stored and effective colors are checked for every cell. Missing stored yellow
+fails verification; stored yellow with visible overrides completes with a warning. No model calls occur. Search failures precede
+any write. Concurrent changes can still race the recheck; no automatic write
+retry occurs. The CLI has no persistent checkpoint;
+server runs use existing graph checkpoints.
+
+Acceptance checks cover normalized and bounded-number matching, pagination,
+bottom-first grouping, no matches, read failures, target isolation, CLI routing
+and unrelated-mutation rejection, changed addresses, conditional-format overrides,
+and write failures. Live search verification succeeded with the configured service
+account: the supplied address matched eight rows, with 3998 bottom-most. The
+subsequent live highlight verified yellow across `A3998:AU3998`; 68 focused
+AX768/contract tests passed. See
+[configuration and command](../workflows/ax768/README.md#address-row-search).
+
+## AX768 Korean name highlight (2026-11-03)
+
+AX768 maps the explicit Korean shorthand `<name>님 신호확인요.` to a typed
+`find_and_highlight_name` action. This fixed request uses deterministic parsing
+and executes one constrained operation, while other requests retain the local
+LLM decision loop. It means a spreadsheet name highlight, not a device signal
+check. The runtime skill also exposes the action for model-directed requests.
+
+The CLI now selects this workflow with `--case 1.1 "<request text>"`.
+`workflows/ax768/cases.py` owns registered case IDs; the CLI and graph validate
+unknown cases or mismatched text before calling external services. Case IDs
+remain strings (1.10 is not 1.1). The graph records `case_id` in state/results.
+Omitting the flag preserves general mode and the existing shorthand behavior;
+threaded API callers send `case_id: null` to clear a prior case selection.
+
+The operator sets `AX768_SPREADSHEET` and `AX768_NAME_SEARCH_SHEET_ID` in the
+unified .env. The shared integration scans only that numeric tab ID in bounded
+2000-cell pages, matches NFC-normalized trimmed whole-cell text, and changes only
+the bottom-most matched cell background color to yellow with repeatCell.
+The largest row number defines latest; same-row ties choose the leftmost match.
+Only that one name cell is highlighted, with the total candidate count and selected
+row reported; earlier matches, unrelated names and cell values remain
+unchanged. No match produces no write. At most 100,000 grid cells and 100 matches
+are permitted; exceeding limits or failing any search read stops before writes.
+Only match addresses and receipts enter graph state, not the scanned roster.
+
+Targets are re-read before a single formatting batch. Readback checks both
+stored and effective color so conditional-format overrides cannot be reported
+as verified yellow. Search and write are not transactional against concurrent
+sheet edits. A verification failure may follow an applied batch; uncertain HTTP
+outcomes retain the existing no-automatic-retry policy. Repeat yellow formatting
+is idempotent, but recheck the selected names before replay after an interruption.
+See [configuration and command](../workflows/ax768/README.md#name-search-and-yellow-highlight).
+
 ## October 26 saved-count correction tool (2026-11-02)
 
 `playground/fix-oct26-previous-counts/run.sh` previews or applies a fixed-week
