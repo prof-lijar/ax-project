@@ -26,6 +26,8 @@ RESPONSE_HEADERS = {"content-type", "content-disposition", "content-encoding",
 
 def endpoint(variable, default):
     async def proxy(request: Request, path: str):
+        if variable == "AX_AGENT_SERVER_URL" and not (request.method in {"GET", "HEAD"} and path == "ok"):
+            require_admin(request)
         base = httpx.URL(os.getenv(variable, default).rstrip("/"))
         if base.scheme not in {"http", "https"} or not base.host or base.userinfo or base.query or base.fragment:
             return JSONResponse({"error": {"code": "integration_unavailable"}}, status_code=503)

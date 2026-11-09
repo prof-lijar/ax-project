@@ -13,6 +13,8 @@ def result_message(result):
         query = f"{result['name']} / {result['query']}"
         if result["status"] == "not_found":
             return f"'{query}' 이름과 주소가 같은 행을 찾지 못했습니다."
+        if result["status"] == "found":
+            return f"'{query}' 최신 일치 행: {result['selected_row']}행."
         if result["status"] == "highlighted_with_warnings":
             return (
                 f"'{query}' 최신 일치 행: {result['selected_row']}행. "

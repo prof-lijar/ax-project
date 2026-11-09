@@ -5,6 +5,7 @@ import {
   BookOpen,
   CircleAlert,
   FileBarChart,
+  FileSpreadsheet,
   MessageSquare,
   Search,
   SearchX,
@@ -15,6 +16,7 @@ import {
 import { useRef, useState, type MouseEvent } from "react";
 
 import {
+  AX768_AGENT_ID,
   RAG_CHAT_AGENT_ID,
   SCOUT_AGENT_ID,
   SUMIN_AGENT_ID,
@@ -66,6 +68,13 @@ export function AgentsPage() {
 // Product copy belongs to this presentation layer, not the shared catalog/API.
 export function getAgentPresentation(agent: AgentDefinition) {
   switch (agent.id) {
+    case AX768_AGENT_ID:
+      return {
+        icon: FileSpreadsheet, specialty: t("Spreadsheets"),
+        description: t("Find the right user or AS row, then review the result."),
+        capabilities: [t("Search users across cities"), t("Find the latest AS row")],
+        tone: "reporting"
+      };
     case WEEKLY_REPORTER_AGENT_ID:
       return {
         icon: FileBarChart,

@@ -18,6 +18,8 @@ from ax_contracts.sheets import (
     ReadCells,
     RenameTab,
     SearchAddress,
+    SearchName,
+    SearchPersonRow,
     WriteCells,
 )
 
@@ -151,12 +153,20 @@ class GoogleSheetsClient:
         )
 
     async def execute(self, action):
-        if isinstance(action, FindAndHighlightPersonRow):
-            from ax_integrations.sheets_person import find_and_highlight_person
+        if isinstance(action, (SearchPersonRow, FindAndHighlightPersonRow)):
+            from ax_integrations.sheets_person import (
+                find_and_highlight_person,
+                search_person,
+            )
 
             if self.search_sheet_id is None or self.search_sheet_id < 0:
                 raise ValueError("Configure the person-search tab ID")
-            return await find_and_highlight_person(
+            operation = (
+                search_person
+                if isinstance(action, SearchPersonRow)
+                else find_and_highlight_person
+            )
+            return await operation(
                 self,
                 sheet_id=self.search_sheet_id,
                 name=action.name,
@@ -184,14 +194,17 @@ class GoogleSheetsClient:
                 address=action.address,
                 columns=self.address_columns,
             )
-        if isinstance(action, FindAndHighlightName):
-            from ax_integrations.sheets_highlight import find_and_highlight
+        if isinstance(action, (SearchName, FindAndHighlightName)):
+            from ax_integrations.sheets_highlight import find_and_highlight, search_name
 
             if self.search_sheet_id is None or self.search_sheet_id < 0:
                 raise ValueError(
                     "configure AX768_NAME_SEARCH_SHEET_ID before searching names"
                 )
-            return await find_and_highlight(
+            operation = (
+                search_name if isinstance(action, SearchName) else find_and_highlight
+            )
+            return await operation(
                 self, sheet_id=self.search_sheet_id, name=action.name
             )
         if isinstance(action, (ReadCells, WriteCells, ClearCells)):

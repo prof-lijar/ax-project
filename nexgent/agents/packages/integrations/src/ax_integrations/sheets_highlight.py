@@ -36,7 +36,7 @@ def yellow(color):
     )
 
 
-async def find_and_highlight(client, *, sheet_id: int, name: str):
+async def _find_name(client, *, sheet_id: int, name: str, highlight: bool):
     name = normalize_name(name)
     if not name:
         raise ValueError("name must not be blank")
@@ -98,6 +98,8 @@ async def find_and_highlight(client, *, sheet_id: int, name: str):
     }
     if not matches:
         return {**base, "status": "not_found", "verified": True}
+    if not highlight:
+        return {**base, "status": "found", "verified": True}
     # Re-read exact targets before writing. A concurrent edit can still race the write.
     checks = await client._request(
         "GET",
@@ -166,3 +168,12 @@ async def find_and_highlight(client, *, sheet_id: int, name: str):
         "status": "highlighted" if set(matches) <= verified else "verification_failed",
         "verified": set(matches) <= verified,
     }
+
+
+async def search_name(client, *, sheet_id: int, name: str):
+    """Return the latest exact name match without any formatting requests."""
+    return await _find_name(client, sheet_id=sheet_id, name=name, highlight=False)
+
+
+async def find_and_highlight(client, *, sheet_id: int, name: str):
+    return await _find_name(client, sheet_id=sheet_id, name=name, highlight=True)

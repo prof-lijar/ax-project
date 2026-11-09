@@ -1,5 +1,168 @@
 # AX Agents Architecture
 
+## AX768 IMEI signal Test case (2026-11-04)
+
+`--case imei` is a deterministic case in the existing `ax768` graph and Test
+workspace. It parses the person's name (and optional typed address), searches
+the existing fixed rosters in 울진 → 광명 → 영덕 order, chooses the largest
+matching row and rechecks name/address while reading the configured IMEI cell.
+Invalid/missing IMEI stops at that person. It never edits Sheets, calls the AS
+completion graph, chooses a different person to get an IMEI, or calls the LLM.
+
+The workflow owns roster/column policy and the two required Korean messages.
+The shared `ax_integrations.ansimk` adapter owns the fixed-origin admin login,
+private cookie cache and signal API validation. Input uses the API's `sn` field
+with a 15-digit IMEI; the response must contain that IMEI, a string serial number,
+a boolean connection state and (for positives) fresh evidence. The user-facing
+S/N comes from the response, preserving leading zeros. Other HTTP or auth errors
+remain unknown/failed checks and never produce the disconnected-device message.
+Raw device payloads, subscriber records, phone numbers, login codes and cookies
+are excluded from the returned graph receipts.
+
+A valid cached/seeded cookie is reused. One explicit HTTP 401 allows one login
+and one resubmission; 403, timeout and server failures are not retried. Codes
+remain in a private file; refreshed cookies are atomically saved with mode 600.
+The dev container has read-only mounts for code and initial session plus a
+private named volume for renewed sessions. Standard authenticated HTTPX access
+works; no browser process or new Python dependency is required. Roster and
+signal stages have 150s/75s bounds inside the existing product API timeout.
+
+The existing `/api/ax768/runs` boundary adds case ID `imei`, requires the graph's
+`imei_case_version: Literal["1"]`, validates source/IMEI/S/N/connection receipts
+and only exposes bounded fields. The Test tab displays the requested Korean
+message, city, row, source link, IMEI column/value, serial number and signal
+strength, with separate connected, disconnected and failed outcomes. Existing
+numbered cases and the unified AS completion workflow retain their contracts.
+
+See [case usage and credential setup](../workflows/ax768/README.md#imei-test-case).
+
+## AX768 AS completion update (2026-11-04)
+
+Unified workflow version 3 adds `as_update_step` after a successful AS lookup.
+Only the selected AS row changes: S is `처리완료`, X is the current Asia/Seoul
+date, and Y is `위치점검완료` when C is `기기위치 점검` or `전원연결완료`
+when C is `기기전원 연결`. Other C values leave Y untouched. The seven numbered
+Test cases remain search-only. No background highlighting or device action occurs.
+
+Workflow-owned `as_update.py` validates the selected spreadsheet/tab/row against
+the configured AS client, refreshes metadata and rechecks name/address on that
+row before reading C. It submits one `spreadsheets.batchUpdate` with two or three
+single-cell UpdateCells requests, then reads back identity/C and changed values.
+X uses a numeric Sheets date with only its number format set to `yyyy-mm-dd`;
+S/Y use literal strings. Value fields and X's number format are the only write
+masks. Other values, formulas and background formatting are excluded.
+
+The update receipt records target row, Korea date, requested S/X/Y values,
+Y unchanged/updated policy and readback verification. Completion requires a
+verified update, not just a successful lookup. Pre-dispatch failure reports no
+write sent. After-dispatch errors, timeout, identity/C changes or readback
+mismatch report an unknown update and retain roster/AS evidence. No automatic
+mutation retries are configured. Sheets offers no conditional compare-and-set
+for these cells; concurrent row changes can race the recheck, and failed
+readback does not roll back a write. An uncertain result must be inspected
+before manually rerunning. Existing server checkpoints do not provide an
+exactly-once guarantee after a process crash.
+
+Rosters have a 150s budget, AS lookup 60s and update 40s, within the existing
+270s API / 285s browser limits. The admin API requires workflow version 3,
+validates exact S/X/Y receipts and returns a third stage to the UI. Browser
+copy discloses the write before Run, shows verified versus requested values,
+and preserves lookup receipts when the update fails. No new input parameter,
+credential or process is added. See
+[implementation and checks](../../docs/08-implementation/ax768-case-workspace.md#as-completion-step-2026-11-04).
+
+## AX768 automatic region from ordered rosters (2026-11-04)
+
+The operator removed manual region selection. Unified workflow version 2 accepts
+text and an optional confirmed candidate name only; the UI, API and CLI no longer
+accept a region. Every request, including name-only, searches 울진 → 광명 → 영덕
+and stops at the first matching roster, returning that roster's city and latest
+row. A missing match advances to the next roster; a read failure stops. If none
+matches, AS is skipped. Name-only requests then search AS by name only, selecting
+the bottom-most exact name; name/address requests keep both fields. The reported
+city is the roster source, not a separate assertion about the AS row's address.
+
+The product API requires `workflow_version: Literal["2"]` so an old version that
+skips rosters for name-only input is blocked before execution. No credential,
+write policy, target order or process boundary changed. This supersedes the
+manual-region and name-only skipping behavior documented in version 1 below.
+
+## AX768 unified roster and AS workflow (2026-11-04)
+
+`ax768_workflow` is a separate versioned graph in the existing AX768 capability.
+It parses one text request deterministically, then searches fixed rosters in order
+울진 → 광명 → 영덕 and hands the matched name/address to the bottom-up AS lookup.
+Name-only requests skip rosters; an optional user-selected KakaoTalk room region
+is recorded as context, never inferred from a same-name person or used as an AS
+filter. The seven Test cases keep their existing contracts.
+
+The shared GET-only `sheets_lookup` helper normalizes internal name whitespace,
+requires name/address on the same row, selects the largest row number, and
+rechecks the selected cells. It preserves the 100,000-cell target bound, 2000-cell
+pages and existing response cap. The workflow prefers an exact match in any
+roster over earlier suggestions. When no exact match exists, exactly one complete,
+address-matched suggestion differing by one Korean syllable (3–5 syllable names)
+is re-read and automatically used for AS; the correction is disclosed. Multiple
+candidates or truncated suggestions require a name selection and a fresh lookup.
+No AS fuzzy matching, LLM name invention, sheet writes or device operations occur.
+
+The admin/CSRF product boundary `POST /api/ax768/workflow/runs` accepts only text,
+optional region and an explicitly selected candidate name. It checks the private
+assistant's `workflow_version: Literal["1"]` schema before dispatch, normalizes
+bounded stage receipts and generates safe row links. Missing/older runtime returns
+409. Roster failures stop fallback; AS failures retain the earlier roster receipt.
+Rosters have a 180-second budget, AS 60 seconds, API 270 seconds and browser 285
+seconds. No automatic retry follows an uncertain transport result. Web runs are
+stateless and deleted on completion; browser drafts/results live only in component
+memory and survive tab switches, not page/account changes. There is no job store.
+
+The Workflow tab has combined input, optional region, elapsed loading and two
+result stages with source city/sheet/row. Images remain local previews; execution
+requires text and no attachments, with an explicit transcription instruction.
+Actual OCR and KakaoTalk integration remain future work. Deployment requires
+rebuilding Agent Server to register the new graph. See
+[workflow behavior and validation](../../docs/08-implementation/ax768-case-workspace.md#unified-roster-and-as-workflow-2026-11-04).
+
+## AX768 searches without highlighting (2026-11-04)
+
+The operator disabled yellow highlighting. All seven numbered cases now perform
+read-only lookup; case 1.1 and the name shorthand use `search_name`, case 2.2 uses
+`search_address`, and AS cases 2.3/4.3/6.3 use `search_person_row`. Ordered roster
+cases 4.2/6.2 are unchanged. Latest-row selection, target configuration and result
+links remain. New read-only shared actions reuse existing bounded matching;
+shared highlight tools remain for compatibility but AX768 rejects their execution,
+including stale saved decisions. Existing sheet formatting is left untouched.
+
+The graph input schema advertises `case_policy: Literal["search_only"]`. Before
+submitting a web run the product API checks the private assistant schema for that
+policy; an older graph receives no run and the browser reports that Agent Server
+needs a restart. This prevents a live old image from highlighting after the UI
+has switched to search-only labels. No general-purpose write capability is
+exposed through the numbered-case API.
+
+See [search-only rollout and checks](../../docs/08-implementation/ax768-case-workspace.md#search-only-update-2026-11-04).
+
+## AX768 browser case workspace (2026-11-04)
+
+The Nexgent frontend exposes an admin-only `/agents/ax768` case runner for the
+seven existing deterministic workflows. The product backend accepts only an
+explicit case ID and text at `POST /api/ax768/runs`, checks admin/CSRF permissions,
+and invokes private Agent Server assistant `ax768`. It returns bounded,
+normalized receipts instead of raw graph state. The workflow remains the owner
+of parsing, target configuration, latest-row selection and highlight verification.
+No new graph, shared-package dependency, persistent job store or general prompt
+execution path is introduced.
+
+Raw Agent Server proxy endpoints require admin access, except authenticated
+GET/HEAD `/ok`; normal chat retains its product API boundary. The dev Agent Server
+receives the existing service-account key through a read-only file mount.
+Browser drafts/results are session memory only (last 20 runs), cleared on refresh
+or identity/access changes. Loading uses elapsed time, not inferred stage progress.
+A timeout yields an unknown outcome and no automatic retry. Stored yellow with
+conditional-formatting overrides completes with a visible warning.
+
+See [implementation, validation and pending runtime restart](../../docs/08-implementation/ax768-case-workspace.md).
+
 ## AX768 comma-separated AS lookup, case 6.3 (2026-11-03)
 
 `--case 6.3 "왕피길83-15,정영자,기기위치조정 수신확인요~"` uses case 6.2's

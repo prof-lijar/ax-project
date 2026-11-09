@@ -1,10 +1,118 @@
 # AX768
 
+> Current behavior (2026-11-04): yellow highlighting is disabled for all numbered
+> cases and the name shorthand. They return the latest matching row without
+> changing values or formatting. The highlight descriptions and receipts below
+> are historical; current commands use the same inputs and IDs for search only.
+> Rebuild/restart Agent Server after updating. The browser blocks older versions
+> before execution. Existing highlights are not removed.
+
 AX768 is a local-LLM agent with Google Sheets as its first capability. It reuses
 the workspace's `URL`/`MODEL`/`OPENAI_API_KEY` (or `OPENAI_BASE_URL`/
 `OPENAI_MODEL`) settings and existing asynchronous model adapter. No cloud LLM
 fallback is configured. The model must support JSON-schema structured output.
 Google Sheets access still requires internet access to Google.
+
+## Browser workspace
+
+Administrators can open `/agents/ax768` from the Nexgent Agents page, select a
+case, enter a message and run it. The form includes examples, a loading timer,
+latest-row/city results, direct sheet links and a session-only recent history.
+All seven cases search without changes. Existing formatting remains unchanged.
+
+See the [workspace implementation and dev runtime setup](../../../docs/08-implementation/ax768-case-workspace.md).
+
+## IMEI Test case
+
+Choose **IMEI case** in the Test tab, enter `김순옥님 신호확인요.` and press
+**Check signal**. The CLI uses the same deterministic path:
+
+```bash
+uv run python -m apps.ax768.run --case imei "김순옥님 신호확인요."
+```
+
+It searches 울진 → 광명 → 영덕, selects the bottom-most exact name match
+(optionally also matching a typed address), rechecks the row and reads the
+city's configured IMEI cell. A missing/invalid IMEI stops at that person;
+it does not silently switch to an earlier row or another city's namesake.
+Only then does it call 설치보고관리 with `{"sn": "<15-digit IMEI>"}`.
+It never updates or highlights spreadsheet cells and does not run the AS
+completion workflow.
+
+The final message uses the **returned serial number**, preserving leading zeros:
+
+- Connected: `S/N 0000 신호 확인되었습니다.`
+- Disconnected: `S/N 0000 전원 연결 및 기기위치 확인해주세요.`
+
+HTTP/authentication failures, missing identifiers, stale positive responses and
+mismatched response IMEIs are failures, never proof of a disconnected device.
+The UI includes city, row, source link, IMEI, S/N and signal strength. Raw
+telemetry, account cookies and login codes are excluded from graph/browser output.
+
+The integration reuses a private session cookie; an explicit HTTP 401 permits
+one login and one resubmission. A timeout, 403 or server error is not retried.
+Code and initial browser session paths are configured in `.env.example` as
+file paths only. Local defaults are under `~/.local/share/nexgent/`:
+`ansimk-admin-code`, optional seed `ansimk-admin-session.json`, and renewable
+cache `ansimk-api-session.json`. New cache files use mode 600 and atomic replace.
+The dev container mounts the code and seed read-only and stores renewed sessions
+in its private `ax768_auth` volume. No browser dependency is needed; standard
+HTTPX authenticated access was verified.
+
+The product API requires `imei_case_version: Literal["1"]` in the running graph.
+Rebuild Agent Server after installing the change. Roster reads are bounded to
+150 seconds and login/ping to 75 seconds. The case uses fixed sheet/API targets
+and no model-selected tools. A new run starts fresh and does not auto-replay an
+uncertain device request.
+
+## Unified workflow
+
+Use the **Workflow** tab at `/agents/ax768`, or run from `agents/`:
+
+```bash
+uv run python -m apps.ax768.run --workflow "울진북로 164 김순옥님 신호확인요."
+uv run python -m apps.ax768.run --workflow "김순옥님 신호확인요."
+uv run python -m apps.ax768.run --workflow "지영희님 신호확인요 & 상밤터1길 59-4(사진)."
+uv run python -m apps.ax768.run --workflow "왕피길83-15,정영자,기기위치조정 수신확인요~"
+uv run python -m apps.ax768.run --workflow "영덕군 영덕읍 영덕대게로 699긴 영호,기기위치조정 수신확인요~"
+```
+
+Name/address requests search 울진 → 광명 → 영덕, stop on the first exact
+same-row match and then find the bottom-most AS name/address row. Name-only
+requests also search the rosters in order, then use the latest AS name match.
+The city is taken from the first matching roster; no region input is needed.
+If all rosters have no match, AS is skipped. The response includes each matched
+source and row. Rebuild Agent Server for workflow version 3.
+
+Name spacing is ignored. If no exact roster match exists, one unique
+address-matched Korean name differing by one syllable is automatically rechecked
+and used, with a correction notice. Several candidates require selection; the
+CLI can repeat the same request with `--confirmed-name "김영호"`. This rechecks
+that name/address across the rosters in the usual priority order. Candidate
+selection is by name, not a promise to choose a particular city. Latest means
+largest row number within the selected sheet.
+
+After an AS match, the workflow updates only that row:
+
+| Column | Saved value |
+| --- | --- |
+| S · 진행상태 | 처리완료 |
+| X | Today's Asia/Seoul date, displayed as `yyyy-mm-dd` |
+| Y | `위치점검완료` for C = `기기위치 점검`; `전원연결완료` for C = `기기전원 연결`; otherwise unchanged |
+
+It rechecks the selected row before one batch write and reads back the saved
+values. No match means no write. No background highlighting occurs. An unknown
+write result must be inspected before manually running again; there is no
+automatic retry or rollback. A concurrent row edit can still race the identity
+check. The third result stage shows saved or unverified requested values.
+
+The workflow uses existing service-account/AS settings and never checks signals
+or moves devices. Images are not sent or OCR processed;
+type the photo address and remove attachments before running. `not_found`,
+`needs_confirmation`, `blocked` and `failed` retain stage receipts and exit CLI
+with code 1; `completed` requires verified S/X/Y completion and exits 0. Failures stop the
+affected step, and no automatic retry occurs. AS/update failures keep earlier
+lookup results.
 
 ## Setup and run
 

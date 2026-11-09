@@ -4,22 +4,24 @@ import re
 import unicodedata
 
 from ax_contracts.sheets import (
-    FindAndHighlightAddressRow,
-    FindAndHighlightName,
-    FindAndHighlightPersonRow,
+    SearchAddress,
+    SearchName,
+    SearchPersonRow,
     SearchUserSheets,
 )
 
+from workflows.ax768.request_parser import parse_request
 from workflows.ax768.signal_check import requested_name
 
 CASE_DESCRIPTIONS = {
-    "1.1": "Find a person's latest name row and highlight its name cell yellow",
-    "2.2": "Find an address and highlight the bottom-most matching row yellow",
-    "2.3": "Find the latest AS row matching address and name, and highlight yellow",
+    "imei": "IMEI case: find a roster IMEI and check its device signal",
+    "1.1": "Find a person's latest matching name row",
+    "2.2": "Find an address and return the bottom-most matching row",
+    "2.3": "Find the latest AS row matching address and name",
     "4.2": "Search user sheets in order by address and name; return city and latest row",
-    "4.3": "Find the latest AS name/address row from a signal-check request and highlight yellow",
+    "4.3": "Find the latest AS name/address row from a signal-check request",
     "6.2": "Find a user across city rosters from address,name,request text",
-    "6.3": "Find the latest AS row from address,name,request text and highlight yellow",
+    "6.3": "Find the latest AS row from address,name,request text",
 }
 
 
@@ -30,6 +32,9 @@ def case_action(case_id: str | None, message: str):
         raise ValueError(
             f"Unknown AX768 case: {case_id}. Available cases: {', '.join(CASE_DESCRIPTIONS)}"
         )
+    if case_id == "imei":
+        parse_request(message)
+        return None
     if case_id in {"6.2", "6.3"}:
         parts = [
             part.strip() for part in unicodedata.normalize("NFC", message).split(",", 2)
@@ -45,9 +50,7 @@ def case_action(case_id: str | None, message: str):
                 f"Case {case_id} requires an address with a number and a Korean name"
             )
         if case_id == "6.3":
-            return FindAndHighlightPersonRow(
-                tool="find_and_highlight_person_row", name=name, address=address
-            )
+            return SearchPersonRow(tool="search_person_row", name=name, address=address)
         return SearchUserSheets(tool="search_user_sheets", name=name, address=address)
     if case_id in {"2.3", "4.2", "4.3"}:
         text = unicodedata.normalize("NFC", message).strip()
@@ -71,14 +74,12 @@ def case_action(case_id: str | None, message: str):
             return SearchUserSheets(
                 tool="search_user_sheets", address=parts[0], name=parts[1]
             )
-        return FindAndHighlightPersonRow(
-            tool="find_and_highlight_person_row", address=parts[0], name=parts[1]
+        return SearchPersonRow(
+            tool="search_person_row", address=parts[0], name=parts[1]
         )
     if case_id == "2.2":
-        return FindAndHighlightAddressRow(
-            tool="find_and_highlight_address_row", address=message.strip()
-        )
+        return SearchAddress(tool="search_address", address=message.strip())
     name = requested_name(message)
     if name is None:
         raise ValueError('Case 1.1 expects a request such as "김순옥님 신호확인요."')
-    return FindAndHighlightName(tool="find_and_highlight_name", name=name)
+    return SearchName(tool="search_name", name=name)

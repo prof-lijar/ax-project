@@ -1,11 +1,9 @@
 """Bounded decision/tool loop. Agent Server owns thread checkpoint persistence."""
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import httpx
 from ax_contracts.sheets import Finish, SheetDecision
@@ -37,6 +35,8 @@ MAX_CONTEXT_CHARS = 48000
 class AX768State(TypedDict, total=False):
     message: str
     case_id: str | None
+    case_policy: Literal["search_only"]
+    imei_case_version: Literal["1"]
     status: str
     response: str
     observations: list[dict]
@@ -126,7 +126,7 @@ async def initialize(state: AX768State):
                 "START_ROW",
             )
         )
-    if state.get("case_id") in {"4.2", "6.2"}:
+    if state.get("case_id") in {"4.2", "6.2", "imei"}:
         target_keys = ()  # Fixed approved roster targets are owned by city_search.
     if any(not os.getenv(key) for key in (*target_keys, credential_key)):
         return {
@@ -139,6 +139,14 @@ async def initialize(state: AX768State):
             ),
         }
     try:
+        if state.get("case_id") == "imei":
+            from workflows.ax768.imei_case import run_imei_case
+
+            provider, key = auth_settings()
+            return {
+                **fresh,
+                **await run_imei_case(state["message"], provider(os.environ[key])),
+            }
         if state.get("case_id") in {"4.2", "6.2"}:
             return {**fresh, "status": "running"}
         async with httpx.AsyncClient(timeout=30) as http:
@@ -166,14 +174,14 @@ async def decide(state: AX768State):
             "decision": {"schema_version": "1", "action": selected.model_dump()},
             "steps": state.get("steps", 0) + 1,
         }
-    # This documented shorthand grants exactly one name-highlight action.
+    # This documented shorthand grants exactly one read-only name search.
     name = requested_name(state.get("message", ""))
     if name:
         return {
             "decision": {
                 "schema_version": "1",
                 "action": {
-                    "tool": "find_and_highlight_name",
+                    "tool": "search_name",
                     "name": name,
                 },
             },
@@ -229,6 +237,14 @@ async def execute(state: AX768State):
     action = SheetDecision.model_validate(state["decision"]).action
     result = None
     try:
+        if state.get("case_id") == "imei":
+            raise ValueError("IMEI case permits only its fixed roster and signal-check pipeline")
+        if action.tool.startswith("find_and_highlight_"):
+            raise ValueError(
+                "Yellow highlighting is disabled for AX768; submit a new search"
+            )
+        if state.get("case_id") == "1.1" and action.tool != "search_name":
+            raise ValueError("Case 1.1 permits only read-only name search")
         if state.get("case_id") in {"4.2", "6.2"}:
             if action.tool != "search_user_sheets":
                 raise ValueError(
@@ -254,11 +270,11 @@ async def execute(state: AX768State):
             }
         if action.tool == "search_user_sheets":
             raise ValueError("Select --case 4.2 or --case 6.2 for user-sheet lookup")
-        address_tools = {"search_address", "find_and_highlight_address_row"}
-        person_tool = "find_and_highlight_person_row"
+        address_tools = {"search_address"}
+        person_tool = "search_person_row"
         if state.get("case_id") in {"2.3", "4.3", "6.3"} and action.tool != person_tool:
             raise ValueError(
-                "Cases 2.3/4.3/6.3 permit only same-row name/address search and highlighting"
+                "Cases 2.3/4.3/6.3 permit only read-only same-row name/address search"
             )
         if action.tool == person_tool and state.get("case_id") not in {
             "2.3",
@@ -269,9 +285,7 @@ async def execute(state: AX768State):
                 "Select --case 2.3, --case 4.3 or --case 6.3 for AS name/address search"
             )
         if state.get("case_id") == "2.2" and action.tool not in address_tools:
-            raise ValueError(
-                "Case 2.2 permits only address search and row highlighting"
-            )
+            raise ValueError("Case 2.2 permits only read-only address search")
         if action.tool in address_tools and state.get("case_id") != "2.2":
             raise ValueError("Select --case 2.2 for address search")
         async with httpx.AsyncClient(timeout=30) as http:
@@ -286,6 +300,12 @@ async def execute(state: AX768State):
                 "delete_columns",
             }:
                 result = {"operation": result, "metadata": await sheets.metadata()}
+        if action.tool in {
+            "search_name",
+            "search_address",
+            "search_person_row",
+        } and result.get("status") not in {"found", "not_found"}:
+            raise ValueError("Search returned an unexpected operation result")
         observation = {
             "tool": action.tool,
             "arguments": action.model_dump(),
@@ -300,7 +320,7 @@ async def execute(state: AX768State):
                 else "failed",
                 "response": address_result_message(result),
             }
-        if action.tool == "find_and_highlight_name":
+        if action.tool == "search_name":
             return {
                 "decision": None,
                 "observations": [*state["observations"], observation],
@@ -315,8 +335,8 @@ async def execute(state: AX768State):
             "response": (
                 "User-sheet lookup failed. "
                 if state.get("case_id") in {"4.2", "6.2"}
-                else "Address search/highlight failed; formatting may have been applied. "
-                if state.get("case_id") in {"2.2", "2.3", "4.3", "6.3"}
+                else "Sheet search failed. "
+                if state.get("case_id") in {"1.1", "2.2", "2.3", "4.3", "6.3"}
                 else "Stopped after a tool failure. Earlier edits may have completed. "
             )
             + str(exc),

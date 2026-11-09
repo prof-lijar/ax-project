@@ -74,6 +74,10 @@ services:
     env_file:
       - ./agents/.env
     environment:
+      AX768_GOOGLE_CREDENTIALS_FILE: /run/ax768/service-account.json
+      AX768_ANSIMK_CODE_FILE: /run/ax768/ansimk-admin-code
+      AX768_ANSIMK_SESSION_SEED_FILE: /run/ax768/ansimk-admin-session.json
+      AX768_ANSIMK_SESSION_FILE: /run/ax768-auth/session.json
       LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
       SEARXNG_BASE_URL: http://searxng:8080
       OPENAI_SUPPORTS_VISION: "${OPENAI_SUPPORTS_VISION:-false}"
@@ -86,6 +90,25 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - chat_attachments:/run/ax-chat:ro
+      - type: bind
+        source: ${AX768_SERVICE_ACCOUNT_HOST_FILE:-/home/nextor-ai-02/.local/share/nexgent/nexgent-service-account.json}
+        target: /run/ax768/service-account.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AX768_ANSIMK_CODE_HOST_FILE:-/home/nextor-ai-02/.local/share/nexgent/ansimk-admin-code}
+        target: /run/ax768/ansimk-admin-code
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AX768_ANSIMK_SESSION_HOST_FILE:-/home/nextor-ai-02/.local/share/nexgent/ansimk-admin-session.json}
+        target: /run/ax768/ansimk-admin-session.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ax768_auth:/run/ax768-auth
     init: true
     expose:
       - "2024"
@@ -380,6 +403,7 @@ networks:
     name: nexgent-rag_default
 
 volumes:
+  ax768_auth:
   chat_files:
   scout-reports:
   frontend_node_modules:

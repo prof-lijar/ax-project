@@ -173,7 +173,7 @@ async def test_oversized_grid_fails_before_partial_search(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case_id", [None, "1.1"])
-async def test_graph_shorthand_only_dispatches_name_highlight(monkeypatch, case_id):
+async def test_graph_shorthand_only_dispatches_name_search(monkeypatch, case_id):
     workflow = importlib.import_module("workflows.ax768.graph")
     monkeypatch.setenv("AX768_GOOGLE_AUTH_MODE", "service_account")
     monkeypatch.setenv("AX768_GOOGLE_CREDENTIALS_FILE", "/fake.json")
@@ -189,7 +189,8 @@ async def test_graph_shorthand_only_dispatches_name_highlight(monkeypatch, case_
             return {
                 "name": action.name,
                 "verified": True,
-                "status": "highlighted",
+                "status": "found",
+                "selected_row": 81,
                 "match_count": 1,
                 "matched_cells": ["'명단'!B81"],
             }
@@ -204,4 +205,6 @@ async def test_graph_shorthand_only_dispatches_name_highlight(monkeypatch, case_
     )
     assert result["status"] == "completed"
     assert len(calls) == 1 and calls[0].name == "김순옥"
-    assert "노란색" in result["response"]
+    assert calls[0].tool == "search_name"
+    assert "81행" in result["response"]
+    assert "노란색" not in result["response"]

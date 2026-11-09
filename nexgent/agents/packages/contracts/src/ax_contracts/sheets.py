@@ -75,6 +75,17 @@ class FindAndHighlightName(Action):
     name: str = Field(min_length=1, max_length=100)
 
 
+class SearchName(Action):
+    tool: Literal["search_name"]
+    name: str = Field(min_length=1, max_length=100)
+
+
+class SearchPersonRow(Action):
+    tool: Literal["search_person_row"]
+    name: str = Field(min_length=1, max_length=100)
+    address: str = Field(min_length=1, max_length=200)
+
+
 class SearchAddress(Action):
     tool: Literal["search_address"]
     address: str = Field(min_length=1, max_length=200)
@@ -107,6 +118,8 @@ SheetAction = Annotated[
     | DeleteDimension
     | FindAndHighlightName
     | SearchAddress
+    | SearchName
+    | SearchPersonRow
     | FindAndHighlightAddressRow
     | FindAndHighlightPersonRow
     | SearchUserSheets

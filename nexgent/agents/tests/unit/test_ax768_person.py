@@ -5,6 +5,7 @@ import json
 
 import httpx
 import pytest
+from ax_contracts.sheets import FindAndHighlightPersonRow
 from ax_integrations import sheets_person
 from ax_integrations.google_sheets import GoogleSheetsClient, SheetsError
 
@@ -133,7 +134,9 @@ async def test_bottom_up_match_and_verified_highlight(monkeypatch, scenario):
             person_address_column="H",
             search_start_row=7,
         )
-        action = case_action("2.3", "후포로 158 김동명")
+        action = FindAndHighlightPersonRow(
+            tool="find_and_highlight_person_row", address="후포로 158", name="김동명"
+        )
         if scenario in {"name_changed", "address_changed", "read_error"}:
             with pytest.raises(SheetsError):
                 await client.execute(action)

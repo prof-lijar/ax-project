@@ -148,7 +148,7 @@ async def test_case_2_2_uses_own_client_and_no_model(monkeypatch):
             return {}
 
         async def execute(self, action):
-            assert action.tool == "find_and_highlight_address_row"
+            assert action.tool == "search_address"
             return {"status": "not_found", "query": action.address}
 
     def forbidden(*args):
@@ -386,7 +386,7 @@ async def test_unverified_row_highlight_is_not_completed(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("case_id", ["2.2", "2.3", "4.3", "6.3"])
-async def test_saved_highlight_with_visible_override_completes_with_warning(
+async def test_search_rejects_unexpected_highlight_receipt(
     monkeypatch, case_id
 ):
     workflow = importlib.import_module("workflows.ax768.graph")
@@ -421,10 +421,8 @@ async def test_saved_highlight_with_visible_override_completes_with_warning(
             "decision": {"action": case_action(case_id, message).model_dump()},
         }
     )
-    assert result["status"] == "completed"
-    assert "배경 저장을 확인했습니다" in result["response"]
-    assert "C985" in result["response"]
-    assert "확인하지 못했습니다" not in result["response"]
+    assert result["status"] == "failed"
+    assert "unexpected operation result" in result["response"]
 
 
 @pytest.mark.asyncio

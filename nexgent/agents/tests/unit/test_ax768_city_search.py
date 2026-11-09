@@ -186,7 +186,7 @@ async def test_city_graph_routes_without_single_sheet_or_model(monkeypatch, case
 def test_comma_case_parses_only_address_and_name(message, case_id):
     action = case_action(case_id, message)
     assert action.tool == (
-        "search_user_sheets" if case_id == "6.2" else "find_and_highlight_person_row"
+        "search_user_sheets" if case_id == "6.2" else "search_person_row"
     )
     assert action.address == "왕피길83-15"
     assert action.name == "정영자"

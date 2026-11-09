@@ -7,18 +7,19 @@ import {
 } from "./agentCatalogClient";
 
 describe("agentCatalogClient", () => {
-  it("returns Weekly Reporter, RAG Agent, the ADK Scout, and Sumin", async () => {
+  it("returns the existing collaborators and AX768", async () => {
     const first = await agentCatalogClient.listAgents();
     const second = await agentCatalogClient.listAgents();
 
     expect(first).toEqual(second);
     expect(first).not.toBe(second);
-    expect(first).toHaveLength(4);
+    expect(first).toHaveLength(5);
     expect(first.map(({ id, graphId }) => ({ id, graphId }))).toEqual([
       { id: "1", graphId: "ansimk_weekly_reporter" },
       { id: "7", graphId: "rag_chat" },
       { id: "ansimk_scout_agent", graphId: "ansimk_scout_agent" },
-      { id: "sumin", graphId: "sumin" }
+      { id: "sumin", graphId: "sumin" },
+      { id: "ax768", graphId: "ax768" }
     ]);
     expect(first[0]).toMatchObject({
       id: "1",

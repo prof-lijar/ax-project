@@ -4,6 +4,7 @@ import { useEffect, useRef, type PropsWithChildren } from "react";
 import { accountClient } from "../../shared/api/accountClient";
 import { AUTH_EXPIRED_EVENT, setCsrfToken } from "../../shared/api/authenticatedFetch";
 import { createConversation, useChatStore } from "../../shared/state/useChatStore";
+import { useAx768Store } from "../../shared/state/useAx768Store";
 import { useAgentRunStore } from "../../shared/state/useAgentRunStore";
 import { useUiStore } from "../../shared/state/useUiStore";
 import { AccountContext } from "./accountContext";
@@ -11,6 +12,7 @@ import { SignIn } from "./AccountApp";
 import styles from "./AccountApp.module.css";
 
 function resetFeatureState() {
+  useAx768Store.getState().reset();
   const conversation = createConversation();
   useChatStore.setState({ conversations: [conversation], activeId: conversation.id, activeRequest: null });
   useAgentRunStore.getState().resetRuns();
@@ -52,7 +54,10 @@ function BrowserAuthGate({ children }: PropsWithChildren) {
     }
   });
   useEffect(() => {
-    if (!query.data?.is_admin) client.removeQueries({ queryKey: ["access"] });
+    if (!query.data?.is_admin) {
+      client.removeQueries({ queryKey: ["access"] });
+      useAx768Store.getState().reset();
+    }
   }, [client, query.data?.is_admin]);
   useEffect(() => {
     const expire = () => {

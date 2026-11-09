@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { AdminOnly } from "../features/accounts/AdminOnly";
 
+import { Ax768WorkbenchPage } from "../features/agents/Ax768WorkbenchPage";
 import { AgentDetailPage } from "../features/agents/AgentDetailPage";
 import { AgentsPage } from "../features/agents/AgentsPage";
 import { ScoutWorkbenchPage } from "../features/agents/ScoutWorkbenchPage";
@@ -21,6 +22,7 @@ import { useUiStore } from "../shared/state/useUiStore";
 import { AppShell } from "./shell/AppShell";
 
 export function getAgentsRoute(agentId: string | null) {
+  if (agentId === "ax768") return { kind: "ax768" } as const;
   if (agentId === "1") {
     return { kind: "weekly-reporter" } as const;
   }
@@ -61,6 +63,8 @@ export function App() {
           <AdminOnly><WeeklyReporterPage /></AdminOnly>
         ) : agentsRoute.kind === "scout" ? (
           <AdminOnly><ScoutWorkbenchPage /></AdminOnly>
+        ) : agentsRoute.kind === "ax768" ? (
+          <AdminOnly><Ax768WorkbenchPage /></AdminOnly>
         ) : agentsRoute.kind === "detail" ? (
           <AdminOnly><AgentDetailPage agentId={agentsRoute.agentId} /></AdminOnly>
         ) : (
