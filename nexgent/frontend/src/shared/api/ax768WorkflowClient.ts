@@ -1,5 +1,5 @@
 import { authenticatedFetch } from "./authenticatedFetch";
-import { isSheetUrl } from "./ax768Client";
+import { isSheetUrl, isMemberNote, type MemberNoteReceipt } from "./ax768Client";
 import { ACTIVE_AX768_WORKFLOW, type Ax768WorkflowId } from "./ax768Workflows";
 
 export type WorkflowStatus = "completed" | "disconnected" | "not_found" | "needs_confirmation" | "blocked" | "failed";
@@ -25,11 +25,12 @@ export interface WorkflowResult {
   id: string; started_at: string; duration_ms: number; status: WorkflowStatus; response: string;
   parsed: { name: string | null; lookup_name: string | null; address: string | null; mode: string | null; };
   signal: WorkflowSignal;
+  member_note: MemberNoteReceipt | null;
   roster: WorkflowStage; as_lookup: WorkflowStage; as_update: WorkflowUpdate; candidates: WorkflowStage[]; notices: string[];
   attempts: Array<{sheet_alias: string | null; city: string | null; status: "found" | "not_found" | "failed"}>;
 }
 export const workflowStatusLabels: Record<WorkflowStatus, string> = {
-  completed: "Signal confirmed · AS updated", disconnected: "Device disconnected", not_found: "No match", needs_confirmation: "Choose a matching name", blocked: "Needs attention", failed: "Run failed"
+  completed: "Signal confirmed · General notes saved", disconnected: "Device disconnected", not_found: "No match", needs_confirmation: "Choose a matching name", blocked: "Needs attention", failed: "Run failed"
 };
 const nullableString = (v: unknown) => v === null || typeof v === "string";
 function isStage(value: unknown): value is WorkflowStage {
@@ -67,6 +68,21 @@ function isSignal(value: unknown, roster: WorkflowStage): value is WorkflowSigna
   }
   return v.sn === null && v.connected === null && v.fresh === null;
 }
+function isWorkflowMember(value: unknown, v: WorkflowResult): boolean {
+  if (value === null) return v.status !== "completed";
+  if (!value || typeof value !== "object") return false;
+  const m = value as MemberNoteReceipt;
+  const outcomes = {saved: "note_saved", already_present: "note_present", not_found: "not_found", needs_confirmation: "blocked", blocked: "blocked", failed: "failed", unknown: "unknown"};
+  const status = ["saved", "already_present", "not_found"].includes(m.status) ? "completed" : ["blocked", "needs_confirmation"].includes(m.status) ? "blocked" : "failed";
+  const compact = (s: string | null) => (s ?? "").normalize("NFKC").replace(/\s+/g, "");
+  return isMemberNote(m, status, outcomes[m.status]) && v.signal.status === "connected" &&
+    (v.as_lookup.status === "found" && v.as_update.status === "updated" || v.as_lookup.status === "not_found" && v.as_update.status === "skipped") &&
+    /^\d{4}-\d{2}-\d{2} \[현지관리자 방문\] (기기위치조정|전원연결)$/.test(m.note ?? "") &&
+    (v.as_update.status !== "updated" || m.note?.slice(0, 10) === v.as_update.date) &&
+    !!compact(v.roster.name) && compact(m.name).includes(compact(v.roster.name)) &&
+    !!compact(v.roster.address) && compact(m.address) === compact(v.roster.address) &&
+    (m.verified === (v.status === "completed"));
+}
 function isResult(value: unknown): value is WorkflowResult {
   if (!value || typeof value !== "object") return false;
   const v = value as WorkflowResult;
@@ -75,7 +91,8 @@ function isResult(value: unknown): value is WorkflowResult {
     !!v.parsed && typeof v.parsed === "object" && [v.parsed.name, v.parsed.lookup_name, v.parsed.address, v.parsed.mode].every(nullableString) &&
     isStage(v.roster) && isStage(v.as_lookup) && isUpdate(v.as_update) && isSignal(v.signal, v.roster) &&
     (!["updated", "unknown"].includes(v.as_update.status) || v.signal.status === "connected") &&
-    (v.status !== "disconnected" || v.signal.status === "disconnected" && v.as_update.status === "skipped") && (v.status !== "completed" || (v.as_lookup.status === "found" && v.as_update.status === "updated" && v.as_update.row === v.as_lookup.row)) &&
+    (v.status !== "disconnected" || v.signal.status === "disconnected" && v.as_update.status === "skipped") &&
+    (v.as_update.status !== "updated" || v.as_update.row === v.as_lookup.row) && isWorkflowMember(v.member_note, v) &&
     Array.isArray(v.candidates) && v.candidates.length <= 10 && v.candidates.every(isStage) &&
     Array.isArray(v.notices) && v.notices.every(n => typeof n === "string") &&
     Array.isArray(v.attempts) && v.attempts.every(a => a && ["found", "not_found", "failed"].includes(a.status) && [a.city, a.sheet_alias].every(nullableString));
@@ -85,7 +102,7 @@ export async function runAx768Workflow(workflowId: Ax768WorkflowId | "", message
   if (workflowId !== ACTIVE_AX768_WORKFLOW) throw new Error("This workflow is coming soon.");
   if (!message.trim() || message.length > 8000) throw new Error("Enter a message of 1–8,000 characters.");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 285_000);
+  const timeout = setTimeout(() => controller.abort(), 435_000);
   try {
     const response = await authenticatedFetch("/api/ax768/workflow/runs", {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -94,12 +111,12 @@ export async function runAx768Workflow(workflowId: Ax768WorkflowId | "", message
     if ([401, 403].includes(response.status)) throw new Error("Administrator access is required.");
     if (response.status === 409) throw new Error("Restart Agent Server to enable the unified workflow.");
     if (response.status === 422) throw new Error("Check the name and address in your request.");
-    if (!response.ok) throw new Error("The workflow result could not be retrieved. Check the AS row before running again.");
+    if (!response.ok) throw new Error("The workflow result could not be retrieved. Check the AS row and member general notes before running again.");
     const result: unknown = await response.json();
-    if (!isResult(result)) throw new Error("The workflow result could not be retrieved. Check the AS row before running again.");
+    if (!isResult(result)) throw new Error("The workflow result could not be retrieved. Check the AS row and member general notes before running again.");
     return result;
   } catch (error) {
     if (error instanceof Error && ["Administrator access is required.", "Restart Agent Server to enable the unified workflow.", "Check the name and address in your request."].includes(error.message)) throw error;
-    throw new Error("The workflow result could not be retrieved. Check the AS row before running again.");
+    throw new Error("The workflow result could not be retrieved. Check the AS row and member general notes before running again.");
   } finally { clearTimeout(timeout); }
 }

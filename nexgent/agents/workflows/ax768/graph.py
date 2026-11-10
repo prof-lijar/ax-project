@@ -37,6 +37,7 @@ class AX768State(TypedDict, total=False):
     case_id: str | None
     case_policy: Literal["search_only"]
     imei_case_version: Literal["1"]
+    member_note_case_version: Literal["2"]
     status: str
     response: str
     observations: list[dict]
@@ -106,6 +107,16 @@ async def initialize(state: AX768State):
         case_action(state.get("case_id"), state["message"])
     except ValueError as exc:
         return {**fresh, "status": "blocked", "response": str(exc)}
+    if state.get("case_id") == "member_note":
+        if state.get("member_note_case_version") != "2":
+            return {
+                **fresh,
+                "status": "blocked",
+                "response": "가입자 일반 사항 테스트 버전을 확인해 주세요.",
+            }
+        from workflows.ax768.member_note import run_member_note
+
+        return {**fresh, **await run_member_note(state["message"])}
     try:
         _, credential_key = auth_settings()
     except ValueError as exc:
@@ -238,7 +249,9 @@ async def execute(state: AX768State):
     result = None
     try:
         if state.get("case_id") == "imei":
-            raise ValueError("IMEI case permits only its fixed roster and signal-check pipeline")
+            raise ValueError(
+                "IMEI case permits only its fixed roster and signal-check pipeline"
+            )
         if action.tool.startswith("find_and_highlight_"):
             raise ValueError(
                 "Yellow highlighting is disabled for AX768; submit a new search"

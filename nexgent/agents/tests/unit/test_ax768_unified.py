@@ -172,9 +172,35 @@ def mock_workflow(
             "status": "updated",
             "row": match["row"],
             "verified": True,
-            "changes": [],
+            "date": "2026-11-10",
+            "changes": [{"column": "Y", "value": "위치점검완료"}],
             "reason": "done",
         }
+
+    async def member(message):
+        from workflows.ax768.member_note import parse_member_note
+
+        parsed = parse_member_note(message)
+        return {
+            "status": "completed",
+            "response": "일반 사항 저장 확인",
+            "observations": [
+                {
+                    "tool": "member_general_note",
+                    "result": {
+                        "status": "saved",
+                        "member_id": 12,
+                        "name": parsed["name"],
+                        "address": parsed["address"],
+                        "note": parsed["note"],
+                        "verified": True,
+                        "candidates": [],
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr("workflows.ax768.workflow_member_note.run_member_note", member)
 
     async def read_imei(client, target, match):
         return "861212072106726"
@@ -390,7 +416,10 @@ async def test_roster_failure_stops_fallback(monkeypatch):
 async def test_as_failure_retains_matched_roster(monkeypatch, status):
     mock_workflow(monkeypatch, ["found"], as_status=status)
     state = await workflow.graph.ainvoke({"message": "영덕대게로699김영호,수신확인요"})
-    assert state["status"] == status and state["roster"]["row"] == 44
+    assert (
+        state["status"] == ("blocked" if status == "not_found" else status)
+        and state["roster"]["row"] == 44
+    )
 
 
 @pytest.mark.asyncio
@@ -435,6 +464,8 @@ async def test_update_runs_only_on_matched_as_and_keeps_evidence(
             "status": update_status,
             "row": match["row"],
             "verified": update_status == "updated",
+            "date": "2026-11-10",
+            "changes": [{"column": "Y", "value": "위치점검완료"}],
             "reason": "checked",
         }
 
@@ -551,7 +582,7 @@ async def test_update_node_itself_rejects_unverified_signal(monkeypatch):
 def test_signal_workflow_contract_version():
     assert (
         workflow.graph.get_input_jsonschema()["properties"]["workflow_version"]["const"]
-        == "4"
+        == "5"
     )
 
 
@@ -577,3 +608,15 @@ async def test_new_request_cannot_reuse_previous_signal_or_update(monkeypatch):
     assert not calls and result["status"] == "blocked"
     assert result["signal"]["status"] == "skipped"
     assert result["as_update"]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_no_as_match_still_replaces_member_notes_for_explicit_action(monkeypatch):
+    mock_workflow(monkeypatch, ["found"], as_status="not_found")
+    result = await workflow.graph.ainvoke(
+        {"message": "영덕대게로699김영호,전원연결 수신확인요"}
+    )
+    assert result["status"] == "completed"
+    assert result["as_update"]["status"] == "skipped"
+    assert result["member_note"]["verified"] is True
+    assert result["member_note"]["note"].endswith("[현지관리자 방문] 전원연결")

@@ -1,4 +1,4 @@
-"""Resolve identity → roster IMEI → fresh signal → conditional AS completion."""
+"""Resolve identity → roster IMEI → fresh signal → conditional AS completion → member notes."""
 
 import asyncio
 import os
@@ -19,10 +19,11 @@ from workflows.ax768.city_search import USER_SHEETS
 from workflows.ax768.graph import auth_settings, person_sheets_client
 from workflows.ax768.imei_case import IMEI_COLUMNS, read_roster_imei
 from workflows.ax768.request_parser import compact_name, parse_request
+from workflows.ax768.workflow_member_note import member_note_node, requested_action
 
 
 class WorkflowState(TypedDict, total=False):
-    workflow_version: Literal["4"]
+    workflow_version: Literal["5"]
     message: str
     confirmed_name: str | None
     status: str
@@ -31,6 +32,7 @@ class WorkflowState(TypedDict, total=False):
     roster: dict
     as_lookup: dict
     as_update: dict
+    member_note: dict | None
     signal: dict
     attempts: list[dict]
     candidates: list[dict]
@@ -58,6 +60,7 @@ def receipt(result, *, spreadsheet, alias, city=None):
 async def parse_node(state):
     fresh = {
         "parsed": {},
+        "member_note": None,
         "roster": {"status": "skipped"},
         "as_lookup": {"status": "skipped"},
         "as_update": {
@@ -80,6 +83,9 @@ async def parse_node(state):
     }
     try:
         parsed = parse_request(state.get("message"))
+        if state.get("workflow_version", "5") != "5":
+            raise ValueError("워크플로 버전을 확인해 주세요.")
+        requested_action(state["message"])
         confirmed = state.get("confirmed_name")
         if confirmed is not None:
             if not isinstance(confirmed, str) or not parsed["address"]:
@@ -241,6 +247,16 @@ async def as_node(state):
         found = result["status"] == "found"
         return {
             "as_lookup": match,
+            **(
+                {
+                    "as_update": {
+                        **state["as_update"],
+                        "reason": "일치하는 AS 행이 없어 AS 업데이트를 건너뛰었습니다.",
+                    }
+                }
+                if not found
+                else {}
+            ),
             "status": "running" if found else "not_found",
             "response": f"AS시트 최신 일치 행: {result['row']}행."
             if found
@@ -411,6 +427,7 @@ def create_graph():
     builder.add_node("signal_check", signal_node)
     builder.add_node("as_lookup_step", as_node)
     builder.add_node("as_update_step", update_node)
+    builder.add_node("member_note_step", member_note_node)
     builder.add_edge(START, "parse")
     builder.add_conditional_edges(
         "parse",
@@ -441,9 +458,19 @@ def create_graph():
     )
     builder.add_conditional_edges(
         "as_lookup_step",
-        lambda s: "as_update_step" if s["status"] == "running" else END,
+        lambda s: (
+            "as_update_step"
+            if s["status"] == "running"
+            else "member_note_step"
+            if s["as_lookup"]["status"] == "not_found"
+            else END
+        ),
     )
-    builder.add_edge("as_update_step", END)
+    builder.add_conditional_edges(
+        "as_update_step",
+        lambda s: "member_note_step" if s["status"] == "completed" else END,
+    )
+    builder.add_edge("member_note_step", END)
     return builder.compile()
 
 

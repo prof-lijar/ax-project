@@ -83,3 +83,10 @@
 .signalValues dd { margin: 0; overflow-wrap: anywhere; }
 
 .response { white-space: pre-wrap; }
+
+.ocrPanel { display: grid; gap: 8px; font-size: 12px; line-height: 1.6; }
+.ocrPanel p { margin: 0; }
+.ocrPanel button { justify-self: start; }
+.ocrPanel summary { cursor: pointer; color: var(--color-text-soft); }
+.ocrPanel pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 220px; overflow-y: auto; }
+.ocrPanel section { padding: 8px 0; }

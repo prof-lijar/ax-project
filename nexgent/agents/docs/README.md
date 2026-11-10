@@ -1,8 +1,14 @@
 # Documentation map
 
+- [Device adjustment member-note step](device-adjustment-member-note-step.md): Version 5 signal/optional AS/member replacement sequence, action/date policy and validation.
+
+- [AX768 member general-note Test case](ax768-member-general-note-test.md): Unique member matching, full-field replacement, private login, verified receipts and activation.
+
+- [AX768 Korean image input](ax768-korean-image-input.md): Local Korean OCR, enhanced images, editable structured fields and page-scoped validation.
+
 - [Device adjustment signal gate](device-adjustment-signal-gated-workflow.md): AS-derived name-only address, verified roster IMEI columns, spaced-name regression checks, signal-before-write policy, result receipts and v4 activation.
 
-- [AX768 workflow selection](ax-agents-architecture.md#ax768-required-workflow-selection-2026-11-09): required visible choice, disabled future workflows and API routing validation.
+- [AX768 workflow selection](ax768-required-workflow-selection.md): required workflow picker, upcoming options, compact layout and validation.
 
 - [AX768 IMEI signal case](../workflows/ax768/README.md#imei-test-case): roster IMEI lookup, authenticated signal check, private sessions and connected/disconnected messages.
 

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAx768Workflow } from "./ax768WorkflowClient";
 const stage = { status: "found", row: 44, sheet_alias: "uljin-users", city: "울진군", sheet_title: "명부", name: "김순옥", address: "울진북로164", reason: null, sheet_url: "https://docs.google.com/spreadsheets/d/sheet/edit#gid=7&range=A44" };
 const signal = {status: "connected", imei_column: "AA", imei: "861212072106726", sn: "00300016", connected: true, fresh: true, signal_label: "보통", rssi: 22, reason: null};
-const fixture = {signal, workflow_id: "device_adjustment_power", id: "run", started_at: "2026-11-04", duration_ms: 100, status: "completed", response: "일치", parsed: { name: "김순옥", lookup_name: "김순옥", address: "울진북로164", mode: "name_address" }, roster: stage, as_lookup: stage, candidates: [], notices: [], attempts: [], as_update: {status: "updated", row: 44, date: "2026-11-04", changes: [{column: "S", value: "처리완료"}, {column: "X", value: "2026-11-04"}], y_action: "unchanged", verified: true, reason: "saved"} };
+const memberNote = {status: "saved", member_id: 12, name: "김순옥", address: "울진북로164", note: "2026-11-04 [현지관리자 방문] 기기위치조정", verified: true, candidates: []};
+const fixture = {member_note: memberNote, signal, workflow_id: "device_adjustment_power", id: "run", started_at: "2026-11-04", duration_ms: 100, status: "completed", response: "일치", parsed: { name: "김순옥", lookup_name: "김순옥", address: "울진북로164", mode: "name_address" }, roster: stage, as_lookup: stage, candidates: [], notices: [], attempts: [], as_update: {status: "updated", row: 44, date: "2026-11-04", changes: [{column: "S", value: "처리완료"}, {column: "X", value: "2026-11-04"}], y_action: "unchanged", verified: true, reason: "saved"} };
 afterEach(() => vi.unstubAllGlobals());
 describe("Unified AX768 workflow API", () => {
   it.each(["", "information_update", "device_collection", "device_replacement", "device_loss", "new_installation"] as const)("blocks missing or unavailable workflow %s before fetch", async workflowId => {
@@ -27,6 +28,11 @@ describe("Unified AX768 workflow API", () => {
     {...fixture, workflow_id: "device_loss"},
     {...fixture, workflow_id: undefined},
     {...fixture, candidates: null},
+    {...fixture, member_note: undefined},
+    {...fixture, member_note: null},
+    {...fixture, member_note: {...memberNote, verified: false}},
+    {...fixture, member_note: {...memberNote, address: "다른길 1"}},
+    {...fixture, member_note: {...memberNote, note: "2026-11-05 [현지관리자 방문] 기기위치조정"}},
     {...fixture, signal: undefined},
     {...fixture, signal: {...signal, fresh: false}},
     {...fixture, signal: {...signal, imei_column: "Z"}},
@@ -54,15 +60,27 @@ describe("Unified AX768 workflow API", () => {
   });
 
   it("keeps the roster receipt when AS fails", async () => {
-    const partial = {...fixture, status: "failed", as_lookup: {...stage, status: "failed", row: null, sheet_url: null}, as_update: {...fixture.as_update, status: "skipped", verified: false}};
+    const partial = {...fixture, member_note: null, status: "failed", as_lookup: {...stage, status: "failed", row: null, sheet_url: null}, as_update: {...fixture.as_update, status: "skipped", verified: false}};
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(partial))));
     expect((await runAx768Workflow("device_adjustment_power", "text")).roster.row).toBe(44);
   });
   it("returns a disconnected report without an AS update", async () => {
-    const body = {...fixture, status: "disconnected", signal: {...signal, status: "disconnected", connected: false, fresh: false},
+    const body = {...fixture, member_note: null, status: "disconnected", signal: {...signal, status: "disconnected", connected: false, fresh: false},
       as_update: {status: "skipped", row: null, date: null, changes: [], y_action: null, verified: false, reason: "disconnected"}};
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body))));
     expect((await runAx768Workflow("device_adjustment_power", "text")).signal.sn).toBe("00300016");
+  });
+  it("completes general notes when no AS row exists", async () => {
+    const body = {...fixture, as_lookup: {...stage, status: "not_found", row: null, sheet_url: null}, as_update: {status: "skipped", row: null, date: null, changes: [], y_action: null, verified: false, reason: null}};
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body))));
+    expect((await runAx768Workflow("device_adjustment_power", "text")).member_note?.verified).toBe(true);
+  });
+  it("keeps verified AS results when a member write is uncertain", async () => {
+    const body = {...fixture, status: "failed", member_note: {...memberNote, status: "unknown", verified: false}};
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body))));
+    const result = await runAx768Workflow("device_adjustment_power", "text");
+    expect(result.as_update.verified).toBe(true);
+    expect(result.member_note?.status).toBe("unknown");
   });
   it("rejects blank input without calling the server", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

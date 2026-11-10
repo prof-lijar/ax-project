@@ -547,3 +547,26 @@ OAuth references: [Google Desktop/CLI OAuth](https://developers.google.com/ident
 [refresh token expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
 
 Validation on 2026-10-30: 28 OAuth/workflow/dependency-boundary/graph-entry tests passed; scoped Ruff and LangGraph validation passed. OAuth tests cover private token storage, refresh persistence, revoked grants, missing scopes/offline permission and loopback/PKCE configuration. Real Google consent and row 81 writing await the user login.
+
+
+## Member general-note Test case
+
+`member_note` searches the member admin and replaces the entire 일반 사항 field
+with the supplied dated text, verifying readback. A unique exact-name match, or
+one partial-name match when no exact name exists, is updated directly on Run.
+Supplied address/ID constraints always apply. Multiple matches require choosing
+the intended member; there is no additional permission step. An identical whole
+field is left unchanged. Numbered cases and IMEI remain search-only.
+The private credential file, version 2 capability, rerun behavior, tests and
+required rebuild are documented in
+[member-note implementation](../../docs/ax768-member-general-note-test.md).
+
+
+## Device workflow member note — 2026-11-10
+
+Version 5 adds member general-note replacement after AS processing. A verified
+connected signal and either verified AS completion or confirmed missing AS row
+are required. The request action (or AS Y completion type) determines
+`기기위치조정`/`전원연결`; notes use the processing date in Asia/Seoul. It uses
+the roster name/address and reports the member stage separately. See
+[member-step policy, validation and activation](../../docs/device-adjustment-member-note-step.md).

@@ -2,6 +2,31 @@
 
 Date: 2026-11-04
 
+## Member general-note Test case (2026-11-10)
+
+The Test tab adds `member_note` (가입자 일반 사항 기록): member search and
+explicit candidate selection, append to `general_notes` preserving existing
+text, duplicate-line avoidance, and verified readback. It uses separate private
+member-admin credentials and a dedicated read-only Compose mount. The device
+workflow remains unchanged. Runtime capability gating prevents execution on an
+older Agent Server. Login/live search succeeded; 475 affected tests, browser
+checks, production build and Cargo check passed. All test writes were mocked.
+Activation still requires a host rebuild because noninteractive sudo failed.
+See [implementation and activation](../../agents/docs/ax768-member-general-note-test.md).
+
+## AX768 Korean image input (2026-11-10)
+
+The Workflow composer at `/agents/ax768` now enhances uploaded images locally,
+extracts Korean text and fills editable 이름/주소/요청 fields. This is limited
+to the AX768 page. Reviewed fields are converted into the existing text request
+on explicit Run, so no Agent Server rebuild or API change is required. The
+former requirement to manually transcribe and remove every image is superseded.
+
+Actual Chromium OCR passed at `http://192.168.0.18:5173/agents/ax768` with
+synthetic Korean images and mocked product APIs; no signal requests or AS writes
+occurred. 74 focused tests and the frontend build passed. See
+[implementation and limitations](../../agents/docs/ax768-korean-image-input.md).
+
 ## IMEI column mismatch resolved (2026-11-09)
 
 The reported `699김   영호` input parsed correctly and matched 영덕 row 953.
@@ -563,3 +588,24 @@ socket and passwordless sudo is unavailable. The Agent Server rebuild/restart
 above has not been performed. A complete authenticated browser → running backend
 → rebuilt Agent Server → Google execution therefore remains to be checked after
 that restart. No production services or Google formatting were changed by UI tests.
+
+
+## Member-note replacement update — 2026-11-10
+
+The Test case now replaces the entire 일반 사항 field with the supplied text.
+A unique exact-name match, or one unique partial-name match when no exact match
+exists, saves directly. Address/ID constraints are always respected. Multiple
+matches still require selecting the intended member. Version 2 rejects the old
+append runtime; rebuild Agent Server before using the changed UI. See
+`../../agents/docs/ax768-member-general-note-test.md` for validation and commands.
+
+
+## Device workflow general notes — 2026-11-10
+
+Version 5 adds member general-note replacement after verified AS completion,
+or after confirming AS is absent. Signal verification remains required. The
+request action, otherwise AS completion type, determines 기기위치조정/전원연결;
+the date follows Asia/Seoul processing. The fifth result section keeps member
+outcomes separate from AS results. See
+`../../agents/docs/device-adjustment-member-note-step.md` for policy, tests and
+the required Agent Server rebuild.

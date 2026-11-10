@@ -1,6 +1,6 @@
-import { ArrowLeft, ArrowUpRight, CheckCircle2, Clock3, FileSpreadsheet, Highlighter, Info, LoaderCircle, Search, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CheckCircle2, Clock3, FileSpreadsheet, FilePenLine, Highlighter, Info, LoaderCircle, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
-import { AX768_CASES, outcomeLabels, type Ax768CaseId, type Ax768Outcome } from "../../shared/api/ax768Client";
+import { AX768_CASES, outcomeLabels, type Ax768CaseId, type Ax768Outcome, memberCandidateMessage } from "../../shared/api/ax768Client";
 import { t, useLanguage, locale } from "../../shared/i18n";
 import { navigateToSection } from "../../shared/navigation/sections";
 import { useAx768Store, type Ax768Run } from "../../shared/state/useAx768Store";
@@ -64,21 +64,22 @@ export function Ax768WorkbenchPage() {
         <label className={styles.label} htmlFor="ax-case">{t("Workflow case")}</label>
         <select id="ax-case" value={state.selectedCase} disabled={!!state.active}
           onChange={event => state.selectCase(event.target.value as Ax768CaseId)}>
-          {AX768_CASES.map(c => <option value={c.id} key={c.id}>{c.id === "imei" ? t(c.title) : `${c.id} · ${t(c.title)}`}</option>)}
+          {AX768_CASES.map(c => <option value={c.id} key={c.id}>{["imei", "member_note"].includes(c.id) ? t(c.title) : `${c.id} · ${t(c.title)}`}</option>)}
         </select>
         <p className={styles.description}>{t(selected.description)}</p>
         <div className={styles.target}><FileSpreadsheet size={16} aria-hidden /><div><span>{t("Search location")}</span><strong>{t(selected.target)}</strong></div></div>
-        <div className={styles.mode}>{selected.writes ? <Highlighter size={14} /> : <Search size={14} />}{t(selected.id === "imei" ? "Signal check · no sheet changes" : selected.writes ? "Applies yellow to the latest match" : "Search only · no sheet changes")}</div>
+        <div className={styles.mode}>{selected.id === "member_note" ? <FilePenLine size={14} /> : selected.writes ? <Highlighter size={14} /> : <Search size={14} />}{t(selected.id === "member_note" ? "Replaces General notes with the entered text" : selected.id === "imei" ? "Signal check · no sheet changes" : selected.writes ? "Applies yellow to the latest match" : "Search only · no sheet changes")}</div>
         <div className={styles.divider} />
         <div className={styles.sectionTitle}><span className={styles.step}>02</span><h2>{t("Add your message")}</h2></div>
         <div className={styles.labelRow}><label htmlFor="ax-message" className={styles.label}>{t("Message")}</label><button type="button" className={styles.textButton} disabled={!!state.active} onClick={() => state.setDraft(selected.example)}>{t("Use example")}</button></div>
         <textarea id="ax-message" value={message} disabled={!!state.active} maxLength={8000} rows={5} placeholder={selected.example}
           aria-describedby="ax-input-format" onChange={event => state.setDraft(event.target.value)} />
         <div id="ax-input-format" className={styles.inputHint}><span>{t(selected.format)}</span><span>{message.length.toLocaleString()} / 8,000</span></div>
-        {selected.writes && <p className={styles.note}><Info size={15} /><span>{t("Existing formatting can hide yellow. We report saved and visible colors separately.")}</span></p>}
+        {selected.id === "member_note" && <p className={styles.note}><Info size={15} /><span>{t("This test saves a real member note. Check the member and date before saving.")}</span></p>}
+        {selected.writes && selected.id !== "member_note" && <p className={styles.note}><Info size={15} /><span>{t("Existing formatting can hide yellow. We report saved and visible colors separately.")}</span></p>}
         <button className={styles.submit} type="submit" disabled={!!state.active || !message.trim()}>
-          {state.active ? <LoaderCircle className={styles.spin} size={17} /> : selected.writes ? <Highlighter size={17} /> : <Search size={17} />}
-          {t(state.active ? "Running…" : selected.id === "imei" ? "Check signal" : selected.writes ? "Search and apply yellow" : "Search")}
+          {state.active ? <LoaderCircle className={styles.spin} size={17} /> : selected.id === "member_note" ? <FilePenLine size={17} /> : selected.writes ? <Highlighter size={17} /> : <Search size={17} />}
+          {t(state.active ? "Running…" : selected.id === "member_note" ? "Find member and replace notes" : selected.id === "imei" ? "Check signal" : selected.writes ? "Search and apply yellow" : "Search")}
         </button>
       </form>
       <div className={styles.resultColumn}>
@@ -112,12 +113,23 @@ export function Ax768WorkbenchPage() {
 }
 
 export function Ax768ResultView({ run }: { run: Ax768Run }) {
+  const busy = useAx768Store(s => !!s.active);
   const result = run.result;
   const outcome = result?.outcome ?? run.outcome ?? "unknown";
   const warning = ["highlighted_with_warnings", "unknown", "failed", "blocked", "disconnected"].includes(outcome);
   const fields = result ? [["City", result.city], ["Sheet", result.sheet_title ?? result.sheet_alias], ["Name", result.name], ["Address", result.address], [result.imei_column ? `IMEI (${result.imei_column})` : "IMEI", result.imei], ["S/N", result.ping?.sn], ["Signal strength", result.ping?.signal_label], ["RSSI", result.ping?.rssi == null ? null : String(result.ping.rssi)]] : [];
   return <div className={styles.result}>
     <div className={`${styles.resultStatus} ${tone(outcome)}`}>{warning ? <TriangleAlert size={19} /> : outcome === "not_found" ? <Search size={19} /> : <CheckCircle2 size={19} />}<strong>{t(outcomeLabels[outcome])}</strong><span className={styles.resultCase}>{t("Case")} {run.caseId}</span></div>
+    {result?.member_note && <section className={styles.notice} aria-label={t("Member general note")}>
+      <p>{result.response}</p>
+      {result.member_note.member_id && <p>{t("Member ID")}: {result.member_note.member_id}</p>}
+      {result.member_note.note && <pre className={styles.memberNoteText}>{result.member_note.note}</pre>}
+      <a href="https://admin.ansimk.com/members" target="_blank" rel="noopener noreferrer">{t("Open member admin")}</a>
+      {result.member_note.candidates.map(candidate => <button type="button" className={`${styles.textButton} ${styles.memberCandidate}`} key={candidate.member_id} disabled={busy} onClick={() => {
+        const store = useAx768Store.getState(); store.selectCase("member_note"); store.setDraft(memberCandidateMessage(run.message, candidate));
+        document.getElementById("ax-message")?.focus();
+      }}>{t("Select member")}: {candidate.name} · {candidate.address} · ID {candidate.member_id}</button>)}
+    </section>}
     {result?.selected_row && <div className={styles.rowHeading}><div><span>{t("Latest matching row")}</span><h3>{result.selected_row}</h3></div>{result.sheet_url && <a className={styles.openSheet} href={result.sheet_url} target="_blank" rel="noopener noreferrer">{t("Open sheet")}<ArrowUpRight size={16} /></a>}</div>}
     <dl className={styles.facts}>{fields.filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{t(label!)}</dt><dd>{value}</dd></div>)}</dl>
     {result && run.caseId === "imei" && !["failed", "blocked"].includes(outcome) && <p className={styles.notice}>{result.response}</p>}
@@ -126,9 +138,9 @@ export function Ax768ResultView({ run }: { run: Ax768Run }) {
       <span>{t("Visible yellow")} <strong>{t(result.visible_verified ? "Confirmed" : "Not confirmed")}</strong></span>
     </div>}
     {outcome === "highlighted_with_warnings" && <div className={styles.warningNote}><TriangleAlert size={17} /><div><strong>{t("Yellow is saved, but may not appear on the sheet.")}</strong><p>{t("Existing formatting overrides the display in {count} cells.", { count: result?.overridden_cell_count ?? 0 })}</p><p className={styles.cellList}>{result?.overridden_cells.join(", ")}{(result?.overridden_cell_count ?? 0) > (result?.overridden_cells.length ?? 0) ? " …" : ""}</p></div></div>}
-    {outcome === "not_found" && <p className={styles.notice}>{t("No matching row was found. No cells were changed.")}</p>}
+    {outcome === "not_found" && run.caseId !== "member_note" && <p className={styles.notice}>{t("No matching row was found. No cells were changed.")}</p>}
     {run.error && <p className={styles.notice} role="alert">{t(run.error)}</p>}
-    {result && ["failed", "blocked"].includes(outcome) && <p className={styles.notice}>{result.response}</p>}
+    {result && run.caseId !== "member_note" && ["failed", "blocked"].includes(outcome) && <p className={styles.notice}>{result.response}</p>}
     {!!result?.attempts.length && <ol className={styles.attempts} aria-label={t("Search order")}>{result.attempts.map((attempt, index) => <li key={attempt.sheet_alias ?? index}><span>{index + 1}</span><strong>{attempt.city ?? attempt.sheet_alias}</strong><small>{t(attempt.status === "found" ? "Match found" : attempt.status === "not_found" ? "No match" : "Run failed")}</small></li>)}</ol>}
     {result && <details className={styles.details}><summary>{t("Result details")}</summary><p>{result.response}</p>{result.match_count > 1 && <p>{t("Matching rows or cells: {count}", { count: result.match_count })}</p>}<small>{t("Duration")}: {(result.duration_ms / 1000).toFixed(1)}s</small></details>}
   </div>;

@@ -96,3 +96,6 @@
 .tabs button[aria-selected="true"] { border-bottom-color: var(--color-primary); color: var(--color-text); font-weight: 600; }
 .tabPanel[hidden] { display: none; }
 .tabPanel:focus-visible { outline: 2px solid var(--color-link); outline-offset: 4px; }
+
+.memberNoteText { white-space: pre-wrap; font: inherit; }
+.memberCandidate { display: block; text-align: left; margin-top: 8px; overflow-wrap: anywhere; }

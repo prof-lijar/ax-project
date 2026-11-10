@@ -1,5 +1,6 @@
 """Admin product boundary for the roster → AS completion workflow."""
 import re
+import unicodedata
 from datetime import date, datetime, timezone
 from time import monotonic
 from typing import Literal
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.ax768 import positive_int, text
+from app.ax768_member_note import normalize_member_note
 from app.chat.config import get_chat_settings
 from app.identity.router import require_admin
 
@@ -102,6 +104,28 @@ def signal_receipt(value, roster):
             "reason": text(value.get("reason"), 1000)}
 
 
+def member_receipt(value, roster, lookup, update, signal):
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Invalid workflow member receipt")
+    operation = value.get("status")
+    status = "completed" if operation in {"saved", "already_present", "not_found"} else "blocked" if operation in {"blocked", "needs_confirmation"} else "failed"
+    member = normalize_member_note({"status": status, "response": "", "observations": [{"tool": "member_general_note", "result": value}]})["member_note"]
+    eligible_as = (lookup["status"] == "found" and update["status"] == "updated") or (lookup["status"] == "not_found" and update["status"] == "skipped")
+    if signal["status"] != "connected" or not eligible_as:
+        raise ValueError("Member operation before signal/AS verification")
+    if not isinstance(member["note"], str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2} \[현지관리자 방문\] (기기위치조정|전원연결)", member["note"]):
+        raise ValueError("Invalid workflow visit note")
+    date.fromisoformat(member["note"][:10])
+    if update["status"] == "updated" and member["note"][:10] != update["date"]:
+        raise ValueError("Member date differs from AS completion")
+    compact = lambda v: re.sub(r"\s+", "", unicodedata.normalize("NFKC", v or ""))
+    if not compact(roster["name"]) or compact(roster["name"]) not in compact(member["name"]) or not compact(roster["address"]) or compact(roster["address"]) != compact(member["address"]):
+        raise ValueError("Member identity differs from roster")
+    return member
+
+
 def normalize(payload):
     if not isinstance(payload, dict) or payload.get("status") not in {"completed", "disconnected", "not_found", "needs_confirmation", "blocked", "failed"}:
         raise ValueError("Invalid workflow status")
@@ -114,8 +138,13 @@ def normalize(payload):
         raise ValueError("AS mutation without a verified connected signal")
     if payload["status"] == "disconnected" and (signal["status"] != "disconnected" or as_update["status"] != "skipped"):
         raise ValueError("Invalid disconnected outcome")
-    if payload["status"] == "completed" and (as_lookup["status"] != "found" or as_update["status"] != "updated"):
-        raise ValueError("Missing completion evidence")
+    if "member_note" not in payload:
+        raise ValueError("Missing member stage")
+    member = member_receipt(payload["member_note"], roster, as_lookup, as_update, signal)
+    if payload["status"] == "completed" and (not member or not member["verified"]):
+        raise ValueError("Missing member completion evidence")
+    if member and member["verified"] and payload["status"] != "completed":
+        raise ValueError("Inconsistent workflow completion")
     parsed = payload.get("parsed", {})
     if not isinstance(parsed, dict):
         raise ValueError("Invalid parsed input")
@@ -125,7 +154,7 @@ def normalize(payload):
     return {
         "status": payload["status"], "response": payload["response"][:8000],
         "parsed": {key: text(parsed.get(key), 200) for key in ("name", "lookup_name", "address", "mode")},
-        "roster": roster, "as_lookup": as_lookup, "as_update": as_update, "signal": signal,
+        "roster": roster, "as_lookup": as_lookup, "as_update": as_update, "signal": signal, "member_note": member,
         "attempts": [{"sheet_alias": text(a.get("sheet_alias"), 80), "city": text(a.get("city"), 80), "status": a["status"]}
                      for a in attempts[:4] if isinstance(a, dict) and a.get("status") in {"found", "not_found", "failed"}],
         "candidates": [stage(c) for c in candidates[:10]],
@@ -140,7 +169,7 @@ async def run(body: WorkflowInput):
     started, clock = datetime.now(timezone.utc).isoformat(), monotonic()
     url = get_chat_settings().agent_server_url
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(270, connect=5, pool=5), follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(420, connect=5, pool=5), follow_redirects=False) as client:
             response = await client.get(f"{url}/assistants/{ASSISTANT_ID}/schemas")
             if response.status_code == 404:
                 raise HTTPException(409, detail="Restart Agent Server to enable the unified workflow.")
@@ -149,11 +178,11 @@ async def run(body: WorkflowInput):
             if not isinstance(schema, dict):
                 raise ValueError("Invalid workflow schema")
             policy = schema.get("input_schema", {}).get("properties", {}).get("workflow_version", {})
-            if policy.get("const") != "4":
+            if policy.get("const") != "5":
                 raise HTTPException(409, detail="Restart Agent Server to enable the unified workflow.")
             response = await client.post(f"{url}/runs/wait", json={
                 "assistant_id": "ax768_workflow",
-                "input": {**body.model_dump(exclude={"workflow_id"}), "message": body.message.strip(), "workflow_version": "4"},
+                "input": {**body.model_dump(exclude={"workflow_id"}), "message": body.message.strip(), "workflow_version": "5"},
                 "on_completion": "delete", "on_disconnect": "continue", "config": {"recursion_limit": 32},
             })
             response.raise_for_status()
@@ -161,5 +190,5 @@ async def run(body: WorkflowInput):
                 raise ValueError("Oversized workflow result")
             result = normalize(response.json())
     except (httpx.HTTPError, ValueError, AttributeError, TypeError):
-        raise HTTPException(502, detail="The workflow result could not be retrieved. Check the AS row before running again.") from None
+        raise HTTPException(502, detail="The workflow result could not be retrieved. Check the AS row and member general notes before running again.") from None
     return {"workflow_id": body.workflow_id, "id": str(uuid4()), "started_at": started, "duration_ms": round((monotonic() - clock) * 1000), **result}

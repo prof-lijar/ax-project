@@ -66,9 +66,7 @@ def synthetic_services(
         roster[target.name_column + str(row)] = name
         roster[target.address_column + str(row)] = address
         roster[serial_column + str(row)] = "300016"
-        roster[imei_column + str(row)] = (
-            imei if row == 9 else "invalid-old-imei"
-        )
+        roster[imei_column + str(row)] = imei if row == 9 else "invalid-old-imei"
     if ambiguous:
         roster[target.name_column + "10"] = "긴영후"
         roster[target.address_column + "10"] = address
@@ -82,6 +80,19 @@ def synthetic_services(
         }
     )
     events, writes = [], []
+
+    credential = tmp_path / "member-credentials.json"
+    credential.write_text(
+        json.dumps({"username": "synthetic", "password": "synthetic"})
+    )
+    credential.chmod(0o600)
+    monkeypatch.setenv("AX768_MEMBERS_CREDENTIALS_FILE", str(credential))
+    member = {
+        "id": 12,
+        "full_name": name,
+        "address": address,
+        "general_notes": "기존 메모\n보존하지 않을 줄",
+    }
 
     def handle(request):
         if request.url.host == "dev-check.ansimk.com":
@@ -97,6 +108,22 @@ def synthetic_services(
                     "fresh": connected,
                 },
             )
+        if request.url.host == "api.ansimk.com":
+            assert "AS write" in events and connected
+            if request.url.path == "/token/":
+                return httpx.Response(200, json={"access": "synthetic-token"})
+            if request.url.path == "/api/admin/wards/":
+                return httpx.Response(
+                    200, json={"data": [member.copy()], "totalItemCount": 1}
+                )
+            if request.method == "PUT":
+                body = json.loads(request.content)
+                assert set(body) == {"general_notes"}
+                assert body["general_notes"].endswith(" [현지관리자 방문] 기기위치조정")
+                assert "기존 메모" not in body["general_notes"]
+                member.update(body)
+                events.append("member write")
+            return httpx.Response(200, json={"data": member.copy()})
         assert request.url.host == "sheets.googleapis.com"
         suffix = request.url.path.split("/v4/spreadsheets/", 1)[1]
         sheet = suffix.split("/", 1)[0].split(":", 1)[0]
@@ -256,10 +283,18 @@ async def test_exact_examples_through_signal_and_as(
         assert result["status"] == "completed" and len(writes) == 1
         assert result["as_lookup"]["row"] == 80
         assert result["as_update"]["verified"] is True
+        assert result["member_note"]["verified"] is True
+        assert (
+            events.index("signal")
+            < events.index("AS write")
+            < events.index("member write")
+        )
         assert result["response"].startswith("S/N 00300016 신호 확인되었습니다.")
     else:
         assert result["status"] == "disconnected" and not writes
         assert result["as_update"]["status"] == "skipped"
+        assert result["member_note"] is None
+        assert "member write" not in events
         assert result["response"] == "S/N 00300016 전원 연결 및 기기위치 확인해주세요."
 
 

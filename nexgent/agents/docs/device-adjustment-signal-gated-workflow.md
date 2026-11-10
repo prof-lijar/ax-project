@@ -225,6 +225,7 @@ No live subscriber signal requests or AS writes were executed during validation.
 The 2026-11-09 column correction below revalidated live headers and the reported
 영덕 row read-only. Columns are fixed to the verified IMEI headers; invalid
 values still fail closed.
-Images still require transcription; OCR and KakaoTalk ingestion are out of this
-corrected text workflow. Sheets offers no compare-and-set transaction across
+Update 2026-11-10: the AX768 page now prepares text from images locally; see
+[Korean image input](ax768-korean-image-input.md). The execution graph still
+receives text only. KakaoTalk ingestion remains outside this workflow. Sheets offers no compare-and-set transaction across
 the identity recheck and write, so concurrent edits remain an existing limitation.

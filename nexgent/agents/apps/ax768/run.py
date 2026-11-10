@@ -40,6 +40,8 @@ def main(argv=None):
     from workflows.ax768.graph import graph
 
     payload = {"message": args.message, "case_id": args.case_id}
+    if args.case_id == "member_note":
+        payload["member_note_case_version"] = "2"
     if args.workflow:
         from workflows.ax768.unified_graph import graph
 

@@ -4,6 +4,8 @@ import { t, useLanguage } from "../../shared/i18n";
 import { runAx768Workflow, workflowStatusLabels, type WorkflowResult, type WorkflowStage } from "../../shared/api/ax768WorkflowClient";
 import { isSheetUrl } from "../../shared/api/ax768Client";
 import { ACTIVE_AX768_WORKFLOW, AX768_WORKFLOWS, type Ax768WorkflowId } from "../../shared/api/ax768Workflows";
+import { extractImageText } from "./ax768Ocr";
+import { makeImageDraft, workflowMessage, type ImageDraft } from "./ax768ImageInput";
 import styles from "./Ax768WorkflowPanel.module.css";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -53,6 +55,13 @@ export function Ax768WorkflowPanel() {
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<WorkflowResult | null>(null);
   const [runError, setRunError] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrError, setOcrError] = useState("");
+  const [draft, setDraft] = useState<ImageDraft | null>(null);
+  const ocrGeneration = useRef(0);
+  const ocrController = useRef<AbortController | null>(null);
+  useEffect(() => () => { ocrGeneration.current++; ocrController.current?.abort(); }, []);
   const busy = useRef(false);
   const generation = useRef(0);
   useEffect(() => () => { generation.current++; }, []);
@@ -68,11 +77,15 @@ export function Ax768WorkflowPanel() {
     if (!workflowId) { setSelectionError(true); workflowChoice.current?.focus(); return; }
     if (workflowId !== ACTIVE_AX768_WORKFLOW) { setRunError("This workflow is coming soon."); return; }
     if (!message.trim()) { setRunError("Enter a message of 1–8,000 characters."); messageInput.current?.focus(); return; }
-    if (images.length) return;
+    if (extracting || (images.length > 0 && !draft)) return;
+    if (draft?.conflicts && message === draft.message) { setRunError("Review the extracted name and address before running."); messageInput.current?.focus(); return; }
+    let request: string;
+    try { request = workflowMessage(message); }
+    catch (error) { setRunError(error instanceof Error ? error.message : "Review the extracted name and address before running."); messageInput.current?.focus(); return; }
     busy.current = true; setRunning(true); setRunError(""); setResult(null);
     const current = generation.current;
     try {
-      const next = await runAx768Workflow(workflowId, message, confirmedName);
+      const next = await runAx768Workflow(workflowId, request, confirmedName);
       if (current === generation.current) setResult(next);
     } catch (error) {
       if (current === generation.current) setRunError(error instanceof Error ? error.message : "The workflow result could not be retrieved. Check the AS row before running again.");
@@ -87,6 +100,31 @@ export function Ax768WorkflowPanel() {
   const files = useRef<File[]>([]);
   const dragDepth = useRef(0);
   function updateImages(next: File[]) { files.current = next; setImages(next); }
+  async function readImages(next: File[], original: string) {
+    ocrController.current?.abort();
+    const current = ++ocrGeneration.current;
+    const controller = new AbortController(); ocrController.current = controller;
+    setDraft(null); setOcrError(""); setOcrProgress(0); setExtracting(next.length > 0);
+    if (!next.length) return;
+    try {
+      const pages = await extractImageText(next, controller.signal, value => { if (current === ocrGeneration.current) setOcrProgress(value); });
+      if (current !== ocrGeneration.current) return;
+      const extracted = makeImageDraft(pages, original);
+      setDraft(extracted); setMessage(extracted.message); resetResult();
+    } catch (error) {
+      if (current === ocrGeneration.current) setOcrError(error instanceof Error && /^(Image text|Use an image|No readable text|Too much image text)/.test(error.message) ? error.message : "Image text extraction failed. Retry or enter the name and address manually.");
+    } finally { if (current === ocrGeneration.current) setExtracting(false); }
+  }
+  function originalInput() { return draft && message === draft.message ? draft.original : message; }
+  function removeImage(file: File) {
+    if (busy.current) return;
+    const original = originalInput();
+    const next = files.current.filter(item => item !== file);
+    resetResult(); updateImages(next); setErrors([]);
+    // Discard generated text from a removed image; preserve deliberate user edits.
+    if (draft && message === draft.message) setMessage(original);
+    void readImages(next, original);
+  }
   function addImages(incoming: File[]) {
     if (busy.current) return;
     resetResult();
@@ -101,13 +139,15 @@ export function Ax768WorkflowPanel() {
       if (bytes + file.size > MAX_BYTES) { rejected.push(t("Images must total 50 MB or less.")); continue; }
       next.push(file); bytes += file.size;
     }
-    updateImages(next); setErrors([...new Set(rejected)]);
+    if (next.length !== files.current.length) { updateImages(next); void readImages(next, originalInput()); }
+    setErrors([...new Set(rejected)]);
   }
   function preventFileDrop(event: DragEvent) {
     event.preventDefault(); event.stopPropagation();
   }
   function clear() {
     if (busy.current) return;
+    ocrGeneration.current++; ocrController.current?.abort(); setExtracting(false); setDraft(null); setOcrError("");
     resetResult(); setMessage(""); updateImages([]); setErrors([]); setDragging(false); dragDepth.current = 0;
     if (picker.current) picker.current.value = "";
   }
@@ -133,29 +173,41 @@ export function Ax768WorkflowPanel() {
         onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { preventFileDrop(event); event.dataTransfer.dropEffect = "copy"; } }}
         onDragLeave={event => { preventFileDrop(event); dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); }}
         onDrop={event => { if (!event.dataTransfer.files.length) return; preventFileDrop(event); dragDepth.current = 0; setDragging(false); addImages(Array.from(event.dataTransfer.files)); }}>
-        <textarea ref={messageInput} id="ax-workflow-message" value={message} disabled={running} onChange={event => { setMessage(event.target.value); resetResult(); }} maxLength={8000} rows={8}
+        <textarea ref={messageInput} id="ax-workflow-message" value={message} disabled={running || extracting} onChange={event => { setMessage(event.target.value); resetResult(); }} maxLength={8000} rows={8}
           aria-label={t("Request")} placeholder={t("Type your request here…\nDrop images into this box or use Add images below.")}
           aria-describedby="ax-workflow-image-hint" />
         {images.length > 0 && <ul className={styles.images} aria-label={t("Attached images")}>{images.map(file => <ImagePreview key={fileKey(file)} file={file}
-          remove={() => { if (busy.current) return; resetResult(); updateImages(files.current.filter(item => item !== file)); setErrors([]); }} />)}</ul>}
+          remove={() => removeImage(file)} />)}</ul>}
         <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden aria-label={t("Upload images")}
           onChange={event => { addImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <div className={styles.toolbar}>
           <button type="button" className={styles.attach} disabled={running} onClick={() => picker.current?.click()}><ImagePlus size={17} aria-hidden />{t("Add images")}{images.length > 0 && <span className={styles.imageCount}>{images.length}/5</span>}</button>
           <span className={styles.characterCount}>{message.length.toLocaleString()} / 8,000</span>
-          <button type="button" className={styles.run} disabled={running || images.length > 0} onClick={() => void run()} aria-describedby={images.length ? "ax-workflow-setup-note" : undefined}>{running ? <LoaderCircle className={styles.spinner} size={15} aria-hidden /> : <Play size={15} aria-hidden />}{t(running ? "Running…" : "Run workflow")}</button>
+          <button type="button" className={styles.run} disabled={running || extracting || (images.length > 0 && !draft)} onClick={() => void run()} aria-describedby={images.length ? "ax-workflow-setup-note" : undefined}>{running ? <LoaderCircle className={styles.spinner} size={15} aria-hidden /> : <Play size={15} aria-hidden />}{t(running ? "Running…" : "Run workflow")}</button>
         </div>
         {dragging && <div className={styles.dropOverlay}><Upload size={26} aria-hidden /><strong>{t("Drop images here")}</strong></div>}
       </div>
       <p id="ax-workflow-image-hint" className={styles.localNote}>{t("PNG, JPG or WebP · up to 5 images · 50 MB total")}</p>
       <div aria-live="polite">{errors.length > 0 && <ul className={styles.errors}>{errors.map(error => <li key={error}>{error}</li>)}</ul>}</div>
-      {images.length > 0 && <p id="ax-workflow-setup-note" className={styles.imageWarning}>{t("Type the address from the image, then remove attachments to run this text workflow.")}</p>}
+      {images.length > 0 && <div id="ax-workflow-setup-note" className={styles.ocrPanel}>
+        <p className={styles.localNote}>{t("Image text is extracted on this device. Review the name and address before running.")}</p>
+        {extracting && <p role="status"><LoaderCircle className={styles.spinner} size={14} aria-hidden /> {t("Extracting Korean text… {percent}%", { percent: ocrProgress })}</p>}
+        {ocrError && <p className={styles.imageWarning} role="alert">{t(ocrError)}</p>}
+        {!extracting && <button type="button" className={styles.attach} disabled={running} onClick={() => void readImages(files.current, originalInput())}>{t("Extract again")}</button>}
+        {draft && <>
+          <p role="status">{t(draft.needsReview ? "Some text is unclear or conflicts. Correct the extracted fields before running." : "Text extracted. The structured input is ready to review.")}</p>
+          <details><summary>{t("Recognized text and original input")}</summary>
+            {draft.original && <section><strong>{t("Original input")}</strong><pre>{draft.original}</pre></section>}
+            {draft.pages.map((page, index) => <section key={index}><strong>{page.filename}</strong><pre>{page.text}</pre></section>)}
+          </details>
+        </>}
+      </div>}
     </section>
     <div className={styles.outputColumn} aria-busy={running}>
       <section className={styles.statusPanel} aria-labelledby="ax-workflow-status-title" aria-live="polite">
         <header className={styles.panelHeader}><h2 id="ax-workflow-status-title">{t("Workflow status")}</h2><span className={styles.status}>{running ? <LoaderCircle className={styles.spinner} size={14} aria-hidden /> : <span aria-hidden />}{t(running ? "Running…" : runError ? "Needs attention" : result ? workflowStatusLabels[result.status] : "Not started")}</span></header>
         <p className={styles.selectedWorkflow}>{selectedWorkflow?.name ?? t("No workflow selected")}</p>
-        <p className={styles.description}>{running ? t("Checking the device signal and AS result… {seconds}s elapsed", { seconds: elapsed }) : selectedWorkflow ? t("AS address if needed → Roster IMEI → Signal → AS update when connected") : null}</p>
+        <p className={styles.description}>{running ? t("Checking signal, AS and general notes… {seconds}s elapsed", { seconds: elapsed }) : selectedWorkflow ? t("AS address if needed → Roster IMEI → Signal → AS update → General notes") : null}</p>
         {runError && <p className={styles.imageWarning} role="alert">{t(runError)}</p>}
         {result && <><p className={styles.response}>{result.response}</p><span className={styles.localNote}>{t("Finished in {seconds}s", { seconds: (result.duration_ms / 1000).toFixed(1) })}</span></>}
         {result?.attempts.length ? <ol className={styles.attempts}>{result.attempts.map((a, i) => <li key={`${a.sheet_alias}-${i}`}>{a.city} · {a.sheet_alias}<span>{t(a.status === "found" ? "Match found" : a.status === "not_found" ? "No exact match" : "Run failed")}</span></li>)}</ol> : null}
@@ -183,6 +235,17 @@ export function Ax768WorkflowPanel() {
             {result.as_update.changes.length > 0 && <><p>{t(result.as_update.verified ? "Verified values" : "Requested values · not verified")}</p><dl className={styles.updateValues}>{result.as_update.changes.map(change => <div key={change.column}><dt>{change.column}</dt><dd>{change.value}</dd></div>)}</dl></>}
             {result.as_update.y_action === "unchanged" && <p>{t("Y left unchanged: C did not match either completion rule.")}</p>}
             {result.as_update.status === "unknown" && <p className={styles.imageWarning}>{t("Check the AS row before running again. The update may already be saved.")}</p>}
+          </section>
+          <section className={styles.stage} aria-label={t("5. Member general notes")}>
+            <div className={styles.stageHeading}><h3>{t("5. Member general notes")}</h3><span>{t(result.member_note ? ({saved: "Saved and verified", already_present: "General note already present", not_found: "No match", needs_confirmation: "Needs attention", blocked: "Needs attention", failed: "Not updated", unknown: "Update not confirmed"})[result.member_note.status] : "Skipped")}</span></div>
+            {result.member_note && <>
+              <p>{result.member_note.name} · {result.member_note.address}{result.member_note.member_id ? ` · ID ${result.member_note.member_id}` : ""}</p>
+              <p>{t(result.member_note.verified ? "Verified values" : "Requested values · not verified")}</p>
+              <p>{result.member_note.note}</p>
+              <a href="https://admin.ansimk.com/members" target="_blank" rel="noreferrer">{t("Open member admin")}</a>
+              {result.member_note.candidates.map(candidate => <p key={candidate.member_id}>{candidate.name} · {candidate.address} · ID {candidate.member_id}</p>)}
+              {result.member_note.status === "unknown" && <p className={styles.imageWarning}>{t("Check member general notes before running again. The update may already be saved.")}</p>}
+            </>}
           </section>
           {result.status === "needs_confirmation" && <div className={styles.candidates}><p>{t("Choose a matching name to continue the AS lookup.")}</p>{result.candidates.map((candidate, i) => <button type="button" key={`${candidate.sheet_alias}-${candidate.row}-${i}`} disabled={running || !candidate.name} onClick={() => candidate.name && void run(candidate.name)}><strong>{candidate.name}</strong><span>{candidate.city} · {t("Row {row}", { row: candidate.row ?? "—" })} · {candidate.address}</span></button>)}</div>}
         </> : <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={32} aria-hidden /> : <Inbox size={32} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? "Looking for matching rows" : "No results yet")}</h3><p>{t("The workflow output and completion status will appear here after a run.")}</p></div>}
