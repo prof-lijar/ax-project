@@ -38,10 +38,10 @@ export function Ax768WorkbenchPage() {
     <a href="/agents" onClick={back} className={styles.back}><ArrowLeft size={15} />{t("Back to Agents")}</a>
     <header className={styles.header}>
       <span className={styles.avatar}><FileSpreadsheet size={24} /></span>
-      <div><h1>AX768</h1><p>{t("Find the right row. Keep the work moving.")}</p></div>
+      <div><h1>운영시트에이젠트</h1><p>{t("Find the right row. Keep the work moving.")}</p></div>
       <span className={styles.access}>{t("Admin workspace")}</span>
     </header>
-    <div className={styles.tabs} role="tablist" aria-label={t("AX768 workspace")}>
+    <div className={styles.tabs} role="tablist" aria-label={t("운영시트에이젠트 workspace")}>
       {WORKSPACE_TABS.map(tab => <button key={tab} id={`ax-tab-${tab}`} type="button" role="tab"
         aria-selected={activeTab === tab} aria-controls={`ax-panel-${tab}`} tabIndex={activeTab === tab ? 0 : -1}
         onClick={() => setActiveTab(tab)} onKeyDown={event => {
@@ -85,7 +85,7 @@ export function Ax768WorkbenchPage() {
         <section className={styles.resultPanel} aria-label={t("Result")}>
           <div className={styles.sectionTitle}><span className={styles.step}>03</span><h2>{t("Result")}</h2></div>
           <div aria-live="polite" aria-atomic="true">
-            {state.active ? <div className={styles.empty}><LoaderCircle className={styles.spin} size={27} /><h3>{t("AX768 is working")}</h3><p>{t(state.active.caseId === "imei" ? "Finding the roster IMEI and waiting for the device response." : "Searching the configured sheets and checking the result.")}</p><span className={styles.elapsed}><Clock3 size={14} />{Math.max(0, Math.floor((now - state.active.startedAt) / 1000))}s</span><small>{t("You can navigate within the app while this runs. Refreshing clears this session.")}</small></div> : run ? <Ax768ResultView run={run} /> : <div className={styles.empty}><Search size={30} strokeWidth={1.4} /><h3>{t("Your next match starts here")}</h3><p>{t("Choose a case and paste a message. The matching row and sheet will appear here.")}</p></div>}
+            {state.active ? <div className={styles.empty}><LoaderCircle className={styles.spin} size={27} /><h3>{t("운영시트에이젠트 is working")}</h3><p>{t(state.active.caseId === "imei" ? "Finding the roster IMEI and waiting for the device response." : "Searching the configured sheets and checking the result.")}</p><span className={styles.elapsed}><Clock3 size={14} />{Math.max(0, Math.floor((now - state.active.startedAt) / 1000))}s</span><small>{t("You can navigate within the app while this runs. Refreshing clears this session.")}</small></div> : run ? <Ax768ResultView run={run} /> : <div className={styles.empty}><Search size={30} strokeWidth={1.4} /><h3>{t("Your next match starts here")}</h3><p>{t("Choose a case and paste a message. The matching row and sheet will appear here.")}</p></div>}
           </div>
         </section>
         <section className={styles.history} aria-label={t("Recent results")}>

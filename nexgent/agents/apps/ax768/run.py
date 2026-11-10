@@ -16,7 +16,7 @@ def main(argv=None):
     mode.add_argument(
         "--workflow",
         action="store_true",
-        help="Run roster and AS lookup, then complete the selected AS row",
+        help="Check the roster IMEI signal, then complete AS only when connected",
     )
     mode.add_argument(
         "--case",
@@ -46,7 +46,7 @@ def main(argv=None):
         payload = {
             "message": args.message,
             "confirmed_name": args.confirmed_name,
-            "workflow_version": "3",
+            "workflow_version": "4",
         }
     result = asyncio.run(graph.ainvoke(payload, {"recursion_limit": 32}))
     print(json.dumps(result, ensure_ascii=False, indent=2))

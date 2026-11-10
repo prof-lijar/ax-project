@@ -1,5 +1,41 @@
 # AX Agents Architecture
 
+## Device adjustment signal-gated completion (2026-11-09)
+
+The unified `ax768_workflow` is version 4. Name-only input first resolves the
+bottom-most exact-name AS row and its address. Both input modes then search the
+ordered rosters by name/address, recheck the selected identity and read its
+city-specific IMEI (울진 AA, 영덕 Z, 광명 W), and use the existing Ansimk signal
+adapter. These columns were verified against live IMEI headers on 2026-11-09;
+the earlier Z/Y/V mapping referred to S/N. Only a fresh connected result can reach the existing bounded AS
+completion writer. Disconnection and unknown/failed signal checks never write
+AS. Supplied-name/address requests resolve AS after the successful signal;
+name-only requests retain and recheck their initially selected AS row.
+
+The graph adds a bounded `signal` receipt and a `disconnected` outcome. The
+product API requires version 4 before dispatch and validates signal evidence
+before accepting an AS completion receipt. Reports preserve independent signal
+and AS outcomes, including connected devices whose AS update is unknown. No
+master-page notes are written. Shared IMEI reading remains inside the AX768
+workflow module; the standalone IMEI test remains search-only. Existing graph
+IDs, credentials and process boundaries are preserved. Stage budgets are
+45s AS + 100s rosters + 20s IMEI + 60s signal + 40s update.
+
+See [implementation, tests and required runtime activation](device-adjustment-signal-gated-workflow.md).
+
+## AX768 required workflow selection (2026-11-09)
+
+The product Workflow tab requires explicit selection, starting with none. Its
+only runnable ID is `device_adjustment_power` (기기위치조정/전원연결). Five future
+workflow cards are visible but disabled. The product API requires this literal
+`workflow_id`, rejects missing/unavailable/unknown values before runtime I/O,
+and echoes it in the normalized receipt for browser validation. It removes the
+ID before invoking the existing `ax768_workflow` version-3 graph. The graph and
+CLI remain unchanged. New workflows must gain explicit routing and separate
+implementation before the product enables their choices; unknown IDs never
+fall back to the AS completion workflow. Selection is locked during a run, and
+a missing selection produces an accessible inline alert without dispatch.
+
 ## AX768 IMEI signal Test case (2026-11-04)
 
 `--case imei` is a deterministic case in the existing `ax768` graph and Test

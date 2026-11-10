@@ -2,6 +2,109 @@
 
 Date: 2026-11-04
 
+## IMEI column mismatch resolved (2026-11-09)
+
+The reported `699김   영호` input parsed correctly and matched 영덕 row 953.
+Live read-only checks confirmed the actual IMEI headers are 울진 AA, 광명 W,
+영덕 Z; the previously requested Z/V/Y columns contain S/N. The shared reader,
+API/browser contracts and displayed column labels now follow those verified
+headers. This resolves the historical column-clarification note below. The
+exact input successfully read a valid IMEI from Z953 without a signal call or
+AS write. 297 affected tests passed. Runtime rebuild remains necessary; the
+attempt failed because sudo requires interactive authentication. See the
+[correction evidence and activation command](../../agents/docs/device-adjustment-signal-gated-workflow.md).
+
+## Signal-gated device adjustment (2026-11-09)
+
+Unified workflow v4 resolves a name-only request's address from the latest AS
+name row, finds the corresponding roster IMEI (울진 AA, 영덕 Z, 광명 W), checks
+the installation-report signal API and updates AS only for a fresh connected
+response. Reports expose separate signal and AS results; disconnected/failed
+signals cause no AS mutation. The API blocks pre-v4 runtimes before dispatch.
+See [implementation, acceptance checks and activation](../../agents/docs/device-adjustment-signal-gated-workflow.md).
+
+Source is installed in the primary development checkout and the isolated
+worktree. Agent Server rebuild/restart remains required; this session lacks
+Docker socket/sudo access. No live subscriber records were mutated in tests.
+
+## Agent display name (2026-11-09)
+
+Renamed the displayed agent from AX768 to **운영시트에이젠트** in the agent
+catalog, workspace heading, workspace accessible name, loading message and
+sheet directory description. Korean translations and the existing loading-state
+test expectation use the new name. Internal `ax768` IDs, URLs, graph names and
+API routing are unchanged. Applied to the primary checkout serving port 5173
+and the isolated worktree to avoid another source-copy mismatch.
+
+Validation: frontend build and existing catalog, workspace and agent-list tests
+passed. Repeat from `frontend/` with `npm run build` and
+`npm test -- src/shared/api/agentCatalogClient.test.ts src/features/agents/Ax768WorkbenchPage.test.tsx src/features/agents/AgentsPage.test.tsx`.
+No live workflow execution is needed for this display-only change.
+
+## Compact workflow dropdown (2026-11-09)
+
+The six radio cards are replaced by one native dropdown with an inline label
+and required indicator. It is 36px high and at most 280px wide; the five
+unavailable workflows appear only when opening the menu, disabled and marked
+Coming soon. There is no default selection. The existing alert, focus handling,
+in-flight lock, workflow_id API contract and current workflow remain unchanged.
+
+The development server at `http://192.168.0.18:5173` serves the primary checkout
+at `/home/nextor-ai-02/nextor_ai/ax-project`, not the isolated Codex worktree.
+Earlier dropdown edits in the isolated worktree did not affect this server.
+This change modifies only the picker markup and styles in the primary checkout
+and preserves its existing workflow routing and other uncommitted changes.
+
+Validation: production build, 35 focused frontend tests and offline Cargo check
+passed in a temporary copy of the primary frontend. Mocked Chromium checks
+covered the select element, absence of radio choices, five disabled options,
+required-selection alert and focus with zero requests, workflow_id dispatch,
+in-flight lock, candidate retry, tab persistence, reload and 1280/820/390px
+layouts. No backend mutation or live AS write was performed. Existing npm audit
+findings remain: four low, two moderate and two high; the large-bundle warning
+also remains. Use the focused frontend command documented below, plus
+`npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`, and
+`npm audit --audit-level=moderate` from `frontend/` to repeat checks.
+
+## Required workflow selection (2026-11-09)
+
+Workflow now opens with six visible choices and no default selection. The
+available workflow is **기기위치조정/전원연결** (`device_adjustment_power`).
+정보확인&수정, 기기회수, 기기교체, 기기분실 and 가입자신규설치 are disabled and
+marked **Coming soon**. Run without a selection shows an inline alert, focuses
+the available choice and makes no request. Blank text also shows an alert.
+Selection persists across tab switches and is locked during execution.
+
+`POST /api/ax768/workflow/runs` requires `workflow_id` and accepts only
+`device_adjustment_power`; missing, null, unknown and unavailable IDs return 422
+before opening a runtime client. Responses echo the ID and the browser validates
+it. The API strips this product routing field before calling the existing
+`ax768_workflow` graph with version 3. The graph and CLI contract are unchanged.
+Future choices need their own explicit API routing and workflow implementation
+before they can be enabled. There is no fallback to the current workflow.
+
+Validation: 35 focused frontend tests and 32 backend workflow tests passed;
+production build and Rust check passed. Chromium verified no default, all six
+choices, alerts without dispatch, loading locks, tab persistence, request/result
+identity, Korean labels and a 780px layout using mocked API responses. Desktop
+and narrow screenshots are under `/tmp/ax768-ui-artifacts/workflow-selection-*`.
+No live AS update was executed. The existing large-bundle warning and eight
+existing npm audit findings remain (four low, two moderate, two high).
+
+Run focused checks from the respective directories:
+`npm run test -- src/shared/api/ax768WorkflowClient.test.ts src/features/agents/Ax768WorkbenchPage.test.tsx`
+and `.venv/bin/pytest tests/test_ax768_workflow.py -q`.
+This update uses the backend/frontend development source reload; it does not
+require a new Agent Server graph deployment.
+
+## Workflow input copy cleanup (2026-11-09)
+
+Removed the S/X/Y update explanation and roster search-order note beneath the
+Workflow composer as requested. Also removed the introductory description about
+finding and completing the latest AS row. The attachment-specific instruction still appears
+when images prevent submission, with its accessible description attached only
+while visible.
+
 ## IMEI signal Test case (2026-11-04)
 
 **IMEI case** is available as an eighth option in Test, using the existing

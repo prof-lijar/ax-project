@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Device adjustment signal gate](device-adjustment-signal-gated-workflow.md): AS-derived name-only address, verified roster IMEI columns, spaced-name regression checks, signal-before-write policy, result receipts and v4 activation.
+
+- [AX768 workflow selection](ax-agents-architecture.md#ax768-required-workflow-selection-2026-11-09): required visible choice, disabled future workflows and API routing validation.
+
 - [AX768 IMEI signal case](../workflows/ax768/README.md#imei-test-case): roster IMEI lookup, authenticated signal check, private sessions and connected/disconnected messages.
 
 - [AX768 AS completion](ax-agents-architecture.md#ax768-as-completion-update-2026-11-04): verified S/X/Y update after AS matching, Korea date and conditional completion text.

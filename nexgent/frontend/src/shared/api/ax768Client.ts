@@ -1,7 +1,7 @@
 import { authenticatedFetch } from "./authenticatedFetch";
 
 export const AX768_CASES = [
-  { id: "imei", title: "IMEI case", target: "Uljin Z → Gwangmyeong V → Yeongdeok Y → Signal check", format: "Name + signal-check request", example: "김순옥님 신호확인요.", writes: false, description: "Find the latest roster match, read its IMEI and check the device signal." },
+  { id: "imei", title: "IMEI case", target: "Uljin AA → Gwangmyeong W → Yeongdeok Z → Signal check", format: "Name + signal-check request", example: "김순옥님 신호확인요.", writes: false, description: "Find the latest roster match, read its IMEI and check the device signal." },
   { id: "1.1", title: "Name lookup", target: "AS sheet", format: "Name + signal-check request", example: "김순옥님 신호확인요.", writes: false, description: "Find the latest matching name and return its row." },
   { id: "2.2", title: "Address lookup", target: "Uljin user roster", format: "Address", example: "상밤터1길 59-4", writes: false, description: "Find the latest matching address and return its row." },
   { id: "2.3", title: "AS name and address", target: "AS sheet", format: "Address + name", example: "오봉길 24 주정수", writes: false, description: "Find the latest AS row matching both name and address." },

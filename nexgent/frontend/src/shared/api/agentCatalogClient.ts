@@ -206,7 +206,7 @@ const suminAgentRecord: AgentCatalogRecord = {
 };
 
 const ax768Record: AgentCatalogRecord = {
-  id: AX768_AGENT_ID, name: "AX768", role: "Spreadsheet collaborator",
+  id: AX768_AGENT_ID, name: "운영시트에이젠트", role: "Spreadsheet collaborator",
   description: "Find matching users and the latest AS records.",
   graphId: "ax768", canRunInChat: false, readiness: null, currentWork: null,
   runtimeLabel: "LangGraph", lastObservedAt: null, observationMode: null,
