@@ -1,5 +1,5 @@
 import { AlertCircle, ExternalLink, ImagePlus, Inbox, LoaderCircle, Play, Upload, X } from "lucide-react";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type DragEvent } from "react";
 import { t, useLanguage } from "../../shared/i18n";
 import { runAx768Workflow, workflowStatusLabels, type WorkflowResult, type WorkflowStage } from "../../shared/api/ax768WorkflowClient";
 import { isSheetUrl } from "../../shared/api/ax768Client";
@@ -31,16 +31,22 @@ function ImagePreview({ file, remove }: { file: File; remove: () => void }) {
   </li>;
 }
 
+function StageDetails({ title, status, attention = false, children }: { title: string; status: string; attention?: boolean; children: ReactNode }) {
+  return <details className={styles.stage} open={attention || undefined}>
+    <summary className={styles.stageHeading}><span>{t(title)}</span><span className={attention ? styles.attention : undefined}>{t(status)}</span></summary>
+    <div className={styles.stageBody}>{children}</div>
+  </details>;
+}
+
 function StageResult({ title, stage }: { title: string; stage: WorkflowStage }) {
   const labels = { found: "Match found", not_found: "No match", skipped: "Skipped", failed: "Run failed", needs_confirmation: "Choose a matching name", candidate: "Candidate" };
-  return <section className={styles.stage} aria-label={t(title)}>
-    <div className={styles.stageHeading}><h3>{t(title)}</h3><span>{t(labels[stage.status])}</span></div>
+  return <StageDetails title={title} status={labels[stage.status]} attention={stage.status === "failed" || stage.status === "needs_confirmation"}>
     {stage.row && <strong>{stage.name} · {t("Row {row}", { row: stage.row })}</strong>}
     {(stage.city || stage.sheet_alias) && <p>{[stage.city, stage.sheet_alias, stage.sheet_title].filter(Boolean).join(" · ")}</p>}
     {stage.address && <p>{stage.address}</p>}
     {stage.reason && <p>{stage.reason}</p>}
     {isSheetUrl(stage.sheet_url) && <a href={stage.sheet_url} target="_blank" rel="noreferrer">{t("Open matching row")}<ExternalLink size={12} aria-hidden /></a>}
-  </section>;
+  </StageDetails>;
 }
 
 export function Ax768WorkflowPanel() {
@@ -50,7 +56,6 @@ export function Ax768WorkflowPanel() {
   const [selectionError, setSelectionError] = useState(false);
   const workflowChoice = useRef<HTMLSelectElement>(null);
   const messageInput = useRef<HTMLTextAreaElement>(null);
-  const selectedWorkflow = AX768_WORKFLOWS.find(workflow => workflow.id === workflowId);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<WorkflowResult | null>(null);
@@ -153,6 +158,9 @@ export function Ax768WorkflowPanel() {
   }
   return <div className={styles.workspace}>
     <section className={styles.inputPanel} aria-labelledby="ax-workflow-input-title">
+      <header className={styles.panelHeader}><h2 id="ax-workflow-input-title">{t("New request")}</h2>
+        <button type="button" className={styles.clear} disabled={running || (!message && !images.length && !errors.length)} onClick={clear}>{t("Clear input")}</button>
+      </header>
       <div className={styles.workflowPicker}>
         <label htmlFor="ax-workflow-choice">{t("Select workflow")} <span className={styles.required}>{t("Required")}</span></label>
         <select id="ax-workflow-choice" ref={workflowChoice} value={workflowId} required disabled={running}
@@ -165,17 +173,14 @@ export function Ax768WorkflowPanel() {
         </select>
       </div>
       {selectionError && <p id="ax-workflow-selection-error" className={styles.selectionAlert} role="alert"><AlertCircle size={16} aria-hidden />{t("Please select a workflow.")}</p>}
-      <header className={styles.panelHeader}><h2 id="ax-workflow-input-title">{t("User input")}</h2>
-        <button type="button" className={styles.clear} disabled={running || (!message && !images.length && !errors.length)} onClick={clear}>{t("Clear input")}</button>
-      </header>
+      <label htmlFor="ax-workflow-message" className={styles.inputLabel}>{t("Request")}</label>
       <div className={`${styles.composer} ${dragging ? styles.dragging : ""}`} role="group" aria-label={t("Request with text and images")}
         onDragEnter={event => { if (event.dataTransfer.types.includes("Files")) { preventFileDrop(event); dragDepth.current++; setDragging(true); } }}
         onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { preventFileDrop(event); event.dataTransfer.dropEffect = "copy"; } }}
         onDragLeave={event => { preventFileDrop(event); dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); }}
         onDrop={event => { if (!event.dataTransfer.files.length) return; preventFileDrop(event); dragDepth.current = 0; setDragging(false); addImages(Array.from(event.dataTransfer.files)); }}>
-        <textarea ref={messageInput} id="ax-workflow-message" value={message} disabled={running || extracting} onChange={event => { setMessage(event.target.value); resetResult(); }} maxLength={8000} rows={8}
-          aria-label={t("Request")} placeholder={t("Type your request here…\nDrop images into this box or use Add images below.")}
-          aria-describedby="ax-workflow-image-hint" />
+        <textarea ref={messageInput} id="ax-workflow-message" value={message} disabled={running || extracting} onChange={event => { setMessage(event.target.value); resetResult(); }} maxLength={8000} rows={4}
+          aria-label={t("Request")} placeholder={t("Enter a name, address or request…")} />
         {images.length > 0 && <ul className={styles.images} aria-label={t("Attached images")}>{images.map(file => <ImagePreview key={fileKey(file)} file={file}
           remove={() => removeImage(file)} />)}</ul>}
         <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden aria-label={t("Upload images")}
@@ -187,8 +192,7 @@ export function Ax768WorkflowPanel() {
         </div>
         {dragging && <div className={styles.dropOverlay}><Upload size={26} aria-hidden /><strong>{t("Drop images here")}</strong></div>}
       </div>
-      <p id="ax-workflow-image-hint" className={styles.localNote}>{t("PNG, JPG or WebP · up to 5 images · 50 MB total")}</p>
-      <div aria-live="polite">{errors.length > 0 && <ul className={styles.errors}>{errors.map(error => <li key={error}>{error}</li>)}</ul>}</div>
+      {errors.length > 0 && <div role="alert"><ul className={styles.errors}>{errors.map(error => <li key={error}>{error}</li>)}</ul></div>}
       {images.length > 0 && <div id="ax-workflow-setup-note" className={styles.ocrPanel}>
         <p className={styles.localNote}>{t("Image text is extracted on this device. Review the name and address before running.")}</p>
         {extracting && <p role="status"><LoaderCircle className={styles.spinner} size={14} aria-hidden /> {t("Extracting Korean text… {percent}%", { percent: ocrProgress })}</p>}
@@ -204,40 +208,35 @@ export function Ax768WorkflowPanel() {
       </div>}
     </section>
     <div className={styles.outputColumn} aria-busy={running}>
-      <section className={styles.statusPanel} aria-labelledby="ax-workflow-status-title" aria-live="polite">
-        <header className={styles.panelHeader}><h2 id="ax-workflow-status-title">{t("Workflow status")}</h2><span className={styles.status}>{running ? <LoaderCircle className={styles.spinner} size={14} aria-hidden /> : <span aria-hidden />}{t(running ? "Running…" : runError ? "Needs attention" : result ? workflowStatusLabels[result.status] : "Not started")}</span></header>
-        <p className={styles.selectedWorkflow}>{selectedWorkflow?.name ?? t("No workflow selected")}</p>
-        <p className={styles.description}>{running ? t("Checking signal, AS and general notes… {seconds}s elapsed", { seconds: elapsed }) : selectedWorkflow ? t("AS address if needed → Roster IMEI → Signal → AS update → General notes") : null}</p>
-        {runError && <p className={styles.imageWarning} role="alert">{t(runError)}</p>}
-        {result && <><p className={styles.response}>{result.response}</p><span className={styles.localNote}>{t("Finished in {seconds}s", { seconds: (result.duration_ms / 1000).toFixed(1) })}</span></>}
-        {result?.attempts.length ? <ol className={styles.attempts}>{result.attempts.map((a, i) => <li key={`${a.sheet_alias}-${i}`}>{a.city} · {a.sheet_alias}<span>{t(a.status === "found" ? "Match found" : a.status === "not_found" ? "No exact match" : "Run failed")}</span></li>)}</ol> : null}
-      </section>
       <section className={styles.resultPanel} aria-labelledby="ax-workflow-result-title">
-        <header className={styles.panelHeader}><h2 id="ax-workflow-result-title">{t("Workflow result")}</h2></header>
+        <header className={styles.panelHeader}><h2 id="ax-workflow-result-title">{t("Result")}</h2>
+          <span className={styles.status} data-status={running ? "running" : runError ? "failed" : result?.status ?? "idle"} role="status">{running ? <LoaderCircle className={styles.spinner} size={14} aria-hidden /> : <span aria-hidden />}{t(running ? "Running…" : runError ? "Needs attention" : result ? workflowStatusLabels[result.status] : "Not started")}</span>
+        </header>
+        {runError && <p className={styles.imageWarning} role="alert">{t(runError)}</p>}
         {result ? <>
+          <p className={styles.response}>{result.response}</p>
+          <span className={styles.localNote}>{t("Finished in {seconds}s", { seconds: (result.duration_ms / 1000).toFixed(1) })}</span>
           <p className={styles.parsed}>{[result.parsed.lookup_name, result.parsed.address].filter(Boolean).join(" · ")}</p>
           {result.notices.length > 0 && <ul className={styles.notices}>{result.notices.map((notice, i) => <li key={i}>{notice}</li>)}</ul>}
+          {result.status === "needs_confirmation" && <div className={styles.candidates}><p>{t("Choose a matching name to continue the AS lookup.")}</p>{result.candidates.map((candidate, i) => <button type="button" key={`${candidate.sheet_alias}-${candidate.row}-${i}`} disabled={running || !candidate.name} onClick={() => candidate.name && void run(candidate.name)}><strong>{candidate.name}</strong><span>{candidate.city} · {t("Row {row}", { row: candidate.row ?? "—" })} · {candidate.address}</span></button>)}</div>}
           <StageResult title="1. User roster" stage={result.roster} />
-          <section className={styles.stage} aria-label={t("2. Device signal")}>
-            <div className={styles.stageHeading}><h3>{t("2. Device signal")}</h3><span>{t(({connected: "Signal confirmed", disconnected: "Device disconnected", failed: "Signal check failed", skipped: "Skipped"})[result.signal.status])}</span></div>
+          <StageDetails title="2. Device signal" status={({connected: "Signal confirmed", disconnected: "Device disconnected", failed: "Signal check failed", skipped: "Skipped"})[result.signal.status]} attention={["failed", "disconnected"].includes(result.signal.status)}>
             <dl className={styles.signalValues}>
               {result.signal.imei && <div><dt>IMEI ({result.signal.imei_column})</dt><dd>{result.signal.imei}</dd></div>}
               {result.signal.sn && <div><dt>S/N</dt><dd>{result.signal.sn}</dd></div>}
               {result.signal.signal_label && <div><dt>{t("Signal strength")}</dt><dd>{result.signal.signal_label}{result.signal.rssi !== null ? ` (RSSI ${result.signal.rssi})` : ""}</dd></div>}
             </dl>
             {result.signal.reason && <p>{result.signal.reason}</p>}
-          </section>
+          </StageDetails>
           <StageResult title="3. Latest AS match" stage={result.as_lookup} />
-          <section className={styles.stage} aria-label={t("4. AS row update")}>
-            <div className={styles.stageHeading}><h3>{t("4. AS row update")}</h3><span>{t(({updated: "Saved and verified", skipped: "Skipped", failed: "Not updated", unknown: "Update not confirmed"})[result.as_update.status])}</span></div>
+          <StageDetails title="4. AS row update" status={({updated: "Saved and verified", skipped: "Skipped", failed: "Not updated", unknown: "Update not confirmed"})[result.as_update.status]} attention={["failed", "unknown"].includes(result.as_update.status)}>
             {result.as_update.row && <strong>{t("Row {row}", { row: result.as_update.row })}</strong>}
             {result.as_update.reason && <p>{result.as_update.reason}</p>}
             {result.as_update.changes.length > 0 && <><p>{t(result.as_update.verified ? "Verified values" : "Requested values · not verified")}</p><dl className={styles.updateValues}>{result.as_update.changes.map(change => <div key={change.column}><dt>{change.column}</dt><dd>{change.value}</dd></div>)}</dl></>}
             {result.as_update.y_action === "unchanged" && <p>{t("Y left unchanged: C did not match either completion rule.")}</p>}
             {result.as_update.status === "unknown" && <p className={styles.imageWarning}>{t("Check the AS row before running again. The update may already be saved.")}</p>}
-          </section>
-          <section className={styles.stage} aria-label={t("5. Member general notes")}>
-            <div className={styles.stageHeading}><h3>{t("5. Member general notes")}</h3><span>{t(result.member_note ? ({saved: "Saved and verified", already_present: "General note already present", not_found: "No match", needs_confirmation: "Needs attention", blocked: "Needs attention", failed: "Not updated", unknown: "Update not confirmed"})[result.member_note.status] : "Skipped")}</span></div>
+          </StageDetails>
+          <StageDetails title="5. Member general notes" status={result.member_note ? ({saved: "Saved and verified", already_present: "General note already present", not_found: "No match", needs_confirmation: "Needs attention", blocked: "Needs attention", failed: "Not updated", unknown: "Update not confirmed"})[result.member_note.status] : "Skipped"} attention={!!result.member_note && !["saved", "already_present"].includes(result.member_note.status)}>
             {result.member_note && <>
               <p>{result.member_note.name} · {result.member_note.address}{result.member_note.member_id ? ` · ID ${result.member_note.member_id}` : ""}</p>
               <p>{t(result.member_note.verified ? "Verified values" : "Requested values · not verified")}</p>
@@ -246,9 +245,10 @@ export function Ax768WorkflowPanel() {
               {result.member_note.candidates.map(candidate => <p key={candidate.member_id}>{candidate.name} · {candidate.address} · ID {candidate.member_id}</p>)}
               {result.member_note.status === "unknown" && <p className={styles.imageWarning}>{t("Check member general notes before running again. The update may already be saved.")}</p>}
             </>}
-          </section>
-          {result.status === "needs_confirmation" && <div className={styles.candidates}><p>{t("Choose a matching name to continue the AS lookup.")}</p>{result.candidates.map((candidate, i) => <button type="button" key={`${candidate.sheet_alias}-${candidate.row}-${i}`} disabled={running || !candidate.name} onClick={() => candidate.name && void run(candidate.name)}><strong>{candidate.name}</strong><span>{candidate.city} · {t("Row {row}", { row: candidate.row ?? "—" })} · {candidate.address}</span></button>)}</div>}
-        </> : <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={32} aria-hidden /> : <Inbox size={32} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? "Looking for matching rows" : "No results yet")}</h3><p>{t("The workflow output and completion status will appear here after a run.")}</p></div>}
+          </StageDetails>
+
+          {result.attempts.length > 0 && <details className={styles.help}><summary>{t("Search details")}</summary><ol className={styles.attempts}>{result.attempts.map((a, i) => <li key={`${a.sheet_alias}-${i}`}>{a.city} · {a.sheet_alias}<span>{t(a.status === "found" ? "Match found" : a.status === "not_found" ? "No exact match" : "Run failed")}</span></li>)}</ol></details>}
+        </> : !runError && <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={26} aria-hidden /> : <Inbox size={26} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? "Looking for matching rows" : "No results yet")}</h3><p>{running ? t("Elapsed {seconds}s", { seconds: elapsed }) : t("Choose a workflow and add your request.")}</p></div>}
       </section>
     </div>
   </div>;

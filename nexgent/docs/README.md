@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [AX768 workspace simplification](08-implementation/ax768-workspace-simplification.md): Workflow-first navigation, compact request/result panels, expandable receipts and responsive browser validation.
+
 - [AX768 case workspace](08-implementation/ax768-case-workspace.md): Test/Workflow/Sheets tabs, required workflow selection and coming-soon choices, IMEI signal checks, unified roster-to-AS lookup, unique name correction, automatic source city, verified S/X/Y completion, loading/results, spreadsheet links and runtime setup.
 
 - [Weekly Reporter Selected-Ward Tests](08-implementation/weekly-reporter-selected-ward-tests.md): comma-separated ward selection, ZIP-only output, validation, and rollout.

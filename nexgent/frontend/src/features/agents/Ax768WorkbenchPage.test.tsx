@@ -19,7 +19,7 @@ describe("운영시트에이젠트 workspace", () => {
     const html = renderToStaticMarkup(<Ax768WorkbenchPage />);
     expect((html.match(/<select[^>]*id="ax-case"[\s\S]*?<\/select>/)?.[0].match(/<option /g) ?? [])).toHaveLength(9);
     expect(html).toContain('id="ax-message"'); expect(html).toContain("Use example");
-    expect(html).toContain("Your next match starts here"); expect(html).toContain("This session only");
+    expect(html).toContain("No results yet"); expect(html).toContain("This session only");
   });
   it.each(AX768_CASES.filter(c => c.id !== "member_note"))("offers search only for case $id", c => {
     useLanguage.setState({ language: "en" });

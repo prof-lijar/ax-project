@@ -23,6 +23,7 @@ try {
   await route.fulfill({json:result});
  });
  await page.goto(process.env.AX768_TEST_PAGE ?? `${base}/agents/ax768`);
+ await page.locator('#ax-tab-test').click();
  await page.locator('#ax-case').selectOption('member_note');
  await page.getByRole('button',{name:'예시 입력',exact:true}).click();
  const run=page.getByRole('button',{name:'가입자 검색 및 일반 사항 교체',exact:true});

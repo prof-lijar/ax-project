@@ -27,7 +27,7 @@ try {
  await page.locator('#ax-tab-workflow').click();
  await page.locator('#ax-workflow-choice').selectOption('device_adjustment_power');
  const run=page.getByRole('button',{name:'워크플로 실행',exact:true});
- const noteStage=page.getByRole('region',{name:'5. 가입자 일반 사항',exact:true});
+ const noteStage=page.locator('#ax-panel-workflow details').filter({has:page.locator('summary',{hasText:'5. 가입자 일반 사항'})});
  for (const choice of ['adjust','power','unknown','disconnected']) {
   scenario=choice;
   await page.locator('#ax-workflow-message').fill(`울진북로 164 김순옥님 ${choice==='power'?'전원연결':'기기위치조정'} 신호확인요`);
@@ -36,10 +36,16 @@ try {
   if(choice==='disconnected') await noteStage.getByText('건너뜀',{exact:true}).waitFor();
   else if(choice==='unknown') await noteStage.getByText('다시 실행하기 전에 가입자 일반 사항을 확인해 주세요. 이미 저장되었을 수 있습니다.',{exact:true}).waitFor();
   else {
+   assert.equal(await noteStage.getAttribute('open'),null);
+   await noteStage.locator('summary').click();
    await noteStage.getByText(`2026-11-10 [현지관리자 방문] ${choice==='power'?'전원연결':'기기위치조정'}`,{exact:true}).waitFor();
    await noteStage.getByText('저장 확인 완료',{exact:true}).waitFor();
    assert.equal(await noteStage.locator('a').getAttribute('href'),'https://admin.ansimk.com/members');
    await page.screenshot({path:`${artifacts}/${choice}.png`,fullPage:true});
+   await page.setViewportSize({width:390,height:900});
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   await page.screenshot({path:`${artifacts}/${choice}-mobile.png`,fullPage:true});
+   await page.setViewportSize({width:1280,height:1000});
   }
  }
  assert.equal(calls.length,4);

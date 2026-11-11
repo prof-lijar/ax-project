@@ -31,7 +31,7 @@ mkdirSync(artifacts, { recursive: true });
   await page.waitForFunction(() => document.querySelector('#ax-workflow-message').value.startsWith('이름:'),{},{timeout:120000});
   const value=await page.locator('#ax-workflow-message').inputValue();console.log('Extracted input:',value);
   assert(value.includes('이름: 김순옥'));assert(value.includes('주소: 울진북로 164'));assert.equal(requests.length,0);
-  await page.locator('details summary').click();await page.screenshot({path:`${artifacts}/desktop.png`,fullPage:true});
+  await page.locator('#ax-workflow-setup-note details summary').click();await page.screenshot({path:`${artifacts}/desktop.png`,fullPage:true});
   await page.locator('#ax-workflow-choice').selectOption('device_adjustment_power');
   // A low-confidence result requires a deliberate correction; the fixture should be high confidence.
   await page.getByRole('button',{name:'워크플로 실행',exact:true}).click();

@@ -18,7 +18,8 @@ describe("AX768 workflow selection", () => {
     const runButton = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).find(button => button.includes("Run workflow"));
     expect(runButton).toBeDefined();
     expect(runButton).not.toContain('disabled');
-    expect(html).toContain("No workflow selected");
+    expect(html).toContain("Choose a workflow and add your request.");
+    expect(html).not.toContain("Workflow status");
     expect(html).not.toContain("Uljin → Gwangmyeong → Yeongdeok → AS → Update");
   });
 

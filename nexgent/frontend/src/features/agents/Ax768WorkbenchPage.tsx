@@ -8,8 +8,8 @@ import styles from "./Ax768WorkbenchPage.module.css";
 import { Ax768WorkflowPanel } from "./Ax768WorkflowPanel";
 import { Ax768SheetsPanel } from "./Ax768SheetsPanel";
 
-const WORKSPACE_TABS = ["test", "workflow", "sheets"] as const;
-const TAB_LABELS = { test: "Test", workflow: "Workflow", sheets: "Sheets" };
+const WORKSPACE_TABS = ["workflow", "test", "sheets"] as const;
+const TAB_LABELS = { test: "Individual tasks", workflow: "Workflow", sheets: "Sheets" };
 
 function back(event: MouseEvent<HTMLAnchorElement>) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -26,7 +26,7 @@ export function Ax768WorkbenchPage() {
   const selected = AX768_CASES.find(c => c.id === state.selectedCase)!;
   const message = state.drafts[state.selectedCase] ?? "";
   const run = state.history.find(r => r.id === state.selectedRunId) ?? null;
-  const [activeTab, setActiveTab] = useState<typeof WORKSPACE_TABS[number]>("test");
+  const [activeTab, setActiveTab] = useState<typeof WORKSPACE_TABS[number]>("workflow");
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!state.active) return;
@@ -38,7 +38,7 @@ export function Ax768WorkbenchPage() {
     <a href="/agents" onClick={back} className={styles.back}><ArrowLeft size={15} />{t("Back to Agents")}</a>
     <header className={styles.header}>
       <span className={styles.avatar}><FileSpreadsheet size={24} /></span>
-      <div><h1>운영시트에이젠트</h1><p>{t("Find the right row. Keep the work moving.")}</p></div>
+      <div><h1>운영시트에이젠트</h1></div>
       <span className={styles.access}>{t("Admin workspace")}</span>
     </header>
     <div className={styles.tabs} role="tablist" aria-label={t("운영시트에이젠트 workspace")}>
@@ -60,17 +60,17 @@ export function Ax768WorkbenchPage() {
     <div id="ax-panel-test" role="tabpanel" aria-labelledby="ax-tab-test" tabIndex={0}
       hidden={activeTab !== "test"} className={`${styles.tabPanel} ${styles.workspace}`}>
       <form className={styles.inputPanel} onSubmit={event => { event.preventDefault(); void state.run(); }}>
-        <div className={styles.sectionTitle}><span className={styles.step}>01</span><h2>{t("Choose the work")}</h2></div>
+        <div className={styles.sectionTitle}><h2>{t("Individual tasks")}</h2></div>
         <label className={styles.label} htmlFor="ax-case">{t("Workflow case")}</label>
         <select id="ax-case" value={state.selectedCase} disabled={!!state.active}
           onChange={event => state.selectCase(event.target.value as Ax768CaseId)}>
           {AX768_CASES.map(c => <option value={c.id} key={c.id}>{["imei", "member_note"].includes(c.id) ? t(c.title) : `${c.id} · ${t(c.title)}`}</option>)}
         </select>
+        <details className={styles.taskHelp}><summary>{t("Task details")}</summary>
         <p className={styles.description}>{t(selected.description)}</p>
         <div className={styles.target}><FileSpreadsheet size={16} aria-hidden /><div><span>{t("Search location")}</span><strong>{t(selected.target)}</strong></div></div>
+        </details>
         <div className={styles.mode}>{selected.id === "member_note" ? <FilePenLine size={14} /> : selected.writes ? <Highlighter size={14} /> : <Search size={14} />}{t(selected.id === "member_note" ? "Replaces General notes with the entered text" : selected.id === "imei" ? "Signal check · no sheet changes" : selected.writes ? "Applies yellow to the latest match" : "Search only · no sheet changes")}</div>
-        <div className={styles.divider} />
-        <div className={styles.sectionTitle}><span className={styles.step}>02</span><h2>{t("Add your message")}</h2></div>
         <div className={styles.labelRow}><label htmlFor="ax-message" className={styles.label}>{t("Message")}</label><button type="button" className={styles.textButton} disabled={!!state.active} onClick={() => state.setDraft(selected.example)}>{t("Use example")}</button></div>
         <textarea id="ax-message" value={message} disabled={!!state.active} maxLength={8000} rows={5} placeholder={selected.example}
           aria-describedby="ax-input-format" onChange={event => state.setDraft(event.target.value)} />
@@ -84,13 +84,13 @@ export function Ax768WorkbenchPage() {
       </form>
       <div className={styles.resultColumn}>
         <section className={styles.resultPanel} aria-label={t("Result")}>
-          <div className={styles.sectionTitle}><span className={styles.step}>03</span><h2>{t("Result")}</h2></div>
+          <div className={styles.sectionTitle}><h2>{t("Result")}</h2></div>
           <div aria-live="polite" aria-atomic="true">
-            {state.active ? <div className={styles.empty}><LoaderCircle className={styles.spin} size={27} /><h3>{t("운영시트에이젠트 is working")}</h3><p>{t(state.active.caseId === "imei" ? "Finding the roster IMEI and waiting for the device response." : "Searching the configured sheets and checking the result.")}</p><span className={styles.elapsed}><Clock3 size={14} />{Math.max(0, Math.floor((now - state.active.startedAt) / 1000))}s</span><small>{t("You can navigate within the app while this runs. Refreshing clears this session.")}</small></div> : run ? <Ax768ResultView run={run} /> : <div className={styles.empty}><Search size={30} strokeWidth={1.4} /><h3>{t("Your next match starts here")}</h3><p>{t("Choose a case and paste a message. The matching row and sheet will appear here.")}</p></div>}
+            {state.active ? <div className={styles.empty}><LoaderCircle className={styles.spin} size={27} /><h3>{t("운영시트에이젠트 is working")}</h3><p>{t(state.active.caseId === "imei" ? "Finding the roster IMEI and waiting for the device response." : "Searching the configured sheets and checking the result.")}</p><span className={styles.elapsed}><Clock3 size={14} />{Math.max(0, Math.floor((now - state.active.startedAt) / 1000))}s</span><small>{t("You can navigate within the app while this runs. Refreshing clears this session.")}</small></div> : run ? <Ax768ResultView run={run} /> : <div className={styles.empty}><Search size={30} strokeWidth={1.4} /><h3>{t("No results yet")}</h3></div>}
           </div>
         </section>
-        <section className={styles.history} aria-label={t("Recent results")}>
-          <div className={styles.historyHeader}><h2>{t("Recent results")}</h2><span>{t("This session only")}</span></div>
+        <details className={styles.history}>
+          <summary className={styles.historyHeader}><span>{t("Recent results")} ({state.history.length})</span><span>{t("This session only")}</span></summary>
           {state.history.length === 0 ? <p className={styles.historyEmpty}>{t("Your last 20 runs will appear here until you refresh or sign out.")}</p> : <ul>{state.history.map(item => {
             const outcome = item.result?.outcome ?? item.outcome ?? "unknown";
             return <li key={item.id}><button type="button" aria-pressed={item.id === state.selectedRunId} disabled={!!state.active} onClick={() => state.selectRun(item.id)}>
@@ -98,7 +98,7 @@ export function Ax768WorkbenchPage() {
               <time dateTime={new Date(item.startedAt).toISOString()}>{new Date(item.startedAt).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}</time>
             </button></li>;
           })}</ul>}
-        </section>
+        </details>
       </div>
     </div>
     <section id="ax-panel-workflow" role="tabpanel" aria-labelledby="ax-tab-workflow" tabIndex={0}
