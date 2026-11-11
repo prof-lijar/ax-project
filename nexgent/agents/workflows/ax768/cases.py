@@ -14,6 +14,7 @@ from workflows.ax768.request_parser import parse_request
 from workflows.ax768.signal_check import requested_name
 
 CASE_DESCRIPTIONS = {
+    "member_note": "Replace general notes for one identified admin member",
     "imei": "IMEI case: find a roster IMEI and check its device signal",
     "1.1": "Find a person's latest matching name row",
     "2.2": "Find an address and return the bottom-most matching row",
@@ -32,6 +33,11 @@ def case_action(case_id: str | None, message: str):
         raise ValueError(
             f"Unknown AX768 case: {case_id}. Available cases: {', '.join(CASE_DESCRIPTIONS)}"
         )
+    if case_id == "member_note":
+        from workflows.ax768.member_note import parse_member_note
+
+        parse_member_note(message)
+        return None
     if case_id == "imei":
         parse_request(message)
         return None

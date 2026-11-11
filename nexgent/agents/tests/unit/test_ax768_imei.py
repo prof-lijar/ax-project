@@ -100,7 +100,7 @@ async def test_city_column_latest_row_and_korean_signal_message(
             else "S/N 00300016 전원 연결 및 기기위치 확인해주세요."
         )
         receipt = output["observations"][0]["result"]
-        assert receipt["imei_column"] == ["Z", "V", "Y"][found_index]
+        assert receipt["imei_column"] == ["AA", "W", "Z"][found_index]
         assert (
             receipt["selected_row"] == 80
             and receipt["city"] == targets[found_index].city

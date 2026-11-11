@@ -13,15 +13,15 @@ vi.mock("../../shared/state/useAx768Store", async importOriginal => {
 });
 
 afterEach(() => { vi.restoreAllMocks(); useAx768Store.getState().reset(); useLanguage.setState({ language: "ko" }); });
-describe("AX768 workspace", () => {
-  it("shows eight cases, editable input and example action", () => {
+describe("운영시트에이젠트 workspace", () => {
+  it("shows nine cases, editable input and example action", () => {
     useLanguage.setState({ language: "en" });
     const html = renderToStaticMarkup(<Ax768WorkbenchPage />);
-    expect((html.match(/<select[^>]*id="ax-case"[\s\S]*?<\/select>/)?.[0].match(/<option /g) ?? [])).toHaveLength(8);
+    expect((html.match(/<select[^>]*id="ax-case"[\s\S]*?<\/select>/)?.[0].match(/<option /g) ?? [])).toHaveLength(9);
     expect(html).toContain('id="ax-message"'); expect(html).toContain("Use example");
     expect(html).toContain("Your next match starts here"); expect(html).toContain("This session only");
   });
-  it.each(AX768_CASES)("offers search only for case $id", c => {
+  it.each(AX768_CASES.filter(c => c.id !== "member_note"))("offers search only for case $id", c => {
     useLanguage.setState({ language: "en" });
     useAx768Store.setState({ selectedCase: c.id });
     const html = renderToStaticMarkup(<Ax768WorkbenchPage />);
@@ -33,7 +33,7 @@ describe("AX768 workspace", () => {
     useLanguage.setState({ language: "en" });
     useAx768Store.setState({ active: { id: "a", caseId: "4.2", message: "text", startedAt: Date.now(), result: null, error: null, outcome: null } });
     const html = renderToStaticMarkup(<Ax768WorkbenchPage />);
-    expect(html).toContain("AX768 is working"); expect(html).toContain("Running…");
+    expect(html).toContain("운영시트에이젠트 is working"); expect(html).toContain("Running…");
     expect(html).toContain('aria-live="polite"'); expect(html).toContain("disabled");
   });
   it("does not claim visible yellow when stored color is overridden", () => {

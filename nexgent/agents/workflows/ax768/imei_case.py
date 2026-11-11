@@ -13,7 +13,9 @@ from ax_integrations.sheets_lookup import lookup_person, normalize_person_name
 from workflows.ax768.city_search import USER_SHEETS
 from workflows.ax768.request_parser import parse_request
 
-IMEI_COLUMNS = {"uljin-users": "Z", "yeongdeok-users": "Y", "gwangmyeon-users": "V"}
+# Verified against the row-4 "단말 IMEI (실데이터)" headers on 2026-11-09.
+# The preceding Z/Y/V columns contain S/N, which is not an IMEI.
+IMEI_COLUMNS = {"uljin-users": "AA", "yeongdeok-users": "Z", "gwangmyeon-users": "W"}
 
 
 def imei_value(value):
@@ -25,6 +27,39 @@ def imei_value(value):
             "선택된 가입자 행의 IMEI가 비어 있거나 15자리 숫자가 아닙니다."
         )
     return value
+
+
+async def read_roster_imei(sheets, target, match):
+    """Recheck a selected roster identity and read only its configured IMEI cell."""
+    row = match["row"]
+    if type(row) is not int or row < target.start_row:
+        raise SheetsError("선택된 가입자 행이 올바르지 않습니다.")
+    column = IMEI_COLUMNS[target.alias]
+    title = "'" + match["sheet_title"].replace("'", "''") + "'"
+    data = await sheets._request(
+        "GET",
+        "/values:batchGet",
+        params={
+            "ranges": [
+                f"{title}!{target.name_column}{row}",
+                f"{title}!{target.address_column}{row}",
+                f"{title}!{column}{row}",
+            ],
+            "valueRenderOption": "UNFORMATTED_VALUE",
+        },
+    )
+    cells = data.get("valueRanges", [])
+    if (
+        len(cells) != 3
+        or normalize_person_name(first_value(cells[0])) != match["name"]
+        or normalize_address(first_value(cells[1]))
+        != normalize_address(match["address"])
+    ):
+        raise SheetsError("IMEI 조회 중 가입자 행이 변경되어 신호 확인을 중단했습니다.")
+    try:
+        return imei_value(first_value(cells[2]))
+    except SheetsError as exc:
+        raise SheetsError(f"{target.city} {column}{row}: {exc}") from None
 
 
 async def run_imei_case(message, token_provider):
@@ -74,33 +109,7 @@ async def run_imei_case(message, token_provider):
                     imei_column=column,
                     match_count=1,
                 )
-                title = "'" + match["sheet_title"].replace("'", "''") + "'"
-                data = await sheets._request(
-                    "GET",
-                    "/values:batchGet",
-                    params={
-                        "ranges": [
-                            f"{title}!{target.name_column}{row}",
-                            f"{title}!{target.address_column}{row}",
-                            f"{title}!{column}{row}",
-                        ],
-                        "valueRenderOption": "UNFORMATTED_VALUE",
-                    },
-                )
-                cells = data.get("valueRanges", [])
-                if (
-                    len(cells) != 3
-                    or normalize_person_name(first_value(cells[0])) != match["name"]
-                    or normalize_address(first_value(cells[1]))
-                    != normalize_address(match["address"])
-                ):
-                    raise SheetsError(
-                        "IMEI 조회 중 가입자 행이 변경되어 신호 확인을 중단했습니다."
-                    )
-                try:
-                    receipt["imei"] = imei_value(first_value(cells[2]))
-                except SheetsError as exc:
-                    raise SheetsError(f"{target.city} {column}{row}: {exc}") from None
+                receipt["imei"] = await read_roster_imei(sheets, target, match)
                 break
             else:
                 return finished(

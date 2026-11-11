@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from ax_integrations import sheets_lookup
+from ax_integrations.ansimk import AnsimkError
 from ax_integrations.google_sheets import GoogleSheetsClient, SheetsError
 
 from workflows.ax768.request_parser import parse_request
@@ -16,6 +17,10 @@ workflow = importlib.import_module("workflows.ax768.unified_graph")
 @pytest.mark.parametrize(
     "message,name,address",
     [
+        ("김순옥", "김순옥", None),
+        (" 김순옥 ", "김순옥", None),
+        ("김순옥 신호확인요", "김순옥", None),
+        ("김순옥 신호 확인 해 주세요~", "김순옥", None),
         ("김순옥님 신호확인요.", "김순옥", None),
         ("울진북로 164 김순옥님 신호확인요.", "김순옥", "울진북로 164"),
         ("지영희님 신호확인요 & 상밤터1길 59-4(사진).", "지영희", "상밤터1길 59-4"),
@@ -52,6 +57,9 @@ def test_supplied_inputs(message, name, address):
         "김순옥님 사진 신호확인요",
         "후포로 158 김순옥님 왕피길 83 정영자님",
         "왕피길83-15,",
+        "김순옥 정영자",
+        "김순옥 사진",
+        "김순옥 처리완료로 변경",
     ],
 )
 def test_unusable_inputs_stop_before_access(message):
@@ -152,6 +160,7 @@ def mock_workflow(
     outcomes,
     *,
     as_status="found",
+    as_address="영덕대게로 699",
     candidates=None,
     truncated=False,
     correction_changed=False,
@@ -163,10 +172,53 @@ def mock_workflow(
             "status": "updated",
             "row": match["row"],
             "verified": True,
-            "changes": [],
+            "date": "2026-11-10",
+            "changes": [{"column": "Y", "value": "위치점검완료"}],
             "reason": "done",
         }
 
+    async def member(message):
+        from workflows.ax768.member_note import parse_member_note
+
+        parsed = parse_member_note(message)
+        return {
+            "status": "completed",
+            "response": "일반 사항 저장 확인",
+            "observations": [
+                {
+                    "tool": "member_general_note",
+                    "result": {
+                        "status": "saved",
+                        "member_id": 12,
+                        "name": parsed["name"],
+                        "address": parsed["address"],
+                        "note": parsed["note"],
+                        "verified": True,
+                        "candidates": [],
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr("workflows.ax768.workflow_member_note.run_member_note", member)
+
+    async def read_imei(client, target, match):
+        return "861212072106726"
+
+    async def ping(imei):
+        return {
+            "imei": imei,
+            "sn": "00300016",
+            "connected": True,
+            "fresh": True,
+            "signal_label": "보통",
+            "rssi": 22,
+        }
+
+    monkeypatch.setattr(workflow, "read_roster_imei", read_imei)
+    monkeypatch.setattr(
+        workflow.AnsimkClient, "from_env", lambda _: SimpleNamespace(ping=ping)
+    )
     monkeypatch.setattr(workflow, "complete_as_row", update)
     monkeypatch.setenv("TEST_AX768_TOKEN", "test")
     monkeypatch.setenv("AX768_CASE_2_3_SPREADSHEET", "as-file")
@@ -208,7 +260,7 @@ def mock_workflow(
                 "status": as_status,
                 "row": 80 if as_status == "found" else None,
                 "name": kwargs["name"],
-                "address": "영덕대게로 699",
+                "address": as_address,
             }
         index = next(
             i for i, t in enumerate(workflow.USER_SHEETS) if t.spreadsheet_id == key
@@ -274,33 +326,40 @@ async def test_order_and_exact_handoff(monkeypatch, index):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("index", [0, 1, 2, None])
-async def test_name_only_searches_rosters_in_order_then_latest_as(monkeypatch, index):
+@pytest.mark.parametrize(
+    "message", ["김순옥", "김순옥 신호확인요", "김순옥님 신호확인요."]
+)
+async def test_name_only_searches_rosters_in_order_then_latest_as(
+    monkeypatch, index, message
+):
     calls = mock_workflow(
         monkeypatch, ["found" if i == index else "not_found" for i in range(3)]
     )
-    state = await workflow.graph.ainvoke({"message": "김순옥님 신호확인요."})
+    state = await workflow.graph.ainvoke({"message": message})
     count = 3 if index is None else index + 1
-    assert [c[0] for c in calls[:count]] == [
+    assert calls[0][0] == "AS" and calls[0][1]["address"] is None
+    assert [c[0] for c in calls[1:]] == [
         t.spreadsheet_id for t in workflow.USER_SHEETS[:count]
     ]
-    assert all(c[1]["address"] is None for c in calls)
+    assert all(c[1]["address"] == "영덕대게로 699" for c in calls[1:])
+    assert all(c[1]["suggest_names"] is False for c in calls[1:])
+    assert state["parsed"]["address"] == "영덕대게로 699"
     assert "region" not in state["parsed"]
+    assert len(calls) == count + 1
     if index is None:
-        assert state["status"] == "not_found" and len(calls) == 3
-        assert state["as_lookup"]["status"] == "skipped"
+        assert state["status"] == "not_found"
     else:
-        assert state["status"] == "completed" and len(calls) == count + 1
-        assert calls[-1][0] == "AS" and calls[-1][1]["name"] == "김순옥"
+        assert state["status"] == "completed"
+        assert state["signal"]["status"] == "connected"
         assert state["roster"]["city"] == workflow.USER_SHEETS[index].city
-        assert state["as_lookup"]["city"] == workflow.USER_SHEETS[index].city
 
 
 @pytest.mark.asyncio
 async def test_name_only_roster_error_stops_search(monkeypatch):
     calls = mock_workflow(monkeypatch, ["not_found", "failed", "found"])
     state = await workflow.graph.ainvoke({"message": "김순옥님 신호확인요."})
-    assert state["status"] == "failed" and len(calls) == 2
-    assert state["as_lookup"]["status"] == "skipped"
+    assert state["status"] == "failed" and len(calls) == 3
+    assert calls[0][0] == "AS"
 
 
 @pytest.mark.asyncio
@@ -357,7 +416,10 @@ async def test_roster_failure_stops_fallback(monkeypatch):
 async def test_as_failure_retains_matched_roster(monkeypatch, status):
     mock_workflow(monkeypatch, ["found"], as_status=status)
     state = await workflow.graph.ainvoke({"message": "영덕대게로699김영호,수신확인요"})
-    assert state["status"] == status and state["roster"]["row"] == 44
+    assert (
+        state["status"] == ("blocked" if status == "not_found" else status)
+        and state["roster"]["row"] == 44
+    )
 
 
 @pytest.mark.asyncio
@@ -402,6 +464,8 @@ async def test_update_runs_only_on_matched_as_and_keeps_evidence(
             "status": update_status,
             "row": match["row"],
             "verified": update_status == "updated",
+            "date": "2026-11-10",
+            "changes": [{"column": "Y", "value": "위치점검완료"}],
             "reason": "checked",
         }
 
@@ -424,3 +488,135 @@ async def test_missing_or_failed_as_never_updates(monkeypatch, as_status):
     monkeypatch.setattr(workflow, "complete_as_row", forbidden)
     state = await workflow.graph.ainvoke({"message": "영덕대게로699김영호,수신확인요"})
     assert state["as_update"]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["김순옥", "울진북로 164 김순옥님 신호확인요"])
+@pytest.mark.parametrize(
+    "outcome", ["disconnected", "api_error", "stale", "wrong_imei", "invalid_imei"]
+)
+async def test_signal_gate_prevents_every_as_write(monkeypatch, message, outcome):
+    calls = mock_workflow(monkeypatch, ["found"])
+    pings = []
+
+    async def read_imei(*args):
+        raise SheetsError("잘못된 IMEI")
+
+    async def ping(imei):
+        pings.append(imei)
+        if outcome == "api_error":
+            raise AnsimkError("연결 오류")
+        return {
+            "imei": "000000000000000" if outcome == "wrong_imei" else imei,
+            "sn": "00300016",
+            "connected": outcome != "disconnected",
+            "fresh": outcome not in {"stale", "disconnected"},
+        }
+
+    async def forbidden(*args):
+        pytest.fail("No AS write without a fresh connected signal")
+
+    if outcome == "invalid_imei":
+        monkeypatch.setattr(workflow, "read_roster_imei", read_imei)
+    monkeypatch.setattr(
+        workflow.AnsimkClient, "from_env", lambda _: SimpleNamespace(ping=ping)
+    )
+    monkeypatch.setattr(workflow, "complete_as_row", forbidden)
+    result = await workflow.graph.ainvoke({"message": message})
+    assert result["status"] == (
+        "disconnected" if outcome == "disconnected" else "failed"
+    )
+    assert result["as_update"]["status"] == "skipped"
+    assert len(pings) == (0 if outcome == "invalid_imei" else 1)
+    assert sum(c[0] == "AS" for c in calls) == (1 if message == "김순옥" else 0)
+    if outcome == "disconnected":
+        assert result["response"] == "S/N 00300016 전원 연결 및 기기위치 확인해주세요."
+    else:
+        assert "전원 연결 및 기기위치 확인해주세요" not in result["response"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["not_found", "failed"])
+async def test_name_only_missing_as_address_stops_before_rosters(monkeypatch, status):
+    calls = mock_workflow(monkeypatch, ["found"], as_status=status)
+    result = await workflow.graph.ainvoke({"message": "김순옥"})
+    assert result["status"] == status
+    assert [c[0] for c in calls] == ["AS"]
+    assert result["signal"]["status"] == "skipped"
+    assert result["as_update"]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_connected_report_preserves_signal_when_as_update_unknown(monkeypatch):
+    mock_workflow(monkeypatch, ["found"])
+
+    async def uncertain(*args):
+        return {
+            "status": "unknown",
+            "row": 80,
+            "verified": False,
+            "reason": "저장 확인 필요",
+        }
+
+    monkeypatch.setattr(workflow, "complete_as_row", uncertain)
+    result = await workflow.graph.ainvoke(
+        {"message": "울진북로 164 김순옥님 신호확인요"}
+    )
+    assert result["status"] == "failed" and result["signal"]["status"] == "connected"
+    assert result["response"] == "S/N 00300016 신호 확인되었습니다.\n저장 확인 필요"
+    assert result["as_update"]["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_update_node_itself_rejects_unverified_signal(monkeypatch):
+    async def forbidden(*args):
+        pytest.fail("Direct node invocation must not bypass the signal gate")
+
+    monkeypatch.setattr(workflow, "complete_as_row", forbidden)
+    result = await workflow.update_node(
+        {"signal": {"status": "connected", "connected": True, "fresh": False}}
+    )
+    assert result["status"] == "failed"
+
+
+def test_signal_workflow_contract_version():
+    assert (
+        workflow.graph.get_input_jsonschema()["properties"]["workflow_version"]["const"]
+        == "5"
+    )
+
+
+@pytest.mark.asyncio
+async def test_name_only_blank_as_address_never_checks_a_device(monkeypatch):
+    calls = mock_workflow(monkeypatch, ["found"], as_address=" ")
+    result = await workflow.graph.ainvoke({"message": "김순옥"})
+    assert result["status"] == "blocked" and [c[0] for c in calls] == ["AS"]
+    assert result["signal"]["status"] == "skipped"
+    assert result["as_update"]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_new_request_cannot_reuse_previous_signal_or_update(monkeypatch):
+    calls = mock_workflow(monkeypatch, ["found"])
+    result = await workflow.graph.ainvoke(
+        {
+            "message": "",
+            "signal": {"status": "connected", "connected": True, "fresh": True},
+            "as_update": {"status": "updated", "verified": True},
+        }
+    )
+    assert not calls and result["status"] == "blocked"
+    assert result["signal"]["status"] == "skipped"
+    assert result["as_update"]["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_no_as_match_still_replaces_member_notes_for_explicit_action(monkeypatch):
+    mock_workflow(monkeypatch, ["found"], as_status="not_found")
+    result = await workflow.graph.ainvoke(
+        {"message": "영덕대게로699김영호,전원연결 수신확인요"}
+    )
+    assert result["status"] == "completed"
+    assert result["as_update"]["status"] == "skipped"
+    assert result["member_note"]["verified"] is True
+    assert result["member_note"]["note"].endswith("[현지관리자 방문] 전원연결")

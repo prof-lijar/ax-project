@@ -35,9 +35,18 @@ def parse_request(message):
         suffix = text[road.end() :].strip()
         name = suffix.split(",")[1] if suffix.startswith(",") else suffix.split(",")[0]
     else:
-        raise ValueError(
-            "이름을 확인할 수 없습니다. 예: '울진북로 164 김순옥님 신호확인요.'"
+        # A standalone Korean name needs no honorific or request suffix.
+        # Keep free-form instructions out of the name field: only the known
+        # signal-check suffix is accepted when additional words are present.
+        match = re.fullmatch(
+            r"([가-힣]{2,5})(?:\s+신호\s*확인\s*(?:요|해주세요|해\s*주세요|부탁드립니다)?[.!?。~]*)?",
+            text,
         )
+        if not match:
+            raise ValueError(
+                "이름을 확인할 수 없습니다. 예: '김순옥' 또는 '울진북로 164 김순옥님 신호확인요.'"
+            )
+        name = match.group(1)
     name = compact_name(name.strip(" ,&"))
     if not re.fullmatch(r"[가-힣]{2,10}", name):
         raise ValueError("이름을 확인할 수 없습니다. 주소 뒤에 이름을 입력해 주세요.")

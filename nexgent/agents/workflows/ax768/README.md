@@ -77,42 +77,41 @@ uv run python -m apps.ax768.run --workflow "왕피길83-15,정영자,기기위�
 uv run python -m apps.ax768.run --workflow "영덕군 영덕읍 영덕대게로 699긴 영호,기기위치조정 수신확인요~"
 ```
 
-Name/address requests search 울진 → 광명 → 영덕, stop on the first exact
-same-row match and then find the bottom-most AS name/address row. Name-only
-requests also search the rosters in order, then use the latest AS name match.
-The city is taken from the first matching roster; no region input is needed.
-If all rosters have no match, AS is skipped. The response includes each matched
-source and row. Rebuild Agent Server for workflow version 3.
+Version 4 checks device connectivity before AS completion. Name-only requests
+first find the bottom-most exact-name AS row and take its address. Both input
+modes search 울진 → 광명 → 영덕 rosters sequentially using name and address,
+then recheck the selected identity while reading IMEI: 울진 AA, 영덕 Z, 광명 W.
+No matching AS address for name-only input, no roster match, invalid IMEI, or a
+failed signal request stops without an AS write.
 
-Name spacing is ignored. If no exact roster match exists, one unique
-address-matched Korean name differing by one syllable is automatically rechecked
-and used, with a correction notice. Several candidates require selection; the
-CLI can repeat the same request with `--confirmed-name "김영호"`. This rechecks
-that name/address across the rosters in the usual priority order. Candidate
-selection is by name, not a promise to choose a particular city. Latest means
-largest row number within the selected sheet.
+The existing installation-report admin API checks the IMEI. It returns the
+actual S/N, preserving leading zeros. Connected returns
+`S/N 0000 신호 확인되었습니다.`; disconnected returns
+`S/N 0000 전원 연결 및 기기위치 확인해주세요.`. Only a fresh connected response
+can update the selected AS row. Supplied-name/address requests find the latest
+AS name/address match after the signal; name-only requests keep their original
+AS row and recheck it before updating.
 
-After an AS match, the workflow updates only that row:
-
-| Column | Saved value |
+| Column | Saved value after confirmed connection |
 | --- | --- |
 | S · 진행상태 | 처리완료 |
 | X | Today's Asia/Seoul date, displayed as `yyyy-mm-dd` |
 | Y | `위치점검완료` for C = `기기위치 점검`; `전원연결완료` for C = `기기전원 연결`; otherwise unchanged |
 
-It rechecks the selected row before one batch write and reads back the saved
-values. No match means no write. No background highlighting occurs. An unknown
-write result must be inspected before manually running again; there is no
-automatic retry or rollback. A concurrent row edit can still race the identity
-check. The third result stage shows saved or unverified requested values.
+Name spacing is ignored. Supplied-name/address requests retain address-grounded
+unique typo correction and explicit candidate confirmation; AS-derived
+name-only identities require exact roster matching. The report includes roster,
+IMEI/S/N/signal, AS match and verified or unknown AS update evidence. Missing AS
+after a positive signal retains the signal result without claiming an update.
+Unknown mutation results require checking the row before rerunning; there is no
+automatic write retry or rollback. Latest means largest row number.
 
-The workflow uses existing service-account/AS settings and never checks signals
-or moves devices. Images are not sent or OCR processed;
-type the photo address and remove attachments before running. `not_found`,
-`needs_confirmation`, `blocked` and `failed` retain stage receipts and exit CLI
-with code 1; `completed` requires verified S/X/Y completion and exits 0. Failures stop the
-affected step, and no automatic retry occurs. AS/update failures keep earlier
-lookup results.
+The product API requires workflow version 4, so rebuild Agent Server before
+using the new workflow. `completed` requires a verified connected signal and AS
+readback; `disconnected`, `not_found`, `needs_confirmation`, `blocked`, and
+`failed` retain evidence and exit CLI with code 1. Images still require typed
+transcription and removal before running. No master-page note is written.
+See [full contract, verification and activation](../../docs/device-adjustment-signal-gated-workflow.md).
 
 ## Setup and run
 
@@ -548,3 +547,26 @@ OAuth references: [Google Desktop/CLI OAuth](https://developers.google.com/ident
 [refresh token expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
 
 Validation on 2026-10-30: 28 OAuth/workflow/dependency-boundary/graph-entry tests passed; scoped Ruff and LangGraph validation passed. OAuth tests cover private token storage, refresh persistence, revoked grants, missing scopes/offline permission and loopback/PKCE configuration. Real Google consent and row 81 writing await the user login.
+
+
+## Member general-note Test case
+
+`member_note` searches the member admin and replaces the entire 일반 사항 field
+with the supplied dated text, verifying readback. A unique exact-name match, or
+one partial-name match when no exact name exists, is updated directly on Run.
+Supplied address/ID constraints always apply. Multiple matches require choosing
+the intended member; there is no additional permission step. An identical whole
+field is left unchanged. Numbered cases and IMEI remain search-only.
+The private credential file, version 2 capability, rerun behavior, tests and
+required rebuild are documented in
+[member-note implementation](../../docs/ax768-member-general-note-test.md).
+
+
+## Device workflow member note — 2026-11-10
+
+Version 5 adds member general-note replacement after AS processing. A verified
+connected signal and either verified AS completion or confirmed missing AS row
+are required. The request action (or AS Y completion type) determines
+`기기위치조정`/`전원연결`; notes use the processing date in Asia/Seoul. It uses
+the roster name/address and reports the member stage separately. See
+[member-step policy, validation and activation](../../docs/device-adjustment-member-note-step.md).

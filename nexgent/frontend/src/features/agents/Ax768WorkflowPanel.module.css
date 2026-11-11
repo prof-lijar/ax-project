@@ -67,3 +67,26 @@
 .updateValues > div { display: grid; grid-template-columns: 24px 1fr; gap: 12px; }
 .updateValues dt { color: var(--color-text-muted); }
 .updateValues dd { margin: 0; overflow-wrap: anywhere; }
+
+.workflowPicker { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.workflowPicker label { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 12px; font-weight: 600; }
+.required { color: var(--color-text-muted); font-size: 10px; font-weight: 400; }
+.workflowPicker select { flex: 1; min-width: 0; max-width: 280px; height: 36px; padding: 6px 10px; box-sizing: border-box; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 13px; }
+.workflowPicker select[aria-invalid="true"] { border-color: var(--color-red); }
+.selectionAlert { display: flex; align-items: center; gap: 8px; color: var(--color-red); font-size: 12px; line-height: 1.6; margin: 12px 0 0; }
+.selectionAlert svg { flex-shrink: 0; }
+.selectedWorkflow { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+
+.signalValues { margin: 10px 0; display: grid; gap: 6px; font-size: 12px; }
+.signalValues > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px; }
+.signalValues dt { color: var(--color-text-muted); }
+.signalValues dd { margin: 0; overflow-wrap: anywhere; }
+
+.response { white-space: pre-wrap; }
+
+.ocrPanel { display: grid; gap: 8px; font-size: 12px; line-height: 1.6; }
+.ocrPanel p { margin: 0; }
+.ocrPanel button { justify-self: start; }
+.ocrPanel summary { cursor: pointer; color: var(--color-text-soft); }
+.ocrPanel pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 220px; overflow-y: auto; }
+.ocrPanel section { padding: 8px 0; }

@@ -7,7 +7,7 @@ export function Ax768SheetsPanel() {
   useLanguage(s => s.language);
   return <section className={styles.panel} aria-labelledby="ax-sheets-title">
     <header className={styles.header}>
-      <div><h2 id="ax-sheets-title">{t("Sheet links")}</h2><p>{t("Open the spreadsheets used by AX768.")}</p></div>
+      <div><h2 id="ax-sheets-title">{t("Sheet links")}</h2><p>{t("Open the spreadsheets used by 운영시트에이젠트.")}</p></div>
       <span>{t("{count} sheets", { count: AX768_SHEETS.length })}</span>
     </header>
     <ul className={styles.list}>{AX768_SHEETS.map(sheet => <li key={sheet.alias}>

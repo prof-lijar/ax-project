@@ -15,7 +15,7 @@ from app.identity.router import require_admin
 router = APIRouter(prefix="/api/ax768", tags=["ax768"], dependencies=[Depends(require_admin)])
 # Agent Server graph-default namespace (langgraph_api.graph.NAMESPACE_GRAPH).
 AX768_ASSISTANT_ID = str(uuid5(UUID("6ba7b821-9dad-11d1-80b4-00c04fd430c8"), "ax768"))
-CaseId = Literal["1.1", "2.2", "2.3", "4.2", "4.3", "6.2", "6.3", "imei"]
+CaseId = Literal["1.1", "2.2", "2.3", "4.2", "4.3", "6.2", "6.3", "imei", "member_note"]
 
 
 class RunInput(BaseModel):
@@ -33,6 +33,9 @@ def positive_int(value):
 
 
 def normalize_result(payload, case_id):
+    if case_id == "member_note":
+        from app.ax768_member_note import normalize_member_note
+        return normalize_member_note(payload)
     if not isinstance(payload, dict) or payload.get("status") not in {"completed", "blocked", "failed"}:
         raise ValueError("Invalid AX768 result")
     if not isinstance(payload.get("response"), str):
@@ -136,14 +139,18 @@ async def run(body: RunInput):
             if not isinstance(schema_data, dict):
                 raise ValueError("Invalid AX768 schema")
             policy = schema_data.get("input_schema", {}).get("properties", {}).get("case_policy", {})
-            if policy.get("const") != "search_only":
+            if body.case_id != "member_note" and policy.get("const") != "search_only":
                 raise HTTPException(409, detail="Restart Agent Server to enable search-only cases.")
+            if body.case_id == "member_note":
+                capability = schema_data.get("input_schema", {}).get("properties", {}).get("member_note_case_version", {})
+                if capability.get("const") != "2":
+                    raise HTTPException(409, detail="Restart Agent Server to enable member general-note replacement.")
             if body.case_id == "imei":
                 capability = schema_data.get("input_schema", {}).get("properties", {}).get("imei_case_version", {})
                 if capability.get("const") != "1":
                     raise HTTPException(409, detail="Restart Agent Server to enable the IMEI case.")
             response = await client.post(f"{settings.agent_server_url}/runs/wait", json={
-                "assistant_id": "ax768", "input": {"case_id": body.case_id, "message": body.message.strip(), "case_policy": "search_only", **({"imei_case_version": "1"} if body.case_id == "imei" else {})},
+                "assistant_id": "ax768", "input": {"case_id": body.case_id, "message": body.message.strip(), **({"member_note_case_version": "2"} if body.case_id == "member_note" else {"case_policy": "search_only"}), **({"imei_case_version": "1"} if body.case_id == "imei" else {})},
                 "on_completion": "delete", "on_disconnect": "continue",
                 "config": {"recursion_limit": 32},
             })
@@ -154,5 +161,5 @@ async def run(body: RunInput):
     except (httpx.HTTPError, ValueError):
         # A network failure after dispatch cannot prove whether a Google write occurred.
         raise HTTPException(502, detail={"code": "ax768_outcome_unknown",
-            "message": "The result could not be confirmed. Inspect the sheet before running again."}) from None
+            "message": "The note save could not be confirmed. Check general notes before running again." if body.case_id == "member_note" else "The result could not be confirmed. Inspect the sheet before running again."}) from None
     return {"id": run_id, "started_at": started, "duration_ms": round((monotonic() - clock) * 1000), **result}

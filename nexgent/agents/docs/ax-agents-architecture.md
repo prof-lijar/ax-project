@@ -1,5 +1,70 @@
 # AX Agents Architecture
 
+## Device adjustment member general notes (2026-11-10)
+
+The unified AX768 workflow is now version 5. A final `member_note_step` follows
+verified AS completion, or confirmed AS absence after a fresh connected signal.
+It reuses the member replacement implementation with resolved roster name and
+address. Explicit request action, otherwise verified AS completion type, selects
+기기위치조정/전원연결. Missing/ambiguous action stops without guessing. Notes use
+AS processing date or the current Asia/Seoul date when AS is absent.
+
+State adds a nullable member receipt; both product boundaries require verified
+member evidence for overall completion and preserve signal/AS results on member
+failure. Failed/unknown AS or signal results never reach member writing. API and
+browser timeouts increase to accommodate the 120s member step. The UI adds a
+fifth result section. No process, credential or dependency boundary changes.
+See [behavior, verification and activation](device-adjustment-member-note-step.md).
+
+
+## AX768 member general-note Test case (2026-11-10)
+
+The existing AX768 graph now has an explicit `member_note` case with capability
+`member_note_case_version: "2"`. It bypasses Google/model setup, searches the
+fixed member-admin API, prefers an exact name match and otherwise accepts one unique partial-name
+match, always respecting supplied address/ID. It replaces only `general_notes`
+with the entered text. Identical whole-field values are skipped; identity/notes are reread before PUT and verified
+afterward. An uncertain dispatched write has an `unknown` receipt and is not
+retried. The old tests retain their search-only policy; device workflow v4 is
+unchanged. A shared fixed-origin adapter owns private JSON login and HTTP, while
+the workflow owns member/replacement policy. Product API/browser boundaries validate
+the new minimal receipt. Compose adds one dedicated read-only credential mount.
+See [implementation, validation, activation and concurrency limits](ax768-member-general-note-test.md).
+
+## AX768 image input preparation (2026-11-10)
+
+Only the `/agents/ax768` Workflow composer now runs local Korean/English OCR
+when images are added. Browser preprocessing and pinned same-origin OCR assets
+produce editable name/address/request fields with raw text available for review.
+The composer converts these fields into the existing canonical text request on
+explicit Run; the agent graph, API schema and signal-before-AS policy stay the
+same. No image or raw OCR instruction is sent to the workflow. Conflicts and
+stale asynchronous results are handled in the composer, and other agents' image
+paths are unaffected. See [scope, implementation and validation](ax768-korean-image-input.md).
+
+## Device adjustment signal-gated completion (2026-11-09)
+
+The unified `ax768_workflow` is version 4. Name-only input first resolves the
+bottom-most exact-name AS row and its address. Both input modes then search the
+ordered rosters by name/address, recheck the selected identity and read its
+city-specific IMEI (울진 AA, 영덕 Z, 광명 W), and use the existing Ansimk signal
+adapter. These columns were verified against live IMEI headers on 2026-11-09;
+the earlier Z/Y/V mapping referred to S/N. Only a fresh connected result can reach the existing bounded AS
+completion writer. Disconnection and unknown/failed signal checks never write
+AS. Supplied-name/address requests resolve AS after the successful signal;
+name-only requests retain and recheck their initially selected AS row.
+
+The graph adds a bounded `signal` receipt and a `disconnected` outcome. The
+product API requires version 4 before dispatch and validates signal evidence
+before accepting an AS completion receipt. Reports preserve independent signal
+and AS outcomes, including connected devices whose AS update is unknown. No
+master-page notes are written. Shared IMEI reading remains inside the AX768
+workflow module; the standalone IMEI test remains search-only. Existing graph
+IDs, credentials and process boundaries are preserved. Stage budgets are
+45s AS + 100s rosters + 20s IMEI + 60s signal + 40s update.
+
+See [implementation, tests and required runtime activation](device-adjustment-signal-gated-workflow.md).
+
 ## AX768 IMEI signal Test case (2026-11-04)
 
 `--case imei` is a deterministic case in the existing `ax768` graph and Test
