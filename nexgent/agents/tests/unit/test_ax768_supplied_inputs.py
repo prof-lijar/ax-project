@@ -53,7 +53,17 @@ EXAMPLES = [
 
 
 def synthetic_services(
-    monkeypatch, tmp_path, name, address, city, connected, *, ambiguous=False
+    monkeypatch,
+    tmp_path,
+    name,
+    address,
+    city,
+    connected,
+    *,
+    ambiguous=False,
+    missing_as=False,
+    missing_member=False,
+    missing_signal=False,
 ):
     """Use real lookup, IMEI, ping validation and AS write/readback code."""
     target = workflow.USER_SHEETS[city]
@@ -79,6 +89,8 @@ def synthetic_services(
             "C80": "기기위치 점검",
         }
     )
+    if missing_as:
+        cells["test-as"].clear()
     events, writes = [], []
 
     credential = tmp_path / "member-credentials.json"
@@ -99,6 +111,8 @@ def synthetic_services(
             assert request.url.path == "/api/admin/ping" and request.method == "POST"
             assert json.loads(request.content) == {"sn": imei}
             events.append("signal")
+            if missing_signal:
+                return httpx.Response(404, json={"detail": "Device not found"})
             return httpx.Response(
                 200,
                 json={
@@ -109,12 +123,17 @@ def synthetic_services(
                 },
             )
         if request.url.host == "api.ansimk.com":
-            assert "AS write" in events and connected
+            assert (missing_as or "AS write" in events) and connected
+            events.append("member access")
             if request.url.path == "/token/":
                 return httpx.Response(200, json={"access": "synthetic-token"})
             if request.url.path == "/api/admin/wards/":
                 return httpx.Response(
-                    200, json={"data": [member.copy()], "totalItemCount": 1}
+                    200,
+                    json={
+                        "data": [] if missing_member else [member.copy()],
+                        "totalItemCount": 0 if missing_member else 1,
+                    },
                 )
             if request.method == "PUT":
                 body = json.loads(request.content)
@@ -323,3 +342,60 @@ async def test_three_numbered_lines_together_are_blocked_before_io(monkeypatch):
     )
     assert result["status"] == "blocked"
     assert result["response"] == "한 번에 한 사람의 이름과 주소를 입력해 주세요."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_as", [False, True])
+@pytest.mark.parametrize("missing_member", [False, True])
+async def test_optional_as_and_master_page_missing_paths(
+    monkeypatch, tmp_path, missing_as, missing_member
+):
+    events, writes, _ = synthetic_services(
+        monkeypatch,
+        tmp_path,
+        "정영자",
+        "왕피길 83-15",
+        2,
+        True,
+        missing_as=missing_as,
+        missing_member=missing_member,
+    )
+    result = await workflow.graph.ainvoke(
+        {"message": "왕피길83-15,정영자,기기위치조정 신호확인요"}
+    )
+    assert result["signal"]["status"] == "connected"
+    assert len(writes) == (0 if missing_as else 1)
+    assert result["as_update"]["status"] == ("skipped" if missing_as else "updated")
+    assert events.index("signal") < events.index("member access")
+    assert result["member_note"]["status"] == (
+        "not_found" if missing_member else "saved"
+    )
+    assert result["status"] == ("blocked" if missing_member else "completed")
+    assert ("member write" in events) is (not missing_member)
+    if missing_member:
+        assert "마스터페이지 일반 사항:" in result["response"]
+        assert "가입자가 없어" in result["response"]
+    if missing_as:
+        assert "AS시트에서 일치하는 행을 찾지 못해" in result["response"]
+
+
+@pytest.mark.asyncio
+async def test_signal_device_not_found_skips_all_writers(monkeypatch, tmp_path):
+    events, writes, _ = synthetic_services(
+        monkeypatch,
+        tmp_path,
+        "정영자",
+        "왕피길 83-15",
+        1,
+        True,
+        missing_signal=True,
+    )
+    result = await workflow.graph.ainvoke(
+        {"message": "왕피길83-15,정영자,기기위치조정 신호확인요"}
+    )
+    assert result["signal"]["status"] == "failed"
+    assert result["as_lookup"]["status"] == "skipped"
+    assert result["as_update"]["status"] == "skipped"
+    assert result["member_note"] is None
+    assert "test-as" not in events and "member access" not in events and not writes
+    assert any("일반 사항 저장을 건너뛰었습니다" in n for n in result["notices"])

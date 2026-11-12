@@ -1,5 +1,12 @@
 # AX768
 
+> Workflow update (2026-11-11): `기기위치조정/전원연결` presents three stages:
+> 신호확인 → AS 시트 반영 → 마스터페이지 일반사항. A confirmed missing AS row
+> after a successful signal check skips AS writing and continues to member notes;
+> missing/failed signal skips both writers. Text/image action handoff and terminal
+> skip reasons are documented in the [refactor record](../../docs/device-adjustment-three-stage-refactor.md).
+> The product contract remains version 5; runtime activation is still required.
+
 > Current behavior (2026-11-04): yellow highlighting is disabled for all numbered
 > cases and the name shorthand. They return the latest matching row without
 > changing values or formatting. The highlight descriptions and receipts below

@@ -38,15 +38,16 @@ function StageDetails({ title, status, attention = false, children }: { title: s
   </details>;
 }
 
-function StageResult({ title, stage }: { title: string; stage: WorkflowStage }) {
+function LookupDetails({ stage }: { stage: WorkflowStage }) {
   const labels = { found: "Match found", not_found: "No match", skipped: "Skipped", failed: "Run failed", needs_confirmation: "Choose a matching name", candidate: "Candidate" };
-  return <StageDetails title={title} status={labels[stage.status]} attention={stage.status === "failed" || stage.status === "needs_confirmation"}>
+  return <>
+    <p>{t(labels[stage.status])}</p>
     {stage.row && <strong>{stage.name} · {t("Row {row}", { row: stage.row })}</strong>}
     {(stage.city || stage.sheet_alias) && <p>{[stage.city, stage.sheet_alias, stage.sheet_title].filter(Boolean).join(" · ")}</p>}
     {stage.address && <p>{stage.address}</p>}
     {stage.reason && <p>{stage.reason}</p>}
     {isSheetUrl(stage.sheet_url) && <a href={stage.sheet_url} target="_blank" rel="noreferrer">{t("Open matching row")}<ExternalLink size={12} aria-hidden /></a>}
-  </StageDetails>;
+  </>;
 }
 
 export function Ax768WorkflowPanel() {
@@ -173,6 +174,7 @@ export function Ax768WorkflowPanel() {
         </select>
       </div>
       {selectionError && <p id="ax-workflow-selection-error" className={styles.selectionAlert} role="alert"><AlertCircle size={16} aria-hidden />{t("Please select a workflow.")}</p>}
+      <p className={styles.localNote}>{t("Images provide name and address. A name alone uses the bottom-most AS match. Signal → AS → General notes.")}</p>
       <label htmlFor="ax-workflow-message" className={styles.inputLabel}>{t("Request")}</label>
       <div className={`${styles.composer} ${dragging ? styles.dragging : ""}`} role="group" aria-label={t("Request with text and images")}
         onDragEnter={event => { if (event.dataTransfer.types.includes("Files")) { preventFileDrop(event); dragDepth.current++; setDragging(true); } }}
@@ -219,8 +221,8 @@ export function Ax768WorkflowPanel() {
           <p className={styles.parsed}>{[result.parsed.lookup_name, result.parsed.address].filter(Boolean).join(" · ")}</p>
           {result.notices.length > 0 && <ul className={styles.notices}>{result.notices.map((notice, i) => <li key={i}>{notice}</li>)}</ul>}
           {result.status === "needs_confirmation" && <div className={styles.candidates}><p>{t("Choose a matching name to continue the AS lookup.")}</p>{result.candidates.map((candidate, i) => <button type="button" key={`${candidate.sheet_alias}-${candidate.row}-${i}`} disabled={running || !candidate.name} onClick={() => candidate.name && void run(candidate.name)}><strong>{candidate.name}</strong><span>{candidate.city} · {t("Row {row}", { row: candidate.row ?? "—" })} · {candidate.address}</span></button>)}</div>}
-          <StageResult title="1. User roster" stage={result.roster} />
-          <StageDetails title="2. Device signal" status={({connected: "Signal confirmed", disconnected: "Device disconnected", failed: "Signal check failed", skipped: "Skipped"})[result.signal.status]} attention={["failed", "disconnected"].includes(result.signal.status)}>
+          <StageDetails title="1. Signal check" status={({connected: "Signal confirmed", disconnected: "Device disconnected", failed: "Signal check failed", skipped: "Skipped"})[result.signal.status]} attention={["failed", "disconnected"].includes(result.signal.status) || ["not_found", "failed", "needs_confirmation"].includes(result.roster.status)}>
+            <LookupDetails stage={result.roster} />
             <dl className={styles.signalValues}>
               {result.signal.imei && <div><dt>IMEI ({result.signal.imei_column})</dt><dd>{result.signal.imei}</dd></div>}
               {result.signal.sn && <div><dt>S/N</dt><dd>{result.signal.sn}</dd></div>}
@@ -228,15 +230,15 @@ export function Ax768WorkflowPanel() {
             </dl>
             {result.signal.reason && <p>{result.signal.reason}</p>}
           </StageDetails>
-          <StageResult title="3. Latest AS match" stage={result.as_lookup} />
-          <StageDetails title="4. AS row update" status={({updated: "Saved and verified", skipped: "Skipped", failed: "Not updated", unknown: "Update not confirmed"})[result.as_update.status]} attention={["failed", "unknown"].includes(result.as_update.status)}>
+          <StageDetails title="2. AS sheet update" status={({updated: "Saved and verified", skipped: "Skipped", failed: "Not updated", unknown: "Update not confirmed"})[result.as_update.status]} attention={["failed", "unknown"].includes(result.as_update.status) || ["failed", "not_found"].includes(result.as_lookup.status)}>
+            <LookupDetails stage={result.as_lookup} />
             {result.as_update.row && <strong>{t("Row {row}", { row: result.as_update.row })}</strong>}
             {result.as_update.reason && <p>{result.as_update.reason}</p>}
             {result.as_update.changes.length > 0 && <><p>{t(result.as_update.verified ? "Verified values" : "Requested values · not verified")}</p><dl className={styles.updateValues}>{result.as_update.changes.map(change => <div key={change.column}><dt>{change.column}</dt><dd>{change.value}</dd></div>)}</dl></>}
             {result.as_update.y_action === "unchanged" && <p>{t("Y left unchanged: C did not match either completion rule.")}</p>}
             {result.as_update.status === "unknown" && <p className={styles.imageWarning}>{t("Check the AS row before running again. The update may already be saved.")}</p>}
           </StageDetails>
-          <StageDetails title="5. Member general notes" status={result.member_note ? ({saved: "Saved and verified", already_present: "General note already present", not_found: "No match", needs_confirmation: "Needs attention", blocked: "Needs attention", failed: "Not updated", unknown: "Update not confirmed"})[result.member_note.status] : "Skipped"} attention={!!result.member_note && !["saved", "already_present"].includes(result.member_note.status)}>
+          <StageDetails title="3. Master page · General notes" status={result.member_note ? ({saved: "Saved and verified", already_present: "General note already present", not_found: "No match", needs_confirmation: "Needs attention", blocked: "Needs attention", failed: "Not updated", unknown: "Update not confirmed"})[result.member_note.status] : "Skipped"} attention={!!result.member_note && !["saved", "already_present"].includes(result.member_note.status)}>
             {result.member_note && <>
               <p>{result.member_note.name} · {result.member_note.address}{result.member_note.member_id ? ` · ID ${result.member_note.member_id}` : ""}</p>
               <p>{t(result.member_note.verified ? "Verified values" : "Requested values · not verified")}</p>
@@ -248,7 +250,7 @@ export function Ax768WorkflowPanel() {
           </StageDetails>
 
           {result.attempts.length > 0 && <details className={styles.help}><summary>{t("Search details")}</summary><ol className={styles.attempts}>{result.attempts.map((a, i) => <li key={`${a.sheet_alias}-${i}`}>{a.city} · {a.sheet_alias}<span>{t(a.status === "found" ? "Match found" : a.status === "not_found" ? "No exact match" : "Run failed")}</span></li>)}</ol></details>}
-        </> : !runError && <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={26} aria-hidden /> : <Inbox size={26} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? "Looking for matching rows" : "No results yet")}</h3><p>{running ? t("Elapsed {seconds}s", { seconds: elapsed }) : t("Choose a workflow and add your request.")}</p></div>}
+        </> : !runError && <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={26} aria-hidden /> : <Inbox size={26} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? "Checking signal, AS and general notes" : "No results yet")}</h3><p>{running ? t("Elapsed {seconds}s", { seconds: elapsed }) : t("Choose a workflow and add your request.")}</p></div>}
       </section>
     </div>
   </div>;

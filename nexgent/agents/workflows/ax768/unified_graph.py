@@ -19,7 +19,12 @@ from workflows.ax768.city_search import USER_SHEETS
 from workflows.ax768.graph import auth_settings, person_sheets_client
 from workflows.ax768.imei_case import IMEI_COLUMNS, read_roster_imei
 from workflows.ax768.request_parser import compact_name, parse_request
-from workflows.ax768.workflow_member_note import member_note_node, requested_action
+from workflows.ax768.workflow_member_note import (
+    member_gate,
+    member_note_node,
+    requested_action,
+    signal_verified,
+)
 
 
 class WorkflowState(TypedDict, total=False):
@@ -285,6 +290,11 @@ async def address_node(state):
     """Name-only input takes its identity/address from the bottom-most AS match."""
     result = await as_node(state)
     if result["status"] != "running":
+        if result["as_lookup"]["status"] == "not_found":
+            result["response"] = (
+                "AS시트에서 해당 이름을 찾지 못해 주소를 확인할 수 없습니다. "
+                "주소를 입력해 주세요. 신호 확인과 AS·일반 사항 업데이트를 건너뛰었습니다."
+            )
         return result
     address = result["as_lookup"].get("address")
     if not isinstance(address, str) or not address.strip():
@@ -383,12 +393,7 @@ def validate_signal(ping, imei):
 
 
 async def update_node(state):
-    signal = state.get("signal", {})
-    if (
-        signal.get("status") != "connected"
-        or signal.get("connected") is not True
-        or signal.get("fresh") is not True
-    ):
+    if not signal_verified(state):
         return {
             "status": "failed",
             "response": "기기 연결이 확인되지 않아 AS시트를 변경하지 않았습니다.",
@@ -411,12 +416,55 @@ async def update_node(state):
     completed = result["status"] == "updated" and result["verified"]
     return {
         "as_update": result,
-        "status": "completed" if completed else "failed",
+        "status": "running" if completed else "failed",
         "response": signal_message(state)
         + f"AS시트 {result['row']}행 처리완료 및 날짜 저장을 확인했습니다."
         if completed
         else signal_message(state) + result["reason"],
     }
+
+
+def after_signal(state):
+    """2.1 is the gate for both writers, independent of the overall status."""
+    if not signal_verified(state):
+        return "result"
+    return (
+        "as_update_step"
+        if state["as_lookup"]["status"] == "found"
+        else "as_lookup_step"
+    )
+
+
+def after_as_lookup(state):
+    if not signal_verified(state):
+        return "result"
+    if state["as_lookup"]["status"] == "found":
+        return "as_update_step"
+    # A confirmed missing row is the only AS failure that can bypass the writer.
+    return "member_note_step" if member_gate(state) else "result"
+
+
+async def result_node(state):
+    """Every exit preserves receipts and explains dependent steps not executed."""
+    result = {}
+    cause = state.get("response", "")
+    if state["signal"]["status"] == "skipped":
+        result["signal"] = {**state["signal"], "reason": cause}
+    if not signal_verified(state):
+        reason = "신호 확인이 완료되지 않아 AS 반영과 일반 사항 저장을 건너뛰었습니다."
+    elif state["as_lookup"]["status"] == "failed":
+        reason = "AS 조회에 실패하여 AS 반영과 일반 사항 저장을 건너뛰었습니다."
+    elif state["as_update"]["status"] in {"failed", "unknown"}:
+        reason = "AS 저장 결과를 확인하지 못해 일반 사항 저장을 건너뛰었습니다."
+    else:
+        reason = None
+    if reason:
+        if state["as_lookup"]["status"] == "skipped":
+            result["as_lookup"] = {**state["as_lookup"], "reason": reason}
+        if state["as_update"]["status"] == "skipped":
+            result["as_update"] = {**state["as_update"], "reason": reason}
+        result["notices"] = [*state.get("notices", []), reason]
+    return result
 
 
 def create_graph():
@@ -428,11 +476,12 @@ def create_graph():
     builder.add_node("as_lookup_step", as_node)
     builder.add_node("as_update_step", update_node)
     builder.add_node("member_note_step", member_note_node)
+    builder.add_node("result", result_node)
     builder.add_edge(START, "parse")
     builder.add_conditional_edges(
         "parse",
         lambda s: (
-            END
+            "result"
             if s["status"] != "running"
             else "address_from_as"
             if s["parsed"]["mode"] == "name_only"
@@ -441,36 +490,26 @@ def create_graph():
     )
     builder.add_conditional_edges(
         "address_from_as",
-        lambda s: "roster_lookup" if s["status"] == "running" else END,
+        lambda s: "roster_lookup" if s["status"] == "running" else "result",
     )
     builder.add_conditional_edges(
-        "roster_lookup", lambda s: "signal_check" if s["status"] == "running" else END
+        "roster_lookup",
+        lambda s: "signal_check" if s["status"] == "running" else "result",
     )
     builder.add_conditional_edges(
         "signal_check",
-        lambda s: (
-            END
-            if s["status"] != "running"
-            else "as_update_step"
-            if s["as_lookup"]["status"] == "found"
-            else "as_lookup_step"
-        ),
+        after_signal,
     )
     builder.add_conditional_edges(
         "as_lookup_step",
-        lambda s: (
-            "as_update_step"
-            if s["status"] == "running"
-            else "member_note_step"
-            if s["as_lookup"]["status"] == "not_found"
-            else END
-        ),
+        after_as_lookup,
     )
     builder.add_conditional_edges(
         "as_update_step",
-        lambda s: "member_note_step" if s["status"] == "completed" else END,
+        lambda s: "member_note_step" if member_gate(s) else "result",
     )
-    builder.add_edge("member_note_step", END)
+    builder.add_edge("member_note_step", "result")
+    builder.add_edge("result", END)
     return builder.compile()
 
 

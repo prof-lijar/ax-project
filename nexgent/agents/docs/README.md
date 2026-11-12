@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Device adjustment three-stage refactor](device-adjustment-three-stage-refactor.md): Input/action preservation, signal → optional AS → master-page routing, skip causes, and validation.
+
 - [Device adjustment member-note step](device-adjustment-member-note-step.md): Version 5 signal/optional AS/member replacement sequence, action/date policy and validation.
 
 - [AX768 member general-note Test case](ax768-member-general-note-test.md): Unique member matching, full-field replacement, private login, verified receipts and activation.

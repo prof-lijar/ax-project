@@ -995,5 +995,11 @@
   "Drop an image or paste text. Review extracted information before running.": "이미지를 끌어 놓거나 텍스트를 붙여 넣으세요. 추출한 내용을 확인한 후 실행하세요.",
   "Search details": "검색 내역",
   "Elapsed {seconds}s": "{seconds}초 경과",
-  "Choose a workflow and add your request.": "워크플로를 선택하고 요청을 입력하세요."
+  "Choose a workflow and add your request.": "워크플로를 선택하고 요청을 입력하세요.",
+  "1. Signal check": "1. 신호확인",
+  "2. AS sheet update": "2. AS 시트 반영",
+  "3. Master page · General notes": "3. 마스터페이지 · 일반사항",
+  "Checking signal, AS and general notes": "신호·AS·일반사항 처리 중",
+  "Images provide name and address. A name alone uses the bottom-most AS match. Signal → AS → General notes.": "이미지에서 이름과 주소를 추출합니다. 이름만 있으면 AS시트의 가장 아래 일치 행에서 주소를 찾습니다. 신호확인 → AS 반영 → 일반사항 순서로 처리합니다.",
+  "Choose either device adjustment or power connection in the request.": "요청에 기기위치조정 또는 전원연결 중 한 가지 작업을 입력해 주세요."
 }

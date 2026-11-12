@@ -1,5 +1,19 @@
 # AX Agents Architecture
 
+## Device adjustment three-stage refactor (2026-11-11)
+
+The version-5 AX768 workflow now routes by verified stage receipts and sends
+every exit through a final result node with dependent-stage skip reasons.
+Successful AS completion remains running until the member stage completes.
+Name-only requests still resolve the bottom-most exact-name AS address before
+the ordered roster/IMEI search; a missing AS row after successful signal
+verification bypasses only the AS writer. Technical AS errors and uncertain
+writes stop member processing. The UI groups receipts into three stages:
+신호확인, AS 시트 반영, and 마스터페이지 일반사항. OCR preserves one recognized
+action in canonical input, flags conflicting actions, and never invents one.
+Existing write policy, version-5 schema, process boundaries, and credentials
+remain unchanged. See [implementation and validation](device-adjustment-three-stage-refactor.md).
+
 ## Device adjustment member general notes (2026-11-10)
 
 The unified AX768 workflow is now version 5. A final `member_note_step` follows

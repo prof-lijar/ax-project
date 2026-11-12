@@ -34,25 +34,28 @@ def note_action(state):
     )
 
 
-def member_gate(state):
-    signal, update, lookup = (
-        state.get("signal", {}),
-        state.get("as_update", {}),
-        state.get("as_lookup", {}),
-    )
+def signal_verified(state):
+    signal = state.get("signal", {})
     return (
         signal.get("status") == "connected"
         and signal.get("connected") is True
         and signal.get("fresh") is True
         and state.get("roster", {}).get("status") == "found"
-        and (
-            lookup.get("status") == "found"
-            and update.get("status") == "updated"
-            and update.get("verified") is True
-            and update.get("row") == lookup.get("row")
-            or lookup.get("status") == "not_found"
-            and update.get("status") == "skipped"
-        )
+    )
+
+
+def member_gate(state):
+    update, lookup = (
+        state.get("as_update", {}),
+        state.get("as_lookup", {}),
+    )
+    return signal_verified(state) and (
+        lookup.get("status") == "found"
+        and update.get("status") == "updated"
+        and update.get("verified") is True
+        and update.get("row") == lookup.get("row")
+        or lookup.get("status") == "not_found"
+        and update.get("status") == "skipped"
     )
 
 
@@ -104,5 +107,5 @@ async def member_note_node(state):
         else "failed"
         if receipt["status"] in {"failed", "unknown"}
         else "blocked",
-        "response": prefix + "\n" + result["response"],
+        "response": prefix + "\n마스터페이지 일반 사항: " + result["response"],
     }

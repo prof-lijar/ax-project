@@ -4,7 +4,11 @@ export type ImageDraft = { message: string; pages: OcrPage[]; original: string; 
 const roadPattern = /[가-힣0-9·.]+(?:로|길)\s*\d+(?:\s*-\s*\d+)?/g;
 const compact = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
 const normalizeAddress = (value: string) => value.replace(/\s*-\s*/g, "-").replace(/([로길])\s*(?=\d)/g, "$1 ");
-const labels = new Set(["이름", "성명", "주소", "요청", "신호확인", "수신확인", "가입자", "대상자", "수령인", "연락처", "전화번호"]);
+const labels = new Set(["이름", "성명", "주소", "요청", "신호확인", "수신확인", "가입자", "대상자", "수령인", "연락처", "전화번호", "기기위치조정", "전원연결"]);
+function requestedActions(text: string): string[] {
+  const value = compact(text);
+  return ["기기위치조정", "전원연결"].filter(action => value.includes(action));
+}
 function candidates(raw: string) {
   const text = raw.normalize("NFKC");
   const names = new Set<string>();
@@ -31,14 +35,17 @@ function candidates(raw: string) {
   return { names, addresses };
 }
 export function makeImageDraft(pages: OcrPage[], original: string): ImageDraft {
-  const all = candidates([original, ...pages.map(page => page.text)].join("\n"));
+  const text = [original, ...pages.map(page => page.text)].join("\n");
+  const all = candidates(text);
+  const actions = requestedActions(text);
+  const conflicts = all.addresses.size > 1 || all.names.size > 1 || actions.length > 1;
   const name = all.names.size === 1 ? [...all.names][0] : "";
   const address = all.addresses.size === 1 ? [...all.addresses][0] : "";
   return {
-    message: `이름: ${name}\n주소: ${address}\n요청: 기기위치조정/전원연결 신호확인`,
+    message: `이름: ${name}\n주소: ${address}\n요청: ${actions.length === 1 ? actions[0] + " " : actions.length > 1 ? "기기위치조정/전원연결 " : ""}신호확인`,
     original, pages,
-    conflicts: all.addresses.size > 1 || all.names.size > 1,
-    needsReview: !name || !address || all.addresses.size > 1 || all.names.size > 1 || pages.some(page => page.confidence < 65),
+    conflicts,
+    needsReview: !name || !address || conflicts || pages.some(page => page.confidence < 65),
   };
 }
 /** Keep the existing deployed text-only workflow contract. Never send raw OCR as instructions. */
@@ -55,7 +62,9 @@ export function workflowMessage(input: string): string {
   if (!/^[가-힣]{2,5}$/.test(name) || (address && [...address.matchAll(roadPattern)].length !== 1)) {
     throw new Error("Review the extracted name and address before running.");
   }
-  // The selected workflow determines the action. OCR cannot introduce a new operation.
+  // Only the two workflow actions survive normalization; raw OCR is never executed.
+  const actions = requestedActions(fields.get("요청") ?? "");
+  if (actions.length > 1) throw new Error("Choose either device adjustment or power connection in the request.");
   const road = address.match(roadPattern)?.[0];
-  return `${road ? normalizeAddress(road) + " " : ""}${name}님 신호확인요.`;
+  return `${road ? normalizeAddress(road) + " " : ""}${name}님 ${actions.length ? actions[0] + " " : ""}신호확인요.`;
 }

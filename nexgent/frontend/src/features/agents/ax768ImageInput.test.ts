@@ -13,7 +13,7 @@ describe("AX768 image input", () => {
     const draft = makeImageDraft([page(text)], "");
     expect(draft.needsReview).toBe(false);
     expect(draft.message).toContain(`이름: ${name}\n주소: ${address}`);
-    expect(workflowMessage(draft.message)).toBe(`${address} ${name}님 신호확인요.`);
+    expect(workflowMessage(draft.message)).toBe(`${address} ${name}님 ${text.includes("기기위치조정") ? "기기위치조정 " : ""}신호확인요.`);
   });
   it("combines an existing name with an address photo and preserves original text", () => {
     const draft = makeImageDraft([page("주소: 상밤터1길 59-4")], "지영희님 신호확인요");
@@ -41,5 +41,28 @@ describe("AX768 image input", () => {
   it("retains the existing name-only and free-form workflow", () => {
     expect(workflowMessage("김순옥님 신호확인요.")).toBe("김순옥님 신호확인요.");
     expect(workflowMessage("이름: 김 순 옥\n주소: \n요청: 신호확인")).toBe("김순옥님 신호확인요.");
+  });
+});
+
+describe("AX768 action handoff", () => {
+  it.each(["기기위치조정", "전원연결", "기기 전원 연결"])("preserves %s from the image", action => {
+    const draft = makeImageDraft([page(`김순옥\n울진북로 164\n${action}`)], "");
+    const expected = action === "기기위치조정" ? action : "전원연결";
+    expect(draft.conflicts).toBe(false);
+    expect(workflowMessage(draft.message)).toBe(`울진북로 164 김순옥님 ${expected} 신호확인요.`);
+  });
+  it("preserves a typed action when attaching an address image", () => {
+    const draft = makeImageDraft([page("울진북로 164")], "김순옥님 전원연결 신호확인요");
+    expect(workflowMessage(draft.message)).toContain("김순옥님 전원연결 신호확인요.");
+  });
+  it("requires correction when image and text actions conflict", () => {
+    const draft = makeImageDraft([page("김순옥\n울진북로 164\n기기위치조정")], "김순옥님 전원연결");
+    expect(draft.conflicts).toBe(true);
+    expect(() => workflowMessage(draft.message)).toThrow("Choose either");
+    expect(workflowMessage(draft.message.replace("기기위치조정/전원연결", "전원연결"))).toContain("전원연결 신호확인요.");
+  });
+  it("allows name-only image input to reach the AS address lookup", () => {
+    const draft = makeImageDraft([page("이름: 김순옥\n전원연결")], "");
+    expect(workflowMessage(draft.message)).toBe("김순옥님 전원연결 신호확인요.");
   });
 });

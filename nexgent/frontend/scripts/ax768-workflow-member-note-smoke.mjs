@@ -27,12 +27,14 @@ try {
  await page.locator('#ax-tab-workflow').click();
  await page.locator('#ax-workflow-choice').selectOption('device_adjustment_power');
  const run=page.getByRole('button',{name:'워크플로 실행',exact:true});
- const noteStage=page.locator('#ax-panel-workflow details').filter({has:page.locator('summary',{hasText:'5. 가입자 일반 사항'})});
+ const noteStage=page.locator('#ax-panel-workflow details').filter({has:page.locator('summary',{hasText:'3. 마스터페이지 · 일반사항'})});
  for (const choice of ['adjust','power','unknown','disconnected']) {
   scenario=choice;
-  await page.locator('#ax-workflow-message').fill(`울진북로 164 김순옥님 ${choice==='power'?'전원연결':'기기위치조정'} 신호확인요`);
+  await page.locator('#ax-workflow-message').fill(choice==='power' ? '이름: 김순옥\n주소: 울진북로 164\n요청: 전원연결 신호확인' : '울진북로 164 김순옥님 기기위치조정 신호확인요');
   await run.click();
   await noteStage.waitFor();
+  assert.equal(await page.locator('#ax-panel-workflow summary').filter({hasText:/^[123]\. /}).count(),3);
+  if(choice==='power') assert.equal(calls.at(-1).message,'울진북로 164 김순옥님 전원연결 신호확인요.');
   if(choice==='disconnected') await noteStage.getByText('건너뜀',{exact:true}).waitFor();
   else if(choice==='unknown') await noteStage.getByText('다시 실행하기 전에 가입자 일반 사항을 확인해 주세요. 이미 저장되었을 수 있습니다.',{exact:true}).waitFor();
   else {

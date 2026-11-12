@@ -23,7 +23,7 @@ mkdirSync(artifacts, { recursive: true });
    const canvas=document.createElement('canvas'); canvas.width=1100; canvas.height=400;
    const ctx=canvas.getContext('2d');ctx.fillStyle='#ddd';ctx.fillRect(0,0,1100,400);
    ctx.fillStyle='#777';ctx.font='48px "Noto Sans CJK KR"';
-   ctx.fillText('이름: 김 순 옥',55,100);ctx.fillText('주소: 울진북로 164',55,200);ctx.fillText('요청: 신호확인',55,300);
+   ctx.fillText('이름: 김 순 옥',55,100);ctx.fillText('주소: 울진북로 164',55,200);ctx.fillText('요청: 전원연결 신호확인',55,300);
    return canvas.toDataURL('image/png').split(',')[1];
   });
   const bytes=Buffer.from(png,'base64');writeFileSync(`${artifacts}/korean-fixture.png`,bytes);
@@ -37,7 +37,7 @@ mkdirSync(artifacts, { recursive: true });
   await page.getByRole('button',{name:'워크플로 실행',exact:true}).click();
   await page.waitForTimeout(300);
   if (!requests.length) { console.log('Review requirement:',await page.locator('#ax-workflow-setup-note').innerText()); throw new Error('Unexpected review block for clear Korean fixture'); }
-  assert.equal(requests[0].message,'울진북로 164 김순옥님 신호확인요.');assert(!('images' in requests[0]));
+  assert.equal(requests[0].message,'울진북로 164 김순옥님 전원연결 신호확인요.');assert(!('images' in requests[0]));
   await page.setViewportSize({width:390,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`${artifacts}/mobile.png`,fullPage:true});
   // Removal restores the original typed input and prevents a stale completion.
   await page.getByRole('button',{name:'입력 지우기',exact:true}).click();
