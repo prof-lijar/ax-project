@@ -2,9 +2,17 @@
 
 Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md). It does not interpret messages or use private KakaoTalk APIs.
 
-**Validation status:** portable tests and offscreen Qt checks run on Linux. Real Windows/KakaoTalk behavior, mixed-DPI selection, sign-in startup, and the packaged executable require the manual checks in [TESTING.md](TESTING.md). This repository does not yet contain a Windows-tested release binary.
+**Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI selection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
-## Run on Windows
+## Download and run the executable
+
+Open [GitHub Releases](https://github.com/prof-lijar/ax-project/releases) and download the `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` asset from a successful capture-agent release. Double-click the downloaded file on Windows 10/11 (64-bit). Python, uv, and Git are not required on that PC. The repository is private, so sign in with an account that has repository access.
+
+The executable includes its runtime and libraries; the first launch may take a moment while they unpack. It is unsigned, so Windows may show an unrecognized-app prompt. Each release includes a `.sha256` checksum file. Configuration and captures stay in `%LOCALAPPDATA%\KakaoCaptureAgent`, separate from the executable.
+
+Open the intended KakaoTalk conversation, choose **Select Window** and **Select Region**, then enter a chat identifier in **Settings**. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
+
+## Run from source on Windows
 
 Use Windows 10/11 with an unlocked interactive desktop and an authenticated KakaoTalk conversation. Start with a conversation authorized for testing. The setup below uses **uv** to install Python 3.12 (the version used for the automated tests), create the project environment, and install dependencies. You do not need to install Python or the `py` launcher separately.
 
@@ -161,20 +169,28 @@ uv run --python 3.12 --with-requirements requirements-dev.txt python -m pytest -
 uv run --python 3.12 --with-requirements requirements-dev.txt ruff check app mock_api tests
 ```
 
-Windows tests and packaging:
+Windows tests and single-file packaging:
 
 ```powershell
-uv python install 3.12
-uv sync --python 3.12
-uv run --python 3.12 --with-requirements requirements-dev.txt python -m pytest -q
-uv run --python 3.12 --with-requirements requirements-dev.txt python -m PyInstaller --noconfirm --clean KakaoCaptureAgent.spec
+.\build.ps1
 ```
 
-Run the PyInstaller command only after the tests pass. Development dependencies are supplied by `requirements-dev.txt`; the project does not currently define a uv development dependency group. The `--with-requirements` option makes those tools available for each invocation without requiring a separate pip installation.
+`build.ps1` uses uv to create a Python 3.12 environment when needed, install development dependencies, run the tests, build the executable, and run its synthetic `--self-test` startup check. It stops on failure. No separate `py` launcher or pip installation is required. Development dependencies remain in `requirements-dev.txt`; the project does not currently define a uv development dependency group.
 
-The existing `build.ps1` script uses `py`/`pip` and expects pip in its virtual environment. Use the uv packaging commands above for a uv-created environment. Do not copy a Linux virtual environment to Windows; let `uv sync --python 3.12` create the Windows environment there.
+The output is **`dist\KakaoCaptureAgent.exe`**, a single executable that can be copied to a Windows PC without Python installed. The build includes a per-monitor DPI manifest and SQLite schema. Build on Windows; [PyInstaller is not a cross-compiler](https://pyinstaller.org/en/stable/). Do not copy a Linux virtual environment to Windows; create a new environment there.
 
-Distribute the **entire** `dist\KakaoCaptureAgent` folder and launch `KakaoCaptureAgent.exe`. The build includes a per-monitor DPI manifest and SQLite schema. This is an unsigned folder distribution, not an installer. Build on Windows; [PyInstaller is not a cross-compiler](https://pyinstaller.org/en/stable/).
+## Publishing a GitHub Release
+
+The repository workflow `.github/workflows/kakao-capture-release.yml` runs on GitHub's Windows runner when a tag matching `kakao-capture-agent-v*` is pushed. It tests the code, builds the single executable, checks packaged startup using synthetic data, calculates SHA-256, and publishes the executable/checksum as a GitHub prerelease. It never captures a conversation or sends mouse input during the startup check.
+
+After committing the intended source revision, create a new, unused release tag, for example:
+
+```powershell
+git tag kakao-capture-agent-v0.1.0-rc.1
+git push origin kakao-capture-agent-v0.1.0-rc.1
+```
+
+Use a new tag for each build; do not move published release tags. Review the Actions run and its `self-test.json` artifact before distributing the build. Update `RELEASE_NOTES.md` for subsequent releases. The workflow uses GitHub's repository-scoped token with release permission; no personal access token needs to be stored as a workflow secret. Manual workflow dispatch builds an artifact without publishing when run from a branch; its availability in the Actions UI depends on the workflow being present on the repository's default branch.
 
 Implementation modules follow the PRD: GUI on the Qt thread; capture and scrolling on one automation thread; asynchronous HTTP in an independent worker; SQLite operations under a shared lock with separate connections. Business logic can be tested with injected desktop/capture/HTTP adapters.
 

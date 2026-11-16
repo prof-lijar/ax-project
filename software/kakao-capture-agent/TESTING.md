@@ -25,7 +25,7 @@ The development sandbox reported stream-file-descriptor errors and stalled `asyn
 | MSS | 10.2.0 (installed; native capture not exercised on Linux) |
 | Ruff | 0.17.5 |
 
-PyWin32, PyAutoGUI, Win32 input/capture, Credential Manager, ACLs, sign-in registry entries, and PyInstaller packaging have not been executed in this Linux environment. Their Windows acceptance checks remain pending.
+PyWin32, PyAutoGUI, Win32 input/capture, Credential Manager, ACLs, sign-in registry entries, and PyInstaller packaging have not been executed in this Linux environment. The Windows release workflow runs the same automated suite and a packaged startup check covering native imports, data-directory ACL setup, configuration, SQLite, synthetic PNG/retention, and the Qt window/preview. It records the result in `dist/self-test.json`. Consult the specific release's Actions run for its actual Windows build result; real capture/input and the manual acceptance checks remain pending.
 
 ## Manual Windows checklist
 
@@ -73,7 +73,7 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 6. Restart the mock server. Pending jobs should complete; use Retry Failed Uploads if the bounded retry budget was exhausted.
 7. Move, obscure, minimize, and close the chat; lock/unlock Windows; verify pauses and safe recovery/reselection.
 8. Exercise all emergency stops during scanning. Verify no navigation occurs after stop and that uploads can continue.
-9. Build with `build.ps1`, copy the entire output folder to a clean Windows PC, and repeat the basic capture/upload scenario.
+9. Build with `build.ps1`, copy `dist\KakaoCaptureAgent.exe` to a clean Windows PC without Python installed, and repeat the basic capture/upload scenario. The single executable should run without additional files from the build directory.
 
 ## 24-hour soak gate
 

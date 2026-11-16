@@ -16,6 +16,13 @@ def main():
     from app.automation.window_manager import WindowsDesktop, enable_dpi_awareness
 
     enable_dpi_awareness()
+    if "--self-test" in sys.argv:
+        from app.self_test import run
+
+        position = sys.argv.index("--self-test")
+        if position + 1 >= len(sys.argv):
+            return 2
+        return run(Path(sys.argv[position + 1]))
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication, QMessageBox
 
