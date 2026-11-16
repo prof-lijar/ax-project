@@ -10,7 +10,11 @@
 .required { margin-left: 4px; font-size: 10px; font-weight: 400; }
 .workflowPicker select { width: 100%; min-width: 0; height: 40px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 13px; text-overflow: ellipsis; }
 .workflowPicker select[aria-invalid="true"] { border-color: var(--color-red); }
-.inputLabel { margin-bottom: -8px; }
+.inputHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: -8px; }
+.structuringStatus { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-size: 11px; line-height: 1.6; }
+.structuringStatus[data-state="structuring"], .structuringStatus[data-state="extracting"] { color: var(--color-link); }
+.structuringStatus[data-state="complete"] { color: var(--color-green); }
+.structuringStatus[data-state="failed"] { color: var(--color-amber); }
 .selectionAlert { display: flex; align-items: center; gap: 8px; color: var(--color-red); font-size: 12px; line-height: 1.6; margin: 0; }
 .selectionAlert svg { flex-shrink: 0; }
 .composer { position: relative; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); min-width: 0; }
@@ -66,7 +70,7 @@
 .imageWarning { font-size: 12px; line-height: 1.7; color: var(--color-text); border-left: 3px solid var(--color-amber); padding-left: 12px; margin: 16px 0; overflow-wrap: anywhere; }
 .images { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; padding: 0 14px 14px; margin: 0; list-style: none; }
 .imageItem { position: relative; min-width: 0; max-width: 160px; }
-.thumbnail { width: 100%; height: 92px; border-radius: 5px; overflow: hidden; display: grid; place-items: center; background: var(--color-surface-raised); color: var(--color-text-soft); }
+.thumbnail { padding: 0; border: 0; cursor: zoom-in; width: 100%; height: 92px; border-radius: 5px; overflow: hidden; display: grid; place-items: center; background: var(--color-surface-raised); color: var(--color-text-soft); }
 .thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .fileInfo { display: grid; gap: 3px; min-width: 0; padding: 7px 2px 0; }
 .fileInfo strong { font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -87,3 +91,13 @@
 @media (max-width: 1100px) { .workspace { gap: 18px; } .inputPanel, .resultPanel { padding: 18px; } .characterCount { display: none; } }
 @media (max-width: 960px) { .workspace { grid-template-columns: 1fr; } .empty { min-height: 160px; } }
 @media (max-width: 480px) { .inputPanel, .resultPanel { padding: 16px; } .toolbar { gap: 4px; padding: 8px; } .stageHeading { gap: 8px; } }
+
+.thumbnail:disabled { cursor: default; }
+.thumbnail:focus-visible, .closePreview:focus-visible { outline: 2px solid var(--color-link); outline-offset: 2px; }
+.imageDialog { box-sizing: border-box; width: min(1000px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text); }
+.imageDialog::backdrop { background: rgb(0 0 0 / 70%); }
+.imageDialogHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.imageDialogHeader strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+.closePreview { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; padding: 0; border: 1px solid var(--color-border); border-radius: 5px; background: var(--color-surface); color: var(--color-text); cursor: pointer; }
+.closePreview:hover { background: var(--color-surface-raised); }
+.fullImage { display: block; width: 100%; height: auto; max-height: calc(100dvh - 132px); object-fit: contain; }

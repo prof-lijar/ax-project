@@ -1,5 +1,9 @@
 # AX Project Documentation
 
+- [AX768 clipboard screenshot input](08-implementation/ax768-clipboard-screenshot-input.md): Ctrl+V image attachment through the existing preview, validation and extraction flow.
+
+- [AX768 information update workspace](08-implementation/ax768-information-update-workspace.md): workflow-specific extraction, bounded automatic three-roster lookup, structured/dotted birthdays and phone/guardian edits, matching AS completion, region-aware master-page matching, preserved history and image popup preview.
+
 - [AX768 workspace simplification](08-implementation/ax768-workspace-simplification.md): Workflow-first navigation, compact request/result panels, expandable receipts and responsive browser validation.
 
 - [AX768 case workspace](08-implementation/ax768-case-workspace.md): Test/Workflow/Sheets tabs, required workflow selection and coming-soon choices, IMEI signal checks, unified roster-to-AS lookup, unique name correction, automatic source city, verified S/X/Y completion, loading/results, spreadsheet links and runtime setup.

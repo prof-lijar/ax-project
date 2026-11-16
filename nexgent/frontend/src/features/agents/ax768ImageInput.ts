@@ -1,6 +1,6 @@
 /** Conservative extraction: an uncertain or conflicting field stays editable and blank. */
 export type OcrPage = { filename: string; text: string; confidence: number };
-export type ImageDraft = { message: string; pages: OcrPage[]; original: string; needsReview: boolean; conflicts: boolean };
+export type ImageDraft = { message: string; pages: OcrPage[]; original: string; needsReview: boolean; conflicts: boolean; structured?: boolean; noInformation?: boolean };
 const roadPattern = /[가-힣0-9·.]+(?:로|길)\s*\d+(?:\s*-\s*\d+)?/g;
 const compact = (value: string) => value.normalize("NFKC").replace(/\s+/g, "");
 const normalizeAddress = (value: string) => value.replace(/\s*-\s*/g, "-").replace(/([로길])\s*(?=\d)/g, "$1 ");

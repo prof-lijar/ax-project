@@ -1,5 +1,9 @@
 # Documentation map
 
+- [AX768 information update workflow](ax768-information-update-workflow.md): Structured/dotted birthday support, bounded name-first three-roster lookup without region input, guardian handling, all matching information AS cases, region-aware master identity and address-conflict reporting, appended notes, verified stages, file-registration startup regression and activation.
+
+- [AX768 information extraction](ax768-information-extraction.md): Workflow-specific agent analysis, source-grounded fields, chat sender/subject separation, OCR noise filtering, cancellation, tests and runtime activation.
+
 - [Device adjustment three-stage refactor](device-adjustment-three-stage-refactor.md): Input/action preservation, signal → optional AS → master-page routing, skip causes, and validation.
 
 - [Device adjustment member-note step](device-adjustment-member-note-step.md): Version 5 signal/optional AS/member replacement sequence, action/date policy and validation.

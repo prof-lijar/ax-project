@@ -8,7 +8,9 @@
     "chat": "./workflows/chat/graph.py:graph",
     "rag_chat": "./workflows/rag_chat/graph.py:graph",
     "ansimk_weekly_reporter": "./workflows/weekly_report/graph.py:graph",
-    "ax768_workflow": "./workflows/ax768/unified_graph.py:graph"
+    "ax768_workflow": "./workflows/ax768/unified_graph.py:graph",
+    "ax768_information_extraction": "./workflows/ax768/information_extraction.py:graph",
+    "ax768_information_update": "./workflows/ax768/information_update.py:graph"
   },
   "env": ".env"
 }

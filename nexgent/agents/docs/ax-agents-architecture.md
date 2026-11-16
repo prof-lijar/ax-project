@@ -1,5 +1,104 @@
 # AX Agents Architecture
 
+## Information master-page address equivalence (2026-11-13)
+
+Information-update member matching allows omission of known administrative
+prefixes for the already-resolved roster region, while retaining exact name and
+remaining address matching and a single-candidate requirement. Full member
+identity is still reread around writes. This fixes county-prefixed master
+addresses differing from 읍/면-prefixed roster addresses. Member failures now
+report their phase and safe cause. Single-candidate address conflicts include
+bounded candidate-ID/address evidence in the admin receipt, while conflicting
+addresses still block and a new phone number cannot override that conflict.
+Existing device/standalone member policy,
+shared transport, graph version 2 and verified-write gates remain unchanged.
+See [reproduction and checks](ax768-information-update-workflow.md).
+
+## Bounded information-workflow roster reads (2026-11-13)
+
+Information lookup scans names only, then rereads exact-match details in batches
+of 20 rows. This avoids exceeding the existing 128 KB Sheets transport limit
+when large rosters contain Korean addresses. Concurrency remains bounded at three;
+failed/cancelled reads drain sibling tasks before the HTTP client closes. Identity
+drift stops resolution. Roster receipts now identify the failing phase and safe
+reason rather than replacing technical failures with input-correction guidance.
+Version 2 and write gates are unchanged. See [reproduction and validation](ax768-information-update-workflow.md).
+
+## Structured birthday input compatibility (2026-11-13)
+
+The information-update planner recognizes reviewed `이름 · 생년월일: 값`
+fields as update intent. A complete single-field request has a deterministic
+parser; richer drafts retain the tool-free model step. Dotted birthdays are
+calendar-validated, grounded against their literal source, then normalized to
+compact strings without inferring a century. Version 2, roster/AS/member policy
+and source grounding for other fields are unchanged. See the dated correction
+in [the workflow contract](ax768-information-update-workflow.md).
+
+## Information confirmation and update execution (2026-11-12)
+
+The separately versioned `ax768_information_update` graph owns the authorized
+information-update write path: tool-free grounded intent → one regional roster
+row → all matching information-confirmation AS cases → appended master-page
+notes. Version 2 removes region from input and searches 울진 → 광명 → 영덕
+sequentially, stopping at the first uniquely resolved roster. No-match advances;
+read errors and unresolved ambiguity stop. The resolved region is retained for
+dependent-stage rechecks and returned as evidence. Roster identity
+uses existing subscriber details, with exact-name AS fallback; new subscriber
+and guardian numbers never substitute for old identity. Fixed live-verified
+headers protect birthday/phone/guardian cells and existing formula columns.
+
+The admin/CSRF endpoint `/api/ax768/workflow/information-runs` gates version 2,
+validates ordered receipts and strips private snapshots. Each write rechecks and
+reads back its target; unknown outcomes stop dependents without retries. AS absence
+is a verified skip; other ambiguities block. Notes append and deduplicate while
+preserving history. Existing device and extraction contracts are unchanged. No
+new process or credential boundary is introduced. Agent Server rebuild remains
+required. File-registered entrypoints use absolute workflow imports because the
+server loads them without a package context; registration tests now cover both
+information graphs. See [contract, tests and recovery](ax768-information-update-workflow.md).
+
+## AX768 workflow-specific information extraction (2026-11-12)
+
+`information_update` now has a dedicated tool-free extraction graph,
+`ax768_information_extraction`, inside the existing AX768 module. It uses the
+configured local model to discover arbitrary fields from supplied text and local
+OCR output. Labels retain entity/relationship and old/new-value context. Every
+value must be a literal substring of its identified source. This step has no
+Sheets/member/device tools and performs no business-record updates.
+
+The admin/CSRF endpoint `POST /api/ax768/workflow/extract` accepts only this
+workflow, up to six 8,000-character sources, and checks extraction version 1
+before stateless dispatch. Sources are chunked at at most 1,000 characters,
+preferring line boundaries with overlap on long lines, to fit the deployed 8K
+model context. At most two chunk calls run concurrently, with no transport
+retry and a 100-second aggregate budget. Truncation, invalid grounding or any chunk failure
+rejects the whole extraction. The API validates grounded output again.
+
+The composer routes extraction by workflow. Device adjustment retains its
+existing deterministic name/address/action parser; no selection retains raw
+text. Information update auto-analyses image OCR and offers text-only analysis.
+Drafts are editable with original sources retained. Workflow changes cancel the
+browser request and invalidate late results. Images stay local; recognized text
+is sent to the private agent/model. Agent Server registration requires a dev
+image rebuild; no new process, credentials or model dependency is introduced.
+See [implementation, validation and activation](ax768-information-extraction.md).
+
+Chat screenshot correction (2026-11-12): extraction now distinguishes body
+subjects from sender/reply headers, qualifies multi-person fields by subject,
+preserves explicit names and add/change requests, and excludes interface/OCR
+noise and chat-only timestamps. Meaningful uncertain text, literal identifiers,
+business times and distinct device/signal observations remain. Successful empty
+extractions no longer restore raw source text into the structured draft; the UI
+shows a no-case-information status and retains the source internally for retry.
+The version-1 field schema, grounding checks and no-write policy are unchanged.
+A reply-header guard rejects assigning a known sender as subject unless the
+source also explicitly identifies that person as a subject. Bounded source
+context hints guide the model; one semantic correction attempt is allowed per
+chunk within the same deadline, after which the whole result fails. Subject
+names implied only in qualified labels become explicit name fields only with
+matching body-name evidence. An opt-in anonymized live-model regression covers
+these semantics.
+
 ## Device adjustment three-stage refactor (2026-11-11)
 
 The version-5 AX768 workflow now routes by verified stage receipts and sends

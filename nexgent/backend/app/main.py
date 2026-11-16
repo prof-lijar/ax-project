@@ -7,6 +7,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 
 from app.ax768 import router as ax768_router
+from app.ax768_extraction import router as ax768_extraction_router
+from app.ax768_information import router as ax768_information_router
 from app.ax768_workflow import router as ax768_workflow_router
 from app.chat.attachments import cleanup_stale_artifacts
 from app.chat.config import get_chat_settings
@@ -81,6 +83,8 @@ def create_app(*, identity_settings=None, identity_store=None, notification_sett
     app.add_api_route("/health", health_check, methods=["GET"], include_in_schema=False)
     app.include_router(ax768_router)
     app.include_router(ax768_workflow_router)
+    app.include_router(ax768_extraction_router)
+    app.include_router(ax768_information_router)
     app.include_router(account_router)
     app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
     app.include_router(chat_history_router, prefix="/api/chat", tags=["chat-history"])

@@ -1,11 +1,13 @@
 import { AlertCircle, ExternalLink, ImagePlus, Inbox, LoaderCircle, Play, Upload, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type DragEvent, type ClipboardEvent } from "react";
 import { t, useLanguage } from "../../shared/i18n";
 import { runAx768Workflow, workflowStatusLabels, type WorkflowResult, type WorkflowStage } from "../../shared/api/ax768WorkflowClient";
+import { runInformationUpdate, type InformationResult } from "../../shared/api/ax768InformationClient";
 import { isSheetUrl } from "../../shared/api/ax768Client";
 import { ACTIVE_AX768_WORKFLOW, AX768_WORKFLOWS, type Ax768WorkflowId } from "../../shared/api/ax768Workflows";
 import { extractImageText } from "./ax768Ocr";
-import { makeImageDraft, workflowMessage, type ImageDraft } from "./ax768ImageInput";
+import { workflowMessage, type ImageDraft } from "./ax768ImageInput";
+import { extractWorkflowDraft, rawImageDraft } from "./ax768WorkflowExtraction";
 import styles from "./Ax768WorkflowPanel.module.css";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -19,13 +21,24 @@ function fileSize(bytes: number) {
 function ImagePreview({ file, remove }: { file: File; remove: () => void }) {
   const [url, setUrl] = useState("");
   const [failed, setFailed] = useState(false);
+  const preview = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const next = URL.createObjectURL(file);
     setUrl(next); setFailed(false);
     return () => URL.revokeObjectURL(next);
   }, [file]);
   return <li className={styles.imageItem}>
-    <div className={styles.thumbnail}>{url && !failed ? <img src={url} alt={file.name} onError={() => setFailed(true)} /> : <ImagePlus size={20} aria-hidden />}</div>
+    <button type="button" className={styles.thumbnail} disabled={!url || failed}
+      aria-label={t("Preview {name}", { name: file.name })} aria-haspopup="dialog" onClick={() => preview.current?.showModal()}>
+      {url && !failed ? <img src={url} alt={file.name} onError={() => setFailed(true)} /> : <ImagePlus size={20} aria-hidden />}
+    </button>
+    <dialog ref={preview} className={styles.imageDialog} aria-label={file.name}>
+      <header className={styles.imageDialogHeader}>
+        <strong>{file.name}</strong>
+        <button type="button" className={styles.closePreview} aria-label={t("Close")} onClick={() => preview.current?.close()}><X size={20} aria-hidden /></button>
+      </header>
+      {url && !failed && <img className={styles.fullImage} src={url} alt={file.name} />}
+    </dialog>
     <div className={styles.fileInfo}><strong title={file.name}>{file.name}</strong><span>{failed ? t("Image preview unavailable") : fileSize(file.size)}</span></div>
     <button type="button" className={styles.remove} aria-label={t("Remove {name}", { name: file.name })} onClick={remove}><X size={16} aria-hidden /></button>
   </li>;
@@ -55,14 +68,17 @@ export function Ax768WorkflowPanel() {
   const [message, setMessage] = useState("");
   const [workflowId, setWorkflowId] = useState<Ax768WorkflowId | "">("");
   const [selectionError, setSelectionError] = useState(false);
+  const informationUpdate = workflowId === "information_update";
   const workflowChoice = useRef<HTMLSelectElement>(null);
   const messageInput = useRef<HTMLTextAreaElement>(null);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<WorkflowResult | null>(null);
+  const [informationResult, setInformationResult] = useState<InformationResult | null>(null);
   const [runError, setRunError] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [analysing, setAnalysing] = useState(false);
   const [ocrError, setOcrError] = useState("");
   const [draft, setDraft] = useState<ImageDraft | null>(null);
   const ocrGeneration = useRef(0);
@@ -77,22 +93,27 @@ export function Ax768WorkflowPanel() {
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => window.clearInterval(timer);
   }, [running]);
-  function resetResult() { setResult(null); setRunError(""); }
+  function resetResult() { setResult(null); setInformationResult(null); setRunError(""); }
   async function run(confirmedName?: string) {
     if (busy.current) return;
     if (!workflowId) { setSelectionError(true); workflowChoice.current?.focus(); return; }
-    if (workflowId !== ACTIVE_AX768_WORKFLOW) { setRunError("This workflow is coming soon."); return; }
+    if (workflowId !== ACTIVE_AX768_WORKFLOW && !informationUpdate) { setRunError("This workflow is coming soon."); return; }
     if (!message.trim()) { setRunError("Enter a message of 1–8,000 characters."); messageInput.current?.focus(); return; }
     if (extracting || (images.length > 0 && !draft)) return;
     if (draft?.conflicts && message === draft.message) { setRunError("Review the extracted name and address before running."); messageInput.current?.focus(); return; }
     let request: string;
-    try { request = workflowMessage(message); }
+    try { request = informationUpdate ? message : workflowMessage(message); }
     catch (error) { setRunError(error instanceof Error ? error.message : "Review the extracted name and address before running."); messageInput.current?.focus(); return; }
-    busy.current = true; setRunning(true); setRunError(""); setResult(null);
+    busy.current = true; setRunning(true); setRunError(""); setResult(null); setInformationResult(null);
     const current = generation.current;
     try {
-      const next = await runAx768Workflow(workflowId, request, confirmedName);
-      if (current === generation.current) setResult(next);
+      if (informationUpdate) {
+        const next = await runInformationUpdate(request);
+        if (current === generation.current) setInformationResult(next);
+      } else {
+        const next = await runAx768Workflow(workflowId, request, confirmedName);
+        if (current === generation.current) setResult(next);
+      }
     } catch (error) {
       if (current === generation.current) setRunError(error instanceof Error ? error.message : "The workflow result could not be retrieved. Check the AS row before running again.");
     } finally {
@@ -106,20 +127,34 @@ export function Ax768WorkflowPanel() {
   const files = useRef<File[]>([]);
   const dragDepth = useRef(0);
   function updateImages(next: File[]) { files.current = next; setImages(next); }
-  async function readImages(next: File[], original: string) {
+  async function readImages(next: File[], original: string, selected = workflowId, cachedPages?: ImageDraft["pages"]) {
     ocrController.current?.abort();
     const current = ++ocrGeneration.current;
     const controller = new AbortController(); ocrController.current = controller;
-    setDraft(null); setOcrError(""); setOcrProgress(0); setExtracting(next.length > 0);
-    if (!next.length) return;
+    const hasInput = next.length > 0 || (selected === "information_update" && !!original.trim());
+    setDraft(null); setOcrError(""); setOcrProgress(0); setAnalysing(false); setExtracting(hasInput);
+    setMessage(original);
+    if (!hasInput) return;
     try {
-      const pages = await extractImageText(next, controller.signal, value => { if (current === ocrGeneration.current) setOcrProgress(value); });
+      const pages = cachedPages ?? (next.length ? await extractImageText(next, controller.signal, value => { if (current === ocrGeneration.current) setOcrProgress(value); }) : []);
       if (current !== ocrGeneration.current) return;
-      const extracted = makeImageDraft(pages, original);
+      // Keep all recognized text available even if agent analysis fails.
+      const raw = rawImageDraft(pages, original);
+      setDraft(raw); setMessage(raw.message);
+      setAnalysing(selected === "information_update");
+      const extracted = await extractWorkflowDraft(selected, pages, original, controller.signal);
+      if (current !== ocrGeneration.current) return;
       setDraft(extracted); setMessage(extracted.message); resetResult();
     } catch (error) {
-      if (current === ocrGeneration.current) setOcrError(error instanceof Error && /^(Image text|Use an image|No readable text|Too much image text)/.test(error.message) ? error.message : "Image text extraction failed. Retry or enter the name and address manually.");
-    } finally { if (current === ocrGeneration.current) setExtracting(false); }
+      if (current === ocrGeneration.current) setOcrError(error instanceof Error && /^(Image text|Use an image|Use up to|No readable text|Too much image text|Information extraction|Restart Agent Server)/.test(error.message) ? error.message : "Information extraction failed. Review the original text and try again.");
+    } finally { if (current === ocrGeneration.current) { setExtracting(false); setAnalysing(false); } }
+  }
+  function selectWorkflow(next: Ax768WorkflowId | "") {
+    if (busy.current) return;
+    const original = originalInput();
+    const pages = draft?.pages;
+    setWorkflowId(next); setSelectionError(false); resetResult();
+    void readImages(files.current, original, next, pages);
   }
   function originalInput() { return draft && message === draft.message ? draft.original : message; }
   function removeImage(file: File) {
@@ -148,25 +183,36 @@ export function Ax768WorkflowPanel() {
     if (next.length !== files.current.length) { updateImages(next); void readImages(next, originalInput()); }
     setErrors([...new Set(rejected)]);
   }
+  function pasteImages(event: ClipboardEvent<HTMLDivElement>) {
+    const items = Array.from(event.clipboardData.items)
+      .filter(item => item.kind === "file" && item.type.startsWith("image/"))
+      .flatMap(item => { const file = item.getAsFile(); return file ? [file] : []; });
+    const pasted = items.length ? items : Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/"));
+    if (!pasted.length) return; // Keep ordinary text paste native.
+    event.preventDefault();
+    addImages(pasted);
+  }
   function preventFileDrop(event: DragEvent) {
     event.preventDefault(); event.stopPropagation();
   }
   function clear() {
     if (busy.current) return;
-    ocrGeneration.current++; ocrController.current?.abort(); setExtracting(false); setDraft(null); setOcrError("");
+    ocrGeneration.current++; ocrController.current?.abort(); setExtracting(false); setAnalysing(false); setDraft(null); setOcrError("");
     resetResult(); setMessage(""); updateImages([]); setErrors([]); setDragging(false); dragDepth.current = 0;
     if (picker.current) picker.current.value = "";
   }
-  return <div className={styles.workspace}>
+  const structuringState = extracting ? analysing ? "structuring" : "extracting" : ocrError ? "failed" : draft?.noInformation ? "empty" : draft?.structured ? "complete" : "before";
+  const structuringLabel = { empty: "No case information found", before: "Before structuring", extracting: "Extracting text…", structuring: "Structuring…", complete: "Structuring complete · ready to edit", failed: "Structuring failed · original text kept" }[structuringState];
+  return <div className={styles.workspace} onPaste={pasteImages}>
     <section className={styles.inputPanel} aria-labelledby="ax-workflow-input-title">
       <header className={styles.panelHeader}><h2 id="ax-workflow-input-title">{t("New request")}</h2>
-        <button type="button" className={styles.clear} disabled={running || (!message && !images.length && !errors.length)} onClick={clear}>{t("Clear input")}</button>
+        <button type="button" className={styles.clear} disabled={running || (!message && !images.length && !errors.length && !draft)} onClick={clear}>{t("Clear input")}</button>
       </header>
       <div className={styles.workflowPicker}>
         <label htmlFor="ax-workflow-choice">{t("Select workflow")} <span className={styles.required}>{t("Required")}</span></label>
         <select id="ax-workflow-choice" ref={workflowChoice} value={workflowId} required disabled={running}
           aria-invalid={selectionError || undefined} aria-describedby={selectionError ? "ax-workflow-selection-error" : undefined}
-          onChange={event => { setWorkflowId(event.target.value as Ax768WorkflowId | ""); setSelectionError(false); resetResult(); }}>
+          onChange={event => selectWorkflow(event.target.value as Ax768WorkflowId | "")}>
           <option value="">{t("Select workflow")}</option>
           {AX768_WORKFLOWS.map(workflow => <option key={workflow.id} value={workflow.id} disabled={!workflow.available}>
             {workflow.name}{!workflow.available ? ` · ${t("Coming soon")}` : ""}
@@ -174,48 +220,64 @@ export function Ax768WorkflowPanel() {
         </select>
       </div>
       {selectionError && <p id="ax-workflow-selection-error" className={styles.selectionAlert} role="alert"><AlertCircle size={16} aria-hidden />{t("Please select a workflow.")}</p>}
-      <p className={styles.localNote}>{t("Images provide name and address. A name alone uses the bottom-most AS match. Signal → AS → General notes.")}</p>
-      <label htmlFor="ax-workflow-message" className={styles.inputLabel}>{t("Request")}</label>
+      <div className={styles.inputHeading}>
+        <label htmlFor="ax-workflow-message" className={styles.inputLabel}>{t(informationUpdate && draft?.structured ? "Structured information" : "Request")}</label>
+        {informationUpdate && <span id="ax-structuring-status" className={styles.structuringStatus} role="status" aria-live="polite" data-state={structuringState}>
+          {extracting && <LoaderCircle className={styles.spinner} size={14} aria-hidden />}{t(structuringLabel)}
+        </span>}
+      </div>
       <div className={`${styles.composer} ${dragging ? styles.dragging : ""}`} role="group" aria-label={t("Request with text and images")}
         onDragEnter={event => { if (event.dataTransfer.types.includes("Files")) { preventFileDrop(event); dragDepth.current++; setDragging(true); } }}
         onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { preventFileDrop(event); event.dataTransfer.dropEffect = "copy"; } }}
         onDragLeave={event => { preventFileDrop(event); dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); }}
         onDrop={event => { if (!event.dataTransfer.files.length) return; preventFileDrop(event); dragDepth.current = 0; setDragging(false); addImages(Array.from(event.dataTransfer.files)); }}>
-        <textarea ref={messageInput} id="ax-workflow-message" value={message} disabled={running || extracting} onChange={event => { setMessage(event.target.value); resetResult(); }} maxLength={8000} rows={4}
-          aria-label={t("Request")} placeholder={t("Enter a name, address or request…")} />
+        <textarea ref={messageInput} id="ax-workflow-message" value={message} disabled={running || extracting} onChange={event => { setMessage(event.target.value); resetResult(); }} maxLength={informationUpdate || !workflowId ? 64000 : 8000} rows={4}
+          aria-label={t("Request")} aria-busy={extracting} aria-describedby={informationUpdate ? "ax-structuring-status" : undefined} placeholder={t("Enter a request or paste a screenshot (Ctrl+V)…")} />
         {images.length > 0 && <ul className={styles.images} aria-label={t("Attached images")}>{images.map(file => <ImagePreview key={fileKey(file)} file={file}
           remove={() => removeImage(file)} />)}</ul>}
         <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden aria-label={t("Upload images")}
           onChange={event => { addImages(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
         <div className={styles.toolbar}>
           <button type="button" className={styles.attach} disabled={running} onClick={() => picker.current?.click()}><ImagePlus size={17} aria-hidden />{t("Add images")}{images.length > 0 && <span className={styles.imageCount}>{images.length}/5</span>}</button>
-          <span className={styles.characterCount}>{message.length.toLocaleString()} / 8,000</span>
-          <button type="button" className={styles.run} disabled={running || extracting || (images.length > 0 && !draft)} onClick={() => void run()} aria-describedby={images.length ? "ax-workflow-setup-note" : undefined}>{running ? <LoaderCircle className={styles.spinner} size={15} aria-hidden /> : <Play size={15} aria-hidden />}{t(running ? "Running…" : "Run workflow")}</button>
+          {informationUpdate && <button type="button" className={styles.attach} disabled={running || extracting || (!originalInput().trim() && !images.length)} onClick={() => void readImages(files.current, originalInput(), workflowId, draft?.pages)}>{t("Analyse & extract")}</button>}
+          <span className={styles.characterCount}>{message.length.toLocaleString()} / {informationUpdate || !workflowId ? "64,000" : "8,000"}</span>
+          <button type="button" className={styles.run} disabled={running || extracting || (images.length > 0 && !draft)} onClick={() => void run()} aria-describedby={informationUpdate ? "ax-structuring-status" : images.length ? "ax-workflow-setup-note" : undefined}>{running ? <LoaderCircle className={styles.spinner} size={15} aria-hidden /> : <Play size={15} aria-hidden />}{t(running ? "Running…" : "Run workflow")}</button>
         </div>
         {dragging && <div className={styles.dropOverlay}><Upload size={26} aria-hidden /><strong>{t("Drop images here")}</strong></div>}
       </div>
       {errors.length > 0 && <div role="alert"><ul className={styles.errors}>{errors.map(error => <li key={error}>{error}</li>)}</ul></div>}
-      {images.length > 0 && <div id="ax-workflow-setup-note" className={styles.ocrPanel}>
-        <p className={styles.localNote}>{t("Image text is extracted on this device. Review the name and address before running.")}</p>
-        {extracting && <p role="status"><LoaderCircle className={styles.spinner} size={14} aria-hidden /> {t("Extracting Korean text… {percent}%", { percent: ocrProgress })}</p>}
+      {(informationUpdate ? !!ocrError || (!!draft && draft.needsReview && !extracting) : images.length > 0) && <div id="ax-workflow-setup-note" className={styles.ocrPanel}>
+        {!informationUpdate && <p className={styles.localNote}>{t(workflowId ? "Image text is extracted on this device. Review the name and address before running." : "Select a workflow to analyse the recognized text.")}</p>}
+        {extracting && !informationUpdate && <p role="status"><LoaderCircle className={styles.spinner} size={14} aria-hidden /> {analysing ? t("Analysing available information…") : t("Extracting Korean text… {percent}%", { percent: ocrProgress })}</p>}
         {ocrError && <p className={styles.imageWarning} role="alert">{t(ocrError)}</p>}
-        {!extracting && <button type="button" className={styles.attach} disabled={running} onClick={() => void readImages(files.current, originalInput())}>{t("Extract again")}</button>}
-        {draft && <>
-          <p role="status">{t(draft.needsReview ? "Some text is unclear or conflicts. Correct the extracted fields before running." : "Text extracted. The structured input is ready to review.")}</p>
-          <details><summary>{t("Recognized text and original input")}</summary>
+        {!informationUpdate && !extracting && images.length > 0 && <button type="button" className={styles.attach} disabled={running} onClick={() => void readImages(files.current, originalInput())}>{t("Extract again")}</button>}
+        {draft && !extracting && <>
+          {!ocrError && (!informationUpdate || draft.needsReview) && <p role="status">{t(draft.needsReview ? "Some text is unclear or conflicts. Correct the extracted fields before running." : "Text extracted. The structured input is ready to review.")}</p>}
+          {!informationUpdate && <details><summary>{t("Recognized text and original input")}</summary>
             {draft.original && <section><strong>{t("Original input")}</strong><pre>{draft.original}</pre></section>}
             {draft.pages.map((page, index) => <section key={index}><strong>{page.filename}</strong><pre>{page.text}</pre></section>)}
-          </details>
+          </details>}
         </>}
       </div>}
     </section>
     <div className={styles.outputColumn} aria-busy={running}>
       <section className={styles.resultPanel} aria-labelledby="ax-workflow-result-title">
         <header className={styles.panelHeader}><h2 id="ax-workflow-result-title">{t("Result")}</h2>
-          <span className={styles.status} data-status={running ? "running" : runError ? "failed" : result?.status ?? "idle"} role="status">{running ? <LoaderCircle className={styles.spinner} size={14} aria-hidden /> : <span aria-hidden />}{t(running ? "Running…" : runError ? "Needs attention" : result ? workflowStatusLabels[result.status] : "Not started")}</span>
+          <span className={styles.status} data-status={running ? "running" : runError ? "failed" : informationResult?.status ?? result?.status ?? "idle"} role="status">{running ? <LoaderCircle className={styles.spinner} size={14} aria-hidden /> : <span aria-hidden />}{t(running ? "Running…" : runError ? "Needs attention" : informationResult ? ({completed: "Completed", blocked: "Needs attention", failed: "Run failed"})[informationResult.status] : result ? workflowStatusLabels[result.status] : "Not started")}</span>
         </header>
         {runError && <p className={styles.imageWarning} role="alert">{t(runError)}</p>}
-        {result ? <>
+        {informationResult ? <>
+          <p className={styles.response}>{informationResult.response}</p>
+          <span className={styles.localNote}>{informationResult.region ? `${informationResult.region} · ` : ""}{t("Finished in {seconds}s", { seconds: (informationResult.duration_ms / 1000).toFixed(1) })}</span>
+          {([['roster', '1. 가입자 명부 반영'], ['as_update', '2. AS 시트 반영'], ['member_note', '3. 마스터페이지 일반사항']] as const).map(([key, title]) => {
+            const stage = informationResult.receipts[key];
+            return <StageDetails key={key} title={title} status={({updated:'Saved and verified', skipped:'Skipped', blocked:'Needs attention', unknown:'Update not confirmed'})[stage.status]} attention={['blocked','unknown'].includes(stage.status)}>
+              <p>{stage.reason}</p>
+              {!!stage.rows.length && <p>{key === 'member_note' ? '가입자 ID' : '행'}: {stage.rows.join(', ')}</p>}
+              {stage.changes.map((change,index) => <p key={index}>{change}</p>)}
+            </StageDetails>;
+          })}
+        </> : result ? <>
           <p className={styles.response}>{result.response}</p>
           <span className={styles.localNote}>{t("Finished in {seconds}s", { seconds: (result.duration_ms / 1000).toFixed(1) })}</span>
           <p className={styles.parsed}>{[result.parsed.lookup_name, result.parsed.address].filter(Boolean).join(" · ")}</p>
@@ -250,7 +312,7 @@ export function Ax768WorkflowPanel() {
           </StageDetails>
 
           {result.attempts.length > 0 && <details className={styles.help}><summary>{t("Search details")}</summary><ol className={styles.attempts}>{result.attempts.map((a, i) => <li key={`${a.sheet_alias}-${i}`}>{a.city} · {a.sheet_alias}<span>{t(a.status === "found" ? "Match found" : a.status === "not_found" ? "No exact match" : "Run failed")}</span></li>)}</ol></details>}
-        </> : !runError && <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={26} aria-hidden /> : <Inbox size={26} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? "Checking signal, AS and general notes" : "No results yet")}</h3><p>{running ? t("Elapsed {seconds}s", { seconds: elapsed }) : t("Choose a workflow and add your request.")}</p></div>}
+        </> : !runError && <div className={styles.empty}>{running ? <LoaderCircle className={styles.spinner} size={26} aria-hidden /> : <Inbox size={26} strokeWidth={1.4} aria-hidden />}<h3>{t(running ? informationUpdate ? "명부·AS·마스터페이지 반영 중" : "Checking signal, AS and general notes" : "No results yet")}</h3><p>{running ? t("Elapsed {seconds}s", { seconds: elapsed }) : t("Choose a workflow and add your request.")}</p></div>}
       </section>
     </div>
   </div>;
