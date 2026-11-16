@@ -1,5 +1,17 @@
 # Validation and Windows acceptance
 
+## Windows release validation
+
+[Release v0.1.0-rc.3](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.3) was built and published on 2026-11-16 by [Windows Actions run 43826914155](https://github.com/prof-lijar/ax-project/actions/runs/43826914155).
+
+- Windows Server 2022 x64, Python 3.12.10: **43 tests passed in 10.34 seconds**, including the native directory ACL regression test.
+- Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
+- Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.3-windows-x64.exe`, 108,972,324 bytes.
+- SHA-256: `1932963404a531c200ed690a523dfa1a30e3ebb9c90c08aa75bffad0121a6cbf`. The published checksum file matches GitHub's uploaded asset digest.
+
+Actual KakaoTalk capture/scrolling, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
+
 ## Automated validation
 
 Development environment: Linux, CPython 3.12.3. Run `python -m pytest -q` from the project directory. The suite uses temporary directories, synthetic images, fake desktop adapters, and HTTPX mock/ASGI transports; it does not collect real conversations.
