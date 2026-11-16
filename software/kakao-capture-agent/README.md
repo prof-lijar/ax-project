@@ -89,6 +89,8 @@ Bottom verification first checks an exposed standard scrollbar. If unavailable, 
 
 Temporary focus loss, obstruction, or session unavailability pauses collection. Automatic recovery requires the same window identity, valid region, and successful bottom verification. Window closure, title changes, resizing, DPI changes, or ambiguous identity require explicit intervention. Use **Stop** to enable configuration and target selection again. The agent never silently substitutes another conversation.
 
+If the status says **Bring the selected conversation to the foreground**, click the exact chat window chosen in Select Window and keep it active. Merely leaving it visible beside the agent is insufficient; inspecting the agent takes focus away from the chat. Recovery checks wait quietly while the same condition persists. For a one-shot test, click **Stop**, then **Save Capture Locally** (below the Preview/Scroll controls), and bring the chat forward during the three-second delay. If this still fails, reselect the conversation window rather than KakaoTalk's main contacts/chat-list window.
+
 Closing the application stops navigation and waits for the current upload (bounded by the configured request deadline). Remaining jobs persist. Optional sign-in launch is configured in Settings; automatic monitoring at sign-in is a separate opt-in. A new KakaoTalk process/window after reboot requires reselection.
 
 ## Test with the mock API

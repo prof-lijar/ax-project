@@ -219,7 +219,18 @@ class MonitoringService(threading.Thread):
         self.scroller.operator_confirmed = False
         self.stop_input.set()
         self.next_recovery = time.monotonic() + 2
-        self.transition(State.PAUSED, str(error))
+        if self.state != State.PAUSED or self.reason != str(error):
+            self.transition(State.PAUSED, str(error))
+
+    def try_recover(self):
+        # Stay paused until the desktop is usable. Validation sends no input and
+        # captures no pixels; repeated focus failures should not churn the state log.
+        self.next_recovery = time.monotonic() + 2
+        self.desktop.validate()
+        if not self.want_live or self.shutdown.is_set():
+            return
+        self.stop_input.clear()
+        self.initialize()
 
     def run(self):
         while not self.shutdown.is_set():
@@ -247,8 +258,7 @@ class MonitoringService(threading.Thread):
                     and self.config.auto_resume
                     and now >= self.next_recovery
                 ):
-                    self.stop_input.clear()
-                    self.initialize()
+                    self.try_recover()
             except Cancelled:
                 self.stop_input.set()
                 self.transition(State.STOPPED, "Input stopped")

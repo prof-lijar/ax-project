@@ -10,6 +10,8 @@ New local capture controls:
 
 No API or token is required for local testing. Local files survive restarts and are retained within the configured storage budget; collection pauses when the budget is reached.
 
+Focus recovery now stays paused quietly while the selected conversation is not in the foreground, rather than repeatedly logging INITIALIZING/PAUSED. It revalidates the desktop before restarting capture/navigation and still reports a changed failure reason. Keep the selected KakaoTalk conversation active; opening the agent window takes focus away from it. Use **Stop**, then **Save Capture Locally**, for a single screenshot at the current scroll position.
+
 This is a prerelease. The Windows build runs automated tests and a synthetic packaged-app startup check. Real KakaoTalk capture/scroll calibration, mixed-DPI desktop behavior, and the 24-hour unattended acceptance test still require validation on the target PC. Screenshots do not guarantee complete message coverage.
 
 The executable is unsigned. Windows SmartScreen may show an unrecognized-app prompt, and Windows 11 Smart App Control may block execution without offering a per-app override. This release does not resolve code-signing restrictions. A SHA-256 checksum is included. Downloads from this private repository require repository access. See the README and TESTING.md in the tagged source for setup and validation details.

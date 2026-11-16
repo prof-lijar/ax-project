@@ -227,3 +227,62 @@ def test_manual_local_capture_saves_identical_frames_without_scrolling(
     with pytest.raises(TargetUnavailable):
         service.dispatch("save_local")
     assert len(list(queue.images.glob("*.png"))) == 2
+
+
+def test_focus_recovery_stays_quiet_until_target_is_ready(
+    config, frame, region, queue, monkeypatch
+):
+    desktop = Desktop(region)
+    desktop.valid = False
+    statuses, previews = [], []
+    service = MonitoringService(
+        desktop,
+        Capture(desktop, frame),
+        queue,
+        config,
+        lambda *args: statuses.append(args),
+        previews.append,
+        lambda _: None,
+    )
+    service.state = State.LIVE_MONITORING
+    service.want_live = True
+    service.pause(TargetUnavailable("Target unavailable"))
+    for _ in range(3):
+        with pytest.raises(TargetUnavailable) as error:
+            service.try_recover()
+        service.pause(error.value)
+        assert service.stop_input.is_set()
+    assert statuses == [(State.PAUSED.value, "Target unavailable")]
+    assert not previews and not desktop.calls
+    assert queue.stats().get("pending", 0) == 0
+    desktop.valid = True
+    monkeypatch.setattr(service.scroller, "restore", lambda: "test bottom verified")
+    service.try_recover()
+    assert service.state == State.LIVE_MONITORING
+    assert len(previews) == 1
+
+
+def test_paused_recovery_reports_changed_reason_and_stops_for_reselection(
+    config, frame, region, queue
+):
+    from app.models import ReselectionRequired
+
+    desktop = Desktop(region)
+    statuses = []
+    service = MonitoringService(
+        desktop,
+        Capture(desktop, frame),
+        queue,
+        config,
+        lambda *args: statuses.append(args),
+        lambda _: None,
+        lambda _: None,
+    )
+    service.state = State.LIVE_MONITORING
+    service.want_live = True
+    service.pause(TargetUnavailable("Focus lost"))
+    service.pause(TargetUnavailable("Desktop locked"))
+    service.pause(ReselectionRequired("Target closed"))
+    assert len(statuses) == 3
+    assert service.reason == "Target closed"
+    assert not service.recoverable
