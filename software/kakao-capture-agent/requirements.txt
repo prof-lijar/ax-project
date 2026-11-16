@@ -1,0 +1,7 @@
+PySide6>=6.8,<7
+mss>=10.2,<11
+PyAutoGUI>=0.9.54,<1; sys_platform == 'win32'
+pywin32>=308; sys_platform == 'win32'
+opencv-python-headless>=4.10,<5
+numpy>=2,<3
+httpx>=0.28,<1
