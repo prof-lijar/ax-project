@@ -2,13 +2,15 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.3](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.3) was built and published on 2026-11-16 by [Windows Actions run 43826914155](https://github.com/prof-lijar/ax-project/actions/runs/43826914155).
+[Release v0.1.0-rc.5](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.5) was built and published on 2026-11-16 by [Windows Actions run 43831345219](https://github.com/prof-lijar/ax-project/actions/runs/43831345219).
 
-- Windows Server 2022 x64, Python 3.12.10: **43 tests passed in 10.34 seconds**, including the native directory ACL regression test.
+- Windows Server 2022 x64, Python 3.12.10: **47 tests passed in 15.21 seconds**, including local-save regressions and the native directory ACL regression test.
 - Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.3-windows-x64.exe`, 108,972,324 bytes.
-- SHA-256: `1932963404a531c200ed690a523dfa1a30e3ebb9c90c08aa75bffad0121a6cbf`. The published checksum file matches GitHub's uploaded asset digest.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.5-windows-x64.exe`, 108,973,319 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `35a8e3b34145b9fa11da37839a6fe264ccc01746290f40f414bb9c2e9bdbe9c9`.
+
+The rc.4 build stopped before publication on a test comparing Qt forward-slash paths with native Windows backslash paths. The assertion now compares normalized paths; rc.5 passed the complete build and release workflow.
 
 Actual KakaoTalk capture/scrolling, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
