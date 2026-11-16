@@ -1,0 +1,69 @@
+name: Kakao Capture Windows Release
+
+on:
+  push:
+    tags:
+      - 'kakao-capture-agent-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kakao-capture-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: software/kakao-capture-agent
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: false
+      - name: Test, build single EXE, and verify packaged startup
+        run: ./build.ps1
+      - name: Prepare downloadable asset and checksum
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+          RELEASE_TYPE: ${{ github.ref_type }}
+        run: |
+          $Version = 'development'
+          if ($env:RELEASE_TYPE -eq 'tag') {
+            if ($env:RELEASE_REF -notmatch '^kakao-capture-agent-v([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)$') {
+              throw 'Invalid capture-agent release tag.'
+            }
+            $Version = $Matches[1]
+          }
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          $Name = "KakaoCaptureAgent-v$Version-windows-x64.exe"
+          Copy-Item dist/KakaoCaptureAgent.exe "release/$Name"
+          $Hash = (Get-FileHash "release/$Name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$Hash  $Name" | Set-Content "release/$Name.sha256" -Encoding ascii
+      - name: Save build outputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kakao-capture-windows-x64
+          path: |
+            software/kakao-capture-agent/release/*
+            software/kakao-capture-agent/dist/self-test.json
+          if-no-files-found: error
+      - name: Publish prerelease
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $Assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
+          gh release create $env:RELEASE_TAG @Assets --verify-tag --prerelease --title "Kakao Capture Agent $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
