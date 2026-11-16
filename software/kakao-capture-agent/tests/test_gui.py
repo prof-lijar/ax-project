@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PySide6.QtCore import QAbstractNativeEventFilter, QCoreApplication, QEvent
 
 from app.automation.monitoring_service import MonitoringService
@@ -57,7 +59,7 @@ def test_full_window_preview_and_settings(
         main_window.QDesktopServices, "openUrl", lambda url: opened.append(url) or True
     )
     window.open_captures_folder()
-    assert opened[0].toLocalFile() == str(queue.images.resolve())
+    assert Path(opened[0].toLocalFile()).resolve() == queue.images.resolve()
     window.update_status(State.LIVE_MONITORING.value, "")
     assert not window.save_local_button.isEnabled()
     window.update_status(State.STOPPED.value, "")
