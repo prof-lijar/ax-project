@@ -1,3 +1,4 @@
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -46,3 +47,32 @@ def test_window_handle_reuse_requires_reselection(config):
     )
     with pytest.raises(ReselectionRequired):
         desktop.geometry()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Requires native Windows ACL APIs")
+def test_private_data_directory_acl(tmp_path):
+    import ntsecuritycon
+    import win32api
+    import win32con
+    import win32security
+
+    from app.utils.windows import secure_directory
+
+    folder = tmp_path / "private-data"
+    secure_directory(folder)
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
+    try:
+        user = win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+    finally:
+        token.Close()
+    system = win32security.CreateWellKnownSid(win32security.WinLocalSystemSid, None)
+    descriptor = win32security.GetNamedSecurityInfo(
+        str(folder), win32security.SE_FILE_OBJECT, win32security.DACL_SECURITY_INFORMATION
+    )
+    acl = descriptor.GetSecurityDescriptorDacl()
+    assert acl.GetAceCount() == 2
+    entries = [acl.GetAce(index) for index in range(acl.GetAceCount())]
+    assert {str(ace[2]) for ace in entries} == {str(user), str(system)}
+    assert all(ace[1] == ntsecuritycon.FILE_ALL_ACCESS for ace in entries)
+    assert all(ace[0][1] & 3 == 3 for ace in entries)
+    (folder / "check.txt").write_text("synthetic data", encoding="utf-8")

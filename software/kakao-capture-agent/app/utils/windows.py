@@ -39,6 +39,7 @@ def set_token(destination, token):
 
 
 def secure_directory(path):
+    import ntsecuritycon
     import win32api
     import win32con
     import win32security
@@ -52,7 +53,9 @@ def secure_directory(path):
     system = win32security.CreateWellKnownSid(win32security.WinLocalSystemSid, None)
     acl = win32security.ACL()
     for sid in (user, system):
-        acl.AddAccessAllowedAceEx(win32security.ACL_REVISION_DS, 3, win32con.FILE_ALL_ACCESS, sid)
+        acl.AddAccessAllowedAceEx(
+            win32security.ACL_REVISION_DS, 3, ntsecuritycon.FILE_ALL_ACCESS, sid
+        )
     win32security.SetNamedSecurityInfo(
         str(path),
         win32security.SE_FILE_OBJECT,
