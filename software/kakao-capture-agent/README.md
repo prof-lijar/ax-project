@@ -6,15 +6,34 @@ Windows desktop application for capturing an explicitly selected KakaoTalk conve
 
 ## Run on Windows
 
-Use Windows 10/11 with an unlocked interactive desktop, Python 3.11 or newer (64-bit), and an authenticated KakaoTalk conversation. Start with a conversation authorized for testing.
+Use Windows 10/11 with an unlocked interactive desktop and an authenticated KakaoTalk conversation. Start with a conversation authorized for testing. The setup below uses **uv** to install Python 3.12 (the version used for the automated tests), create the project environment, and install dependencies. You do not need to install Python or the `py` launcher separately.
 
-Open PowerShell in this project directory:
+Install uv from Command Prompt or PowerShell:
 
 ```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m app.main
+winget install --id=astral-sh.uv -e
 ```
+
+Close and reopen your terminal, then check `uv --version`. If WinGet is unavailable, use one of the other methods in the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+If you do not already have the repository, install Git and download the `develop` branch:
+
+```powershell
+git clone --branch develop https://github.com/prof-lijar/ax-project.git
+cd ax-project\software\kakao-capture-agent
+```
+
+If you already have a checkout, open a terminal in its `software\kakao-capture-agent` directory instead. Run:
+
+```powershell
+uv python install 3.12
+uv sync --python 3.12
+uv run --python 3.12 python -m app.main
+```
+
+`uv sync` reads `pyproject.toml`, creates `.venv`, and resolves dependencies into `uv.lock`. No manual environment activation is needed. For subsequent launches, run the last command from the project directory. See [uv's project guide](https://docs.astral.sh/uv/guides/projects/).
+
+If `python --version` prints only `Python`, or `where python` points only to `Microsoft\WindowsApps\python.exe` while `py` is unavailable, use the uv commands above. They select the uv-managed Python runtime without depending on that Windows shortcut. If `uv` itself is not recognized, reopen the terminal after installation and check `where.exe uv`.
 
 The GUI does not run on Linux. Linux can run the portable tests and mock API. No administrator privileges are required; run the agent and KakaoTalk at the same privilege level.
 
@@ -52,13 +71,14 @@ Closing the application stops navigation and waits for the current upload (bound
 
 ## Test with the mock API
 
-Install development dependencies, then start the loopback server in a separate PowerShell window:
+Start the loopback server in a separate PowerShell window in the project directory. `--with-requirements` supplies the additional development dependencies for the command:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 $env:KAKAO_MOCK_TOKEN = 'local-test-token'
-.\.venv\Scripts\python.exe -m mock_api
+uv run --python 3.12 --with-requirements requirements-dev.txt python -m mock_api
 ```
+
+In Command Prompt, set the token with `set KAKAO_MOCK_TOKEN=local-test-token` instead of the PowerShell `$env:` command, then run the same `uv run` command. Keep this terminal open while testing uploads; run the desktop application from another terminal.
 
 In the GUI, set:
 
@@ -75,7 +95,7 @@ To simulate transient failure, stop the server, set these variables, and start i
 $env:KAKAO_MOCK_FAILURES = '2'
 $env:KAKAO_MOCK_STATUS = '503'
 $env:KAKAO_MOCK_RETRY_AFTER = '1'
-.\.venv\Scripts\python.exe -m mock_api
+uv run --python 3.12 --with-requirements requirements-dev.txt python -m mock_api
 ```
 
 The first two authenticated requests fail, then requests succeed. Set the failure count back to zero afterward. `KAKAO_MOCK_DATA` can select a different data directory. The default bind is always `127.0.0.1:8000`.
@@ -132,23 +152,27 @@ Capacity checks include local files and a disk-space reserve. Captures pause whe
 
 ## Development and build
 
-Portable tests on Linux:
+Run these commands from the project directory. Portable tests on Linux, with uv installed:
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q
-.venv/bin/ruff check app mock_api tests
+uv python install 3.12
+uv sync --python 3.12
+uv run --python 3.12 --with-requirements requirements-dev.txt python -m pytest -q
+uv run --python 3.12 --with-requirements requirements-dev.txt ruff check app mock_api tests
 ```
 
 Windows tests and packaging:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-.\build.ps1
+uv python install 3.12
+uv sync --python 3.12
+uv run --python 3.12 --with-requirements requirements-dev.txt python -m pytest -q
+uv run --python 3.12 --with-requirements requirements-dev.txt python -m PyInstaller --noconfirm --clean KakaoCaptureAgent.spec
 ```
 
-`build.ps1` creates a Python 3.11 environment if needed, installs development dependencies, runs tests, and builds with PyInstaller. If your PowerShell policy blocks local scripts, use an approved local-script policy or run the script's commands manually. Do not run the Linux virtual environment on Windows; create a new `.venv` there.
+Run the PyInstaller command only after the tests pass. Development dependencies are supplied by `requirements-dev.txt`; the project does not currently define a uv development dependency group. The `--with-requirements` option makes those tools available for each invocation without requiring a separate pip installation.
+
+The existing `build.ps1` script uses `py`/`pip` and expects pip in its virtual environment. Use the uv packaging commands above for a uv-created environment. Do not copy a Linux virtual environment to Windows; let `uv sync --python 3.12` create the Windows environment there.
 
 Distribute the **entire** `dist\KakaoCaptureAgent` folder and launch `KakaoCaptureAgent.exe`. The build includes a per-monitor DPI manifest and SQLite schema. This is an unsigned folder distribution, not an installer. Build on Windows; [PyInstaller is not a cross-compiler](https://pyinstaller.org/en/stable/).
 
