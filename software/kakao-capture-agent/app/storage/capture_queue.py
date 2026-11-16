@@ -69,7 +69,7 @@ class CaptureQueue:
                     pass  # Log rotation can run concurrently.
         return total
 
-    def enqueue(self, png, region, mode, timestamp=None):
+    def enqueue(self, png, region, mode, timestamp=None, *, local_only=False):
         with self.lock:
             if time.monotonic() - self.last_maintenance >= 30:
                 self.maintain()
@@ -112,7 +112,7 @@ class CaptureQueue:
                             str(path),
                             metadata["image_hash"],
                             mode,
-                            self.config.api_url,
+                            "" if local_only or self.config.local_only else self.config.api_url,
                             self.config.allow_local_http,
                             json.dumps(metadata),
                             time.time(),
@@ -224,7 +224,7 @@ class CaptureQueue:
             )
 
     def bind_local(self, destination, allow_local_http):
-        """Explicit operator action; only captures created with no endpoint are eligible."""
+        """Explicit operator action; only captures saved without a destination are eligible."""
         with self.lock, self.connect() as db:
             db.execute(
                 "UPDATE capture_queue SET destination=?,allow_local_http=? WHERE destination=''",

@@ -32,6 +32,7 @@ class Config:
     device_id: str = field(default_factory=lambda: str(uuid4()))
     chat_id: str = ""
     api_url: str = ""
+    local_only: bool = False
     allow_local_http: bool = False
     capture_interval_seconds: float = 2
     change_detection: bool = True
@@ -99,6 +100,7 @@ class Config:
                 raise ValueError(f"{name} must be an integer")
         for name in (
             "allow_local_http",
+            "local_only",
             "change_detection",
             "auto_resume",
             "launch_at_signin",

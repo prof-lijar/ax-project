@@ -35,11 +35,15 @@ class UploadWorker(threading.Thread):
                         maintenance_at = time.monotonic() + 60
                     job = (
                         None
-                        if self.auth_paused.is_set()
+                        if self.auth_paused.is_set() or self.config.local_only
                         else await asyncio.to_thread(self.queue.claim, self.config.api_url)
                     )
                     if not job:
                         await asyncio.sleep(0.25)
+                        continue
+                    # Settings may change while the SQLite claim runs on another thread.
+                    if self.config.local_only:
+                        await asyncio.to_thread(self.queue.release, job["capture_id"])
                         continue
                     self.notify("Uploading queued capture")
                     try:

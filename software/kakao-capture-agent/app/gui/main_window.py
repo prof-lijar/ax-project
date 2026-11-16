@@ -4,8 +4,8 @@ import threading
 import time
 from ctypes import wintypes
 
-from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -128,7 +128,20 @@ class MainWindow(QMainWindow):
             button.clicked.connect(lambda checked=False, c=command: self.action(c))
             row.addWidget(button)
         layout.addLayout(row)
+        row = QHBoxLayout()
+        self.save_local_button = QPushButton("Save Capture Locally")
+        self.save_local_button.clicked.connect(lambda: self.action("save_local"))
+        row.addWidget(self.save_local_button)
+        open_folder = QPushButton("Open Captures Folder")
+        open_folder.clicked.connect(self.open_captures_folder)
+        row.addWidget(open_folder)
+        layout.addLayout(row)
+        self.capture_folder_label = QLabel(f"PNG folder: {self.queue.images}")
+        self.capture_folder_label.setWordWrap(True)
+        self.capture_folder_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.capture_folder_label)
         self.api_status = QLabel("API: idle")
+        self.refresh_storage_mode()
         self.api_status.setWordWrap(True)
         self.queue_label = QLabel("Queue: loading")
         self.queue_label.setWordWrap(True)
@@ -170,6 +183,22 @@ class MainWindow(QMainWindow):
             button.setEnabled(stopped)
         self.interval.setEnabled(stopped)
         self.change.setEnabled(stopped)
+        self.save_local_button.setEnabled(state in (State.STOPPED.value, State.PAUSED.value))
+
+    def open_captures_folder(self):
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
+            QMessageBox.warning(
+                self, "Captures folder", f"Open this folder manually:\n{self.queue.images}"
+            )
+
+    def refresh_storage_mode(self):
+        self.api_status.setText(
+            "API: paused — local-only mode (an upload already in progress may finish)"
+            if self.config.local_only
+            else "API: not configured — captures saved locally"
+            if not self.config.api_url
+            else "API: idle"
+        )
 
     def update_preview(self, png):
         image = QPixmap()
@@ -179,7 +208,10 @@ class MainWindow(QMainWindow):
         )
 
     def upload_status(self, message):
-        self.api_status.setText("API: " + message)
+        if self.config.local_only:
+            self.refresh_storage_mode()
+        else:
+            self.api_status.setText("API: " + message)
         self.log(message)
 
     def show_stats(self, stats):
@@ -194,7 +226,7 @@ class MainWindow(QMainWindow):
         )
         self.queue_label.setText(
             f"Pending: {stats.get('pending', 0)} | Failed: {stats.get('failed', 0)} | "
-            f"Unassigned: {stats['unassigned']} | Other API: {stats['other_destination']}\n"
+            f"Local (unassigned): {stats['unassigned']} | Other API: {stats['other_destination']}\n"
             f"Storage: {used:.0%} | Last upload: {last}"
             + (" | STORAGE WARNING" if used >= 0.8 else "")
         )
@@ -315,6 +347,7 @@ class MainWindow(QMainWindow):
             save(self.config_path, new)
             # Workers share this object; settings are only editable while capture is stopped.
             self.config.__dict__.update(new.__dict__)
+            self.refresh_storage_mode()
             self.log("Settings saved; queued captures keep their original destinations")
         except Exception:
             QMessageBox.critical(
@@ -352,6 +385,7 @@ class MainWindow(QMainWindow):
             "up",
             "down",
             "preview",
+            "save_local",
         ) and self.monitor.state not in (State.STOPPED, State.PAUSED):
             return
         if command == "history" and self.monitor.state != State.LIVE_MONITORING:
@@ -402,7 +436,7 @@ class MainWindow(QMainWindow):
             QMessageBox.question(
                 self,
                 "Assign captures",
-                f"Assign all captures made without an API endpoint to:\n{self.config.api_url}\nThey will begin uploading using this endpoint's credential.",
+                f"Assign all local captures, including manually saved screenshots, to:\n{self.config.api_url}\nThey can upload when local-only mode is off, using this endpoint's credential. Uploaded-image retention then applies.",
             )
             == QMessageBox.Yes
         ):

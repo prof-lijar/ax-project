@@ -193,3 +193,37 @@ def test_live_baseline_is_not_advanced_when_storage_fails(
     with pytest.raises(StorageFull):
         service.record(frame, region, "live")
     assert service.detector.baseline is None
+
+
+def test_manual_local_capture_saves_identical_frames_without_scrolling(
+    config, frame, region, queue
+):
+    from app.capture.screen_capture import encode_png
+
+    desktop = Desktop(region)
+    messages = []
+    service = MonitoringService(
+        desktop,
+        Capture(desktop, frame),
+        queue,
+        config,
+        lambda *a: None,
+        lambda *a: None,
+        messages.append,
+    )
+    service.dispatch("save_local")
+    service.dispatch("save_local")
+    assert service.state == State.STOPPED
+    assert service.stop_input.is_set()
+    assert not service.want_live
+    assert not desktop.calls
+    assert service.detector.baseline is None
+    files = list(queue.images.glob("*.png"))
+    assert len(files) == 2
+    assert all(path.read_bytes() == encode_png(frame) for path in files)
+    assert queue.claim(config.api_url) is None
+    assert any(str(files[0]) in message for message in messages)
+    desktop.valid = False
+    with pytest.raises(TargetUnavailable):
+        service.dispatch("save_local")
+    assert len(list(queue.images.glob("*.png"))) == 2

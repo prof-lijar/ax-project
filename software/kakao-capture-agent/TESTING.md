@@ -16,7 +16,9 @@ Actual KakaoTalk capture/scrolling, a clean Windows 10/11 PC, sign-in startup, m
 
 Development environment: Linux, CPython 3.12.3. Run `python -m pytest -q` from the project directory. The suite uses temporary directories, synthetic images, fake desktop adapters, and HTTPX mock/ASGI transports; it does not collect real conversations.
 
-Verified on 2026-11-16: **42 tests passed in 4.25 seconds**, with process exit code 0. Ruff lint and format checks passed, and Python compilation checks passed. The Linux desktop entry point correctly exits with a Windows-required message. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
+Verified on 2026-11-16 after the local-save update: **46 tests passed, 1 Windows-only test skipped in 4.66 seconds**, with process exit code 0. Ruff lint passed. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
+
+Local-save regression tests verify full-resolution PNG bytes, repeated manual saves without scrolling or live-baseline changes, invalid-target rejection, persistence across restart/maintenance, explicit API assignment, pausing/resuming pre-existing uploads, the folder-opening action, and persistence of the local-only setting.
 
 Tests cover region geometry and display gaps, window-relative movement, DPI/resize invalidation, configuration persistence, change detection/debounce, measured overlap, state transitions, cancellation, foreground/lock/obstruction guards, handle reuse, queue recovery, storage limits, file/transaction failures, upload acknowledgements, authentication, retries, idempotency, and the offscreen Qt interface.
 
@@ -48,6 +50,10 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 | Fresh install and launch | GUI opens, data directory and schema initialize, capture starts stopped |
 | Window selection | Intended chat can be selected among multiple candidates; executable/title shown |
 | Region drag/reselection | Preview contains only the selected message area; small/outside regions rejected |
+| Save Capture Locally | After the countdown, one full-resolution PNG appears in the captures folder without scrolling or uploading, including repeated identical frames |
+| Open Captures Folder | File Explorer opens the displayed directory; newest PNG matches the selected region |
+| Local-only monitoring/history | New captures remain local and existing uploads pause; a request already in progress may finish |
+| Disable local-only and restart | Local PNGs remain unassigned until explicitly assigned; existing assigned jobs can resume |
 | Scaling at 100%, 125%, 150%, 200% | Preview dimensions and coordinates match physical selected pixels |
 | Secondary monitor to left/above primary | Negative coordinates capture correctly; monitor gaps rejected |
 | Region spanning two monitors | Native selection is accurate or visibly rejected; no unrelated pixels captured |

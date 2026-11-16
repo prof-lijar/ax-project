@@ -3,6 +3,7 @@
   "device_id": "replace-with-your-device-id",
   "chat_id": "",
   "api_url": "",
+  "local_only": false,
   "allow_local_http": false,
   "capture_interval_seconds": 2,
   "change_detection": true,

@@ -75,7 +75,10 @@ class MonitoringService(threading.Thread):
                 png, region, mode, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             )
             detector.accept(image)
-            self.activity(f"{mode.title()} capture queued: {capture_id}")
+            destination = (
+                "saved locally" if self.config.local_only or not self.config.api_url else "queued"
+            )
+            self.activity(f"{mode.title()} capture {destination}: {capture_id}.png")
         else:
             self.activity("Capture checked: unchanged or awaiting visual debounce")
         self.preview(png)
@@ -170,21 +173,38 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
-        elif command in ("up", "down", "preview") and self.state in (State.STOPPED, State.PAUSED):
+        elif command in ("up", "down", "preview", "save_local") and self.state in (
+            State.STOPPED,
+            State.PAUSED,
+        ):
             self.want_live = False
             self.stop_input.clear()
             self.transition(State.INITIALIZING)
             try:
-                if command == "preview":
-                    image, _ = self.capture.grab()
-                    self.preview(encode_png(image))
+                if command in ("preview", "save_local"):
+                    self.scroller.check()
+                    image, region = self.capture.grab()
+                    self.scroller.check()
+                    png = encode_png(image)
+                    if command == "save_local":
+                        # A requested test capture always saves, even if pixels are unchanged.
+                        # It never inherits an API destination or alters the live baseline.
+                        capture_id = self.queue.enqueue(png, region, "live", local_only=True)
+                        self.activity(
+                            f"Capture saved locally: {self.queue.images / (capture_id + '.png')}"
+                        )
+                    self.preview(png)
                 else:
                     self.scroller.operator_confirmed = False
                     image, region, _, _ = self.scroller.move(1 if command == "up" else -1)
                     self.record(image, region, "history")
                 self.transition(
                     State.STOPPED,
-                    "Preview ready" if command == "preview" else "Manual scroll complete",
+                    "Capture saved locally"
+                    if command == "save_local"
+                    else "Preview ready"
+                    if command == "preview"
+                    else "Manual scroll complete",
                 )
             finally:
                 self.stop_input.set()

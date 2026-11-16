@@ -66,6 +66,23 @@ def test_local_captures_require_explicit_binding(queue, frame, region, config):
     assert queue.claim(destination) is not None
 
 
+@pytest.mark.parametrize("manual", [False, True])
+def test_local_save_survives_restart_and_stays_private_until_assigned(
+    queue, config, frame, region, manual
+):
+    config.local_only = not manual
+    png = encode_png(frame)
+    capture_id = queue.enqueue(png, region, "live", local_only=manual)
+    config.local_only = False
+    reopened = CaptureQueue(queue.root, config)
+    reopened.maintain()
+    assert (reopened.images / f"{capture_id}.png").read_bytes() == png
+    assert reopened.stats()["unassigned"] == 1
+    assert reopened.claim(config.api_url) is None
+    reopened.bind_local(config.api_url, config.allow_local_http)
+    assert reopened.claim(config.api_url)["capture_id"] == capture_id
+
+
 def test_failed_database_commit_keeps_recoverable_image(queue, frame, region, monkeypatch):
     from contextlib import contextmanager
 

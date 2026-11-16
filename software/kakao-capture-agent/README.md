@@ -8,7 +8,7 @@ Windows desktop application for capturing an explicitly selected KakaoTalk conve
 
 Open [GitHub Releases](https://github.com/prof-lijar/ax-project/releases) and download the `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` asset from a successful capture-agent release. Double-click the downloaded file on Windows 10/11 (64-bit). Python, uv, and Git are not required on that PC. The repository is private, so sign in with an account that has repository access.
 
-The executable includes its runtime and libraries; the first launch may take a moment while they unpack. It is unsigned, so Windows may show an unrecognized-app prompt. Each release includes a `.sha256` checksum file. Configuration and captures stay in `%LOCALAPPDATA%\KakaoCaptureAgent`, separate from the executable.
+The executable includes its runtime and libraries; the first launch may take a moment while they unpack. It is unsigned, so Windows may show an unrecognized-app prompt. Windows 11 Smart App Control may block it without offering a per-app override; this requires a trusted signed distribution to resolve reliably, and the current release remains unsigned. See [Microsoft's Smart App Control FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions). Each release includes a `.sha256` checksum file. Configuration and captures stay in `%LOCALAPPDATA%\KakaoCaptureAgent`, separate from the executable.
 
 Open the intended KakaoTalk conversation, choose **Select Window** and **Select Region**, then enter a chat identifier in **Settings**. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
 
@@ -58,16 +58,30 @@ Keep the selected chat in the foreground, unobscured, and the Windows session un
 
 ## Controls and recovery
 
+### Check capture by saving a local PNG
+
+1. Select the KakaoTalk window and message region. In **Settings**, enter a **Chat identifier** such as `test-chat`. This is your own label attached to screenshot metadata, not a KakaoTalk login or internal chat ID.
+2. While stopped, click **Save Capture Locally** and bring the selected conversation to the foreground within three seconds. This takes one screenshot without scrolling, even if the image is unchanged.
+3. Restore the agent and click **Open Captures Folder**. Open the newest PNG (sort by Date modified) to inspect it at full resolution. The activity log shows its exact filename.
+
+Images are saved in `%LOCALAPPDATA%\KakaoCaptureAgent\captures`. No API or token is required. **Save Capture Locally** always leaves its image unassigned to an API, even if an upload URL is configured.
+
+For continuous local collection, enable **Local-only mode: save PNGs and pause uploads** in Settings, then use **Start / Resume** or **Confirm Latest Position** as described above. Changed frames are saved at the configured interval; turn off **Detect visual changes** while stopped to save every interval. History captures also remain local. Existing uploads pause, although a request already in progress may finish.
+
+Turning local-only mode off resumes previously assigned upload jobs; it does not automatically upload images saved locally. **Assign Local Captures to API** explicitly assigns all unassigned images, including manual test screenshots, for uploading. Local images are retained across restarts and are not automatically deleted by uploaded-image retention. They count toward the storage budget; capture pauses at capacity rather than discarding them.
+
 | Control | Behavior |
 |---|---|
 | Start / Resume | Verifies the target and bottom position, then monitors changed content |
 | Stop | Cancels pending GUI actions and stops capture/navigation; uploads continue |
+| Save Capture Locally | Saves one PNG without scrolling or assigning it to an API; available while stopped or paused |
+| Open Captures Folder | Opens the local PNG folder in File Explorer |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
 | Ctrl+Shift+F12 | Global emergency stop, including while the GUI is minimized |
 | Pointer at a primary-screen corner | PyAutoGUI fail-safe checked before wheel input |
 | Retry Failed Uploads | Resets failed jobs for the currently configured destination and clears authentication pause |
-| Assign Local Captures to API | Explicitly assigns captures created with no URL to the configured endpoint |
+| Assign Local Captures to API | Explicitly assigns all local/unassigned captures to the configured endpoint |
 
 History and live scrolling run in the same worker, so they cannot overlap. History defaults to 50 steps, an 800 ms settle delay, and a minimum 30% overlap. The controller starts with one native wheel notch, measures vertical displacement, and adjusts up to the configured maximum of three notches. Poor overlap or uncertain motion stops the operation and records incomplete coverage.
 
@@ -141,6 +155,7 @@ The application automatically creates `%LOCALAPPDATA%\KakaoCaptureAgent\config.j
 | Uploaded image retention | 0 hours; removed on maintenance after acknowledgement |
 | Metadata/audit retention | 30 days |
 | Startup / automatic monitoring | Both disabled |
+| Local-only mode | Disabled; a blank API URL also leaves new captures local |
 
 Data layout:
 

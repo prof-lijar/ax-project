@@ -22,6 +22,9 @@ class SettingsDialog(QDialog):
         self.controls = {}
         for name, label in [("chat_id", "Chat identifier"), ("api_url", "Upload URL")]:
             control = QLineEdit(getattr(config, name))
+            if name == "chat_id":
+                control.setPlaceholderText("Your label, e.g. team-sales (not a KakaoTalk ID)")
+                control.setToolTip("A label attached to captures to identify this conversation.")
             form.addRow(label, control)
             self.controls[name] = control
         self.secret = QLineEdit()
@@ -50,6 +53,7 @@ class SettingsDialog(QDialog):
         self.storage.setValue(config.storage_limit_bytes / 1024**3)
         form.addRow("Storage budget (GiB)", self.storage)
         for name, label in [
+            ("local_only", "Local-only mode: save PNGs and pause uploads"),
             ("allow_local_http", "Allow loopback HTTP mock API"),
             ("auto_resume", "Resume after verified temporary interruption"),
             ("launch_at_signin", "Launch when I sign in"),

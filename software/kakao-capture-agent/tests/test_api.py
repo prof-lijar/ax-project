@@ -153,3 +153,38 @@ def test_corrupted_image_is_never_sent(queue, config, frame, region):
                 await upload(client, job, "token")
 
     asyncio.run(exercise())
+
+
+def test_local_only_pauses_existing_uploads_and_resumes(monkeypatch, queue, config, frame, region):
+    capture_id = queue.enqueue(encode_png(frame), region, "live")
+    config.local_only = True
+    worker = UploadWorker(queue, config, lambda _: "token", lambda _: None)
+    original_claim = queue.claim
+    claims = []
+    uploads = []
+
+    def claim(destination):
+        claims.append(destination)
+        return original_claim(destination)
+
+    async def success(client, job, token):
+        uploads.append(job["capture_id"])
+        worker.shutdown.set()
+
+    monkeypatch.setattr(queue, "claim", claim)
+    monkeypatch.setattr("app.api.upload_worker.upload", success)
+
+    async def exercise():
+        task = asyncio.create_task(worker.process())
+        try:
+            await asyncio.sleep(0.6)
+            assert not claims and not uploads
+            config.local_only = False
+            await asyncio.wait_for(task, 5)
+        finally:
+            worker.shutdown.set()
+            await task
+
+    asyncio.run(exercise())
+    assert uploads == [capture_id]
+    assert queue.stats()["uploaded"] == 1
