@@ -2,6 +2,8 @@
 
 Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md). It does not interpret messages or use private KakaoTalk APIs.
 
+An operator-triggered **Send Test Reply** button extends the original capture-only scope with one fixed test message: `[AI가 답장드렸습니다]`. No automatic or AI-generated replies are enabled.
+
 **Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI selection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
 ## Download and run the executable
@@ -76,10 +78,11 @@ Turning local-only mode off resumes previously assigned upload jobs; it does not
 | Stop | Cancels pending GUI actions and stops capture/navigation; uploads continue |
 | Save Capture Locally | Saves one PNG without scrolling or assigning it to an API; available while stopped or paused |
 | Open Captures Folder | Opens the local PNG folder in File Explorer |
+| Send Test Reply | While stopped, requests one fixed reply in the selected chat after a three-second delay; click its empty message box during that delay |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
 | Ctrl+Shift+F12 | Global emergency stop, including while the GUI is minimized |
-| Pointer at a primary-screen corner | PyAutoGUI fail-safe checked before wheel input |
+| Pointer at a primary-screen corner | PyAutoGUI fail-safe checked before wheel input and test replies |
 | Retry Failed Uploads | Resets failed jobs for the currently configured destination and clears authentication pause |
 | Assign Local Captures to API | Explicitly assigns all local/unassigned captures to the configured endpoint |
 
@@ -92,6 +95,17 @@ Temporary focus loss, obstruction, or session unavailability pauses collection. 
 If the status says **Bring the selected conversation to the foreground**, click the exact chat window chosen in Select Window and keep it active. Merely leaving it visible beside the agent is insufficient; inspecting the agent takes focus away from the chat. Recovery checks wait quietly while the same condition persists. For a one-shot test, click **Stop**, then **Save Capture Locally** (below the Preview/Scroll controls), and bring the chat forward during the three-second delay. If this still fails, reselect the conversation window rather than KakaoTalk's main contacts/chat-list window.
 
 Closing the application stops navigation and waits for the current upload (bounded by the configured request deadline). Remaining jobs persist. Optional sign-in launch is configured in Settings; automatic monitoring at sign-in is a separate opt-in. A new KakaoTalk process/window after reboot requires reselection.
+
+## Send the fixed test reply
+
+1. Select the intended KakaoTalk group window and capture region, keeping the capture region above and separate from the message composer. Check the target title shown in the agent.
+2. Click **Stop**. Make sure the group's message box is empty and KakaoTalk is configured to send on Enter.
+3. Click **Send Test Reply** beside `[AI가 답장드렸습니다]`. The agent minimizes. Within three seconds, click inside the selected group's empty message box and release keyboard modifiers.
+4. The agent verifies the foreground target and focused writable multiline Edit/RichEdit control, checks that it is below the capture region and unobscured, writes the exact Unicode text, verifies it, and requests Enter once. Check KakaoTalk itself to confirm delivery.
+
+The button click authorizes the fixed reply; no additional confirmation dialog is shown. Ctrl+Shift+F12 or Stop cancels a pending action. Existing drafts are not replaced. Unsupported controls, changed focus, locked sessions, and mismatched targets stop the operation. A partial attempt may leave the test text as a draft; inspect it before trying again. The agent never retries a send automatically or claims backend delivery based on an Enter request. Local-only mode governs screenshot uploads and does not disable an explicitly clicked test reply.
+
+This uses standard Win32 edit-control/window messages targeted at the verified message box, not clipboard contents or global typing. KakaoTalk client versions with different/custom controls or Enter behavior need manual validation; the agent fails closed instead of guessing coordinates. The window can scroll vertically on smaller displays to keep the controls accessible.
 
 ## Test with the mock API
 

@@ -1,5 +1,7 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+**New: Send Test Reply** sends exactly `[AI가 답장드렸습니다]` on an explicit button click. Stop monitoring, check the selected target title, click the button, then click the chat's empty message box within three seconds. Existing drafts are preserved. The message box must be a supported writable multiline Edit/RichEdit control below the capture region, and KakaoTalk must send on Enter. The agent verifies the text before requesting Enter once; verify delivery in KakaoTalk. Failed/uncertain sends are never automatically retried. Ctrl+Shift+F12 cancels pending actions; a partial attempt can leave a draft. This is a manual fixed-text test, not automatic AI replying. Actual KakaoTalk send compatibility still requires testing on the target PC.
+
 Open your authorized KakaoTalk conversation, select its window and message region, and enter a chat identifier in Settings (your own label, such as `test-chat`). Keep the chat visible and Windows unlocked. Ctrl+Shift+F12 stops automated capture/navigation.
 
 New local capture controls:

@@ -3,7 +3,9 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
+from app.automation.windows_composer import WindowsComposer
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
 from app.models import (
@@ -37,6 +39,7 @@ class MonitoringService(threading.Thread):
         self.next_capture = self.next_recovery = 0
         self.operator_bottom = False
         self.want_live = False
+        self.reply_sender = TestReplySender(WindowsComposer(desktop), queue.event, self.stop_input)
 
     def transition(self, state, reason=""):
         if state != self.state and state not in TRANSITIONS[self.state]:
@@ -173,6 +176,15 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
+        elif command == "send_test" and self.state == State.STOPPED:
+            self.want_live = self.recoverable = False
+            self.stop_input.clear()
+            self.transition(State.INITIALIZING, "Preparing test reply")
+            try:
+                result = self.reply_sender.send()
+                self.transition(State.STOPPED, result)
+            finally:
+                self.stop_input.set()
         elif command in ("up", "down", "preview", "save_local") and self.state in (
             State.STOPPED,
             State.PAUSED,

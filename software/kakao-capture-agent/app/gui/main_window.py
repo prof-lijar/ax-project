@@ -17,11 +17,13 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from app.automation.reply_service import TEST_REPLY
 from app.config import save
 from app.gui.region_selector import RegionSelector
 from app.gui.settings_dialog import SettingsDialog
@@ -66,17 +68,23 @@ class MainWindow(QMainWindow):
         self.closing = False
         self.pending_action = None
         self.control_threads = []
+        self.action_generation = 0
         self.setWindowTitle("KakaoTalk Capture Agent")
         self.resize(680, 800)
         body = QWidget()
-        self.setCentralWidget(body)
         layout = QVBoxLayout(body)
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(body)
+        self.setCentralWidget(scroll_area)
         self.state_label = QLabel("STOPPED")
         self.state_label.setWordWrap(True)
         layout.addWidget(self.state_label)
         self.target_label = QLabel(
-            "Target: saved selection" if config.target else "Target: not selected"
+            f"Target: {config.target.title}" if config.target else "Target: not selected"
         )
+        self.target_label.setTextFormat(Qt.PlainText)
+        self.target_label.setWordWrap(True)
         layout.addWidget(self.target_label)
         self.setup_buttons = []
         row = QHBoxLayout()
@@ -140,6 +148,17 @@ class MainWindow(QMainWindow):
         self.capture_folder_label.setWordWrap(True)
         self.capture_folder_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.capture_folder_label)
+        row = QHBoxLayout()
+        row.addWidget(QLabel(f"Test reply: {TEST_REPLY}"))
+        self.send_test_button = QPushButton("Send Test Reply")
+        self.send_test_button.clicked.connect(lambda: self.action("send_test"))
+        row.addWidget(self.send_test_button)
+        layout.addLayout(row)
+        hint = QLabel(
+            "Send once: stop monitoring, click Send Test Reply, then click the chat's empty message box within 3 seconds."
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         self.api_status = QLabel("API: idle")
         self.refresh_storage_mode()
         self.api_status.setWordWrap(True)
@@ -184,6 +203,7 @@ class MainWindow(QMainWindow):
         self.interval.setEnabled(stopped)
         self.change.setEnabled(stopped)
         self.save_local_button.setEnabled(state in (State.STOPPED.value, State.PAUSED.value))
+        self.send_test_button.setEnabled(stopped and not self.pending_action)
 
     def open_captures_folder(self):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
@@ -279,7 +299,7 @@ class MainWindow(QMainWindow):
         self.config.target = candidates[labels.index(label)]
         self.config.selection = None
         self.monitor.scroller.calibrated = False
-        self.target_label.setText("Target selected (identity saved)")
+        self.target_label.setText(f"Target: {self.config.target.title}")
         self.queue.event("target", "Operator selected target window")
         self.persist()
 
@@ -356,11 +376,16 @@ class MainWindow(QMainWindow):
 
     def action(self, command):
         if command == "stop":
+            self.action_generation += 1
             self.pending_action = None
             self.monitor.command("stop")
             return
         if command == "cancel_history":
             self.monitor.command(command)
+            return
+        if self.pending_action:
+            return
+        if command == "send_test" and self.monitor.state != State.STOPPED:
             return
         if not self.config.target or not self.config.selection or not self.config.chat_id:
             QMessageBox.warning(
@@ -391,11 +416,22 @@ class MainWindow(QMainWindow):
         if command == "history" and self.monitor.state != State.LIVE_MONITORING:
             return
         self.pending_action = command
-        self.log("Action starts in 3 seconds. Bring the selected conversation to the foreground")
+        self.action_generation += 1
+        generation = self.action_generation
+        self.send_test_button.setEnabled(False)
+        self.log(
+            "Test reply in 3 seconds. Click the selected chat's EMPTY message box; Ctrl+Shift+F12 cancels"
+            if command == "send_test"
+            else "Action starts in 3 seconds. Bring the selected conversation to the foreground"
+        )
         self.showMinimized()
 
         def execute():
-            if self.pending_action == command and not self.closing:
+            if (
+                self.pending_action == command
+                and generation == self.action_generation
+                and not self.closing
+            ):
                 self.pending_action = None
                 self.monitor.command(command)
 
