@@ -46,13 +46,13 @@ def test_fixed_reply_exact_text_and_one_send():
     assert "Verify" in result
 
 
-@pytest.mark.parametrize("draft", ["existing private text", " ", "\n"])
-def test_existing_draft_is_preserved(draft):
+@pytest.mark.parametrize("draft", ["existing private text", " ", "\n", TEST_REPLY])
+def test_existing_draft_is_replaced_with_exact_reply_and_sent_once(draft):
     composer = Composer(draft)
-    with pytest.raises(AgentError, match="draft"):
-        ReplySender(composer, lambda *a: None, threading.Event()).send()
-    assert composer.text == draft
-    assert not composer.writes and not composer.submits
+    ReplySender(composer, lambda *a: None, threading.Event()).send()
+    assert composer.text == TEST_REPLY
+    assert composer.writes == [(10, TEST_REPLY)]
+    assert composer.submits == [10]
 
 
 @pytest.mark.parametrize("failure", ["focus", "other_control", "cancel", "modified_text"])
@@ -153,7 +153,7 @@ def test_prepare_refuses_missing_or_ambiguous_composer(count, monkeypatch):
 
 
 def test_preparation_failure_never_types_or_submits():
-    composer = Composer()
+    composer = Composer("Draft in unverified target")
 
     def denied(cancel):
         raise TargetUnavailable("Windows denied activation")
@@ -162,6 +162,7 @@ def test_preparation_failure_never_types_or_submits():
     with pytest.raises(TargetUnavailable):
         ReplySender(composer, lambda *a: None, threading.Event()).send()
     assert not composer.writes and not composer.submits
+    assert composer.text == "Draft in unverified target"
 
 
 def test_send_is_manual_stopped_only_and_failure_cannot_auto_resume(config, frame, region, queue):
@@ -288,7 +289,8 @@ def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypa
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires standard Win32 edit controls")
-def test_native_unicode_text_and_targeted_enter(monkeypatch):
+@pytest.mark.parametrize("draft", ["", "Existing draft 한글", " \r\n", TEST_REPLY])
+def test_native_unicode_text_and_targeted_enter(monkeypatch, draft):
     """Only a synthetic hidden control receives window messages; no chat/global input."""
     import ctypes
 
@@ -299,7 +301,18 @@ def test_native_unicode_text_and_targeted_enter(monkeypatch):
         0, "STATIC", "synthetic reply test", 0, 0, 0, 200, 200, 0, 0, 0, None
     )
     child = win32gui.CreateWindowEx(
-        0, "EDIT", "", win32con.WS_CHILD | win32con.ES_MULTILINE, 0, 0, 100, 100, parent, 0, 0, None
+        0,
+        "EDIT",
+        draft,
+        win32con.WS_CHILD | win32con.ES_MULTILINE,
+        0,
+        0,
+        100,
+        100,
+        parent,
+        0,
+        0,
+        None,
     )
     try:
         composer = WindowsComposer(
@@ -314,7 +327,7 @@ def test_native_unicode_text_and_targeted_enter(monkeypatch):
             return win32gui.CallWindowProc(original, hwnd, message, wparam, lparam)
 
         original = win32gui.SetWindowLong(child, win32con.GWL_WNDPROC, procedure)
-        assert composer.read(child) == ""
+        assert composer.read(child) == draft
         composer.write(child, TEST_REPLY)
         assert composer.read(child) == TEST_REPLY
         composer.submit(child)

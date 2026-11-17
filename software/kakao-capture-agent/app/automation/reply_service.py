@@ -20,17 +20,17 @@ class TestReplySender:
         return current
 
     def send(self):
-        self.audit("reply_attempt", "Operator requested fixed test reply; no automatic retries")
+        self.audit(
+            "reply_attempt",
+            "Operator requested fixed reply with draft replacement; no automatic retries",
+        )
         try:
             if self.cancel.is_set():
                 raise Cancelled("Test reply cancelled")
             self.composer.prepare(self.cancel)
             handle = self.check()
-            if self.composer.read(handle):
-                raise AgentError(
-                    "Message box already contains a draft; nothing was overwritten or sent"
-                )
             self.check(handle)
+            # The operator requested automatic replacement with the fixed test reply.
             self.composer.write(handle, TEST_REPLY)
             self.check(handle)
             if self.composer.read(handle) != TEST_REPLY:

@@ -62,7 +62,7 @@ def test_full_window_preview_and_settings(
     assert Path(opened[0].toLocalFile()).resolve() == queue.images.resolve()
     window.update_status(State.LIVE_MONITORING.value, "")
     assert not window.save_local_button.isEnabled()
-    assert not window.send_test_button.isEnabled()
+    assert window.send_test_button.isEnabled()
     window.update_status(State.STOPPED.value, "")
     assert window.save_local_button.isEnabled()
     assert window.send_test_button.isEnabled()
@@ -74,10 +74,13 @@ def test_full_window_preview_and_settings(
     monkeypatch.setattr(
         main_window.QTimer, "singleShot", lambda delay, action: timers.append(action)
     )
+    monitor.state = State.LIVE_MONITORING
+    monitor.want_live = True
     window.action("send_test")
     window.action("send_test")
     assert len(timers) == 1 and not window.send_test_button.isEnabled()
     assert activation == [False]  # Request foreground before minimizing the agent.
+    assert monitor.stop_input.is_set() and not monitor.want_live
     window.action("stop")
     window.action("send_test")
     assert len(timers) == 2
@@ -95,7 +98,9 @@ def test_full_window_preview_and_settings(
     window.action("send_test")
     assert window.pending_action is None
     assert window.send_test_button.isEnabled()
-    assert len(timers) == 2 and monitor.commands.empty()
+    assert len(timers) == 2
+    assert monitor.commands.get_nowait() == "stop"  # Failed activation never queues a send.
+    assert monitor.commands.empty()
     dialog = SettingsDialog(config, window)
     dialog.controls["chat_id"].setText("changed-chat")
     dialog.controls["local_only"].setChecked(True)

@@ -14,11 +14,11 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
-The test-reply suite covers exact Korean text, draft preservation, cancellation, changed focus/control, text mismatch, audit failure, uncertain sends without retries, stopped-only dispatch, control validation, and duplicate/cancelled GUI timers. A Windows-only test targets a synthetic hidden native Edit control for Unicode read/write and one Enter key pair. It never targets KakaoTalk or sends global keyboard input. Real KakaoTalk sending remains a manual acceptance check.
+The test-reply suite covers exact Korean text, automatic replacement of existing text/whitespace/leftover test drafts, cancellation, changed focus/control, text mismatch, audit failure, uncertain sends without retries, dispatch serialized after Stop, control validation, and duplicate/cancelled GUI timers. Windows-only cases target a synthetic hidden native Edit control to replace each kind of draft, verify the exact Unicode result, and issue one Enter key pair. They never target KakaoTalk or send global keyboard input. Real KakaoTalk sending remains a manual acceptance check.
 
 Development environment: Linux, CPython 3.12.3. Run `python -m pytest -q` from the project directory. The suite uses temporary directories, synthetic images, fake desktop adapters, and HTTPX mock/ASGI transports; it does not collect real conversations.
 
-Verified on 2026-11-17 after composer-layout and activation fixes: **79 tests passed, 2 Windows-only tests skipped in 4.41 seconds**, with process exit code 0. The updated GUI failure-cleanup test also passed separately. Ruff lint and formatting checks passed. Coverage includes capture-independent composer discovery, bounded control diagnostics, activation before GUI minimization, stopping auto-recovery during manual countdowns, exact-target activation, refusal after handle reuse or activation denial, obstruction/cancellation before clicking, and cleanup after a partially injected mouse press. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
+Verified on 2026-11-17 after automatic draft replacement: **80 tests passed, 5 Windows-only cases skipped in 5.19 seconds**, with process exit code 0. After extending the GUI test to start from live monitoring and checking preservation of an unverified target, the focused GUI/reply suite passed **26 tests, 4 Windows-only cases skipped**. Ruff lint and formatting checks passed. Coverage includes capture-independent composer discovery, bounded control diagnostics, activation before GUI minimization, stopping auto-recovery during manual countdowns, exact-target activation, refusal after handle reuse or activation denial, obstruction/cancellation before clicking, and cleanup after a partially injected mouse press. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
 
 Local-save regression tests verify full-resolution PNG bytes, repeated manual saves without scrolling or live-baseline changes, invalid-target rejection, persistence across restart/maintenance, explicit API assignment, pausing/resuming pre-existing uploads, the folder-opening action, and persistence of the local-only setting.
 
@@ -50,12 +50,13 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 | Scenario | Expected result |
 |---|---|
 | Fresh install and launch | GUI opens, data directory and schema initialize, capture starts stopped |
-| Send Test Reply with empty composer | While stopped, click button and leave input alone; chat activation and composer focus happen automatically, and exactly `[AI가 답장드렸습니다]` appears once |
+| Send Test Reply while monitoring or paused | Click once; capture/navigation stops, chat and composer focus automatically, existing draft is replaced, and exactly `[AI가 답장드렸습니다]` appears once |
 | Activation denied / zero or multiple composers | Send stops without typing; no fallback to another window or guessed click position |
 | Capture rectangle includes message composer | A unique valid composer is still detected; capture coordinates do not filter it out |
 | Unsupported composer | Bounded diagnostic lines show class/style and rejection reason, without message or draft contents |
 | Manual action while temporarily paused | Automatic bottom-position recovery does not run during the manual countdown |
-| Existing draft / wrong focus / unsupported control | Test reply is rejected, draft is preserved, no Enter or retry occurs |
+| Existing text / whitespace / leftover test reply | Draft is replaced by the exact fixed reply and Enter requested once; no manual clearing required |
+| Wrong focus / unsupported control | No input is sent to an unverified control; no automatic retry occurs |
 | Stop during send countdown / focus change after text insertion | Pending send cancels or pauses; inspect any remaining draft; no automatic resend |
 | Small display | All controls, including Send Test Reply, are reachable by scrolling the agent window |
 | Window selection | Intended chat can be selected among multiple candidates; executable/title shown |

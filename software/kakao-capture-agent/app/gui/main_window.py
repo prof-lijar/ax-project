@@ -155,7 +155,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self.send_test_button)
         layout.addLayout(row)
         hint = QLabel(
-            "Send once: stop monitoring, then click Send Test Reply. The selected chat and its empty message box are focused automatically."
+            "Send Test Reply stops capture, focuses the selected chat, replaces its message-box contents with the test reply, and sends once."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -203,7 +203,9 @@ class MainWindow(QMainWindow):
         self.interval.setEnabled(stopped)
         self.change.setEnabled(stopped)
         self.save_local_button.setEnabled(state in (State.STOPPED.value, State.PAUSED.value))
-        self.send_test_button.setEnabled(stopped and not self.pending_action)
+        self.send_test_button.setEnabled(
+            state != State.INITIALIZING.value and not self.pending_action and not self.closing
+        )
 
     def open_captures_folder(self):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
@@ -385,7 +387,7 @@ class MainWindow(QMainWindow):
             return
         if self.pending_action:
             return
-        if command == "send_test" and self.monitor.state != State.STOPPED:
+        if command == "send_test" and self.monitor.state == State.INITIALIZING:
             return
         if not self.config.target or not self.config.selection or not self.config.chat_id:
             QMessageBox.warning(
@@ -415,6 +417,9 @@ class MainWindow(QMainWindow):
             return
         if command == "history" and self.monitor.state != State.LIVE_MONITORING:
             return
+        if command == "send_test":
+            # Serialize sending after capture/navigation has stopped; no manual Stop step.
+            self.monitor.command("stop")
         if command != "history":
             self.monitor.suspend_recovery()
         self.pending_action = command
@@ -422,7 +427,7 @@ class MainWindow(QMainWindow):
         generation = self.action_generation
         self.send_test_button.setEnabled(False)
         self.log(
-            "Preparing test reply automatically; keep the message box empty. Ctrl+Shift+F12 cancels"
+            "Sending test reply automatically: existing message-box contents will be replaced. Ctrl+Shift+F12 cancels"
             if command == "send_test"
             else "Action starts in 3 seconds. Bring the selected conversation to the foreground"
         )

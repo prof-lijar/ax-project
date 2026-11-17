@@ -185,10 +185,8 @@ class WindowsComposer:
 
     def write(self, handle, text):
         self.guard(handle)
-        # Recheck immediately before replacing text; never erase a pre-existing draft.
-        if self.read(handle):
-            raise AgentError("Message box now contains a draft; nothing was overwritten")
-        self.guard(handle)
+        # Replace the complete draft, including whitespace or leftover test text.
+        # The caller verifies the exact resulting text before submitting Enter.
         buffer = ctypes.create_unicode_buffer(text)
         if not self.message(handle, 0x000C, 0, ctypes.addressof(buffer)):  # WM_SETTEXT
             raise AgentError("Windows rejected the test text; Enter was not sent")

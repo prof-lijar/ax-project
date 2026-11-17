@@ -78,7 +78,7 @@ Turning local-only mode off resumes previously assigned upload jobs; it does not
 | Stop | Cancels pending GUI actions and stops capture/navigation; uploads continue |
 | Save Capture Locally | Saves one PNG without scrolling or assigning it to an API; available while stopped or paused |
 | Open Captures Folder | Opens the local PNG folder in File Explorer |
-| Send Test Reply | While stopped, activates the selected chat, locates and focuses its message box, and requests the fixed reply once |
+| Send Test Reply | Stops capture/navigation, activates the selected chat, replaces its message-box contents with the fixed reply, and requests Enter once |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
 | Ctrl+Shift+F12 | Global emergency stop, including while the GUI is minimized |
@@ -99,15 +99,15 @@ Closing the application stops navigation and waits for the current upload (bound
 ## Send the fixed test reply
 
 1. Select the intended KakaoTalk group window and capture region. Check the target title shown in the agent. Message-box discovery is independent of the capture rectangle; including the composer in a screenshot no longer excludes it from sending.
-2. Click **Stop**. Make sure the group's message box is empty and KakaoTalk is configured to send on Enter.
-3. Click **Send Test Reply** beside `[AI가 답장드렸습니다]`. The agent requests activation of the verified chat from the button handler before minimizing, then verifies foreground, automatically locates and focuses its message box. No manual chat/message-box click is needed; leave the mouse and keyboard alone during the operation.
-4. The agent requires exactly one supported writable multiline Edit/RichEdit control inside the selected window. It checks the target, visibility, empty draft, and focus, writes the exact Unicode text, verifies it, and requests Enter once. Check KakaoTalk itself to confirm delivery.
+2. KakaoTalk must be configured to send on Enter. Click **Send Test Reply** beside `[AI가 답장드렸습니다]`.
+3. The agent stops capture/navigation, requests activation of the verified chat before minimizing, then automatically locates and focuses its message box. No manual Stop, clearing, or chat/message-box click is needed; leave the mouse and keyboard alone during the operation.
+4. The agent requires exactly one supported writable multiline Edit/RichEdit control inside the selected window. It checks the target, visibility, and focus, replaces the entire draft with the exact test text, verifies it, and requests Enter once. Check KakaoTalk itself to confirm delivery. Capture remains stopped after the send.
 
-The button click authorizes the fixed reply; no additional confirmation dialog is shown. Ctrl+Shift+F12 or Stop cancels a pending action. Existing drafts are not replaced. Unsupported controls, changed focus, locked sessions, and mismatched targets stop the operation. A partial attempt may leave the test text as a draft; inspect it before trying again. The agent never retries a send automatically or claims backend delivery based on an Enter request. Local-only mode governs screenshot uploads and does not disable an explicitly clicked test reply.
+The button click authorizes replacement of existing message-box contents and the fixed reply; no additional confirmation dialog is shown. Existing text, whitespace, and leftover test drafts are replaced automatically. Ctrl+Shift+F12 or Stop cancels a pending action. Unsupported controls, changed focus, locked sessions, and mismatched targets stop the operation. A partial attempt may leave the test text as a draft. The agent never retries a send automatically or claims backend delivery based on an Enter request. Local-only mode governs screenshot uploads and does not disable an explicitly clicked test reply.
 
 This uses standard Win32 window activation, one verified mouse click on the discovered message box, and edit-control/window messages for text and Enter. It does not use the clipboard or global typing. Windows may deny activation; that stops the send instead of bypassing the foreground restriction. Zero or multiple eligible controls also stop sending. In that case, the activity log includes bounded **Composer diagnostic** lines with control classes, style flags, and rejection reasons, never message/draft contents. Share those lines to diagnose an unsupported client control. KakaoTalk client versions with different/custom controls or Enter behavior need manual validation; the agent fails closed instead of guessing coordinates. The window can scroll vertically on smaller displays to keep the controls accessible.
 
-Sending a test reply does not require starting monitoring or proving the bottom position. Use **Stop → Send Test Reply**. For capture-only monitoring at the latest messages, position the chat there manually and use **Confirm Latest Position** if automatic bottom verification is inconclusive. Missing queued-image warnings concern older local PNGs that are absent from disk; they do not block replies. Restore the original files to their recorded paths if those captures must still be uploaded; the agent cannot recreate missing screenshots.
+Sending a test reply does not require starting monitoring or proving the bottom position. Click **Send Test Reply** once; any capture/navigation is stopped automatically. For capture-only monitoring at the latest messages, position the chat there manually and use **Confirm Latest Position** if automatic bottom verification is inconclusive. Missing queued-image warnings concern older local PNGs that are absent from disk; they do not block replies. Restore the original files to their recorded paths if those captures must still be uploaded; the agent cannot recreate missing screenshots.
 
 ## Test with the mock API
 
