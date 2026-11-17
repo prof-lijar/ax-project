@@ -156,6 +156,9 @@ class MainWindow(QMainWindow):
         self.test_workflow_button = QPushButton("Test Workflow")
         self.test_workflow_button.clicked.connect(lambda: self.action("test_workflow"))
         row.addWidget(self.test_workflow_button)
+        self.bizgo_test_button = QPushButton("Send Bizgo Sample")
+        self.bizgo_test_button.clicked.connect(lambda: self.action("bizgo_test"))
+        row.addWidget(self.bizgo_test_button)
         layout.addLayout(row)
         hint = QLabel(
             "Send Test Reply stops capture, focuses the selected chat, replaces its message-box contents with the test reply, and sends once."
@@ -165,10 +168,14 @@ class MainWindow(QMainWindow):
         workflow_hint = QLabel(
             "Test Workflow saves the current region, sends it to your configured vision LLM, "
             "then automatically sends one [test] simulation summary and extracted text to this chat. "
-            "This explicit action uses the LLM even in local-only capture mode."
+            "When enabled, Bizgo sends a phone-message copy afterward. "
+            "This explicit action uses configured services even in local-only capture mode."
         )
         workflow_hint.setWordWrap(True)
         layout.addWidget(workflow_hint)
+        self.bizgo_status = QLabel()
+        self.bizgo_status.setWordWrap(True)
+        layout.addWidget(self.bizgo_status)
         self.api_status = QLabel("API: idle")
         self.refresh_storage_mode()
         self.api_status.setWordWrap(True)
@@ -217,6 +224,7 @@ class MainWindow(QMainWindow):
             state != State.INITIALIZING.value and not self.pending_action and not self.closing
         )
         self.test_workflow_button.setEnabled(self.send_test_button.isEnabled())
+        self.bizgo_test_button.setEnabled(self.send_test_button.isEnabled())
 
     def open_captures_folder(self):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
@@ -225,6 +233,20 @@ class MainWindow(QMainWindow):
             )
 
     def refresh_storage_mode(self):
+        if not self.config.bizgo_enabled:
+            self.bizgo_status.setText(
+                "Bizgo: disabled — enable in Settings to add the final phone-message step"
+            )
+        else:
+            from app.api.bizgo_client import phone_number
+
+            recipient = phone_number(self.config.bizgo_recipient)
+            mode = (
+                "SANDBOX — no phone delivery"
+                if self.config.bizgo_sandbox
+                else "PRODUCTION — sends a real phone message"
+            )
+            self.bizgo_status.setText(f"Bizgo: {mode} | Recipient: ******{recipient[-4:]}")
         self.api_status.setText(
             "API: paused — local-only mode (an upload already in progress may finish)"
             if self.config.local_only
@@ -384,6 +406,11 @@ class MainWindow(QMainWindow):
 
                 stage = "saving the LLM API key in Windows Credential Manager"
                 set_token(credential_destination(LLMSettings.resolve(new).url), dialog.llm_token)
+            if dialog.bizgo_token:
+                from app.api.bizgo_client import BIZGO_CREDENTIAL
+
+                stage = "saving the Bizgo API key in Windows Credential Manager"
+                set_token(BIZGO_CREDENTIAL, dialog.bizgo_token)
             # Do not access the Run registry key for ordinary settings saves when
             # sign-in launch was and remains disabled. Refresh the EXE path if enabled.
             if new.launch_at_signin or self.config.launch_at_signin:
@@ -422,9 +449,18 @@ class MainWindow(QMainWindow):
         if self.pending_action:
             return
         automatic_reply = command in ("send_test", "test_workflow")
-        if automatic_reply and self.monitor.state == State.INITIALIZING:
+        sending = automatic_reply or command == "bizgo_test"
+        if sending and self.monitor.state == State.INITIALIZING:
             return
-        if not self.config.target or not self.config.selection or not self.config.chat_id:
+        if command == "bizgo_test":
+            from app.api.bizgo_client import BizgoSettings
+
+            try:
+                BizgoSettings.resolve(self.config)
+            except AgentError as error:
+                QMessageBox.warning(self, "Bizgo settings required", str(error))
+                return
+        elif not self.config.target or not self.config.selection or not self.config.chat_id:
             QMessageBox.warning(
                 self,
                 "Setup required",
@@ -460,7 +496,7 @@ class MainWindow(QMainWindow):
             return
         if command == "history" and self.monitor.state != State.LIVE_MONITORING:
             return
-        if automatic_reply:
+        if sending:
             # Serialize sending after capture/navigation has stopped; no manual Stop step.
             self.monitor.command("stop")
         if command != "history":
@@ -470,8 +506,15 @@ class MainWindow(QMainWindow):
         generation = self.action_generation
         self.send_test_button.setEnabled(False)
         self.test_workflow_button.setEnabled(False)
+        self.bizgo_test_button.setEnabled(False)
         self.log(
-            "Starting one test workflow: capture, LLM extraction/summary, and automatic reply. Ctrl+Shift+F12 cancels"
+            (
+                "Sending one Bizgo sandbox sample (no phone delivery)"
+                if self.config.bizgo_sandbox
+                else "Sending one Bizgo production sample to the configured recipient"
+            )
+            if command == "bizgo_test"
+            else "Starting one test workflow: capture, LLM extraction/summary, and automatic reply. Ctrl+Shift+F12 cancels"
             if command == "test_workflow"
             else "Sending test reply automatically: existing message-box contents will be replaced. Ctrl+Shift+F12 cancels"
             if command == "send_test"
@@ -484,6 +527,7 @@ class MainWindow(QMainWindow):
                 self.pending_action = None
                 self.send_test_button.setEnabled(True)
                 self.test_workflow_button.setEnabled(True)
+                self.bizgo_test_button.setEnabled(True)
                 reason = (
                     str(error)
                     if isinstance(error, AgentError)
@@ -496,7 +540,8 @@ class MainWindow(QMainWindow):
                 self.log(
                     "Windows did not accept the foreground request; the worker will recheck before any input"
                 )
-        self.showMinimized()
+        if command != "bizgo_test":
+            self.showMinimized()
 
         def execute():
             if (
@@ -507,7 +552,9 @@ class MainWindow(QMainWindow):
                 self.pending_action = None
                 self.monitor.command(command)
 
-        QTimer.singleShot(250 if automatic_reply else 3000, execute)
+        QTimer.singleShot(
+            0 if command == "bizgo_test" else 250 if automatic_reply else 3000, execute
+        )
 
     def retry(self):
         self.queue_action(

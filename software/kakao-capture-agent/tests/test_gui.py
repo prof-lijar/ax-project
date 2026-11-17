@@ -10,7 +10,7 @@ from app.gui.settings_dialog import SettingsDialog
 from app.models import Selection, State, Target, TargetUnavailable
 
 
-@pytest.mark.parametrize("reply_command", ["send_test", "test_workflow"])
+@pytest.mark.parametrize("reply_command", ["send_test", "test_workflow", "bizgo_test"])
 def test_full_window_preview_and_settings(
     tmp_path, config, queue, frame, region, monkeypatch, qt_app, reply_command
 ):
@@ -73,6 +73,11 @@ def test_full_window_preview_and_settings(
     config.llm_url = "https://llm.test/v1"
     config.llm_model = "vision"
     config.llm_supports_vision = True
+    config.bizgo_sender = "01000000001"
+    config.bizgo_recipient = "01000000002"
+    if reply_command == "bizgo_test":
+        config.target = config.selection = None
+        config.chat_id = ""  # A standalone phone test does not require chat setup.
     timers = []
     activation = []
     desktop.request_target_activation = lambda: activation.append(window.isMinimized()) or True
@@ -85,7 +90,8 @@ def test_full_window_preview_and_settings(
     window.action(reply_command)
     assert len(timers) == 1 and not window.send_test_button.isEnabled()
     assert not window.test_workflow_button.isEnabled()
-    assert activation == [False]  # Request foreground before minimizing the agent.
+    assert not window.bizgo_test_button.isEnabled()
+    assert activation == ([] if reply_command == "bizgo_test" else [False])
     assert monitor.stop_input.is_set() and not monitor.want_live
     window.action("stop")
     window.action(reply_command)
@@ -100,24 +106,31 @@ def test_full_window_preview_and_settings(
     def unavailable():
         raise TargetUnavailable("Target closed")
 
-    desktop.request_target_activation = unavailable
-    window.action(reply_command)
-    assert window.pending_action is None
-    assert window.send_test_button.isEnabled()
-    assert window.test_workflow_button.isEnabled()
-    assert len(timers) == 2
-    assert monitor.commands.get_nowait() == "stop"  # Failed activation never queues a send.
-    assert monitor.commands.empty()
+    if reply_command != "bizgo_test":
+        desktop.request_target_activation = unavailable
+        window.action(reply_command)
+        assert window.pending_action is None
+        assert window.send_test_button.isEnabled()
+        assert window.test_workflow_button.isEnabled()
+        assert len(timers) == 2
+        assert monitor.commands.get_nowait() == "stop"  # Failed activation never queues a send.
+        assert monitor.commands.empty()
     dialog = SettingsDialog(config, window)
     dialog.controls["chat_id"].setText("changed-chat")
     dialog.controls["local_only"].setChecked(True)
     dialog.controls["llm_model"].setText("changed-model")
+    dialog.controls["bizgo_recipient"].setText("01000000003")
+    dialog.controls["bizgo_enabled"].setChecked(True)
+    dialog.controls["bizgo_sandbox"].setChecked(False)
     dialog.accept()
     assert dialog.result_config.chat_id == "changed-chat"
     assert config.chat_id != "changed-chat"
     save(tmp_path / "local-config.json", dialog.result_config)
     assert load(tmp_path / "local-config.json").local_only is True
     assert load(tmp_path / "local-config.json").llm_model == "changed-model"
+    stored = load(tmp_path / "local-config.json")
+    assert stored.bizgo_recipient == "01000000003" and stored.bizgo_enabled
+    assert not stored.bizgo_sandbox
     window.closing = True
     window.close()
     app.removeNativeEventFilter(window.hotkey)

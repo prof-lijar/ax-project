@@ -68,18 +68,20 @@ def test_submission_observation_reports_remaining_text_without_retry(text, expec
     composer = WindowsComposer(None)
     monkeypatch.setattr(composer, "read", lambda _: text)
     result = composer.observe_submission(43, threading.Event(), timeout=0)
-    assert expected in result
+    assert expected in result.message
+    assert result.composer_cleared == (expected == "cleared")
 
 
 def test_submission_observation_stops_after_cancellation_or_focus_loss(monkeypatch):
     composer = WindowsComposer(None)
     cancel = threading.Event()
     cancel.set()
-    assert "uncertain" in composer.observe_submission(43, cancel, timeout=0)
+    assert "uncertain" in composer.observe_submission(43, cancel, timeout=0).message
     cancel.clear()
 
     def changed(_):
         raise Cancelled("Focus changed")
 
     monkeypatch.setattr(composer, "read", changed)
-    assert "uncertain" in composer.observe_submission(43, cancel, timeout=0)
+    observation = composer.observe_submission(43, cancel, timeout=0)
+    assert "uncertain" in observation.message and not observation.composer_cleared

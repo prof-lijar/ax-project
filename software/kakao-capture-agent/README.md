@@ -2,7 +2,7 @@
 
 Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
 
-**Send Test Reply** sends the fixed message `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → automatic reply cycle. Each requires an explicit button click; incoming messages never trigger replies by themselves.
+**Send Test Reply** sends the fixed message `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → KakaoTalk reply → optional Bizgo SMS/LMS cycle. **Send Bizgo Sample** tests only the configured phone-message connection. Each requires an explicit button click; incoming messages never trigger replies by themselves.
 
 **Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI selection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
@@ -80,6 +80,7 @@ Turning local-only mode off resumes previously assigned upload jobs; it does not
 | Open Captures Folder | Opens the local PNG folder in File Explorer |
 | Send Test Reply | Stops capture/navigation, activates the selected chat, replaces its message-box contents with the fixed reply, and requests Enter once |
 | Test Workflow | Saves the current selected region, extracts text with the configured vision LLM, generates a simulated summary, and sends one `[test]` reply |
+| Send Bizgo Sample | Sends one fixed sample using the Bizgo sender, recipient, key, and environment saved in Settings; no KakaoTalk/LLM setup required |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
 | Ctrl+Shift+F12 | Global emergency stop, including while the GUI is minimized |
@@ -127,6 +128,28 @@ The generated summary uses the source language where possible. The task describe
 Environment variables follow the agents adapter: `OPENAI_BASE_URL` takes precedence over `URL`, `OPENAI_MODEL` over `MODEL`, and these override saved LLM fields. `OPENAI_SUPPORTS_VISION` overrides the saved vision checkbox. `OPENAI_API_KEY` overrides the separately stored LLM credential. URL may be a server root, `/v1` base, or complete `/chat/completions` endpoint. The executable does not load another project's `.env` automatically and never bundles credentials. Set the key in Settings for double-click launches. The capture-upload token is not reused as the LLM key.
 
 If an older release displays **Unable to save settings, credentials, or sign-in entry**, update to rc.14 or later and save the key again. The credential writer was passing bytes where pywin32 expects Unicode. Updated versions identify the exact failed save step (upload key, LLM key, sign-in entry, or configuration file) and include a numeric OS error where available; they never log the submitted key. Saving ordinary settings does not access the sign-in registry when startup remains disabled. If a later step fails, previously saved credentials may already have changed, while the new configuration is not applied.
+
+## Add Bizgo SMS/LMS as the final workflow step
+
+Open **Settings** and fill in:
+
+- **Bizgo registered sender number**: a sender registered with your Bizgo account.
+- **Bizgo recipient phone number**: the number to receive the test; editable and persisted across restarts. Neither number is hardcoded.
+- **Bizgo API key**: the v2 integrated API key, saved separately in Windows Credential Manager. `BIZGO_API_KEY` can supply it instead.
+- **Enable Bizgo SMS/LMS after the KakaoTalk workflow reply**: enables the last step of **Test Workflow**.
+- **Bizgo sandbox: test requests only, no real phone delivery**: checked by default. Clear it to send actual SMS/LMS through production. The main window shows the environment and only the recipient's last four digits.
+
+The Windows PC's public outbound IP must be allowlisted for the key in Bizgo. Sandbox uses the same key but does not deliver messages. These requirements and the two service hosts are documented in the [Bizgo API overview](https://developers.bizgo.io/api-sdk/api-reference).
+
+To test the phone connection first, save Settings and click **Send Bizgo Sample**. This sends the fixed text `[test] Kakao Capture Agent Bizgo SMS test.` to the configured recipient, using the selected sandbox/production environment. It works even when the final workflow checkbox is off. It stops capture/navigation and stays stopped; no chat window, region, or LLM is needed for this sample.
+
+For the full cycle, enable the final step and click **Test Workflow**. The agent saves the capture, extracts/summarizes with the LLM, submits the KakaoTalk reply, and waits for its composer to clear before requesting the phone-message copy. If the composer stays filled, focus changes, or Stop is requested, Bizgo is skipped. Composer clearing is an observation, not independent KakaoTalk delivery confirmation. Missing Bizgo settings/key stop the workflow before capture or chat input.
+
+The adapter follows the [v2 SMS/LMS contract](https://developers.bizgo.io/en/api-sdk/api-reference/comm/mt): `POST /api/comm/v1/send/omni`, raw API key in `Authorization` (no `Bearer` prefix), one recipient and one message flow. It selects SMS up to 90 EUC-KR bytes and LMS beyond that. The phone copy replaces unsupported characters such as emoji with `?`; over 2,000 bytes is shortened with a visible suffix. These changes are announced in the activity log, and the full KakaoTalk reply stays intact. The LMS title is `[test] Workflow summary`; there are no image attachments or fallback channels.
+
+Each request uses its capture/sample UUID as both `ref` and `idempotencyKey`, with `idempotencyTtl=86400`, following [Bizgo's idempotency guidance](https://developers.bizgo.io/en/api-sdk/sdk/send). It checks gateway, service, and recipient acceptance codes, matching recipient/reference, and message key. An accepted API request is **not final delivery**; check the Bizgo console/reports. The app does not poll or acknowledge delivery reports. Audit events retain the reference, environment, channel, and accepted message key without phone numbers, message text, or credentials.
+
+There is one attempt and no automatic resend, fallback, or restart replay. Stop during an HTTP request cannot recall a message already accepted by Bizgo; a lost response is reported as uncertain. If Bizgo fails after the KakaoTalk reply, the error states that the chat reply was already requested. Inspect the previous result before clicking again: a new click is a new cycle and can send another message. Local-only capture mode does not disable these explicitly requested LLM/Bizgo actions.
 
 ## Send the fixed test reply
 

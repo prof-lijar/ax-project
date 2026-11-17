@@ -14,6 +14,16 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Bizgo final workflow step — 2026-11-17
+
+Contract tests follow the official [v2 SMS/LMS reference](https://developers.bizgo.io/en/api-sdk/api-reference/comm/mt) and [common authentication/environment reference](https://developers.bizgo.io/api-sdk/api-reference). They verify production/sandbox URLs, raw API-key authentication, one configured recipient, the SMS/LMS byte boundary, LMS formatting, explicit shortening/encoding changes, reference/idempotency fields, response-code/recipient/reference validation, and retention of acceptance identifiers without message/credential/phone logging. They also cover authentication failure, rate limiting, server errors, redirect refusal, malformed/oversized replies, timeout, cancellation before/during submission, and storage audit failure. All HTTP requests use an in-memory mock transport and synthetic phone numbers; no actual Bizgo messages were sent.
+
+Workflow tests verify that Bizgo runs only after one KakaoTalk send and observed composer clearing, skips after uncertainty/cancellation, and does not repeat the chat send after a Bizgo failure. The standalone sample test requires no chat selection, capture, or LLM. GUI tests verify editable number persistence, sandbox/production settings, and duplicate/cancelled sample timers. A typed composer observation supplies the next-stage gate; the application does not infer success by searching log strings.
+
+Real Bizgo sandbox acceptance, production acceptance, registered sender validation, IP allowlisting, and final handset delivery remain unverified without the user's account configuration. The user chose to enter numbers in Settings; no real phone numbers or API keys are bundled in the application or committed as defaults.
+
+Portable validation on 2026-11-17: **163 tests passed, 18 native Windows cases skipped in 5.60 seconds**. Ruff lint and formatting passed.
+
 ### Settings credential save — 2026-11-17
 
 The credential writer now supplies a Python string to pywin32 `CredWrite`; the reader still decodes the returned UTF-16 bytes. The pywin32 implementation converts `CredentialBlob` with `PyWinObject_AsWCHAR`, so pre-encoding it was incorrect ([source](https://github.com/mhammond/pywin32/blob/main/win32/src/win32credmodule.cpp)). Portable tests cover both credential destinations, config persistence, no sign-in registry call when startup remains disabled, and failures at each save stage with secret redaction. A native Windows test creates a UUID-named synthetic credential, reads it back, replaces it, reads it again, and deletes only that test credential in cleanup. No real API keys are used in these tests.
@@ -67,6 +77,13 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 
 | Scenario | Expected result |
 |---|---|
+| Edit Bizgo sender/recipient, save, restart | Both numbers persist and the configured recipient is used; main-window label masks it |
+| Send Bizgo Sample with no chat/LLM configuration | One fixed sample goes to the configured environment/recipient; no capture or desktop input occurs |
+| Bizgo sandbox | Test request can be accepted but no real phone delivery is claimed |
+| Bizgo production with registered sender and allowlisted IP | One accepted message reference/key is recorded; handset delivery checked separately |
+| Full workflow with Bizgo enabled | Capture → LLM → KakaoTalk reply → composer clearing → one Bizgo request |
+| KakaoTalk uncertain / Stop before Bizgo | Phone send is skipped; no automatic replay |
+| Stop or connection loss during Bizgo request | Uncertain result is explicit; no resend or false delivery claim |
 | Test Workflow with configured local vision LLM | One current-position capture is saved, two model calls complete, and one `[test]` simulation summary plus extracted text appears in the selected conversation |
 | Stop while LLM is processing | Pending HTTP work cancels; no later reply or monitoring restart occurs |
 | LLM error / unreadable image / changed chat | Visible failure; local capture retained if saved; no send or automatic retry |

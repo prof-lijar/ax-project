@@ -5,7 +5,7 @@ import time
 from ctypes import wintypes
 
 from app.automation.keyboard_input import press_enter
-from app.models import AgentError, Cancelled, Region, covered_by_monitors
+from app.models import AgentError, Cancelled, Region, SubmissionObservation, covered_by_monitors
 
 
 class WindowsComposer:
@@ -213,19 +213,26 @@ class WindowsComposer:
         deadline = time.monotonic() + timeout
         while True:
             if cancel.is_set():
-                return "Observation stopped after Enter; delivery uncertain, no automatic retry"
+                return SubmissionObservation(
+                    "Observation stopped after Enter; delivery uncertain, no automatic retry"
+                )
             try:
                 text = self.read(handle)
             except AgentError:
-                return "Focus changed after Enter; delivery uncertain, no automatic retry"
+                return SubmissionObservation(
+                    "Focus changed after Enter; delivery uncertain, no automatic retry"
+                )
             except Exception:
-                return (
+                return SubmissionObservation(
                     "Cannot inspect message box after Enter; delivery uncertain, no automatic retry"
                 )
             if not text.strip():
-                return (
-                    "Enter keypress sent; message box cleared. Delivery not independently verified"
+                return SubmissionObservation(
+                    "Enter keypress sent; message box cleared. Delivery not independently verified",
+                    composer_cleared=True,
                 )
             if time.monotonic() >= deadline:
-                return "Enter keypress sent, but text remains in the message box; send NOT confirmed, no automatic retry"
+                return SubmissionObservation(
+                    "Enter keypress sent, but text remains in the message box; send NOT confirmed, no automatic retry"
+                )
             cancel.wait(0.1)

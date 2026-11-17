@@ -2,7 +2,9 @@ import queue as commands
 import threading
 import time
 from datetime import datetime, timezone
+from uuid import uuid4
 
+from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
 from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
 from app.automation.test_workflow import OneCycleWorkflow
@@ -194,19 +196,30 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
-        elif command in ("send_test", "test_workflow") and self.state == State.STOPPED:
+        elif (
+            command in ("send_test", "test_workflow", "bizgo_test") and self.state == State.STOPPED
+        ):
             self.want_live = self.recoverable = False
             self.stop_input.clear()
             self.transition(
                 State.INITIALIZING,
-                "Preparing test workflow" if command == "test_workflow" else "Preparing test reply",
+                "Preparing Bizgo sample"
+                if command == "bizgo_test"
+                else "Preparing test workflow"
+                if command == "test_workflow"
+                else "Preparing test reply",
             )
             try:
-                result = (
-                    self.test_workflow.run()
-                    if command == "test_workflow"
-                    else self.reply_sender.send()
-                )
+                if command == "bizgo_test":
+                    client = create_bizgo(self.config, self.queue.event, force=True)
+                    message = client.prepare(BIZGO_SAMPLE, str(uuid4()))
+                    result = client.send(message, self.stop_input)
+                else:
+                    result = (
+                        self.test_workflow.run()
+                        if command == "test_workflow"
+                        else self.reply_sender.send()
+                    )
                 self.transition(State.STOPPED, result)
             finally:
                 self.stop_input.set()

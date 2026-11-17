@@ -24,6 +24,12 @@ class Cancelled(AgentError):
     pass
 
 
+@dataclass(frozen=True)
+class SubmissionObservation:
+    message: str
+    composer_cleared: bool = False
+
+
 class State(str, Enum):
     STOPPED = "STOPPED"
     INITIALIZING = "INITIALIZING"

@@ -8,6 +8,7 @@ TEST_REPLY = "[AI가 답장드렸습니다]"
 class TestReplySender:
     def __init__(self, composer, audit, cancel):
         self.composer, self.audit, self.cancel = composer, audit, cancel
+        self.composer_cleared = False
 
     def check(self, handle=None):
         if self.cancel.is_set():
@@ -20,6 +21,7 @@ class TestReplySender:
         return current
 
     def send(self, text=TEST_REPLY):
+        self.composer_cleared = False
         if (
             not isinstance(text, str)
             or not text.strip()
@@ -55,6 +57,7 @@ class TestReplySender:
             )
             raise
         self.audit("reply_submitted", "Enter requested once; delivery is not verified")
-        result = self.composer.observe_submission(handle, self.cancel)
-        self.audit("reply_observed", result)
-        return result
+        observation = self.composer.observe_submission(handle, self.cancel)
+        self.composer_cleared = observation.composer_cleared
+        self.audit("reply_observed", observation.message)
+        return observation.message

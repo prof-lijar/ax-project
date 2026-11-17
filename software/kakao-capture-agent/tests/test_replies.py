@@ -7,7 +7,14 @@ import pytest
 from app.automation.reply_service import TEST_REPLY
 from app.automation.reply_service import TestReplySender as ReplySender
 from app.automation.windows_composer import WindowsComposer
-from app.models import AgentError, Cancelled, Region, State, TargetUnavailable
+from app.models import (
+    AgentError,
+    Cancelled,
+    Region,
+    State,
+    SubmissionObservation,
+    TargetUnavailable,
+)
 
 
 class Composer:
@@ -36,7 +43,9 @@ class Composer:
         self.submits.append(handle)
 
     def observe_submission(self, handle, cancel):
-        return "Enter keypress sent; message box cleared. Verify delivery in KakaoTalk"
+        return SubmissionObservation(
+            "Enter keypress sent; message box cleared. Verify delivery in KakaoTalk", True
+        )
 
 
 def test_fixed_reply_exact_text_and_one_send():
@@ -349,7 +358,11 @@ def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft,
         )
         monkeypatch.setattr(composer, "focused", lambda: child)
         monkeypatch.setattr(composer, "prepare", lambda cancel: None)
-        monkeypatch.setattr(composer, "observe_submission", lambda *a: "synthetic observation")
+        monkeypatch.setattr(
+            composer,
+            "observe_submission",
+            lambda *a: SubmissionObservation("synthetic observation", True),
+        )
         received = []
 
         def procedure(hwnd, message, wparam, lparam):

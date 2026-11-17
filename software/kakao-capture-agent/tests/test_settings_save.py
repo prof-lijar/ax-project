@@ -55,7 +55,7 @@ def test_native_credential_roundtrip_and_replacement(monkeypatch):
                 raise
 
 
-@pytest.mark.parametrize("failure", [None, "upload", "llm", "startup", "file"])
+@pytest.mark.parametrize("failure", [None, "upload", "llm", "bizgo", "startup", "file"])
 def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch, failure):
     new = deepcopy(config)
     new.chat_id = "updated-chat"
@@ -68,6 +68,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
         result_config=new,
         token=secret,
         llm_token=secret,
+        bizgo_token=secret,
         exec=lambda: main_window.QDialog.Accepted,
     )
     logs, errors, writes, startup = [], [], [], []
@@ -88,7 +89,14 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
         raise PermissionError(13, secret)
 
     def write(destination, token):
-        if failure == ("llm" if destination.startswith("llm:") else "upload"):
+        kind = (
+            "bizgo"
+            if destination.startswith("bizgo:")
+            else "llm"
+            if destination.startswith("llm:")
+            else "upload"
+        )
+        if failure == kind:
             fail()
         writes.append((destination, token))
 
@@ -107,6 +115,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
         label = {
             "upload": "upload API token",
             "llm": "LLM API key",
+            "bizgo": "Bizgo API key",
             "startup": "launch at sign-in",
             "file": "configuration file",
         }[failure]
@@ -115,6 +124,6 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
     else:
         assert not errors and not startup  # Disabled startup needs no registry access.
         assert config.chat_id == load(window.config_path).chat_id == "updated-chat"
-        assert len(writes) == 2
+        assert len(writes) == 3
         assert writes[1][0] == credential_destination(new.llm_url)
         assert secret not in window.config_path.read_text()

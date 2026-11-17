@@ -24,6 +24,7 @@ class SettingsDialog(QDialog):
         self.result_config = deepcopy(config)
         self.token = ""
         self.llm_token = ""
+        self.bizgo_token = ""
         self.resize(650, 700)
         layout = QVBoxLayout(self)
         scroll = QScrollArea()
@@ -58,7 +59,22 @@ class SettingsDialog(QDialog):
             "Leave blank to keep saved key; OPENAI_API_KEY also supported"
         )
         form.addRow("LLM API key", self.llm_secret)
+        for name, label in [
+            ("bizgo_sender", "Bizgo registered sender number"),
+            ("bizgo_recipient", "Bizgo recipient phone number"),
+        ]:
+            control = QLineEdit(getattr(config, name))
+            control.setPlaceholderText("e.g. 01012345678")
+            form.addRow(label, control)
+            self.controls[name] = control
+        self.bizgo_secret = QLineEdit()
+        self.bizgo_secret.setEchoMode(QLineEdit.Password)
+        self.bizgo_secret.setPlaceholderText(
+            "Leave blank to keep saved key; BIZGO_API_KEY also supported"
+        )
+        form.addRow("Bizgo API key", self.bizgo_secret)
         for name, label, low, high, decimals in [
+            ("bizgo_timeout_seconds", "Bizgo request timeout (seconds)", 5, 120, 0),
             ("llm_timeout_seconds", "Whole LLM workflow timeout (seconds)", 5, 300, 0),
             ("difference_threshold", "Changed pixel fraction", 0.0001, 1, 4),
             ("debounce_seconds", "Debounce (seconds)", 0, 10, 1),
@@ -81,6 +97,8 @@ class SettingsDialog(QDialog):
         self.storage.setValue(config.storage_limit_bytes / 1024**3)
         form.addRow("Storage budget (GiB)", self.storage)
         for name, label in [
+            ("bizgo_enabled", "Enable Bizgo SMS/LMS after the KakaoTalk workflow reply"),
+            ("bizgo_sandbox", "Bizgo sandbox: test requests only, no real phone delivery"),
             ("llm_supports_vision", "Enable image input for this vision-capable LLM"),
             ("llm_allow_http", "Allow unencrypted LLM HTTP on trusted LAN/localhost"),
             ("local_only", "Local-only mode: save PNGs and pause uploads"),
@@ -122,4 +140,5 @@ class SettingsDialog(QDialog):
             return
         self.token = self.secret.text().strip()
         self.llm_token = self.llm_secret.text().strip()
+        self.bizgo_token = self.bizgo_secret.text().strip()
         super().accept()
