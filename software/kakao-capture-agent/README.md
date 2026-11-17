@@ -56,7 +56,7 @@ The GUI does not run on Linux. Linux can run the portable tests and mock API. No
 7. Choose **Start / Resume** and bring the chat to the foreground within three seconds. The agent verifies the latest-message position before monitoring.
 8. If bottom verification is inconclusive, manually move to the latest messages and use **Confirm Latest Position**. This is explicit operator confirmation, not proof inferred from a stationary image. Confirmation is invalidated after an interruption.
 
-Keep the selected chat in the foreground, unobscured, and the Windows session unlocked. The GUI intentionally minimizes before capture-related actions. The agent does not activate or click windows for you.
+Keep the selected chat in the foreground, unobscured, and the Windows session unlocked. The GUI intentionally minimizes before capture-related actions. Capture/navigation does not activate or click windows. An explicit **Send Test Reply** request activates only the verified selected chat and focuses its verified message box automatically.
 
 ## Controls and recovery
 
@@ -78,7 +78,7 @@ Turning local-only mode off resumes previously assigned upload jobs; it does not
 | Stop | Cancels pending GUI actions and stops capture/navigation; uploads continue |
 | Save Capture Locally | Saves one PNG without scrolling or assigning it to an API; available while stopped or paused |
 | Open Captures Folder | Opens the local PNG folder in File Explorer |
-| Send Test Reply | While stopped, requests one fixed reply in the selected chat after a three-second delay; click its empty message box during that delay |
+| Send Test Reply | While stopped, activates the selected chat, locates and focuses its message box, and requests the fixed reply once |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
 | Ctrl+Shift+F12 | Global emergency stop, including while the GUI is minimized |
@@ -100,12 +100,12 @@ Closing the application stops navigation and waits for the current upload (bound
 
 1. Select the intended KakaoTalk group window and capture region, keeping the capture region above and separate from the message composer. Check the target title shown in the agent.
 2. Click **Stop**. Make sure the group's message box is empty and KakaoTalk is configured to send on Enter.
-3. Click **Send Test Reply** beside `[AI가 답장드렸습니다]`. The agent minimizes. Within three seconds, click inside the selected group's empty message box and release keyboard modifiers.
-4. The agent verifies the foreground target and focused writable multiline Edit/RichEdit control, checks that it is below the capture region and unobscured, writes the exact Unicode text, verifies it, and requests Enter once. Check KakaoTalk itself to confirm delivery.
+3. Click **Send Test Reply** beside `[AI가 답장드렸습니다]`. The agent minimizes, activates the verified selected chat, and automatically locates and focuses its message box. No manual chat/message-box click is needed; leave the mouse and keyboard alone during the operation.
+4. The agent requires exactly one supported writable multiline Edit/RichEdit control below the capture region. It checks the target, visibility, empty draft, and focus, writes the exact Unicode text, verifies it, and requests Enter once. Check KakaoTalk itself to confirm delivery.
 
 The button click authorizes the fixed reply; no additional confirmation dialog is shown. Ctrl+Shift+F12 or Stop cancels a pending action. Existing drafts are not replaced. Unsupported controls, changed focus, locked sessions, and mismatched targets stop the operation. A partial attempt may leave the test text as a draft; inspect it before trying again. The agent never retries a send automatically or claims backend delivery based on an Enter request. Local-only mode governs screenshot uploads and does not disable an explicitly clicked test reply.
 
-This uses standard Win32 edit-control/window messages targeted at the verified message box, not clipboard contents or global typing. KakaoTalk client versions with different/custom controls or Enter behavior need manual validation; the agent fails closed instead of guessing coordinates. The window can scroll vertically on smaller displays to keep the controls accessible.
+This uses standard Win32 window activation, one verified mouse click on the discovered message box, and edit-control/window messages for text and Enter. It does not use the clipboard or global typing. Windows may deny activation; that stops the send instead of bypassing the foreground restriction. Zero or multiple eligible controls also stop sending; keep the capture region above the message box and close search panels. KakaoTalk client versions with different/custom controls or Enter behavior need manual validation; the agent fails closed instead of guessing coordinates. The window can scroll vertically on smaller displays to keep the controls accessible.
 
 ## Test with the mock API
 

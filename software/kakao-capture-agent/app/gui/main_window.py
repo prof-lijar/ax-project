@@ -155,7 +155,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self.send_test_button)
         layout.addLayout(row)
         hint = QLabel(
-            "Send once: stop monitoring, click Send Test Reply, then click the chat's empty message box within 3 seconds."
+            "Send once: stop monitoring, then click Send Test Reply. The selected chat and its empty message box are focused automatically."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -420,7 +420,7 @@ class MainWindow(QMainWindow):
         generation = self.action_generation
         self.send_test_button.setEnabled(False)
         self.log(
-            "Test reply in 3 seconds. Click the selected chat's EMPTY message box; Ctrl+Shift+F12 cancels"
+            "Preparing test reply automatically; keep the message box empty. Ctrl+Shift+F12 cancels"
             if command == "send_test"
             else "Action starts in 3 seconds. Bring the selected conversation to the foreground"
         )
@@ -435,7 +435,7 @@ class MainWindow(QMainWindow):
                 self.pending_action = None
                 self.monitor.command(command)
 
-        QTimer.singleShot(3000, execute)
+        QTimer.singleShot(250 if command == "send_test" else 3000, execute)
 
     def retry(self):
         self.queue_action(

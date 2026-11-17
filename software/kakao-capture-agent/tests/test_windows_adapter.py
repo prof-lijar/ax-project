@@ -49,6 +49,96 @@ def test_window_handle_reuse_requires_reselection(config):
         desktop.geometry()
 
 
+def test_reply_activates_only_verified_selected_window(config):
+    desktop = adapter(config)
+    foreground = [99]
+    activated = []
+    desktop.gui.GetForegroundWindow = lambda: foreground[0]
+
+    def activate(handle):
+        activated.append(handle)
+        foreground[0] = handle
+
+    desktop.gui.SetForegroundWindow = activate
+    desktop.activate_target()
+    assert activated == [42]
+    desktop.activate_target()
+    assert activated == [42]
+    desktop.session_available = lambda: False
+    with pytest.raises(TargetUnavailable):
+        desktop.activate_target()
+    assert activated == [42]
+
+
+def test_reply_activation_refuses_reused_handle_and_windows_denial(config):
+    desktop = adapter(config)
+    activated = []
+    desktop.gui.SetForegroundWindow = activated.append
+    desktop.gui.GetForegroundWindow = lambda: 99
+    with pytest.raises(TargetUnavailable, match="did not allow"):
+        desktop.activate_target()
+    assert activated == [42]
+    activated.clear()
+    del desktop.geometry
+    desktop.identify = lambda _: Target(42, 200, "other-start", "kakao.exe", "chat", "other chat")
+    with pytest.raises(ReselectionRequired):
+        desktop.activate_target()
+    assert not activated
+
+
+def test_reply_never_clicks_an_obscured_message_box(config, monkeypatch):
+    import threading
+
+    from app.models import AgentError, Cancelled
+
+    monkeypatch.setitem(sys.modules, "pyautogui", SimpleNamespace(failSafeCheck=lambda: None))
+    desktop = adapter(config)
+    desktop.gui.IsChild = lambda parent, child: parent == 42 and child == 43
+    desktop.gui.GetWindowRect = lambda _: (-490, 150, -410, 200)
+    desktop.gui.WindowFromPoint = lambda _: 99
+    moves = []
+    desktop.api = SimpleNamespace(SetCursorPos=moves.append)
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(Cancelled):
+        desktop.focus_reply_control(43, cancel)
+    assert not moves
+    cancel.clear()
+    # No user32 object: reaching SendInput would fail this test instead of passing.
+    with pytest.raises(AgentError, match="covered"):
+        desktop.focus_reply_control(43, cancel)
+
+
+@pytest.mark.parametrize("inserted", [0, 1, 2])
+def test_reply_click_pair_and_partial_press_release(config, monkeypatch, inserted):
+    import threading
+
+    from app.models import AgentError
+
+    monkeypatch.setitem(sys.modules, "pyautogui", SimpleNamespace(failSafeCheck=lambda: None))
+    desktop = adapter(config)
+    desktop.gui.IsChild = lambda parent, child: parent == 42 and child == 43
+    desktop.gui.GetWindowRect = lambda _: (-490, 150, -410, 200)
+    desktop.gui.WindowFromPoint = lambda _: 43
+    moves, inputs = [], []
+    desktop.api = SimpleNamespace(SetCursorPos=moves.append, GetAsyncKeyState=lambda _: 0)
+
+    class SendInput:
+        def __call__(self, count, events, size):
+            flags = [e.mi.dwFlags for e in events] if count == 2 else [events._obj.mi.dwFlags]
+            inputs.append(flags)
+            return inserted if count == 2 else 1
+
+    desktop.user = SimpleNamespace(SendInput=SendInput())
+    if inserted == 2:
+        desktop.focus_reply_control(43, threading.Event())
+    else:
+        with pytest.raises(AgentError, match="rejected"):
+            desktop.focus_reply_control(43, threading.Event())
+    assert moves == [(-450, 175)]
+    assert inputs == ([[2, 4], [4]] if inserted == 1 else [[2, 4]])
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires native Windows ACL APIs")
 def test_private_data_directory_acl(tmp_path):
     import ntsecuritycon

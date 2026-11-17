@@ -39,7 +39,9 @@ class MonitoringService(threading.Thread):
         self.next_capture = self.next_recovery = 0
         self.operator_bottom = False
         self.want_live = False
-        self.reply_sender = TestReplySender(WindowsComposer(desktop), queue.event, self.stop_input)
+        self.reply_sender = TestReplySender(
+            WindowsComposer(desktop, activity), queue.event, self.stop_input
+        )
 
     def transition(self, state, reason=""):
         if state != self.state and state not in TRANSITIONS[self.state]:

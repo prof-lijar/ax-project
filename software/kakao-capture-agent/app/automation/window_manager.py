@@ -1,4 +1,4 @@
-"""Conservative Windows desktop validation. Never activates a target or clicks it."""
+"""Conservative Windows desktop validation and input to the verified target."""
 
 import ctypes
 from ctypes import wintypes
@@ -153,6 +153,77 @@ class WindowsDesktop:
                     raise TargetUnavailable("Another window overlaps the selected region")
             other = self.gui.GetWindow(other, self.con.GW_HWNDPREV)
         return region
+
+    def activate_target(self):
+        """Activate only the saved, reverified window for an explicit reply request."""
+        if not self.session_available():
+            raise TargetUnavailable("Interactive desktop is locked or unavailable")
+        self.geometry()  # Verify identity, process lifetime, visibility, and title first.
+        hwnd = self.config.target.hwnd
+        if self.gui.GetForegroundWindow() != hwnd:
+            try:
+                self.gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass  # Verify the actual result, including Windows activation restrictions.
+        if self.gui.GetForegroundWindow() != hwnd:
+            raise TargetUnavailable(
+                "Windows did not allow activating the selected chat; no reply sent"
+            )
+        self.validate()
+
+    def focus_reply_control(self, handle, cancel):
+        """Click the verified edit control once; never guess message-box coordinates."""
+        import pyautogui
+
+        from app.models import AgentError, Cancelled
+
+        def check():
+            if cancel.is_set():
+                raise Cancelled("Test reply cancelled")
+            try:
+                pyautogui.failSafeCheck()
+            except pyautogui.FailSafeException:
+                raise Cancelled("Mouse fail-safe activated; test reply stopped") from None
+            self.validate()
+            if not self.gui.IsChild(self.config.target.hwnd, handle):
+                raise AgentError("Message box no longer belongs to the selected chat")
+
+        check()
+        left, top, right, bottom = self.gui.GetWindowRect(handle)
+        point = ((left + right) // 2, (top + bottom) // 2)
+        self.api.SetCursorPos(point)
+        check()
+        if self.gui.WindowFromPoint(point) != handle:
+            raise AgentError("Message box is covered or changed; no reply sent")
+
+        class MouseInput(ctypes.Structure):
+            _fields_ = [
+                ("dx", wintypes.LONG),
+                ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t),
+            ]
+
+        class Input(ctypes.Structure):
+            _fields_ = [("type", wintypes.DWORD), ("mi", MouseInput)]
+
+        events = (Input * 2)(
+            Input(0, MouseInput(0, 0, 0, 0x0002, 0, 0)),  # LEFTDOWN
+            Input(0, MouseInput(0, 0, 0, 0x0004, 0, 0)),  # LEFTUP
+        )
+        self.user.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(Input), ctypes.c_int]
+        self.user.SendInput.restype = wintypes.UINT
+        check()
+        if any(self.api.GetAsyncKeyState(key) & 0x8000 for key in (16, 17, 18, 91, 92)):
+            raise AgentError("Release keyboard modifiers before sending; no reply sent")
+        inserted = self.user.SendInput(2, events, ctypes.sizeof(Input))
+        if inserted != 2:
+            if inserted == 1:
+                # Release a partially injected mouse press; never leave the button held.
+                self.user.SendInput(1, ctypes.byref(events[1]), ctypes.sizeof(Input))
+            raise AgentError("Windows rejected message-box focus; no reply sent")
 
     def scroll(self, direction, cancel):
         import pyautogui

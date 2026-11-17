@@ -17,6 +17,9 @@ class Composer:
         self.writes = []
         self.submits = []
 
+    def prepare(self, cancel):
+        pass
+
     def focused(self):
         if self.handle is None:
             raise TargetUnavailable("Focus lost")
@@ -107,6 +110,60 @@ def test_audit_failure_prevents_sending():
     assert not composer.writes and not composer.submits
 
 
+def test_prepare_automatically_activates_and_focuses_unique_composer(monkeypatch):
+    actions = []
+    desktop = SimpleNamespace(
+        config=SimpleNamespace(target=SimpleNamespace(hwnd=42)),
+        activate_target=lambda: actions.append("activate"),
+        validate=lambda: Region(0, 0, 100, 100),
+        focus_reply_control=lambda handle, cancel: actions.append(("focus", handle)),
+        gui=SimpleNamespace(
+            EnumChildWindows=lambda root, visit, data: [visit(43, data), visit(44, data)]
+        ),
+    )
+    composer = WindowsComposer(desktop)
+
+    def validate(handle, region):
+        if handle == 44:
+            raise AgentError("Not an editor")
+
+    monkeypatch.setattr(composer, "validate_control", validate)
+    monkeypatch.setattr(composer, "focused", lambda: 43)
+    composer.prepare(threading.Event())
+    assert actions == ["activate", ("focus", 43)]
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_prepare_refuses_missing_or_ambiguous_composer(count, monkeypatch):
+    clicks = []
+    desktop = SimpleNamespace(
+        config=SimpleNamespace(target=SimpleNamespace(hwnd=42)),
+        activate_target=lambda: None,
+        validate=lambda: Region(0, 0, 100, 100),
+        focus_reply_control=lambda *a: clicks.append(a),
+        gui=SimpleNamespace(
+            EnumChildWindows=lambda root, visit, data: [visit(i, data) for i in range(count)]
+        ),
+    )
+    composer = WindowsComposer(desktop)
+    monkeypatch.setattr(composer, "validate_control", lambda *a: None)
+    with pytest.raises(AgentError, match=f"Found {count}"):
+        composer.prepare(threading.Event())
+    assert not clicks
+
+
+def test_preparation_failure_never_types_or_submits():
+    composer = Composer()
+
+    def denied(cancel):
+        raise TargetUnavailable("Windows denied activation")
+
+    composer.prepare = denied
+    with pytest.raises(TargetUnavailable):
+        ReplySender(composer, lambda *a: None, threading.Event()).send()
+    assert not composer.writes and not composer.submits
+
+
 def test_send_is_manual_stopped_only_and_failure_cannot_auto_resume(config, frame, region, queue):
     from app.automation.monitoring_service import MonitoringService
     from tests.test_automation import Capture, Desktop
@@ -187,7 +244,7 @@ def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypa
     composer = WindowsComposer(desktop)
     assert composer.focused() == 43
     info.focus = 99
-    with pytest.raises(AgentError, match="empty message box"):
+    with pytest.raises(AgentError, match="message box does not have focus"):
         composer.focused()
     info.focus = 43
     desktop.api.GetAsyncKeyState = lambda _: 0x8000

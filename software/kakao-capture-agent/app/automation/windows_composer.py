@@ -1,14 +1,62 @@
 """Targeted standard Win32 edit-control messages; no clipboard or global keystrokes."""
 
 import ctypes
+import time
 from ctypes import wintypes
 
 from app.models import AgentError, Cancelled, Region, covered_by_monitors
 
 
 class WindowsComposer:
-    def __init__(self, desktop):
+    def __init__(self, desktop, report=lambda _: None):
         self.desktop = desktop
+        self.report = report
+
+    def prepare(self, cancel):
+        """Find one unambiguous composer in the selected window and focus it."""
+        if cancel.is_set():
+            raise Cancelled("Test reply cancelled")
+        d = self.desktop
+        self.report("Activating the selected conversation for the test reply")
+        d.activate_target()
+        region = d.validate()
+        candidates = []
+
+        def visit(handle, _):
+            try:
+                self.validate_control(handle, region)
+            except AgentError:
+                return
+            candidates.append(handle)
+
+        d.gui.EnumChildWindows(d.config.target.hwnd, visit, None)
+        if len(candidates) != 1:
+            raise AgentError(
+                f"Found {len(candidates)} supported message boxes below the capture region. "
+                "Keep the capture region above the composer and close search panels; no reply sent"
+            )
+        handle = candidates[0]
+        if cancel.is_set():
+            raise Cancelled("Test reply cancelled")
+        self.validate_control(handle, d.validate())
+        self.report("Message box identified; focusing it automatically")
+        d.focus_reply_control(handle, cancel)
+        deadline = time.monotonic() + 1
+        while True:
+            if cancel.is_set():
+                raise Cancelled("Test reply cancelled")
+            # Validate focus after the OS has processed the click, without sending another click.
+            try:
+                if self.focused() == handle:
+                    return
+            except Cancelled:
+                raise
+            except AgentError:
+                if time.monotonic() >= deadline:
+                    raise
+            if time.monotonic() >= deadline:
+                raise AgentError("Message-box focus did not settle; no reply sent")
+            cancel.wait(0.05)
 
     def focused(self):
         import pyautogui
@@ -45,7 +93,7 @@ class WindowsComposer:
             raise AgentError("Cannot verify message-box focus")
         handle = info.hwndFocus
         if info.hwndActive != target.hwnd or not handle or not d.gui.IsChild(target.hwnd, handle):
-            raise AgentError("Click the selected chat's empty message box during the countdown")
+            raise AgentError("The selected chat's message box does not have focus; no reply sent")
         self.validate_control(handle, capture_region)
         # Check modifiers so Enter cannot become a newline/shortcut in the chat client.
         if any(d.api.GetAsyncKeyState(key) & 0x8000 for key in (16, 17, 18, 91, 92)):

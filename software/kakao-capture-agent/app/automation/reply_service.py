@@ -22,6 +22,9 @@ class TestReplySender:
     def send(self):
         self.audit("reply_attempt", "Operator requested fixed test reply; no automatic retries")
         try:
+            if self.cancel.is_set():
+                raise Cancelled("Test reply cancelled")
+            self.composer.prepare(self.cancel)
             handle = self.check()
             if self.composer.read(handle):
                 raise AgentError(
