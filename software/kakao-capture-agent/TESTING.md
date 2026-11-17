@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.15](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.15) was built and published on 2026-11-17 by [Windows Actions run 44045139976](https://github.com/prof-lijar/ax-project/actions/runs/44045139976).
+[Release v0.1.0-rc.16](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.16) was built and published on 2026-11-17 by [Windows Actions run 44048632705](https://github.com/prof-lijar/ax-project/actions/runs/44048632705).
 
-- Windows Server 2022 x64, Python 3.12.10: **181 tests passed in 15.89 seconds**, including the Bizgo v2 request/response contract, SMS/LMS encoding/length handling, editable numbers and standalone sample controls, final-stage sequencing/cancellation, native credential persistence, settings failure redaction, capture/LLM/reply regressions, native multiline Korean/emoji replacement, and directory ACLs. Bizgo HTTP tests used only mocked responses.
-- Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
+- Windows Server 2022 x64, Python 3.12.10: **220 tests passed in 19.81 seconds**, including the incoming-message workflow, focus recovery, native API availability, GUI controls, and previous capture/reply/Bizgo/credential regressions.
+- Both source and standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.15-windows-x64.exe`, 109,011,600 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `032ffd2f3cb5d73d2fb87726f00e5a0516b256921a9d510b4145be97fab18e1a`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.16-windows-x64.exe`, 109,023,095 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `f21ee2d6bf725310f533b21e3d82eb7a6b21fe1e2191a2b8371d3cfdb92e68a5`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
@@ -40,7 +40,7 @@ Real Bizgo sandbox acceptance, production acceptance, registered sender validati
 
 Portable validation on 2026-11-17: **163 tests passed, 18 native Windows cases skipped in 5.60 seconds**. Ruff lint and formatting passed.
 
-Windows validation: **181 tests passed in 15.89 seconds**, followed by successful source and frozen startup checks in the rc.15 run above. Production/Sandbox Bizgo account testing remains pending; no real messages were sent during development or CI.
+Windows validation: **181 tests passed in 15.89 seconds**, followed by successful source and frozen startup checks in [rc.15 run 44045139976](https://github.com/prof-lijar/ax-project/actions/runs/44045139976). Production/Sandbox Bizgo account testing remains pending; no real messages were sent during development or CI.
 
 ### Settings credential save — 2026-11-17
 
