@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.11](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.11) was built and published on 2026-11-17 by [Windows Actions run 44030119795](https://github.com/prof-lijar/ax-project/actions/runs/44030119795).
+[Release v0.1.0-rc.13](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.13) was built and published on 2026-11-17 by [Windows Actions run 44033354154](https://github.com/prof-lijar/ax-project/actions/runs/44033354154).
 
-- Windows Server 2022 x64, Python 3.12.10: **95 tests passed in 11.36 seconds**, including native Unicode draft replacement and parent change notifications, intercepted Enter input encoding, rejected/partial input cleanup, composer-clear observations, automatic capture stop before sending, activation timing, capture-independent composer discovery, control diagnostics, test-reply guards, local-save regressions, and the native directory ACL regression test.
+- Windows Server 2022 x64, Python 3.12.10: **141 tests passed in 11.93 seconds**, including the mocked capture/vision/summary/send cycle, LLM cancellation and failure handling, workflow GUI controls, native long/multiline Korean and emoji replacement, rejection without sending old drafts, parent change notifications, intercepted Enter input encoding, capture/upload regressions, and the native directory ACL regression test.
 - Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.11-windows-x64.exe`, 108,988,712 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `aec45f1a589d064ebace92d9ae366475686f18f89a282cc5aad3e992bd0e34e7`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.13-windows-x64.exe`, 109,000,515 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `a412302e953f4230ae540b991bc72c32f039d61ca6a1ecc4f4d29c25aeb26eaf`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
@@ -23,6 +23,8 @@ A live model check on 2026-11-17 called the existing `nexgent/agents` server at 
 The user reported the rc.11 fixed-message send working in KakaoTalk. The new full capture/LLM/multiline-send cycle still requires the manual check below.
 
 The first workflow build, rc.12 ([run 44033009821](https://github.com/prof-lijar/ax-project/actions/runs/44033009821)), stopped before packaging: 133 tests passed and four long-text native cases failed because the synthetic Edit control lacked `ES_AUTOVSCROLL`. [Windows documents that such controls reject text exceeding the visible lines](https://learn.microsoft.com/en-us/windows/win32/controls/about-edit-controls). The fixture now enables vertical scrolling for long-text acceptance and retains separate non-scrolling refusal cases verifying that the sender never presses Enter on an unchanged old draft. The application does not modify KakaoTalk control styles.
+
+After the fixture correction, the focused Linux reply/workflow/GUI suite passed **60 tests, with 16 native cases skipped in 0.55 seconds**. The complete corrected Windows suite passed all 141 tests as recorded above.
 
 The test-reply suite covers exact Korean text, automatic replacement of existing text/whitespace/leftover test drafts, cancellation, changed focus/control, text mismatch, audit failure, uncertain sends without retries, dispatch serialized after Stop, control validation, and duplicate/cancelled GUI timers. Windows-only cases target a synthetic hidden native Edit control to replace each kind of draft and verify both the Unicode result and the parent's `EN_CHANGE` notification. `SendInput` is intercepted in these tests to verify Enter down/up scan-code encoding and native structure size without injecting keys. Portable tests additionally cover rejected/partial input with key-up cleanup, last-moment cancellation/focus guards, and cleared/remaining/uncertain composer observations. Real KakaoTalk sending remains a manual acceptance check.
 
