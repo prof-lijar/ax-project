@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from PySide6.QtCore import QAbstractNativeEventFilter, QCoreApplication, QEvent
 
 from app.automation.monitoring_service import MonitoringService
@@ -9,8 +10,9 @@ from app.gui.settings_dialog import SettingsDialog
 from app.models import Selection, State, Target, TargetUnavailable
 
 
+@pytest.mark.parametrize("reply_command", ["send_test", "test_workflow"])
 def test_full_window_preview_and_settings(
-    tmp_path, config, queue, frame, region, monkeypatch, qt_app
+    tmp_path, config, queue, frame, region, monkeypatch, qt_app, reply_command
 ):
     from app.capture.screen_capture import encode_png
     from app.gui.main_window import MainWindow, Signals
@@ -68,6 +70,9 @@ def test_full_window_preview_and_settings(
     assert window.send_test_button.isEnabled()
     config.target = Target(42, 1, "start", "kakao.exe", "chat", "test conversation")
     config.selection = Selection(region, 300, 300, 96)
+    config.llm_url = "https://llm.test/v1"
+    config.llm_model = "vision"
+    config.llm_supports_vision = True
     timers = []
     activation = []
     desktop.request_target_activation = lambda: activation.append(window.isMinimized()) or True
@@ -76,39 +81,43 @@ def test_full_window_preview_and_settings(
     )
     monitor.state = State.LIVE_MONITORING
     monitor.want_live = True
-    window.action("send_test")
-    window.action("send_test")
+    window.action(reply_command)
+    window.action(reply_command)
     assert len(timers) == 1 and not window.send_test_button.isEnabled()
+    assert not window.test_workflow_button.isEnabled()
     assert activation == [False]  # Request foreground before minimizing the agent.
     assert monitor.stop_input.is_set() and not monitor.want_live
     window.action("stop")
-    window.action("send_test")
+    window.action(reply_command)
     assert len(timers) == 2
     timers[0]()  # The cancelled timer cannot dispatch a newly requested send early.
     assert monitor.commands.get_nowait() == "stop"
     assert monitor.commands.empty()
     timers[1]()
-    assert monitor.commands.get_nowait() == "send_test"
+    assert monitor.commands.get_nowait() == reply_command
     assert monitor.commands.empty()
 
     def unavailable():
         raise TargetUnavailable("Target closed")
 
     desktop.request_target_activation = unavailable
-    window.action("send_test")
+    window.action(reply_command)
     assert window.pending_action is None
     assert window.send_test_button.isEnabled()
+    assert window.test_workflow_button.isEnabled()
     assert len(timers) == 2
     assert monitor.commands.get_nowait() == "stop"  # Failed activation never queues a send.
     assert monitor.commands.empty()
     dialog = SettingsDialog(config, window)
     dialog.controls["chat_id"].setText("changed-chat")
     dialog.controls["local_only"].setChecked(True)
+    dialog.controls["llm_model"].setText("changed-model")
     dialog.accept()
     assert dialog.result_config.chat_id == "changed-chat"
     assert config.chat_id != "changed-chat"
     save(tmp_path / "local-config.json", dialog.result_config)
     assert load(tmp_path / "local-config.json").local_only is True
+    assert load(tmp_path / "local-config.json").llm_model == "changed-model"
     window.closing = True
     window.close()
     app.removeNativeEventFilter(window.hotkey)

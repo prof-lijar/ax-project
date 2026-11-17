@@ -1,8 +1,8 @@
 # KakaoTalk Capture Agent
 
-Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md). It does not interpret messages or use private KakaoTalk APIs.
+Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
 
-An operator-triggered **Send Test Reply** button extends the original capture-only scope with one fixed test message: `[AI가 답장드렸습니다]`. No automatic or AI-generated replies are enabled.
+**Send Test Reply** sends the fixed message `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → automatic reply cycle. Each requires an explicit button click; incoming messages never trigger replies by themselves.
 
 **Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI selection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
@@ -79,6 +79,7 @@ Turning local-only mode off resumes previously assigned upload jobs; it does not
 | Save Capture Locally | Saves one PNG without scrolling or assigning it to an API; available while stopped or paused |
 | Open Captures Folder | Opens the local PNG folder in File Explorer |
 | Send Test Reply | Stops capture/navigation, activates the selected chat, replaces its message-box contents with the fixed reply, and requests Enter once |
+| Test Workflow | Saves the current selected region, extracts text with the configured vision LLM, generates a simulated summary, and sends one `[test]` reply |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
 | Ctrl+Shift+F12 | Global emergency stop, including while the GUI is minimized |
@@ -95,6 +96,35 @@ Temporary focus loss, obstruction, or session unavailability pauses collection. 
 If the status says **Bring the selected conversation to the foreground**, click the exact chat window chosen in Select Window and keep it active. Merely leaving it visible beside the agent is insufficient; inspecting the agent takes focus away from the chat. Recovery checks wait quietly while the same condition persists. For a one-shot test, click **Stop**, then **Save Capture Locally** (below the Preview/Scroll controls), and bring the chat forward during the three-second delay. If this still fails, reselect the conversation window rather than KakaoTalk's main contacts/chat-list window.
 
 Closing the application stops navigation and waits for the current upload (bounded by the configured request deadline). Remaining jobs persist. Optional sign-in launch is configured in Settings; automatic monitoring at sign-in is a separate opt-in. A new KakaoTalk process/window after reboot requires reselection.
+
+## Test one capture → LLM → reply workflow
+
+In **Settings**, configure the separate LLM connection using the same OpenAI-compatible API as `nexgent/agents`:
+
+| Setting | Local server used for the synthetic image test |
+|---|---|
+| LLM base URL | `http://192.168.0.17:8000/v1` |
+| Vision LLM model | `gemma-4-31b` |
+| LLM API key | Your existing `OPENAI_API_KEY`; stored in Windows Credential Manager |
+| Enable image input for this vision-capable LLM | Checked |
+| Allow unencrypted LLM HTTP on trusted LAN/localhost | Checked for this HTTP address |
+| Whole LLM workflow timeout | 120 seconds by default, configurable to 300 |
+
+These are examples, not embedded server settings. The Windows PC must be able to reach the model server. The configured server passed a generated English image extraction/summary test on 2026-11-17; real Korean chat extraction still needs testing. Use HTTPS for non-local endpoints. HTTP requires the explicit LAN option and a private IP or localhost; it carries the image and key without encryption.
+
+Save Settings, select the chat window and message region, then click **Test Workflow** once. The agent stops monitoring, activates that same conversation, captures the region at its current scroll position, and saves its PNG in `%LOCALAPPDATA%\KakaoCaptureAgent\captures`. The activity log shows the exact file path. It makes two non-streaming `/v1/chat/completions` calls: an image-input request extracting visible message text, followed by a text request generating a simulated completion summary. It then focuses the verified composer, replaces its contents, and sends one message:
+
+```text
+[test]
+-- What is done (simulation): A meeting agenda was prepared including project status and next steps.
+-- User request (extracted text): Please prepare a meeting agenda.
+```
+
+The generated summary uses the source language where possible. The task described in the chat is **not actually performed**; this is only a test simulation. OCR is limited to the most recent complete messages fitting 1,200 characters, with a summary of at most 400 characters. Earlier `[test]` replies are excluded by the extraction prompt; this is model behavior, not guaranteed message-level filtering. Screenshot text is supplied as untrusted data and no model tools are available.
+
+**Stop** / **Ctrl+Shift+F12** cancels a pending model request or send. The GUI remains responsive during inference. Errors, empty/unreadable text, malformed/truncated model responses, cancellation, or a changed target stop the cycle. There are no automatic model retries or reply retries. After one cycle, capture remains stopped. The final status reports whether the composer cleared; check the conversation for actual delivery. Local-only mode pauses the normal screenshot-upload queue; explicitly clicking **Test Workflow** still sends its screenshot to the configured LLM. Its saved PNG remains unassigned to the normal upload API.
+
+Environment variables follow the agents adapter: `OPENAI_BASE_URL` takes precedence over `URL`, `OPENAI_MODEL` over `MODEL`, and these override saved LLM fields. `OPENAI_SUPPORTS_VISION` overrides the saved vision checkbox. `OPENAI_API_KEY` overrides the separately stored LLM credential. URL may be a server root, `/v1` base, or complete `/chat/completions` endpoint. The executable does not load another project's `.env` automatically and never bundles credentials. Set the key in Settings for double-click launches. The capture-upload token is not reused as the LLM key.
 
 ## Send the fixed test reply
 
@@ -154,7 +184,7 @@ Headers include `Authorization: Bearer ...` and `Idempotency-Key: <capture_id>`.
 {"status": "accepted", "capture_id": "the-same-capture-id"}
 ```
 
-The backend must authenticate the sender, validate payloads, persist before acknowledgement, and deduplicate by capture ID. The client verifies TLS, does not follow redirects, and disables implicit environment proxy configuration. HTTP is accepted only for an explicitly enabled literal loopback address. OCR and message-level deduplication belong to the backend.
+The backend must authenticate the sender, validate payloads, persist before acknowledgement, and deduplicate by capture ID. The upload client verifies TLS, does not follow redirects, and disables implicit environment proxy configuration. Upload HTTP is accepted only for an explicitly enabled literal loopback address. Normal capture interpretation and message-level deduplication belong to the backend. The separate Test Workflow LLM connection follows the settings above.
 
 Connection/time-out failures, 429, 5xx, and invalid acknowledgements retry with exponential backoff and jitter. Both seconds and HTTP-date forms of `Retry-After` are honored. Five retries are allowed by default in addition to the initial attempt. Authentication errors pause dispatch; other permanent errors and exhausted retries remain available for operator review. Correct settings and select **Retry Failed Uploads** to retry them.
 

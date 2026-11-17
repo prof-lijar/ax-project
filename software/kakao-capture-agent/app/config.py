@@ -34,6 +34,11 @@ class Config:
     api_url: str = ""
     local_only: bool = False
     allow_local_http: bool = False
+    llm_url: str = ""
+    llm_model: str = ""
+    llm_supports_vision: bool = False
+    llm_allow_http: bool = False
+    llm_timeout_seconds: int = 120
     capture_interval_seconds: float = 2
     change_detection: bool = True
     difference_threshold: float = 0.01
@@ -58,7 +63,14 @@ class Config:
 
     def validate(self):
         validate_endpoint(self.api_url, self.allow_local_http)
+        from app.api.workflow_llm import validate_llm_url
+
+        if self.llm_url:
+            validate_llm_url(self.llm_url, self.llm_allow_http)
+        if not isinstance(self.llm_model, str):
+            raise ValueError("LLM model must be text")
         ranges = {
+            "llm_timeout_seconds": (5, 300),
             "capture_interval_seconds": (1, 60),
             "difference_threshold": (0.0001, 1),
             "pixel_threshold": (1, 255),
@@ -84,6 +96,7 @@ class Config:
             ):
                 raise ValueError(f"Invalid {name}: expected {low} through {high}")
         for name in (
+            "llm_timeout_seconds",
             "pixel_threshold",
             "scroll_step",
             "scroll_delay_ms",
@@ -99,6 +112,8 @@ class Config:
             if type(getattr(self, name)) is not int:
                 raise ValueError(f"{name} must be an integer")
         for name in (
+            "llm_supports_vision",
+            "llm_allow_http",
             "allow_local_http",
             "local_only",
             "change_detection",

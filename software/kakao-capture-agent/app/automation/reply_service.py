@@ -1,4 +1,4 @@
-"""One explicit operator click sends one fixed test reply; no background replies."""
+"""One explicit operator action sends one bounded reply; no automatic retries."""
 
 from app.models import AgentError, Cancelled
 
@@ -19,10 +19,18 @@ class TestReplySender:
             )
         return current
 
-    def send(self):
+    def send(self, text=TEST_REPLY):
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or len(text) > 2000
+            or any(ord(c) < 32 and c not in "\r\n\t" for c in text)
+        ):
+            raise AgentError("Reply is empty, too long, or contains unsupported control characters")
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
         self.audit(
             "reply_attempt",
-            "Operator requested fixed reply with draft replacement; no automatic retries",
+            "Operator requested reply with draft replacement; no automatic retries",
         )
         try:
             if self.cancel.is_set():
@@ -30,10 +38,11 @@ class TestReplySender:
             self.composer.prepare(self.cancel)
             handle = self.check()
             self.check(handle)
-            # The operator requested automatic replacement with the fixed test reply.
-            self.composer.write(handle, TEST_REPLY)
+            # Win32 multiline editors may normalize LF to CRLF on readback.
+            self.composer.write(handle, normalized.replace("\n", "\r\n"))
             self.check(handle)
-            if self.composer.read(handle) != TEST_REPLY:
+            actual = self.composer.read(handle).replace("\r\n", "\n").replace("\r", "\n")
+            if actual != normalized:
                 raise AgentError(
                     "Test text could not be verified; Enter was not sent. Inspect the draft"
                 )

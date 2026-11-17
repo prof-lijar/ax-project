@@ -1,4 +1,4 @@
-"""Targeted standard Win32 edit-control messages; no clipboard or global keystrokes."""
+"""Targeted Win32 text edits followed by a guarded native Enter keypress."""
 
 import ctypes
 import time
@@ -184,7 +184,8 @@ class WindowsComposer:
 
     def read(self, handle):
         self.guard(handle)
-        text = ctypes.create_unicode_buffer(1024)
+        # Up to 2,000 reply characters, including UTF-16 surrogate pairs and CRLF.
+        text = ctypes.create_unicode_buffer(4096)
         self.message(handle, 0x000D, len(text), ctypes.addressof(text))  # WM_GETTEXT
         return text.value
 

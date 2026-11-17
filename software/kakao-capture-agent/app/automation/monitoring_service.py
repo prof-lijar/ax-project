@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
+from app.automation.test_workflow import OneCycleWorkflow
 from app.automation.windows_composer import WindowsComposer
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
@@ -41,6 +42,16 @@ class MonitoringService(threading.Thread):
         self.want_live = False
         self.reply_sender = TestReplySender(
             WindowsComposer(desktop, activity), queue.event, self.stop_input
+        )
+        self.test_workflow = OneCycleWorkflow(
+            desktop,
+            capture,
+            queue,
+            config,
+            self.reply_sender,
+            self.stop_input,
+            preview,
+            lambda message: self.transition(State.INITIALIZING, message),
         )
 
     def transition(self, state, reason=""):
@@ -183,12 +194,19 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
-        elif command == "send_test" and self.state == State.STOPPED:
+        elif command in ("send_test", "test_workflow") and self.state == State.STOPPED:
             self.want_live = self.recoverable = False
             self.stop_input.clear()
-            self.transition(State.INITIALIZING, "Preparing test reply")
+            self.transition(
+                State.INITIALIZING,
+                "Preparing test workflow" if command == "test_workflow" else "Preparing test reply",
+            )
             try:
-                result = self.reply_sender.send()
+                result = (
+                    self.test_workflow.run()
+                    if command == "test_workflow"
+                    else self.reply_sender.send()
+                )
                 self.transition(State.STOPPED, result)
             finally:
                 self.stop_input.set()

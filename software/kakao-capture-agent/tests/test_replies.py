@@ -293,7 +293,15 @@ def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypa
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires standard Win32 edit controls")
 @pytest.mark.parametrize("draft", ["", "Existing draft 한글", " \r\n", TEST_REPLY])
-def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft):
+@pytest.mark.parametrize(
+    "reply",
+    [
+        TEST_REPLY,
+        "[test]\r\n-- 완료 (시뮬레이션)\r\n-- 요청",
+        "[test]\r\n" + "한글 내용 " * 220 + "\r\n끝 😀",
+    ],
+)
+def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft, reply):
     """Native edits target a hidden control; SendInput is intercepted, never injected."""
     import ctypes
 
@@ -347,8 +355,8 @@ def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft)
 
         original = win32gui.SetWindowLong(parent, win32con.GWL_WNDPROC, procedure)
         assert composer.read(child) == draft
-        composer.write(child, TEST_REPLY)
-        assert composer.read(child) == TEST_REPLY
+        composer.write(child, reply)
+        assert composer.read(child) == reply
         assert child in received  # Verify the edit actually notifies the parent of changed text.
         composer.submit(child)
         assert keyboard_batches == [[(1, 0x1C, 8), (1, 0x1C, 10)]]

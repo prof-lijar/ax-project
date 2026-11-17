@@ -153,12 +153,22 @@ class MainWindow(QMainWindow):
         self.send_test_button = QPushButton("Send Test Reply")
         self.send_test_button.clicked.connect(lambda: self.action("send_test"))
         row.addWidget(self.send_test_button)
+        self.test_workflow_button = QPushButton("Test Workflow")
+        self.test_workflow_button.clicked.connect(lambda: self.action("test_workflow"))
+        row.addWidget(self.test_workflow_button)
         layout.addLayout(row)
         hint = QLabel(
             "Send Test Reply stops capture, focuses the selected chat, replaces its message-box contents with the test reply, and sends once."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
+        workflow_hint = QLabel(
+            "Test Workflow saves the current region, sends it to your configured vision LLM, "
+            "then automatically sends one [test] simulation summary and extracted text to this chat. "
+            "This explicit action uses the LLM even in local-only capture mode."
+        )
+        workflow_hint.setWordWrap(True)
+        layout.addWidget(workflow_hint)
         self.api_status = QLabel("API: idle")
         self.refresh_storage_mode()
         self.api_status.setWordWrap(True)
@@ -206,6 +216,7 @@ class MainWindow(QMainWindow):
         self.send_test_button.setEnabled(
             state != State.INITIALIZING.value and not self.pending_action and not self.closing
         )
+        self.test_workflow_button.setEnabled(self.send_test_button.isEnabled())
 
     def open_captures_folder(self):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
@@ -365,6 +376,10 @@ class MainWindow(QMainWindow):
             new = dialog.result_config
             if dialog.token:
                 set_token(new.api_url, dialog.token)
+            if dialog.llm_token:
+                from app.api.workflow_llm import LLMSettings, credential_destination
+
+                set_token(credential_destination(LLMSettings.resolve(new).url), dialog.llm_token)
             configure_startup(new.launch_at_signin)
             save(self.config_path, new)
             # Workers share this object; settings are only editable while capture is stopped.
@@ -387,7 +402,8 @@ class MainWindow(QMainWindow):
             return
         if self.pending_action:
             return
-        if command == "send_test" and self.monitor.state == State.INITIALIZING:
+        automatic_reply = command in ("send_test", "test_workflow")
+        if automatic_reply and self.monitor.state == State.INITIALIZING:
             return
         if not self.config.target or not self.config.selection or not self.config.chat_id:
             QMessageBox.warning(
@@ -396,6 +412,14 @@ class MainWindow(QMainWindow):
                 "Select a window and region, then set a chat identifier in Settings",
             )
             return
+        if command == "test_workflow":
+            from app.api.workflow_llm import LLMSettings
+
+            try:
+                LLMSettings.resolve(self.config)
+            except AgentError as error:
+                QMessageBox.warning(self, "LLM settings required", str(error))
+                return
         if (
             command == "confirm_bottom"
             and QMessageBox.question(
@@ -417,7 +441,7 @@ class MainWindow(QMainWindow):
             return
         if command == "history" and self.monitor.state != State.LIVE_MONITORING:
             return
-        if command == "send_test":
+        if automatic_reply:
             # Serialize sending after capture/navigation has stopped; no manual Stop step.
             self.monitor.command("stop")
         if command != "history":
@@ -426,17 +450,21 @@ class MainWindow(QMainWindow):
         self.action_generation += 1
         generation = self.action_generation
         self.send_test_button.setEnabled(False)
+        self.test_workflow_button.setEnabled(False)
         self.log(
-            "Sending test reply automatically: existing message-box contents will be replaced. Ctrl+Shift+F12 cancels"
+            "Starting one test workflow: capture, LLM extraction/summary, and automatic reply. Ctrl+Shift+F12 cancels"
+            if command == "test_workflow"
+            else "Sending test reply automatically: existing message-box contents will be replaced. Ctrl+Shift+F12 cancels"
             if command == "send_test"
             else "Action starts in 3 seconds. Bring the selected conversation to the foreground"
         )
-        if command == "send_test":
+        if automatic_reply:
             try:
                 accepted = self.desktop.request_target_activation()
             except Exception as error:
                 self.pending_action = None
                 self.send_test_button.setEnabled(True)
+                self.test_workflow_button.setEnabled(True)
                 reason = (
                     str(error)
                     if isinstance(error, AgentError)
@@ -460,7 +488,7 @@ class MainWindow(QMainWindow):
                 self.pending_action = None
                 self.monitor.command(command)
 
-        QTimer.singleShot(250 if command == "send_test" else 3000, execute)
+        QTimer.singleShot(250 if automatic_reply else 3000, execute)
 
     def retry(self):
         self.queue_action(

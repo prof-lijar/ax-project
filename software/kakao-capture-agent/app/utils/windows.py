@@ -9,8 +9,8 @@ def credential_name(destination):
     return "KakaoCaptureAgent/" + hashlib.sha256(destination.encode()).hexdigest()
 
 
-def get_token(destination):
-    override = os.environ.get("KAKAO_CAPTURE_API_TOKEN")
+def get_token(destination, environment_variable="KAKAO_CAPTURE_API_TOKEN"):
+    override = os.environ.get(environment_variable)
     if override:
         return override
     import win32cred

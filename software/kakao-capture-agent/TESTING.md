@@ -14,11 +14,19 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### One-cycle LLM workflow — 2026-11-17
+
+The workflow integration test uses a synthetic screenshot and two HTTPX mock responses to verify that the exact saved PNG reaches the vision request, extracted Korean text reaches the summary request, and exactly one multiline `[test]` reply reaches the guarded composer. It checks that the PNG remains unassigned to the upload API and monitoring stays stopped. Regressions cover cancellation during an active asynchronous request, target changes, unavailable targets, storage failure, authentication/rate-limit/server errors, redirects, timeouts, invalid/oversized/truncated/empty responses, environment settings, local HTTP opt-in, and GUI duplicate/stale timer handling. No test sends a real chat message.
+
+A live model check on 2026-11-17 called the existing `nexgent/agents` server at `http://192.168.0.17:8000/v1` using model `gemma-4-31b` and its locally stored credential. The input was a generated white image with two English requests about preparing a meeting agenda, project status, and next steps. Both image extraction and text summarization succeeded and produced the intended `[test]` reply format. No actual chat image was transmitted, no KakaoTalk input was sent, and no credential was printed or committed. This verifies model image support from the development host, not connectivity from the user's Windows PC or Korean OCR accuracy.
+
+The user reported the rc.11 fixed-message send working in KakaoTalk. The new full capture/LLM/multiline-send cycle still requires the manual check below.
+
 The test-reply suite covers exact Korean text, automatic replacement of existing text/whitespace/leftover test drafts, cancellation, changed focus/control, text mismatch, audit failure, uncertain sends without retries, dispatch serialized after Stop, control validation, and duplicate/cancelled GUI timers. Windows-only cases target a synthetic hidden native Edit control to replace each kind of draft and verify both the Unicode result and the parent's `EN_CHANGE` notification. `SendInput` is intercepted in these tests to verify Enter down/up scan-code encoding and native structure size without injecting keys. Portable tests additionally cover rejected/partial input with key-up cleanup, last-moment cancellation/focus guards, and cleared/remaining/uncertain composer observations. Real KakaoTalk sending remains a manual acceptance check.
 
 Development environment: Linux, CPython 3.12.3. Run `python -m pytest -q` from the project directory. The suite uses temporary directories, synthetic images, fake desktop adapters, and HTTPX mock/ASGI transports; it does not collect real conversations.
 
-Verified on 2026-11-17 after native Enter and edit-notification changes: **90 tests passed, 5 Windows-only cases skipped in 4.42 seconds**, with process exit code 0. Ruff lint and formatting checks passed. Coverage includes capture-independent composer discovery, bounded control diagnostics, activation before GUI minimization, stopping auto-recovery during manual countdowns, exact-target activation, refusal after handle reuse or activation denial, obstruction/cancellation before clicking, and cleanup after a partially injected mouse press. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
+Verified on 2026-11-17 after the one-cycle workflow changes: **124 tests passed, 13 Windows-only cases skipped in 5.36 seconds**, with process exit code 0. Ruff lint and formatting checks passed. Coverage also includes capture-independent composer discovery, bounded control diagnostics, activation before GUI minimization, stopping auto-recovery during manual countdowns, exact-target activation, refusal after handle reuse or activation denial, obstruction/cancellation before clicking, and cleanup after a partially injected mouse press. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
 
 Local-save regression tests verify full-resolution PNG bytes, repeated manual saves without scrolling or live-baseline changes, invalid-target rejection, persistence across restart/maintenance, explicit API assignment, pausing/resuming pre-existing uploads, the folder-opening action, and persistence of the local-only setting.
 
@@ -49,6 +57,11 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 
 | Scenario | Expected result |
 |---|---|
+| Test Workflow with configured local vision LLM | One current-position capture is saved, two model calls complete, and one `[test]` simulation summary plus extracted text appears in the selected conversation |
+| Stop while LLM is processing | Pending HTTP work cancels; no later reply or monitoring restart occurs |
+| LLM error / unreadable image / changed chat | Visible failure; local capture retained if saved; no send or automatic retry |
+| Test Workflow in local-only mode | Explicit LLM call still runs; saved PNG remains unassigned to ordinary uploads |
+| Long Korean multiline workflow reply | Native readback matches the complete message; one Enter submits it as one message |
 | Fresh install and launch | GUI opens, data directory and schema initialize, capture starts stopped |
 | Send Test Reply while monitoring or paused | Click once; capture/navigation stops, chat and composer focus automatically, existing draft is replaced, and exactly `[AI가 답장드렸습니다]` appears once |
 | Activation denied / zero or multiple composers | Send stops without typing; no fallback to another window or guessed click position |

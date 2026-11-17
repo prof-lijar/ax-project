@@ -8,8 +8,13 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLineEdit,
     QMessageBox,
+    QScrollArea,
     QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
+
+from app.models import AgentError
 
 
 class SettingsDialog(QDialog):
@@ -18,7 +23,15 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Capture and API settings")
         self.result_config = deepcopy(config)
         self.token = ""
-        form = QFormLayout(self)
+        self.llm_token = ""
+        self.resize(650, 700)
+        layout = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        scroll.setWidget(body)
+        layout.addWidget(scroll)
+        form = QFormLayout(body)
         self.controls = {}
         for name, label in [("chat_id", "Chat identifier"), ("api_url", "Upload URL")]:
             control = QLineEdit(getattr(config, name))
@@ -31,7 +44,22 @@ class SettingsDialog(QDialog):
         self.secret.setEchoMode(QLineEdit.Password)
         self.secret.setPlaceholderText("Leave blank to keep the saved token")
         form.addRow("Bearer token", self.secret)
+        for name, label, placeholder in [
+            ("llm_url", "LLM base URL", "http://192.168.0.17:8000/v1"),
+            ("llm_model", "Vision LLM model", "Use your server's image-capable model name"),
+        ]:
+            control = QLineEdit(getattr(config, name))
+            control.setPlaceholderText(placeholder)
+            form.addRow(label, control)
+            self.controls[name] = control
+        self.llm_secret = QLineEdit()
+        self.llm_secret.setEchoMode(QLineEdit.Password)
+        self.llm_secret.setPlaceholderText(
+            "Leave blank to keep saved key; OPENAI_API_KEY also supported"
+        )
+        form.addRow("LLM API key", self.llm_secret)
         for name, label, low, high, decimals in [
+            ("llm_timeout_seconds", "Whole LLM workflow timeout (seconds)", 5, 300, 0),
             ("difference_threshold", "Changed pixel fraction", 0.0001, 1, 4),
             ("debounce_seconds", "Debounce (seconds)", 0, 10, 1),
             ("scroll_step", "Maximum wheel notches per step", 1, 10, 0),
@@ -53,6 +81,8 @@ class SettingsDialog(QDialog):
         self.storage.setValue(config.storage_limit_bytes / 1024**3)
         form.addRow("Storage budget (GiB)", self.storage)
         for name, label in [
+            ("llm_supports_vision", "Enable image input for this vision-capable LLM"),
+            ("llm_allow_http", "Allow unencrypted LLM HTTP on trusted LAN/localhost"),
             ("local_only", "Local-only mode: save PNGs and pause uploads"),
             ("allow_local_http", "Allow loopback HTTP mock API"),
             ("auto_resume", "Resume after verified temporary interruption"),
@@ -66,7 +96,7 @@ class SettingsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
+        layout.addWidget(buttons)
 
     def accept(self):
         for name, control in self.controls.items():
@@ -83,8 +113,13 @@ class SettingsDialog(QDialog):
             self.result_config.validate()
             if self.secret.text() and not self.result_config.api_url:
                 raise ValueError("Enter an API URL before saving a token")
-        except ValueError as error:
+            if self.llm_secret.text().strip():
+                from app.api.workflow_llm import LLMSettings
+
+                LLMSettings.resolve(self.result_config)
+        except (ValueError, AgentError) as error:
             QMessageBox.warning(self, "Invalid settings", str(error))
             return
         self.token = self.secret.text().strip()
+        self.llm_token = self.llm_secret.text().strip()
         super().accept()
