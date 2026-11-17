@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.8](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.8) was built and published on 2026-11-17 by [Windows Actions run 44022840677](https://github.com/prof-lijar/ax-project/actions/runs/44022840677).
+[Release v0.1.0-rc.9](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.9) was built and published on 2026-11-17 by [Windows Actions run 44024321428](https://github.com/prof-lijar/ax-project/actions/runs/44024321428).
 
-- Windows Server 2022 x64, Python 3.12.10: **77 tests passed in 10.41 seconds**, including activation/composer-discovery safeguards, test-reply guards, a synthetic native Edit control Unicode/Enter test, local-save regressions, and the native directory ACL regression test.
+- Windows Server 2022 x64, Python 3.12.10: **81 tests passed in 11.93 seconds**, including activation timing, capture-independent composer discovery, control diagnostics, manual-action/recovery coordination, test-reply guards, a synthetic native Edit control Unicode/Enter test, local-save regressions, and the native directory ACL regression test.
 - Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.8-windows-x64.exe`, 108,983,735 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `db6d87ae76e161d3de170fb086b12041d9b3b08f735232c54eed25a6ef358e15`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.9-windows-x64.exe`, 108,982,941 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `04700b1890f0757ac3f82a62f9a235dd8a3fc4e36f99bdf4a7d2ad68dadcac2f`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
