@@ -1,10 +1,12 @@
 """Conservative Windows desktop validation and input to the verified target."""
 
 import ctypes
+import threading
+import time
 from ctypes import wintypes
 from pathlib import Path
 
-from app.models import Region, ReselectionRequired, Target, TargetUnavailable
+from app.models import Cancelled, Region, ReselectionRequired, Target, TargetUnavailable
 
 
 def enable_dpi_awareness():
@@ -164,18 +166,76 @@ class WindowsDesktop:
             try:
                 self.gui.SetForegroundWindow(hwnd)
             except Exception:
-                return False  # Do not bypass Windows foreground restrictions.
+                return False
         return True  # Request issued; the worker verifies the actual foreground later.
 
-    def activate_target(self):
-        """Reverify activation after the GUI has yielded; never assume it succeeded."""
-        self.request_target_activation()
-        hwnd = self.config.target.hwnd
-        if self.gui.GetForegroundWindow() != hwnd:
-            raise TargetUnavailable(
-                "Windows did not allow activating the selected chat; no reply sent"
-            )
-        self.validate()
+    def _activate_with_input_queue(self, hwnd):
+        """Temporarily share focus state; detach before waiting or sending input."""
+        # AttachThreadInput resets key state. Do not use it while modifiers are held.
+        if any(self.api.GetAsyncKeyState(key) & 0x8000 for key in (16, 17, 18, 91, 92)):
+            return
+        current = self.api.GetCurrentThreadId()
+        foreground = self.gui.GetForegroundWindow()
+        if not foreground:
+            return
+        threads = dict.fromkeys(
+            self.process.GetWindowThreadProcessId(window)[0] for window in (foreground, hwnd)
+        )
+        attach = self.user.AttachThreadInput
+        attach.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        attach.restype = wintypes.BOOL
+        # Ensure this worker has a USER message queue before attaching it.
+        self.gui.PeekMessage(None, 0, 0, 0)
+        attached = []
+        try:
+            for thread in threads:
+                if thread and thread != current:
+                    if not attach(current, thread, True):
+                        return
+                    attached.append(thread)
+            self.geometry()
+            self.gui.BringWindowToTop(hwnd)
+            self.gui.SetForegroundWindow(hwnd)
+        finally:
+            for thread in reversed(attached):
+                attach(current, thread, False)
+
+    def activate_target(self, cancel=None):
+        """Bounded focus recovery for the exact target, including after an LLM wait."""
+        cancel = cancel if cancel is not None else threading.Event()
+        target = self.config.target
+        deadline = time.monotonic() + 1.0
+        fallback_at = time.monotonic() + 0.15
+        requested = False
+        attached_attempt = False
+        while True:
+            if cancel.is_set():
+                raise Cancelled("Reply cancelled while activating the conversation")
+            if self.config.target != target:
+                raise ReselectionRequired("Target changed during activation; no reply sent")
+            if not requested:
+                self.request_target_activation()
+                requested = True
+            else:
+                if not self.session_available():
+                    raise TargetUnavailable("Interactive desktop is locked or unavailable")
+                self.geometry()
+            if self.gui.GetForegroundWindow() == target.hwnd:
+                self.validate()
+                return
+            if not attached_attempt and time.monotonic() >= fallback_at:
+                attached_attempt = True
+                try:
+                    self._activate_with_input_queue(target.hwnd)
+                except (ReselectionRequired, TargetUnavailable):
+                    raise
+                except Exception:
+                    pass  # A failed native focus request is verified below, never assumed.
+            if time.monotonic() >= deadline:
+                raise TargetUnavailable(
+                    "Windows did not allow activating the selected chat after focus recovery; no reply sent"
+                )
+            cancel.wait(0.05)
 
     def focus_reply_control(self, handle, cancel):
         """Click the verified edit control once; never guess message-box coordinates."""

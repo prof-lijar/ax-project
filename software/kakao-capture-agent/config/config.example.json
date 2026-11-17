@@ -35,5 +35,7 @@
   "launch_at_signin": false,
   "auto_start_monitoring": false,
   "target": null,
-  "selection": null
+  "selection": null,
+  "incoming_wait_timeout_seconds": 300,
+  "incoming_difference_threshold": 0.001
 }

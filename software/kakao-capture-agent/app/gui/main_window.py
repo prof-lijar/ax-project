@@ -173,6 +173,16 @@ class MainWindow(QMainWindow):
         )
         workflow_hint.setWordWrap(True)
         layout.addWidget(workflow_hint)
+        self.incoming_test_button = QPushButton("Test Workflow 2: Reply to Next Message")
+        self.incoming_test_button.clicked.connect(lambda: self.action("incoming_test"))
+        layout.addWidget(self.incoming_test_button)
+        incoming_hint = QLabel(
+            "Open the latest messages first. Workflow 2 watches the visible region, sends changed "
+            "frames to the vision LLM, replies once with [AI], then stops. Keep this chat visible. "
+            "No Bizgo step. Stop or Ctrl+Shift+F12 cancels."
+        )
+        incoming_hint.setWordWrap(True)
+        layout.addWidget(incoming_hint)
         self.bizgo_status = QLabel()
         self.bizgo_status.setWordWrap(True)
         layout.addWidget(self.bizgo_status)
@@ -225,6 +235,9 @@ class MainWindow(QMainWindow):
         )
         self.test_workflow_button.setEnabled(self.send_test_button.isEnabled())
         self.bizgo_test_button.setEnabled(self.send_test_button.isEnabled())
+        self.incoming_test_button.setEnabled(
+            self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
+        )
 
     def open_captures_folder(self):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
@@ -448,7 +461,7 @@ class MainWindow(QMainWindow):
             return
         if self.pending_action:
             return
-        automatic_reply = command in ("send_test", "test_workflow")
+        automatic_reply = command in ("send_test", "test_workflow", "incoming_test")
         sending = automatic_reply or command == "bizgo_test"
         if sending and self.monitor.state == State.INITIALIZING:
             return
@@ -467,7 +480,9 @@ class MainWindow(QMainWindow):
                 "Select a window and region, then set a chat identifier in Settings",
             )
             return
-        if command == "test_workflow":
+        if command == "incoming_test" and self.monitor.state == State.WAITING_FOR_MESSAGE:
+            return
+        if command in ("test_workflow", "incoming_test"):
             from app.api.workflow_llm import LLMSettings
 
             try:
@@ -507,6 +522,7 @@ class MainWindow(QMainWindow):
         self.send_test_button.setEnabled(False)
         self.test_workflow_button.setEnabled(False)
         self.bizgo_test_button.setEnabled(False)
+        self.incoming_test_button.setEnabled(False)
         self.log(
             (
                 "Sending one Bizgo sandbox sample (no phone delivery)"
@@ -514,6 +530,8 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
+            else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
+            if command == "incoming_test"
             else "Starting one test workflow: capture, LLM extraction/summary, and automatic reply. Ctrl+Shift+F12 cancels"
             if command == "test_workflow"
             else "Sending test reply automatically: existing message-box contents will be replaced. Ctrl+Shift+F12 cancels"
@@ -528,6 +546,7 @@ class MainWindow(QMainWindow):
                 self.send_test_button.setEnabled(True)
                 self.test_workflow_button.setEnabled(True)
                 self.bizgo_test_button.setEnabled(True)
+                self.incoming_test_button.setEnabled(True)
                 reason = (
                     str(error)
                     if isinstance(error, AgentError)

@@ -62,7 +62,7 @@ def test_capture_extract_summarize_send_one_cycle(config, queue, frame, region):
         return response("simulated_done", "회의 자료 준비를 완료했다고 가정합니다.")
 
     desktop = Desktop(region)
-    desktop.activate_target = lambda: desktop.validate()
+    desktop.activate_target = lambda cancel=None: desktop.validate()
     service = MonitoringService(
         desktop,
         Capture(desktop, frame),
@@ -100,7 +100,7 @@ def test_capture_extract_summarize_send_one_cycle(config, queue, frame, region):
 @pytest.mark.parametrize("failure", ["cancel", "retarget", "invalid_target", "network", "storage"])
 def test_workflow_failures_never_send(config, queue, frame, region, failure, monkeypatch):
     desktop = Desktop(region)
-    desktop.activate_target = lambda: desktop.validate()
+    desktop.activate_target = lambda cancel=None: desktop.validate()
     service = MonitoringService(
         desktop,
         Capture(desktop, frame),

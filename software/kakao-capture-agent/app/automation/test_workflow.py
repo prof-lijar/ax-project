@@ -42,7 +42,7 @@ class OneCycleWorkflow:
         self.queue.event("workflow_started", "Operator requested one capture/LLM/reply cycle")
         try:
             self.progress("Capturing the selected region at its current position")
-            self.desktop.activate_target()
+            self.desktop.activate_target(self.cancel)
             check_cancel(self.cancel)
             image, region = self.capture.grab()
             check_cancel(self.cancel)

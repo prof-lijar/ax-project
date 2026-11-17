@@ -21,7 +21,7 @@ class WindowsComposer:
             raise Cancelled("Test reply cancelled")
         d = self.desktop
         self.report("Activating the selected conversation for the test reply")
-        d.activate_target()
+        d.activate_target(cancel)
         region = d.validate()
         candidates = []
         diagnostics = []

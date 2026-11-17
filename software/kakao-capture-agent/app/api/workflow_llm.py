@@ -219,15 +219,13 @@ class WorkflowLLM:
                 + extracted
             )
 
-    async def run_async(self, png, cancel, progress):
+    async def run_operation(self, operation, cancel):
         check_cancel(cancel)
         if not self.token:
             raise AgentError(
                 "Configure the LLM API key in Settings or OPENAI_API_KEY; nothing sent"
             )
-        if len(png) > 20 * 1024**2:
-            raise AgentError("Workflow image exceeds 20 MiB; select a smaller region")
-        task = asyncio.create_task(self.generate(png, cancel, progress))
+        task = asyncio.create_task(operation())
         try:
             async with asyncio.timeout(self.settings.timeout):
                 while not task.done():
@@ -243,6 +241,11 @@ class WorkflowLLM:
             if not task.done():
                 task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    async def run_async(self, png, cancel, progress):
+        if len(png) > 20 * 1024**2:
+            raise AgentError("Workflow image exceeds 20 MiB; select a smaller region")
+        return await self.run_operation(lambda: self.generate(png, cancel, progress), cancel)
 
     def run(self, png, cancel, progress):
         return asyncio.run(self.run_async(png, cancel, progress))

@@ -166,3 +166,94 @@ def test_private_data_directory_acl(tmp_path):
     assert all(ace[1] == ntsecuritycon.FILE_ALL_ACCESS for ace in entries)
     assert all(ace[0][1] & 3 == 3 for ace in entries)
     (folder / "check.txt").write_text("synthetic data", encoding="utf-8")
+
+
+def test_focus_waits_for_delayed_activation(config):
+    import threading
+
+    desktop = adapter(config)
+    foreground = [99]
+    desktop.gui.GetForegroundWindow = lambda: foreground[0]
+    desktop.gui.SetForegroundWindow = lambda _: None
+    timer = threading.Timer(0.05, lambda: foreground.__setitem__(0, 42))
+    timer.start()
+    try:
+        desktop.activate_target()
+    finally:
+        timer.join()
+    assert desktop.validate()
+
+
+def test_focus_cancellation_prevents_fallback(config):
+    import threading
+
+    from app.models import Cancelled
+
+    desktop = adapter(config)
+    cancel = threading.Event()
+    attempts = []
+    desktop.gui.GetForegroundWindow = lambda: 99
+    desktop.gui.SetForegroundWindow = lambda _: cancel.set()
+    desktop._activate_with_input_queue = attempts.append
+    with pytest.raises(Cancelled):
+        desktop.activate_target(cancel)
+    assert not attempts
+
+
+@pytest.mark.parametrize(
+    "outcome", ["success", "attach_failure", "activation_error", "modifier", "retarget"]
+)
+def test_temporary_focus_queue_is_always_detached(config, outcome):
+    desktop = adapter(config)
+    calls = []
+    desktop.api = SimpleNamespace(
+        GetCurrentThreadId=lambda: 1,
+        GetAsyncKeyState=lambda _: 0x8000 if outcome == "modifier" else 0,
+    )
+    desktop.gui.GetForegroundWindow = lambda: 99
+    desktop.process = SimpleNamespace(
+        GetWindowThreadProcessId=lambda hwnd: (2 if hwnd == 99 else 3, 100)
+    )
+    desktop.gui.PeekMessage = lambda *a: calls.append("queue")
+    desktop.gui.BringWindowToTop = lambda hwnd: calls.append(("top", hwnd))
+
+    def activate(hwnd):
+        calls.append(("activate", hwnd))
+        if outcome == "activation_error":
+            raise RuntimeError("Denied")
+
+    desktop.gui.SetForegroundWindow = activate
+
+    class Attach:
+        def __call__(self, source, destination, attach):
+            calls.append((source, destination, attach))
+            return not (outcome == "attach_failure" and destination == 3 and attach)
+
+    desktop.user = SimpleNamespace(AttachThreadInput=Attach())
+    if outcome == "retarget":
+
+        def geometry():
+            raise ReselectionRequired("Target changed")
+
+        desktop.geometry = geometry
+    if outcome in ("activation_error", "retarget"):
+        with pytest.raises((RuntimeError, ReselectionRequired)):
+            desktop._activate_with_input_queue(42)
+    else:
+        desktop._activate_with_input_queue(42)
+    if outcome == "modifier":
+        assert not calls
+    elif outcome == "attach_failure":
+        assert calls == ["queue", (1, 2, True), (1, 3, True), (1, 2, False)]
+    else:
+        assert calls[-2:] == [(1, 3, False), (1, 2, False)]
+        assert (("activate", 42) in calls) == (outcome != "retarget")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Requires native Windows USER APIs")
+def test_native_focus_helper_apis_available(config):
+    desktop = WindowsDesktop(config)
+    # Create only this thread's queue; do not attach to or activate any real window.
+    assert desktop.api.GetCurrentThreadId() > 0
+    desktop.gui.PeekMessage(None, 0, 0, 0)
+    assert desktop.user.AttachThreadInput

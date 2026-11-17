@@ -14,6 +14,22 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Incoming-message workflow and focus recovery — 2026-11-17
+
+Portable validation: **201 tests passed, 19 native Windows cases skipped in 6.58 seconds**. Tests cover paired-image HTTP payloads, Korean reply formatting, malformed classifications, generated-message suppression, baseline/debounce behavior, one-shot sending, ignored changes, timeout at each stage, cancellation during active inference, lost/changed targets, storage/send failures, rearming, GUI command serialization, and temporary Windows input-queue cleanup. Existing workflow and Bizgo regressions still pass. Mocked focus tests cover delayed activation, cancellation, attachment failure, activation errors, modifier guards, and detachment. A native Windows case checks required APIs without activating another window.
+
+A live synthetic check used the existing local `gemma-4-31b` server with two generated chat-like images per classification. It identified a newly appended incoming question and generated `[AI] 2 plus 2 is 4.`. It classified both an outgoing `[AI]` bubble and identical frames as `none`, correctly producing no reply for those cases. No real chat screenshots, phone messages, or KakaoTalk input were used. This validates two-image support on that server, not Korean OCR or actual KakaoTalk bubble classification.
+
+Manual acceptance on the user's Windows/KakaoTalk installation remains required:
+
+1. Run **Test Workflow**, allow inference to finish, and verify automatic focus recovery plus exactly one submitted summary. Repeat after another ordinary window takes foreground during inference. A locked session, changed target, or covering dialog must still stop sending.
+2. Open the latest chat messages and arm **Test Workflow 2: Reply to Next Message**. Verify existing visible text causes no reply. Send one new text from another participant and verify one local PNG, one `[AI]` answer, and a stopped watcher.
+3. Rearm and test an outgoing message, a previous `[AI]` reply, unchanged content, and cosmetic changes. None should receive an answer. Test Korean text and full bubble alignment on the installed client.
+4. Test Stop/hotkey during waiting and inference, session lock, overlap, window closure/resizing, API timeout, and the configured waiting deadline. No automatic rearm or repeated submission should occur.
+5. Verify Workflow 2 never calls Bizgo, including when Workflow 1's Bizgo option is enabled. Check that pressing the button again takes a new baseline and does not answer old messages.
+
+Foreground recovery uses a short wait plus one temporary `AttachThreadInput` attempt with guaranteed detach attempts in `finally`; all typing still requires the exact verified foreground/composer. It is not proof that Windows will grant focus in every installation. Actual recovery from the user's reported post-inference denial is pending their client test.
+
 ### Bizgo final workflow step — 2026-11-17
 
 Contract tests follow the official [v2 SMS/LMS reference](https://developers.bizgo.io/en/api-sdk/api-reference/comm/mt) and [common authentication/environment reference](https://developers.bizgo.io/api-sdk/api-reference). They verify production/sandbox URLs, raw API-key authentication, one configured recipient, the SMS/LMS byte boundary, LMS formatting, explicit shortening/encoding changes, reference/idempotency fields, response-code/recipient/reference validation, and retention of acceptance identifiers without message/credential/phone logging. They also cover authentication failure, rate limiting, server errors, redirect refusal, malformed/oversized replies, timeout, cancellation before/during submission, and storage audit failure. All HTTP requests use an in-memory mock transport and synthetic phone numbers; no actual Bizgo messages were sent.

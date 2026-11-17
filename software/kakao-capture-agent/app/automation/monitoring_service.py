@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
+from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
 from app.automation.test_workflow import OneCycleWorkflow
@@ -46,6 +47,16 @@ class MonitoringService(threading.Thread):
             WindowsComposer(desktop, activity), queue.event, self.stop_input
         )
         self.test_workflow = OneCycleWorkflow(
+            desktop,
+            capture,
+            queue,
+            config,
+            self.reply_sender,
+            self.stop_input,
+            preview,
+            lambda message: self.transition(State.INITIALIZING, message),
+        )
+        self.incoming_workflow = IncomingReplyWorkflow(
             desktop,
             capture,
             queue,
@@ -187,6 +198,7 @@ class MonitoringService(threading.Thread):
 
     def dispatch(self, command):
         if command == "stop":
+            self.incoming_workflow.reset()
             self.recoverable = False
             self.operator_bottom = False
             self.transition(State.STOPPED)
@@ -196,6 +208,18 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
+        elif command == "incoming_test" and self.state == State.STOPPED:
+            self.want_live = self.recoverable = False
+            self.stop_input.clear()
+            self.transition(State.INITIALIZING, "Arming Test Workflow 2")
+            try:
+                self.incoming_workflow.arm()
+                self.next_capture = time.monotonic() + self.config.capture_interval_seconds
+                self.transition(State.WAITING_FOR_MESSAGE, "Watching for one new incoming message")
+            except Exception:
+                self.stop_input.set()
+                self.incoming_workflow.reset()
+                raise
         elif (
             command in ("send_test", "test_workflow", "bizgo_test") and self.state == State.STOPPED
         ):
@@ -260,6 +284,7 @@ class MonitoringService(threading.Thread):
                 self.stop_input.set()
 
     def pause(self, error):
+        self.incoming_workflow.reset()
         self.recoverable = (
             self.want_live
             and isinstance(error, TargetUnavailable)
@@ -282,6 +307,16 @@ class MonitoringService(threading.Thread):
         self.stop_input.clear()
         self.initialize()
 
+    def poll_incoming(self):
+        result = self.incoming_workflow.tick()
+        self.next_capture = time.monotonic() + self.config.capture_interval_seconds
+        if result is not None:
+            self.incoming_workflow.reset()
+            self.stop_input.set()
+            self.transition(State.STOPPED, result)
+        elif self.state != State.WAITING_FOR_MESSAGE:
+            self.transition(State.WAITING_FOR_MESSAGE, "Watching for one new incoming message")
+
     def run(self):
         while not self.shutdown.is_set():
             try:
@@ -302,6 +337,9 @@ class MonitoringService(threading.Thread):
                         image, region = self.capture.grab()
                         self.record(image, region, "live")
                         self.next_capture = now + self.config.capture_interval_seconds
+                elif self.state == State.WAITING_FOR_MESSAGE and not self.stop_input.is_set():
+                    if now >= self.next_capture:
+                        self.poll_incoming()
                 elif (
                     self.state == State.PAUSED
                     and self.recoverable
@@ -310,6 +348,7 @@ class MonitoringService(threading.Thread):
                 ):
                     self.try_recover()
             except Cancelled:
+                self.incoming_workflow.reset()
                 self.stop_input.set()
                 self.transition(State.STOPPED, "Input stopped")
             except AgentError as error:
@@ -318,6 +357,7 @@ class MonitoringService(threading.Thread):
                 else:
                     self.pause(error)
             except Exception as error:
+                self.incoming_workflow.reset()
                 # Do not expose OS exception text, which may include private paths/content.
                 self.stop_input.set()
                 self.recoverable = False

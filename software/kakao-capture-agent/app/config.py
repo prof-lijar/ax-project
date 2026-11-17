@@ -44,6 +44,8 @@ class Config:
     bizgo_sender: str = ""
     bizgo_recipient: str = ""
     bizgo_timeout_seconds: int = 15
+    incoming_wait_timeout_seconds: int = 300
+    incoming_difference_threshold: float = 0.001
     capture_interval_seconds: float = 2
     change_detection: bool = True
     difference_threshold: float = 0.01
@@ -80,6 +82,8 @@ class Config:
         ranges = {
             "bizgo_timeout_seconds": (5, 120),
             "llm_timeout_seconds": (5, 300),
+            "incoming_wait_timeout_seconds": (30, 3600),
+            "incoming_difference_threshold": (0.0001, 1),
             "capture_interval_seconds": (1, 60),
             "difference_threshold": (0.0001, 1),
             "pixel_threshold": (1, 255),
@@ -107,6 +111,7 @@ class Config:
         for name in (
             "bizgo_timeout_seconds",
             "llm_timeout_seconds",
+            "incoming_wait_timeout_seconds",
             "pixel_threshold",
             "scroll_step",
             "scroll_delay_ms",

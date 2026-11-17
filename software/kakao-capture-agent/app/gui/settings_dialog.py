@@ -75,7 +75,9 @@ class SettingsDialog(QDialog):
         form.addRow("Bizgo API key", self.bizgo_secret)
         for name, label, low, high, decimals in [
             ("bizgo_timeout_seconds", "Bizgo request timeout (seconds)", 5, 120, 0),
-            ("llm_timeout_seconds", "Whole LLM workflow timeout (seconds)", 5, 300, 0),
+            ("llm_timeout_seconds", "LLM operation timeout (seconds)", 5, 300, 0),
+            ("incoming_wait_timeout_seconds", "Workflow 2 waiting limit (seconds)", 30, 3600, 0),
+            ("incoming_difference_threshold", "Workflow 2 changed pixel fraction", 0.0001, 1, 4),
             ("difference_threshold", "Changed pixel fraction", 0.0001, 1, 4),
             ("debounce_seconds", "Debounce (seconds)", 0, 10, 1),
             ("scroll_step", "Maximum wheel notches per step", 1, 10, 0),

@@ -10,7 +10,9 @@ from app.gui.settings_dialog import SettingsDialog
 from app.models import Selection, State, Target, TargetUnavailable
 
 
-@pytest.mark.parametrize("reply_command", ["send_test", "test_workflow", "bizgo_test"])
+@pytest.mark.parametrize(
+    "reply_command", ["send_test", "test_workflow", "bizgo_test", "incoming_test"]
+)
 def test_full_window_preview_and_settings(
     tmp_path, config, queue, frame, region, monkeypatch, qt_app, reply_command
 ):

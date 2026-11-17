@@ -126,7 +126,7 @@ def test_prepare_automatically_activates_and_focuses_unique_composer(monkeypatch
     actions = []
     desktop = SimpleNamespace(
         config=SimpleNamespace(target=SimpleNamespace(hwnd=42)),
-        activate_target=lambda: actions.append("activate"),
+        activate_target=lambda cancel=None: actions.append("activate"),
         validate=lambda: Region(0, 0, 100, 100),
         focus_reply_control=lambda handle, cancel: actions.append(("focus", handle)),
         gui=SimpleNamespace(
@@ -150,7 +150,7 @@ def test_prepare_refuses_missing_or_ambiguous_composer(count, monkeypatch):
     clicks = []
     desktop = SimpleNamespace(
         config=SimpleNamespace(target=SimpleNamespace(hwnd=42)),
-        activate_target=lambda: None,
+        activate_target=lambda cancel=None: None,
         validate=lambda: Region(0, 0, 100, 100),
         focus_reply_control=lambda *a: clicks.append(a),
         gui=SimpleNamespace(
@@ -246,7 +246,7 @@ def test_zero_candidates_reports_control_reasons_without_reading_text(config):
     from tests.test_windows_adapter import adapter
 
     desktop = adapter(config)
-    desktop.activate_target = lambda: None
+    desktop.activate_target = lambda cancel=None: None
     desktop.gui.EnumChildWindows = lambda root, visit, data: [visit(43, data), visit(44, data)]
     desktop.gui.GetClassName = lambda handle: "RichEdit50W" if handle == 43 else "CustomControl"
     desktop.gui.GetWindowLong = lambda handle, _: 0x804 if handle == 43 else 0

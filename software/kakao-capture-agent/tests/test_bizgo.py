@@ -201,7 +201,7 @@ def test_cancel_during_post_reports_uncertainty_and_closes_request():
 @pytest.mark.parametrize("outcome", ["clear", "uncertain", "cancel_after_kakao", "bizgo_error"])
 def test_final_workflow_stage_follows_kakao_once(config, queue, frame, region, outcome):
     desktop = Desktop(region)
-    desktop.activate_target = lambda: desktop.validate()
+    desktop.activate_target = lambda cancel=None: desktop.validate()
     service = MonitoringService(
         desktop,
         Capture(desktop, frame),
