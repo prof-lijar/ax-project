@@ -294,14 +294,16 @@ def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypa
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires standard Win32 edit controls")
 @pytest.mark.parametrize("draft", ["", "Existing draft 한글", " \r\n", TEST_REPLY])
 @pytest.mark.parametrize(
-    "reply",
+    "reply,scrollable",
     [
-        TEST_REPLY,
-        "[test]\r\n-- 완료 (시뮬레이션)\r\n-- 요청",
-        "[test]\r\n" + "한글 내용 " * 220 + "\r\n끝 😀",
+        (TEST_REPLY, True),
+        ("[test]\r\n-- 완료 (시뮬레이션)\r\n-- 요청", True),
+        ("[test]\r\n" + "한글 내용 " * 220 + "\r\n끝 😀", True),
+        ("[test]\r\n" + "한글 내용 " * 220 + "\r\n끝 😀", False),
     ],
+    ids=["fixed", "multiline", "long", "non-scrolling-refusal"],
 )
-def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft, reply):
+def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft, reply, scrollable):
     """Native edits target a hidden control; SendInput is intercepted, never injected."""
     import ctypes
 
@@ -315,7 +317,7 @@ def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft,
         0,
         "EDIT",
         draft,
-        win32con.WS_CHILD | win32con.ES_MULTILINE,
+        win32con.WS_CHILD | win32con.ES_MULTILINE | (win32con.ES_AUTOVSCROLL if scrollable else 0),
         0,
         0,
         100,
@@ -346,6 +348,8 @@ def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft,
             )
         )
         monkeypatch.setattr(composer, "focused", lambda: child)
+        monkeypatch.setattr(composer, "prepare", lambda cancel: None)
+        monkeypatch.setattr(composer, "observe_submission", lambda *a: "synthetic observation")
         received = []
 
         def procedure(hwnd, message, wparam, lparam):
@@ -355,10 +359,18 @@ def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft,
 
         original = win32gui.SetWindowLong(parent, win32con.GWL_WNDPROC, procedure)
         assert composer.read(child) == draft
-        composer.write(child, reply)
+        sender = ReplySender(composer, lambda *a: None, threading.Event())
+        if not scrollable:
+            # Native edits without ES_AUTOVSCROLL reject text beyond visible lines.
+            # Keep this case to verify that refusal cannot submit the old draft.
+            with pytest.raises(AgentError, match="could not be verified"):
+                sender.send(reply)
+            assert composer.read(child) == draft
+            assert keyboard_batches == []
+            return
+        sender.send(reply)
         assert composer.read(child) == reply
         assert child in received  # Verify the edit actually notifies the parent of changed text.
-        composer.submit(child)
         assert keyboard_batches == [[(1, 0x1C, 8), (1, 0x1C, 10)]]
     finally:
         win32gui.DestroyWindow(parent)
