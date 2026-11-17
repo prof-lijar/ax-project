@@ -4,6 +4,7 @@ import ctypes
 import time
 from ctypes import wintypes
 
+from app.automation.keyboard_input import press_enter
 from app.models import AgentError, Cancelled, Region, covered_by_monitors
 
 
@@ -11,9 +12,11 @@ class WindowsComposer:
     def __init__(self, desktop, report=lambda _: None):
         self.desktop = desktop
         self.report = report
+        self.cancel = None
 
     def prepare(self, cancel):
         """Find one unambiguous composer in the selected window and focus it."""
+        self.cancel = cancel
         if cancel.is_set():
             raise Cancelled("Test reply cancelled")
         d = self.desktop
@@ -154,6 +157,8 @@ class WindowsComposer:
             other = d.gui.GetWindow(other, d.con.GW_HWNDPREV)
 
     def guard(self, handle):
+        if self.cancel is not None and self.cancel.is_set():
+            raise Cancelled("Test reply cancelled")
         if self.focused() != handle:
             raise AgentError("Message-box focus changed; inspect the draft before trying again")
 
@@ -185,24 +190,41 @@ class WindowsComposer:
 
     def write(self, handle, text):
         self.guard(handle)
-        # Replace the complete draft, including whitespace or leftover test text.
-        # The caller verifies the exact resulting text before submitting Enter.
+        # Select all and replace through the edit operation so the parent receives
+        # EN_CHANGE. WM_SETTEXT omits that notification for multiline edit controls.
+        self.message(handle, 0x00B1, 0, -1)  # EM_SETSEL
+        self.guard(handle)
         buffer = ctypes.create_unicode_buffer(text)
-        if not self.message(handle, 0x000C, 0, ctypes.addressof(buffer)):  # WM_SETTEXT
-            raise AgentError("Windows rejected the test text; Enter was not sent")
+        self.message(handle, 0x00C2, 1, ctypes.addressof(buffer))  # EM_REPLACESEL
 
     def submit(self, handle):
-        self.guard(handle)
-        user = self.desktop.user
-        user.PostMessageW.argtypes = [
-            wintypes.HWND,
-            wintypes.UINT,
-            wintypes.WPARAM,
-            wintypes.LPARAM,
-        ]
-        user.PostMessageW.restype = wintypes.BOOL
-        # Target only the verified edit HWND, not whichever application gains focus next.
-        if not user.PostMessageW(handle, 0x0100, 13, 0x001C0001):  # WM_KEYDOWN, Return
-            raise AgentError("Windows rejected Enter; inspect the draft before trying again")
-        if not user.PostMessageW(handle, 0x0101, 13, 0xC01C0001):  # WM_KEYUP, Return
-            raise AgentError("Send result uncertain; inspect KakaoTalk before trying again")
+        def check():
+            if self.cancel is not None and self.cancel.is_set():
+                raise Cancelled("Test reply cancelled before Enter")
+            self.guard(handle)
+            if self.desktop.api.GetAsyncKeyState(13) & 0x8000:
+                raise AgentError("Enter is already held down; no additional keypress sent")
+
+        press_enter(self.desktop.user, check)
+
+    def observe_submission(self, handle, cancel, timeout=2):
+        """Observe composer clearing only; this is not a server delivery acknowledgement."""
+        deadline = time.monotonic() + timeout
+        while True:
+            if cancel.is_set():
+                return "Observation stopped after Enter; delivery uncertain, no automatic retry"
+            try:
+                text = self.read(handle)
+            except AgentError:
+                return "Focus changed after Enter; delivery uncertain, no automatic retry"
+            except Exception:
+                return (
+                    "Cannot inspect message box after Enter; delivery uncertain, no automatic retry"
+                )
+            if not text.strip():
+                return (
+                    "Enter keypress sent; message box cleared. Delivery not independently verified"
+                )
+            if time.monotonic() >= deadline:
+                return "Enter keypress sent, but text remains in the message box; send NOT confirmed, no automatic retry"
+            cancel.wait(0.1)

@@ -46,4 +46,6 @@ class TestReplySender:
             )
             raise
         self.audit("reply_submitted", "Enter requested once; delivery is not verified")
-        return "Test reply send requested. Verify it in KakaoTalk; no automatic retry"
+        result = self.composer.observe_submission(handle, self.cancel)
+        self.audit("reply_observed", result)
+        return result

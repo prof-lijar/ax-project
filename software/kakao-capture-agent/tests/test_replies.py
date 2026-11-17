@@ -35,6 +35,9 @@ class Composer:
     def submit(self, handle):
         self.submits.append(handle)
 
+    def observe_submission(self, handle, cancel):
+        return "Enter keypress sent; message box cleared. Verify delivery in KakaoTalk"
+
 
 def test_fixed_reply_exact_text_and_one_send():
     composer, events = Composer(), []
@@ -42,7 +45,7 @@ def test_fixed_reply_exact_text_and_one_send():
     result = sender.send()
     assert composer.writes == [(10, "[AI가 답장드렸습니다]")]
     assert composer.submits == [10]
-    assert [e[0] for e in events] == ["reply_attempt", "reply_submitted"]
+    assert [e[0] for e in events] == ["reply_attempt", "reply_submitted", "reply_observed"]
     assert "Verify" in result
 
 
@@ -290,8 +293,8 @@ def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypa
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires standard Win32 edit controls")
 @pytest.mark.parametrize("draft", ["", "Existing draft 한글", " \r\n", TEST_REPLY])
-def test_native_unicode_text_and_targeted_enter(monkeypatch, draft):
-    """Only a synthetic hidden control receives window messages; no chat/global input."""
+def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft):
+    """Native edits target a hidden control; SendInput is intercepted, never injected."""
     import ctypes
 
     import win32con
@@ -315,23 +318,39 @@ def test_native_unicode_text_and_targeted_enter(monkeypatch, draft):
         None,
     )
     try:
+        keyboard_batches = []
+
+        class SendInput:
+            def __call__(self, count, events, size):
+                keyboard_batches.append(
+                    [(event.type, event.ki.wScan, event.ki.dwFlags) for event in events]
+                )
+                assert size == (40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28)
+                return count
+
+        user = ctypes.WinDLL("user32", use_last_error=True)
         composer = WindowsComposer(
-            SimpleNamespace(user=ctypes.WinDLL("user32", use_last_error=True))
+            SimpleNamespace(
+                user=SimpleNamespace(
+                    SendMessageTimeoutW=user.SendMessageTimeoutW, SendInput=SendInput()
+                ),
+                api=SimpleNamespace(GetAsyncKeyState=lambda _: 0),
+            )
         )
         monkeypatch.setattr(composer, "focused", lambda: child)
         received = []
 
         def procedure(hwnd, message, wparam, lparam):
-            if message in (win32con.WM_KEYDOWN, win32con.WM_KEYUP):
-                received.append((hwnd, message, wparam))
+            if message == win32con.WM_COMMAND and (wparam >> 16) & 0xFFFF == win32con.EN_CHANGE:
+                received.append(lparam)
             return win32gui.CallWindowProc(original, hwnd, message, wparam, lparam)
 
-        original = win32gui.SetWindowLong(child, win32con.GWL_WNDPROC, procedure)
+        original = win32gui.SetWindowLong(parent, win32con.GWL_WNDPROC, procedure)
         assert composer.read(child) == draft
         composer.write(child, TEST_REPLY)
         assert composer.read(child) == TEST_REPLY
+        assert child in received  # Verify the edit actually notifies the parent of changed text.
         composer.submit(child)
-        win32gui.PumpWaitingMessages()
-        assert received == [(child, win32con.WM_KEYDOWN, 13), (child, win32con.WM_KEYUP, 13)]
+        assert keyboard_batches == [[(1, 0x1C, 8), (1, 0x1C, 10)]]
     finally:
         win32gui.DestroyWindow(parent)
