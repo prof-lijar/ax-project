@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.13](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.13) was built and published on 2026-11-17 by [Windows Actions run 44033354154](https://github.com/prof-lijar/ax-project/actions/runs/44033354154).
+[Release v0.1.0-rc.14](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.14) was built and published on 2026-11-17 by [Windows Actions run 44036883540](https://github.com/prof-lijar/ax-project/actions/runs/44036883540).
 
-- Windows Server 2022 x64, Python 3.12.10: **141 tests passed in 11.93 seconds**, including the mocked capture/vision/summary/send cycle, LLM cancellation and failure handling, workflow GUI controls, native long/multiline Korean and emoji replacement, rejection without sending old drafts, parent change notifications, intercepted Enter input encoding, capture/upload regressions, and the native directory ACL regression test.
+- Windows Server 2022 x64, Python 3.12.10: **148 tests passed in 12.70 seconds**, including native Credential Manager save/read/replace/cleanup, Settings save-stage failures and secret redaction, the mocked capture/vision/summary/send cycle, LLM cancellation and failure handling, workflow GUI controls, native long/multiline Korean and emoji replacement, rejection without sending old drafts, parent change notifications, intercepted Enter input encoding, capture/upload regressions, and the native directory ACL regression test.
 - Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.13-windows-x64.exe`, 109,000,515 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `a412302e953f4230ae540b991bc72c32f039d61ca6a1ecc4f4d29c25aeb26eaf`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.14-windows-x64.exe`, 109,000,769 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `43f2505cb0f36e01a25940d0694fd24599c1aa9827fed318263df84dfb7ecebc`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
@@ -17,6 +17,8 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 ### Settings credential save — 2026-11-17
 
 The credential writer now supplies a Python string to pywin32 `CredWrite`; the reader still decodes the returned UTF-16 bytes. The pywin32 implementation converts `CredentialBlob` with `PyWinObject_AsWCHAR`, so pre-encoding it was incorrect ([source](https://github.com/mhammond/pywin32/blob/main/win32/src/win32credmodule.cpp)). Portable tests cover both credential destinations, config persistence, no sign-in registry call when startup remains disabled, and failures at each save stage with secret redaction. A native Windows test creates a UUID-named synthetic credential, reads it back, replaces it, reads it again, and deletes only that test credential in cleanup. No real API keys are used in these tests.
+
+Validation: **130 tests passed, 18 Windows-only cases skipped in 4.63 seconds** on Linux; lint and formatting passed. All **148 tests passed on Windows**, including the native credential test, and both source/frozen startup checks passed. Saving the user's actual key on their Windows PC remains the acceptance check.
 
 ### One-cycle LLM workflow — 2026-11-17
 
@@ -28,7 +30,7 @@ The user reported the rc.11 fixed-message send working in KakaoTalk. The new ful
 
 The first workflow build, rc.12 ([run 44033009821](https://github.com/prof-lijar/ax-project/actions/runs/44033009821)), stopped before packaging: 133 tests passed and four long-text native cases failed because the synthetic Edit control lacked `ES_AUTOVSCROLL`. [Windows documents that such controls reject text exceeding the visible lines](https://learn.microsoft.com/en-us/windows/win32/controls/about-edit-controls). The fixture now enables vertical scrolling for long-text acceptance and retains separate non-scrolling refusal cases verifying that the sender never presses Enter on an unchanged old draft. The application does not modify KakaoTalk control styles.
 
-After the fixture correction, the focused Linux reply/workflow/GUI suite passed **60 tests, with 16 native cases skipped in 0.55 seconds**. The complete corrected Windows suite passed all 141 tests as recorded above.
+After the fixture correction, the focused Linux reply/workflow/GUI suite passed **60 tests, with 16 native cases skipped in 0.55 seconds**. The rc.13 Windows suite passed all 141 tests in [run 44033354154](https://github.com/prof-lijar/ax-project/actions/runs/44033354154), before the credential-save tests were added.
 
 The test-reply suite covers exact Korean text, automatic replacement of existing text/whitespace/leftover test drafts, cancellation, changed focus/control, text mismatch, audit failure, uncertain sends without retries, dispatch serialized after Stop, control validation, and duplicate/cancelled GUI timers. Windows-only cases target a synthetic hidden native Edit control to replace each kind of draft and verify both the Unicode result and the parent's `EN_CHANGE` notification. `SendInput` is intercepted in these tests to verify Enter down/up scan-code encoding and native structure size without injecting keys. Portable tests additionally cover rejected/partial input with key-up cleanup, last-moment cancellation/focus guards, and cleared/remaining/uncertain composer observations. Real KakaoTalk sending remains a manual acceptance check.
 
