@@ -6,7 +6,7 @@ from app.automation.monitoring_service import MonitoringService
 from app.config import load, save
 from app.gui import main_window
 from app.gui.settings_dialog import SettingsDialog
-from app.models import Selection, State, Target
+from app.models import Selection, State, Target, TargetUnavailable
 
 
 def test_full_window_preview_and_settings(
@@ -69,12 +69,15 @@ def test_full_window_preview_and_settings(
     config.target = Target(42, 1, "start", "kakao.exe", "chat", "test conversation")
     config.selection = Selection(region, 300, 300, 96)
     timers = []
+    activation = []
+    desktop.request_target_activation = lambda: activation.append(window.isMinimized()) or True
     monkeypatch.setattr(
         main_window.QTimer, "singleShot", lambda delay, action: timers.append(action)
     )
     window.action("send_test")
     window.action("send_test")
     assert len(timers) == 1 and not window.send_test_button.isEnabled()
+    assert activation == [False]  # Request foreground before minimizing the agent.
     window.action("stop")
     window.action("send_test")
     assert len(timers) == 2
@@ -84,6 +87,15 @@ def test_full_window_preview_and_settings(
     timers[1]()
     assert monitor.commands.get_nowait() == "send_test"
     assert monitor.commands.empty()
+
+    def unavailable():
+        raise TargetUnavailable("Target closed")
+
+    desktop.request_target_activation = unavailable
+    window.action("send_test")
+    assert window.pending_action is None
+    assert window.send_test_button.isEnabled()
+    assert len(timers) == 2 and monitor.commands.empty()
     dialog = SettingsDialog(config, window)
     dialog.controls["chat_id"].setText("changed-chat")
     dialog.controls["local_only"].setChecked(True)

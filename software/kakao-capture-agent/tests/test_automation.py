@@ -286,3 +286,26 @@ def test_paused_recovery_reports_changed_reason_and_stops_for_reselection(
     assert len(statuses) == 3
     assert service.reason == "Target closed"
     assert not service.recoverable
+
+
+def test_manual_action_reservation_prevents_recovery_during_countdown(config, frame, region, queue):
+    desktop = Desktop(region)
+    statuses = []
+    service = MonitoringService(
+        desktop,
+        Capture(desktop, frame),
+        queue,
+        config,
+        lambda *args: statuses.append(args),
+        lambda _: None,
+        lambda _: None,
+    )
+    service.state = State.LIVE_MONITORING
+    service.want_live = True
+    service.pause(TargetUnavailable("Focus lost"))
+    service.suspend_recovery()
+    service.try_recover()
+    assert not service.recoverable and not service.want_live
+    assert service.stop_input.is_set()
+    assert statuses == [(State.PAUSED.value, "Focus lost")]
+    assert not desktop.calls

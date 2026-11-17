@@ -71,6 +71,11 @@ class MonitoringService(threading.Thread):
             return
         self.commands.put(name)
 
+    def suspend_recovery(self):
+        """Reserve a manual action while the GUI yields foreground to the chat."""
+        self.want_live = self.recoverable = False
+        self.stop_input.set()
+
     def record(self, image, region, mode):
         png = encode_png(image)
         capture_id = None

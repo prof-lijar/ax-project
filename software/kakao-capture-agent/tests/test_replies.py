@@ -212,8 +212,39 @@ def test_composer_rejects_search_password_readonly_and_other_controls(name, styl
             IsWindowVisible=lambda _: True,
         )
     )
-    with pytest.raises(AgentError, match="supported"):
+    with pytest.raises(AgentError, match="[Uu]nsupported"):
         WindowsComposer(desktop).validate_control(10, Region(0, 0, 100, 100))
+
+
+@pytest.mark.parametrize("capture", [Region(0, 0, 300, 300), Region(10, 260, 80, 32)])
+def test_composer_is_independent_of_capture_rectangle(config, capture):
+    from tests.test_windows_adapter import adapter
+
+    desktop = adapter(config)
+    desktop.gui.GetClassName = lambda _: "RichEdit50W"
+    desktop.gui.GetWindowLong = lambda *_: 4
+    desktop.gui.IsWindowEnabled = lambda _: True
+    desktop.gui.IsWindowVisible = lambda _: True
+    desktop.gui.GetWindowRect = lambda _: (-490, 150, -410, 200)
+    WindowsComposer(desktop).validate_control(43, capture)
+
+
+def test_zero_candidates_reports_control_reasons_without_reading_text(config):
+    from tests.test_windows_adapter import adapter
+
+    desktop = adapter(config)
+    desktop.activate_target = lambda: None
+    desktop.gui.EnumChildWindows = lambda root, visit, data: [visit(43, data), visit(44, data)]
+    desktop.gui.GetClassName = lambda handle: "RichEdit50W" if handle == 43 else "CustomControl"
+    desktop.gui.GetWindowLong = lambda handle, _: 0x804 if handle == 43 else 0
+    messages = []
+    composer = WindowsComposer(desktop, messages.append)
+    with pytest.raises(AgentError, match="Found 0"):
+        composer.prepare(threading.Event())
+    assert any("class=RichEdit50W" in text and "read-only" in text for text in messages)
+    assert any(
+        "class=CustomControl" in text and "Unsupported control class" in text for text in messages
+    )
 
 
 def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypatch):

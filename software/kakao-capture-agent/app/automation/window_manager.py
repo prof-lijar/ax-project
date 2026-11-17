@@ -154,8 +154,8 @@ class WindowsDesktop:
             other = self.gui.GetWindow(other, self.con.GW_HWNDPREV)
         return region
 
-    def activate_target(self):
-        """Activate only the saved, reverified window for an explicit reply request."""
+    def request_target_activation(self):
+        """Request activation from the Send button while the agent owns foreground."""
         if not self.session_available():
             raise TargetUnavailable("Interactive desktop is locked or unavailable")
         self.geometry()  # Verify identity, process lifetime, visibility, and title first.
@@ -164,7 +164,13 @@ class WindowsDesktop:
             try:
                 self.gui.SetForegroundWindow(hwnd)
             except Exception:
-                pass  # Verify the actual result, including Windows activation restrictions.
+                return False  # Do not bypass Windows foreground restrictions.
+        return True  # Request issued; the worker verifies the actual foreground later.
+
+    def activate_target(self):
+        """Reverify activation after the GUI has yielded; never assume it succeeded."""
+        self.request_target_activation()
+        hwnd = self.config.target.hwnd
         if self.gui.GetForegroundWindow() != hwnd:
             raise TargetUnavailable(
                 "Windows did not allow activating the selected chat; no reply sent"

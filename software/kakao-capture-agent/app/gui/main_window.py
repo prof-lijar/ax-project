@@ -27,7 +27,7 @@ from app.automation.reply_service import TEST_REPLY
 from app.config import save
 from app.gui.region_selector import RegionSelector
 from app.gui.settings_dialog import SettingsDialog
-from app.models import Region, Selection, State
+from app.models import AgentError, Region, Selection, State
 from app.utils.windows import configure_startup, set_token
 
 
@@ -415,6 +415,8 @@ class MainWindow(QMainWindow):
             return
         if command == "history" and self.monitor.state != State.LIVE_MONITORING:
             return
+        if command != "history":
+            self.monitor.suspend_recovery()
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
@@ -424,6 +426,24 @@ class MainWindow(QMainWindow):
             if command == "send_test"
             else "Action starts in 3 seconds. Bring the selected conversation to the foreground"
         )
+        if command == "send_test":
+            try:
+                accepted = self.desktop.request_target_activation()
+            except Exception as error:
+                self.pending_action = None
+                self.send_test_button.setEnabled(True)
+                reason = (
+                    str(error)
+                    if isinstance(error, AgentError)
+                    else "Cannot verify target for activation"
+                )
+                self.log(reason + "; no reply sent")
+                self.update_status(State.STOPPED.value, reason)
+                return
+            if not accepted:
+                self.log(
+                    "Windows did not accept the foreground request; the worker will recheck before any input"
+                )
         self.showMinimized()
 
         def execute():

@@ -18,7 +18,7 @@ The test-reply suite covers exact Korean text, draft preservation, cancellation,
 
 Development environment: Linux, CPython 3.12.3. Run `python -m pytest -q` from the project directory. The suite uses temporary directories, synthetic images, fake desktop adapters, and HTTPX mock/ASGI transports; it does not collect real conversations.
 
-Verified on 2026-11-17 after automatic reply focus: **75 tests passed, 2 Windows-only tests skipped in 4.71 seconds**, with process exit code 0. Ruff lint and formatting checks passed. Added coverage verifies exact-target activation, refusal after handle reuse or activation denial, unique-composer discovery, obstruction/cancellation before clicking, and cleanup after a partially injected mouse press. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
+Verified on 2026-11-17 after composer-layout and activation fixes: **79 tests passed, 2 Windows-only tests skipped in 4.41 seconds**, with process exit code 0. The updated GUI failure-cleanup test also passed separately. Ruff lint and formatting checks passed. Coverage includes capture-independent composer discovery, bounded control diagnostics, activation before GUI minimization, stopping auto-recovery during manual countdowns, exact-target activation, refusal after handle reuse or activation denial, obstruction/cancellation before clicking, and cleanup after a partially injected mouse press. The offscreen GUI fixture explicitly cleans up widgets and native event filters before QApplication teardown.
 
 Local-save regression tests verify full-resolution PNG bytes, repeated manual saves without scrolling or live-baseline changes, invalid-target rejection, persistence across restart/maintenance, explicit API assignment, pausing/resuming pre-existing uploads, the folder-opening action, and persistence of the local-only setting.
 
@@ -52,6 +52,9 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 | Fresh install and launch | GUI opens, data directory and schema initialize, capture starts stopped |
 | Send Test Reply with empty composer | While stopped, click button and leave input alone; chat activation and composer focus happen automatically, and exactly `[AI가 답장드렸습니다]` appears once |
 | Activation denied / zero or multiple composers | Send stops without typing; no fallback to another window or guessed click position |
+| Capture rectangle includes message composer | A unique valid composer is still detected; capture coordinates do not filter it out |
+| Unsupported composer | Bounded diagnostic lines show class/style and rejection reason, without message or draft contents |
+| Manual action while temporarily paused | Automatic bottom-position recovery does not run during the manual countdown |
 | Existing draft / wrong focus / unsupported control | Test reply is rejected, draft is preserved, no Enter or retry occurs |
 | Stop during send countdown / focus change after text insertion | Pending send cancels or pauses; inspect any remaining draft; no automatic resend |
 | Small display | All controls, including Send Test Reply, are reachable by scrolling the agent window |

@@ -21,19 +21,34 @@ class WindowsComposer:
         d.activate_target()
         region = d.validate()
         candidates = []
+        diagnostics = []
 
         def visit(handle, _):
+            description, is_edit = self.control_description(handle)
             try:
                 self.validate_control(handle, region)
-            except AgentError:
+            except AgentError as error:
+                diagnostics.append((is_edit, f"{description}: {error}"))
                 return
             candidates.append(handle)
+            diagnostics.append((is_edit, f"{description}: eligible"))
 
         d.gui.EnumChildWindows(d.config.target.hwnd, visit, None)
         if len(candidates) != 1:
+            # Control metadata only: never query or log captions, drafts, or chat text.
+            diagnostics.sort(key=lambda entry: not entry[0])
+            self.report(
+                f"Composer scan: {len(diagnostics)} child controls, {len(candidates)} eligible"
+            )
+            for _, detail in diagnostics[:20]:
+                self.report("Composer diagnostic: " + detail)
+            if len(diagnostics) > 20:
+                self.report(
+                    f"Composer diagnostic: {len(diagnostics) - 20} additional controls omitted"
+                )
             raise AgentError(
-                f"Found {len(candidates)} supported message boxes below the capture region. "
-                "Keep the capture region above the composer and close search panels; no reply sent"
+                f"Found {len(candidates)} supported message boxes in the selected chat. "
+                "See Composer diagnostic lines; no reply sent"
             )
         handle = candidates[0]
         if cancel.is_set():
@@ -100,20 +115,26 @@ class WindowsComposer:
             raise AgentError("Release Shift, Ctrl, Alt, and Windows keys before sending")
         return handle
 
-    def validate_control(self, handle, capture_region):
+    def control_description(self, handle):
+        try:
+            name = self.desktop.gui.GetClassName(handle)
+            style = self.desktop.gui.GetWindowLong(handle, -16)
+            return f"class={name}, style=0x{style & 0xFFFFFFFF:08X}", "edit" in name.lower()
+        except Exception:
+            return "control metadata unavailable", False
+
+    def validate_control(self, handle, _capture_region):
         d = self.desktop
         name = d.gui.GetClassName(handle).lower()
         style = d.gui.GetWindowLong(handle, -16)  # GWL_STYLE
-        if (
-            not (name == "edit" or name.startswith("richedit"))
-            or not style & 0x0004  # ES_MULTILINE: reject search fields/single-line edits
-            or style & (0x0020 | 0x0800)  # ES_PASSWORD / ES_READONLY
-            or not d.gui.IsWindowEnabled(handle)
-            or not d.gui.IsWindowVisible(handle)
-        ):
-            raise AgentError(
-                "Focused control is not a supported writable message box; nothing sent"
-            )
+        if not (name == "edit" or name.startswith("richedit")):
+            raise AgentError("Unsupported control class")
+        if not style & 0x0004:
+            raise AgentError("Unsupported single-line control (not a multiline composer)")
+        if style & (0x0020 | 0x0800):
+            raise AgentError("Unsupported read-only or password control")
+        if not d.gui.IsWindowEnabled(handle) or not d.gui.IsWindowVisible(handle):
+            raise AgentError("Control is hidden or disabled")
         left, top, right, bottom = d.gui.GetWindowRect(handle)
         region = Region(left, top, right - left, bottom - top)
         client, _ = d.geometry()
@@ -121,10 +142,9 @@ class WindowsComposer:
             region.width <= 0
             or region.height <= 0
             or not client.contains(region)
-            or top < capture_region.top + capture_region.height
             or not covered_by_monitors(region, d.monitors())
         ):
-            raise AgentError("Message box must be visible below the selected capture region")
+            raise AgentError("Message box must be inside the selected window and visible displays")
         other = d.gui.GetWindow(d.config.target.hwnd, d.con.GW_HWNDPREV)
         while other:
             if d.gui.IsWindowVisible(other) and not d.gui.IsIconic(other):
