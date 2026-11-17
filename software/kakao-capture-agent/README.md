@@ -126,6 +126,8 @@ The generated summary uses the source language where possible. The task describe
 
 Environment variables follow the agents adapter: `OPENAI_BASE_URL` takes precedence over `URL`, `OPENAI_MODEL` over `MODEL`, and these override saved LLM fields. `OPENAI_SUPPORTS_VISION` overrides the saved vision checkbox. `OPENAI_API_KEY` overrides the separately stored LLM credential. URL may be a server root, `/v1` base, or complete `/chat/completions` endpoint. The executable does not load another project's `.env` automatically and never bundles credentials. Set the key in Settings for double-click launches. The capture-upload token is not reused as the LLM key.
 
+If an older release displays **Unable to save settings, credentials, or sign-in entry**, update to rc.14 or later and save the key again. The credential writer was passing bytes where pywin32 expects Unicode. Updated versions identify the exact failed save step (upload key, LLM key, sign-in entry, or configuration file) and include a numeric OS error where available; they never log the submitted key. Saving ordinary settings does not access the sign-in registry when startup remains disabled. If a later step fails, previously saved credentials may already have changed, while the new configuration is not applied.
+
 ## Send the fixed test reply
 
 1. Select the intended KakaoTalk group window and capture region. Check the target title shown in the agent. Message-box discovery is independent of the capture rectangle; including the composer in a screenshot no longer excludes it from sending.

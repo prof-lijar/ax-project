@@ -31,7 +31,9 @@ def set_token(destination, token):
             "Type": win32cred.CRED_TYPE_GENERIC,
             "TargetName": credential_name(destination),
             "UserName": "capture-agent",
-            "CredentialBlob": token.encode("utf-16-le"),
+            # pywin32 CredWrite accepts Unicode here and performs UTF-16 conversion.
+            # CredRead returns bytes, decoded by get_token above.
+            "CredentialBlob": token,
             "Persist": win32cred.CRED_PERSIST_LOCAL_MACHINE,
         },
         0,

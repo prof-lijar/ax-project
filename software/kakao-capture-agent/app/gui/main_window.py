@@ -372,24 +372,43 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self.config, self)
         if dialog.exec() != QDialog.Accepted:
             return
+        stage = "validating settings"
         try:
             new = dialog.result_config
+            new.validate()
             if dialog.token:
+                stage = "saving the upload API token in Windows Credential Manager"
                 set_token(new.api_url, dialog.token)
             if dialog.llm_token:
                 from app.api.workflow_llm import LLMSettings, credential_destination
 
+                stage = "saving the LLM API key in Windows Credential Manager"
                 set_token(credential_destination(LLMSettings.resolve(new).url), dialog.llm_token)
-            configure_startup(new.launch_at_signin)
+            # Do not access the Run registry key for ordinary settings saves when
+            # sign-in launch was and remains disabled. Refresh the EXE path if enabled.
+            if new.launch_at_signin or self.config.launch_at_signin:
+                stage = "updating launch at sign-in"
+                configure_startup(new.launch_at_signin)
+            stage = "writing the configuration file"
             save(self.config_path, new)
             # Workers share this object; settings are only editable while capture is stopped.
             self.config.__dict__.update(new.__dict__)
             self.refresh_storage_mode()
             self.log("Settings saved; queued captures keep their original destinations")
-        except Exception:
-            QMessageBox.critical(
-                self, "Settings", "Unable to save settings, credentials, or sign-in entry"
+        except Exception as error:
+            # Exception text may contain the submitted credential. Log only a
+            # fixed stage, exception class, and numeric OS error code.
+            code = getattr(error, "winerror", None) or getattr(error, "errno", None)
+            diagnostic = type(error).__name__
+            if type(code) is int:
+                diagnostic += f", OS error {code}"
+            message = (
+                f"Settings save failed while {stage} ({diagnostic}). "
+                "Settings were not applied. Keys saved before this step may already have changed. "
+                "Reopen Settings and retry."
             )
+            self.log(message)
+            QMessageBox.critical(self, "Settings", message)
 
     def action(self, command):
         if command == "stop":

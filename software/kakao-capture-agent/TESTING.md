@@ -14,6 +14,10 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Settings credential save — 2026-11-17
+
+The credential writer now supplies a Python string to pywin32 `CredWrite`; the reader still decodes the returned UTF-16 bytes. The pywin32 implementation converts `CredentialBlob` with `PyWinObject_AsWCHAR`, so pre-encoding it was incorrect ([source](https://github.com/mhammond/pywin32/blob/main/win32/src/win32credmodule.cpp)). Portable tests cover both credential destinations, config persistence, no sign-in registry call when startup remains disabled, and failures at each save stage with secret redaction. A native Windows test creates a UUID-named synthetic credential, reads it back, replaces it, reads it again, and deletes only that test credential in cleanup. No real API keys are used in these tests.
+
 ### One-cycle LLM workflow — 2026-11-17
 
 The workflow integration test uses a synthetic screenshot and two HTTPX mock responses to verify that the exact saved PNG reaches the vision request, extracted Korean text reaches the summary request, and exactly one multiline `[test]` reply reaches the guarded composer. It checks that the PNG remains unassigned to the upload API and monitoring stays stopped. Regressions cover cancellation during an active asynchronous request, target changes, unavailable targets, storage failure, authentication/rate-limit/server errors, redirects, timeouts, invalid/oversized/truncated/empty responses, environment settings, local HTTP opt-in, and GUI duplicate/stale timer handling. No test sends a real chat message.
