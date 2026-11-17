@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.14](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.14) was built and published on 2026-11-17 by [Windows Actions run 44036883540](https://github.com/prof-lijar/ax-project/actions/runs/44036883540).
+[Release v0.1.0-rc.15](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.15) was built and published on 2026-11-17 by [Windows Actions run 44045139976](https://github.com/prof-lijar/ax-project/actions/runs/44045139976).
 
-- Windows Server 2022 x64, Python 3.12.10: **148 tests passed in 12.70 seconds**, including native Credential Manager save/read/replace/cleanup, Settings save-stage failures and secret redaction, the mocked capture/vision/summary/send cycle, LLM cancellation and failure handling, workflow GUI controls, native long/multiline Korean and emoji replacement, rejection without sending old drafts, parent change notifications, intercepted Enter input encoding, capture/upload regressions, and the native directory ACL regression test.
+- Windows Server 2022 x64, Python 3.12.10: **181 tests passed in 15.89 seconds**, including the Bizgo v2 request/response contract, SMS/LMS encoding/length handling, editable numbers and standalone sample controls, final-stage sequencing/cancellation, native credential persistence, settings failure redaction, capture/LLM/reply regressions, native multiline Korean/emoji replacement, and directory ACLs. Bizgo HTTP tests used only mocked responses.
 - Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.14-windows-x64.exe`, 109,000,769 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `43f2505cb0f36e01a25940d0694fd24599c1aa9827fed318263df84dfb7ecebc`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.15-windows-x64.exe`, 109,011,600 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `032ffd2f3cb5d73d2fb87726f00e5a0516b256921a9d510b4145be97fab18e1a`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
@@ -23,6 +23,8 @@ Workflow tests verify that Bizgo runs only after one KakaoTalk send and observed
 Real Bizgo sandbox acceptance, production acceptance, registered sender validation, IP allowlisting, and final handset delivery remain unverified without the user's account configuration. The user chose to enter numbers in Settings; no real phone numbers or API keys are bundled in the application or committed as defaults.
 
 Portable validation on 2026-11-17: **163 tests passed, 18 native Windows cases skipped in 5.60 seconds**. Ruff lint and formatting passed.
+
+Windows validation: **181 tests passed in 15.89 seconds**, followed by successful source and frozen startup checks in the rc.15 run above. Production/Sandbox Bizgo account testing remains pending; no real messages were sent during development or CI.
 
 ### Settings credential save — 2026-11-17
 
