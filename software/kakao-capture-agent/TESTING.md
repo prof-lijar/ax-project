@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.10](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.10) was built and published on 2026-11-17 by [Windows Actions run 44027587154](https://github.com/prof-lijar/ax-project/actions/runs/44027587154).
+[Release v0.1.0-rc.11](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.11) was built and published on 2026-11-17 by [Windows Actions run 44030119795](https://github.com/prof-lijar/ax-project/actions/runs/44030119795).
 
-- Windows Server 2022 x64, Python 3.12.10: **85 tests passed in 11.63 seconds**, including native replacement of ordinary/whitespace/leftover test drafts, automatic capture stop before sending, activation timing, capture-independent composer discovery, control diagnostics, test-reply guards, local-save regressions, and the native directory ACL regression test.
+- Windows Server 2022 x64, Python 3.12.10: **95 tests passed in 11.36 seconds**, including native Unicode draft replacement and parent change notifications, intercepted Enter input encoding, rejected/partial input cleanup, composer-clear observations, automatic capture stop before sending, activation timing, capture-independent composer discovery, control diagnostics, test-reply guards, local-save regressions, and the native directory ACL regression test.
 - Both the source application and the standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.10-windows-x64.exe`, 108,985,635 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `fe2e9a1fea5b4070e096d57c515b21a4ee1f61b383acaac81ac14d6e5246e8c0`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.11-windows-x64.exe`, 108,988,712 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `aec45f1a589d064ebace92d9ae366475686f18f89a282cc5aad3e992bd0e34e7`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
