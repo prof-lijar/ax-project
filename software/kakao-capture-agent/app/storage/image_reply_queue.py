@@ -84,7 +84,7 @@ class ImageReplyQueue(TextQueue):
             ) from None
 
     def finish(self, job_id, status):
-        assert status in ("sent", "ignored", "review", "sending", "pending")
+        assert status in ("sent", "ignored", "review", "sending", "pending", "submitted")
         with self.storage.connect() as db:
             db.execute(f"UPDATE {self.table} SET status=? WHERE job_id=?", (status, job_id))
 

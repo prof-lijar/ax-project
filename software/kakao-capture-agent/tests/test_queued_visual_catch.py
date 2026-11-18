@@ -55,7 +55,7 @@ def watching(config, queue, region):
     llm = LLM()
     workflow.llm_factory = lambda _: llm
     workflow.sender = SimpleNamespace(
-        send=lambda text: sent.append(text) or "composer cleared", composer_cleared=True
+        send=lambda text, **kw: sent.append(text) or "composer cleared", composer_cleared=True
     )
     service.dispatch("auto_catch")
     yield SimpleNamespace(
@@ -190,7 +190,12 @@ def test_uncertain_send_never_replays_and_later_captures_remain(watching):
     w.workflow.collect()
     w.now[0] += 0.5
     w.workflow.collect()
-    w.workflow.sender.composer_cleared = False
+
+    def partial_send(text, **kwargs):
+        w.sent.append(text)
+        raise AgentError("Input insertion uncertain")
+
+    w.workflow.sender.send = partial_send
     with pytest.raises(AgentError, match="uncertain") as error:
         w.service.poll_auto_catch()
     w.service.pause(error.value)
@@ -325,3 +330,46 @@ def test_atomic_image_write_failure_creates_no_queue_job(queue, frame, monkeypat
         jobs.enqueue_pair("chat", encode_png(frame), encode_png(255 - frame))
     assert jobs.count("chat") == 0
     assert list(jobs.images.iterdir()) == []
+
+
+@pytest.mark.parametrize("clears", [True, False])
+def test_unobserved_submission_continues_but_next_send_requires_empty_composer(watching, clears):
+    from app.automation.reply_service import TestReplySender as ReplySender
+    from app.models import SubmissionObservation
+    from tests.test_replies import Composer
+
+    w = watching
+    composer = Composer()
+
+    def submit(handle):
+        composer.submits.append(handle)
+        if clears:
+            composer.text = ""
+
+    composer.submit = submit
+    composer.observe_submission = lambda *a: SubmissionObservation("Synthetic readback unavailable")
+    w.workflow.sender = ReplySender(composer, w.queue.event, w.service.stop_input)
+    changed(w, 30)
+    finish(w)
+    assert w.service.state == State.AUTO_CATCHING
+    assert w.workflow.reply_count == 1 and len(composer.submits) == 1
+    assert any("Watching continues; this reply will not be resent" in line for line in w.logs)
+    with w.queue.connect() as db:
+        assert db.execute("SELECT status FROM image_reply_queue").fetchone()[0] == "submitted"
+    # A subsequent incoming change queues normally even if observation failed.
+    w.now[0] += 4
+    changed(w, 60)
+    if clears:
+        finish(w)
+        assert w.workflow.reply_count == 2 and len(composer.submits) == 2
+        assert [text for _, text in composer.writes] == [
+            "[AI] Question 30 (자동 응답)",
+            "[AI] Question 60 (자동 응답)",
+        ]
+        jobs = ImageReplyQueue(w.queue)
+        assert jobs.claim(w.workflow.chat_key) is None  # No replay, including after restart.
+    else:
+        with pytest.raises(AgentError, match="not empty"):
+            finish(w)
+        assert len(composer.submits) == 1 and len(composer.writes) == 1
+        assert composer.text == "[AI] Question 30 (자동 응답)"

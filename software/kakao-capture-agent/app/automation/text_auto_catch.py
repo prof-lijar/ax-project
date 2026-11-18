@@ -28,6 +28,8 @@ def chat_queue_key(config):
 
 
 class TextAutoCatchWorkflow(AutoCatchWorkflow):
+    continue_after_submission = False
+
     def __init__(
         self,
         desktop,
@@ -155,6 +157,9 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         self.worker.start()
         self.progress("Processing queued messages with the LLM; collection continues")
 
+    def send_queued_reply(self, reply):
+        return self.sender.send(reply)
+
     def finish_job(self):
         if self.outcome is None and (self.worker is None or self.worker.is_alive()):
             return
@@ -184,16 +189,23 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         self.jobs.finish(self.job["job_id"], "sending")  # Durable BEFORE touching the composer.
         self.sending, self.active = True, False
         try:
-            observation = self.sender.send(reply)
+            observation = self.send_queued_reply(reply)
             self.check()
-            if not self.sender.composer_cleared:
+            if not self.sender.composer_cleared and not self.continue_after_submission:
                 raise AgentError(
                     "Reply send is uncertain; inspect the chat and use Review Replies. Queued messages retained"
                 )
-            self.jobs.finish(self.job["job_id"], "sent")
+            status = "sent" if self.sender.composer_cleared else "submitted"
+            self.jobs.finish(self.job["job_id"], status)
         except Exception:
             self.jobs.finish(self.job["job_id"], "review")
             raise
+        if not self.sender.composer_cleared:
+            self.progress(
+                "Enter submitted once; composer clearing unconfirmed. "
+                "Watching continues; this reply will not be resent. "
+                "The next reply requires an empty message box. " + observation
+            )
         self.queue.event("auto_reply", self.job["job_id"] + ": " + observation)
         self.job = self.outcome = None
         self.sending, self.active = False, True

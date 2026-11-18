@@ -106,3 +106,33 @@ def test_read_after_send_does_not_require_keyboard_focus_but_checks_owner(valid,
     monkeypatch.setattr(composer, "read_text", lambda handle: "")
     result = composer.observe_submission(43, threading.Event(), timeout=0)
     assert result.composer_cleared == valid
+
+
+def test_post_send_transient_read_failure_retries_observation_only(monkeypatch):
+    reports, reads = [], []
+    composer = WindowsComposer(None, reports.append)
+
+    def read(handle):
+        reads.append(handle)
+        if len(reads) == 1:
+            raise AgentError("Transient composer transition")
+        return ""
+
+    monkeypatch.setattr(composer, "read_after_send", read)
+    result = composer.observe_submission(43, threading.Event(), timeout=1)
+    assert result.composer_cleared and reads == [43, 43]
+    assert reports == ["Post-send observation: Transient composer transition"]
+
+
+def test_post_send_unknown_error_does_not_log_private_exception_text(monkeypatch):
+    reports = []
+    composer = WindowsComposer(None, reports.append)
+
+    def read(handle):
+        raise RuntimeError("private draft content")
+
+    monkeypatch.setattr(composer, "read_after_send", read)
+    result = composer.observe_submission(43, threading.Event(), timeout=0)
+    assert not result.composer_cleared
+    assert "RuntimeError" in result.message
+    assert "private" not in result.message + " ".join(reports)

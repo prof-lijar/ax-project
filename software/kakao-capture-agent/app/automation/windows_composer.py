@@ -229,6 +229,7 @@ class WindowsComposer:
     def observe_submission(self, handle, cancel, timeout=2):
         """Observe composer clearing only; this is not a server delivery acknowledgement."""
         deadline = time.monotonic() + timeout
+        last_failure = None
         while True:
             if cancel.is_set():
                 return SubmissionObservation(
@@ -236,14 +237,25 @@ class WindowsComposer:
                 )
             try:
                 text = self.read_after_send(handle)
-            except AgentError:
+            except Cancelled:
                 return SubmissionObservation(
-                    "Original message box could not be verified after Enter; delivery uncertain, no automatic retry"
+                    "Observation cancelled after Enter; delivery uncertain, no automatic retry"
                 )
-            except Exception:
-                return SubmissionObservation(
-                    "Cannot inspect message box after Enter; delivery uncertain, no automatic retry"
-                )
+            except Exception as error:
+                # A transient focus/layout/control transition after Enter is not a
+                # failed send. Retry observation only; never type or press Enter here.
+                reason = str(error) if isinstance(error, AgentError) else type(error).__name__
+                if reason != last_failure:
+                    self.report("Post-send observation: " + reason)
+                    last_failure = reason
+                if time.monotonic() >= deadline:
+                    return SubmissionObservation(
+                        "Composer clearing unconfirmed after Enter: "
+                        + reason
+                        + "; no automatic retry"
+                    )
+                cancel.wait(0.1)
+                continue
             if not text.strip():
                 return SubmissionObservation(
                     "Enter keypress sent; message box cleared. Delivery not independently verified",

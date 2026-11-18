@@ -14,6 +14,8 @@ from app.storage.image_reply_queue import ImageReplyQueue
 
 
 class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
+    continue_after_submission = True
+
     def __init__(
         self,
         desktop,
@@ -96,6 +98,9 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         # marked for review rather than being reset to pending by Stop.
         before, after = self.jobs.load_images(job)
         super().begin_job(dict(job, before_png=before, after_png=after))
+
+    def send_queued_reply(self, reply):
+        return self.sender.send(reply, require_empty=True)
 
     def analyze_job(self, llm, job, cancel):
         return llm.classify(job["before_png"], job["after_png"], cancel, batch=True)

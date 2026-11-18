@@ -387,3 +387,12 @@ def test_native_unicode_edit_notification_and_enter_encoding(monkeypatch, draft,
         assert keyboard_batches == [[(1, 0x1C, 8), (1, 0x1C, 10)]]
     finally:
         win32gui.DestroyWindow(parent)
+
+
+@pytest.mark.parametrize("draft", ["leftover reply", "new private draft"])
+def test_continuous_reply_empty_guard_never_overwrites_existing_text(draft):
+    composer = Composer(draft)
+    sender = ReplySender(composer, lambda *a: None, threading.Event())
+    with pytest.raises(AgentError, match="not empty"):
+        sender.send("[AI] Next reply", require_empty=True)
+    assert composer.text == draft and not composer.writes and not composer.submits

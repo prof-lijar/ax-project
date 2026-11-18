@@ -1,10 +1,14 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+**Fixed: Auto Catch pauses after the first visible reply.** Once Windows accepts Enter, an inconclusive composer-clearing observation no longer stops watching. That job is recorded as submitted and is never resent; later incoming captures continue through the queue. Each new Auto Catch reply requires a freshly verified empty message box, so a leftover reply/draft is not overwritten. Transient post-send read failures retry observation only, with diagnostic reasons in the log. Delivery is still not independently verified.
+
+If rc.22 already left a job paused for review, inspect the chat and use **Stop → Review Replies → Auto Catch** once after updating. Failed/partial keyboard input and crashes during sending still require review.
+
 **Auto Catch returns to screenshots, with continuous collection and a persistent reply queue.** Select the open group and click Auto Catch. Changed frames are saved as before/after pairs while the vision LLM handles earlier work. Replies are submitted sequentially as `[AI] response (자동 응답)`, and watching continues after each reply. Windows accessibility and notification readers are not needed.
 
 **Incoming changes queue while the previous request is processing.** A durable SQLite FIFO and local PNGs retain later captures, including during reply cooldown. Stop/restart preserves unsent work. Typing/UI activity and outgoing AI text are classified and ignored. Several messages seen together can produce one reply; screenshot coverage remains approximate.
 
-**The post-send focus fix is retained.** KakaoTalk moving keyboard focus after Enter no longer prevents observing the original verified composer. Uncertain sends still require inspection and are never automatically replayed: use Stop → inspect chat → Review Replies → Auto Catch.
+**The post-send focus fix is retained.** KakaoTalk moving keyboard focus after Enter no longer prevents observing the original verified composer. Accepted Enter with inconclusive observation follows the continued-watching behavior above; failed/partial input still requires review.
 
 Use a vision-capable model with two-image support. Local PNGs are under `%LOCALAPPDATA%\KakaoCaptureAgent\captures\auto_catch`; exact paths and queue counts appear in the log. They are sent only to the configured LLM, not Bizgo or the normal image-upload endpoint. Old direct-text jobs remain separate. Completed images follow the metadata retention period at startup; pending images are retained and collection pauses at capacity.
 

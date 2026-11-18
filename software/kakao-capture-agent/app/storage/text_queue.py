@@ -30,7 +30,7 @@ class TextQueue:
             db.execute(f"UPDATE {self.table} SET status='pending' WHERE status='processing'")
             db.execute(f"UPDATE {self.table} SET status='review' WHERE status='sending'")
             db.execute(
-                f"DELETE FROM {self.table} WHERE status IN ('sent','ignored') AND created_at<?",
+                f"DELETE FROM {self.table} WHERE status IN ('sent','ignored','submitted') AND created_at<?",
                 (time.time() - storage.config.metadata_retention_days * 86400,),
             )
 

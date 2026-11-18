@@ -14,6 +14,14 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Continue after accepted Enter with unconfirmed observation — 2026-11-18
+
+Portable validation: **321 passed, 20 native Windows cases skipped in 8.68 seconds**. Ruff lint/format and diff checks passed.
+
+Regression tests reproduce the reported sequence using the real reply sender: Windows accepts Enter, the synthetic composer clears but observation is unavailable, a second incoming capture arrives, and a second reply is sent without rearming. The persisted `submitted` jobs never replay after restart. A companion case leaves the first reply in the composer and verifies the next send neither overwrites it nor presses Enter. Additional checks cover existing drafts, transient read failures, content-free diagnostics, and partial-input quarantine.
+
+Windows/KakaoTalk acceptance: after resolving any existing rc.22 review job, start Auto Catch and send two separate questions from another participant. Verify both replies and continued watching, including when `composer clearing unconfirmed` is logged. Send more questions during inference and check FIFO processing. Leave text in the composer and verify no automated overwrite. Actual client delivery and observation failure reasons remain subject to this manual check.
+
 ### Queued screenshot Auto Catch — 2026-11-18
 
 Portable validation: **315 passed, 20 native Windows cases skipped in 9.14 seconds**. Ruff lint/format and diff checks passed.

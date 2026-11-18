@@ -20,7 +20,7 @@ class TestReplySender:
             )
         return current
 
-    def send(self, text=TEST_REPLY):
+    def send(self, text=TEST_REPLY, *, require_empty=False):
         self.composer_cleared = False
         if (
             not isinstance(text, str)
@@ -32,13 +32,20 @@ class TestReplySender:
         normalized = text.replace("\r\n", "\n").replace("\r", "\n")
         self.audit(
             "reply_attempt",
-            "Operator requested reply with draft replacement; no automatic retries",
+            "Reply requested with empty-composer guard; no automatic retries"
+            if require_empty
+            else "Operator requested reply with draft replacement; no automatic retries",
         )
         try:
             if self.cancel.is_set():
                 raise Cancelled("Test reply cancelled")
             self.composer.prepare(self.cancel)
             handle = self.check()
+            self.check(handle)
+            if require_empty and self.composer.read(handle).strip():
+                raise AgentError(
+                    "Message box is not empty; no text replaced or Enter sent. Clear the draft before restarting Auto Catch"
+                )
             self.check(handle)
             # Win32 multiline editors may normalize LF to CRLF on readback.
             self.composer.write(handle, normalized.replace("\n", "\r\n"))
