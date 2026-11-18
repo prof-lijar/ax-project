@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.17](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.17) was built and published on 2026-11-18 by [Windows Actions run 44249971426](https://github.com/prof-lijar/ax-project/actions/runs/44249971426).
+[Release v0.1.0-rc.18](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.18) was built and published on 2026-11-18 by [Windows Actions run 44256442034](https://github.com/prof-lijar/ax-project/actions/runs/44256442034).
 
-- Windows Server 2022 x64, Python 3.12.10: **260 tests passed in 57.86 seconds**, including continuous Auto Catch, automatic region geometry, suffix/settings migration, duplicate/cancellation guards, GUI controls, and previous capture/reply/Bizgo/credential regressions.
+- Windows Server 2022 x64, Python 3.12.10: **272 tests passed in 130.75 seconds**, including Auto Catch foreground recovery, preserved incoming-message state, cancellation and no-resend guards, automatic region geometry, GUI controls, and previous capture/reply/Bizgo/credential regressions.
 - Both source and standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.17-windows-x64.exe`, 109,030,135 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `69b8bc2ac8da48ded8d0f33e75b09edb64cf1b41f0063840dd181db82701d51f`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.18-windows-x64.exe`, 109,030,649 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `66f7d125233c7bdbbec5bf62ebeb689820a7c6bc7ae86456f1a528ecd26205c3`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
