@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.19](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.19) was built and published on 2026-11-18 by [Windows Actions run 44258634697](https://github.com/prof-lijar/ax-project/actions/runs/44258634697).
+[Release v0.1.0-rc.21](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.21) was built and published on 2026-11-18 by [Windows Actions run 44264761931](https://github.com/prof-lijar/ax-project/actions/runs/44264761931).
 
-- Windows Server 2022 x64, Python 3.12.10: **295 tests passed in 65.87 seconds**, including typing-to-incoming workflow recovery, plain-text replies, structured-analysis compatibility, preserved baselines and cancellation during retries, foreground recovery, GUI controls, and previous capture/reply/Bizgo/credential regressions.
+- Windows Server 2022 x64, Python 3.12.10: **322 tests passed in 93.29 seconds**, including direct native Korean transcript reading, exclusion of writable/foreign controls, queued arrivals during slow LLM inference, FIFO replies, restart/review handling, post-send observation without composer focus, and existing GUI/capture/reply/Bizgo regressions.
 - Both source and standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.19-windows-x64.exe`, 109,033,817 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `3016f9eba290d06e1298525831d02e99e9bc3052810967978dabae4890a1c48c`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.21-windows-x64.exe`, 109,053,118 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `4ca1615aaf928c74c8f4845d25abeaed8712192fa6149790fdf4eb88a145d6c5`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
@@ -20,9 +20,9 @@ Release rc.20 was not published: [Windows run 44262942622](https://github.com/pr
 
 Portable validation: **300 passed, 20 native Windows cases skipped in 8.46 seconds** in the final portable suite. Ruff checks pass. New tests prohibit screenshot calls in Auto Catch, exercise two consecutive text replies, and hold the first LLM request open while second and third arrivals are durably queued and later answered in FIFO order. They cover Stop during inference, retained jobs, invalid-analysis backoff, restart recovery, uncertain-send quarantine/review, prepared-answer preservation across focus recovery, own-reply suppression, changed/unavailable controls, text-only HTTP requests, and cancellation of the Windows helper. Post-send observation tests allow changed keyboard focus while still checking the original composer's owner and validity.
 
-The configured local LLM passed synthetic Korean text-only checks: `테스터: 2 더하기 2는?` was classified incoming, generated `[AI] 4입니다. (자동 응답)`, and the agent's own reply was ignored. No images, real conversation contents, or real chat input were used.
+The configured local LLM passed synthetic Korean text-only checks: `테스터: 2 더하기 2는?` was classified incoming, generated `[AI] 4입니다. (자동 응답)`, and the agent's own reply was ignored. A mixed batch containing an earlier `[AI] 4입니다.` reply and the participant question `3 더하기 3은?` extracted only the new question and answered `[AI] 6입니다.`. No images, real conversation contents, or real chat input were used.
 
-A Windows-only integration test opens a synthetic native read-only transcript and a separate writable composer. The real Win32 reader must read Korean transcript text and exclude the private synthetic draft. The UI Automation helper must either expose the same safe text or explicitly report unsupported controls. The Windows runner exposed its native editor only as a generic UIA pane, which prompted the supported read-only Win32 control path rather than assuming every native editor implements UIA text patterns. The packaged startup check verifies that the helper resource is included. These checks validate Windows APIs and packaging; it does **not** establish whether the installed KakaoTalk client exposes equivalent accessibility data. If it does not, Auto Catch explicitly reports unsupported direct text and never switches to screenshots.
+A Windows-only integration test opens a synthetic native read-only transcript and a separate writable composer. The real Win32 reader must read Korean transcript text and exclude the private synthetic draft. The UI Automation helper must either expose the same safe text or explicitly report unsupported controls. The Windows runner exposed its native editor only as a generic UIA pane, which prompted the supported read-only Win32 control path rather than assuming every native editor implements UIA text patterns. The rc.21 packaged startup check passed and verified that the helper resource is included. These checks validate Windows APIs and packaging; it does **not** establish whether the installed KakaoTalk client exposes equivalent accessibility data. If it does not, Auto Catch explicitly reports unsupported direct text and never switches to screenshots.
 
 Manual acceptance on the user's PC:
 
