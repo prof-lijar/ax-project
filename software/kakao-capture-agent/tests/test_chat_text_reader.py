@@ -136,7 +136,11 @@ def test_native_readonly_transcript_excludes_composer_and_reads_korean():
             config=SimpleNamespace(target=SimpleNamespace(hwnd=handles["parent"], pid=os.getpid())),
             validate=lambda: Region(left, top, right - left, bottom - top),
         )
-        result = WindowsChatText(desktop).read(threading.Event())
+        reader = WindowsChatText(desktop)
+        try:
+            result = reader.read(threading.Event())
+        except AgentError:
+            pytest.fail(f"Native text reader diagnostics: {reader.diagnostic}")
         assert "새 질문" in result.text and "PRIVATE DRAFT" not in result.text
         assert result.key and result.source.startswith("Windows")
     finally:

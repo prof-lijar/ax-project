@@ -3,16 +3,20 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+$stage = 'input'
 try {
     $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
+    $stage = 'root'
     $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$request.hwnd)
     if ($null -eq $root -or $root.Current.ProcessId -ne $request.pid) { throw 'wrong target' }
     $region = $request.region
+    $stage = 'descendants'
     $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
     if ($all.Count -gt 1000) { throw 'too many controls' }
     $candidates = @()
     $diagnostics = @()
     foreach ($node in $all) {
+        $stage = 'control metadata'
         $c = $node.Current
         if ($c.ProcessId -ne $request.pid -or $c.IsOffscreen -or $c.IsPassword) { continue }
         $b = $c.BoundingRectangle
@@ -21,6 +25,7 @@ try {
         if ($b.Left -lt $region.left -or $b.Top -lt $region.top -or $b.Right -gt ($region.left + $region.width) -or $b.Bottom -gt ($region.top + $region.height)) { continue }
         $type = $c.ControlType.ProgrammaticName
         $diagnostics += "$type/$($c.ClassName)"
+        $stage = 'patterns'
         $value = $null
         $hasValue = $node.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$value)
         # Never read a writable editor (composer/search), even if it overlaps the region.
@@ -34,6 +39,7 @@ try {
         }
         $text = $null
         $source = ''
+        $stage = 'read text'
         if ($hasText) {
             $range = $textPattern.DocumentRange
             $text = $range.GetText(32001)
@@ -73,6 +79,7 @@ try {
             $candidates += @{text=$text; source=$source; key=($node.GetRuntimeId() -join '.'); area=($b.Width * $b.Height); rect=@($b.Left,$b.Top,$b.Right,$b.Bottom)}
         }
     }
+    $stage = 'select transcript'
     # Prefer the encompassing transcript if a provider also exposes its nested text panes.
     $candidates = @($candidates | Sort-Object area -Descending)
     if ($candidates.Count -gt 0) {
@@ -86,5 +93,5 @@ try {
         @{ok=$false; reason='unsupported'; controls=@($diagnostics | Select-Object -First 12)} | ConvertTo-Json -Compress
     }
 } catch {
-    @{ok=$false; reason='unavailable'} | ConvertTo-Json -Compress
+    @{ok=$false; reason='unavailable'; stage=$stage; error_type=$_.Exception.GetType().Name; error_id=$_.FullyQualifiedErrorId} | ConvertTo-Json -Compress
 }

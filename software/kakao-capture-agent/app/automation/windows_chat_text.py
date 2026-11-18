@@ -22,6 +22,7 @@ class ChatText:
 class WindowsChatText:
     def __init__(self, desktop, report=lambda _: None):
         self.desktop, self.report = desktop, report
+        self.diagnostic = {}
 
     def read(self, cancel):
         check_cancel(cancel)
@@ -64,6 +65,15 @@ class WindowsChatText:
             raise AgentError("Selected conversation changed while reading text")
         try:
             body = json.loads(output.decode("utf-8-sig"))
+            if isinstance(body, dict) and not body.get("ok"):
+                self.diagnostic = {
+                    key: body.get(key)
+                    for key in ("reason", "stage", "error_type", "error_id", "controls")
+                }
+                self.report(
+                    "Text access diagnostic: "
+                    + json.dumps(self.diagnostic, ensure_ascii=True)[:1500]
+                )
             if not isinstance(body, dict) or not body.get("ok"):
                 raise ValueError()
             text, source, key = (body[k] for k in ("text", "source", "key"))
