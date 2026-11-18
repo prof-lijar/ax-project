@@ -9,6 +9,7 @@ from pathlib import Path
 from app.models import (
     AgentError,
     Cancelled,
+    ForegroundLost,
     Region,
     ReselectionRequired,
     Selection,
@@ -153,7 +154,7 @@ class WindowsDesktop:
         region = self.config.selection.resolve(client, dpi, self.monitors())
         hwnd = self.config.target.hwnd
         if self.gui.GetForegroundWindow() != hwnd:
-            raise TargetUnavailable("Bring the selected conversation to the foreground")
+            raise ForegroundLost("Bring the selected conversation to the foreground")
         # Walk every window ABOVE the target, including same-process dialogs.
         other = self.gui.GetWindow(hwnd, self.con.GW_HWNDPREV)
         while other:
@@ -277,7 +278,7 @@ class WindowsDesktop:
                 except Exception:
                     pass  # A failed native focus request is verified below, never assumed.
             if time.monotonic() >= deadline:
-                raise TargetUnavailable(
+                raise ForegroundLost(
                     "Windows did not allow activating the selected chat after focus recovery; no reply sent"
                 )
             cancel.wait(0.05)

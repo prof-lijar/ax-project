@@ -17,6 +17,7 @@ from app.models import (
     TRANSITIONS,
     AgentError,
     Cancelled,
+    ForegroundLost,
     ReselectionRequired,
     State,
     TargetUnavailable,
@@ -41,6 +42,7 @@ class MonitoringService(threading.Thread):
             desktop, capture, config, self.stop_input, self.history_cancel, activity
         )
         self.recoverable = False
+        self.auto_focus_recovery = False
         self.next_capture = self.next_recovery = 0
         self.operator_bottom = False
         self.want_live = False
@@ -93,6 +95,7 @@ class MonitoringService(threading.Thread):
 
     def command(self, name):
         if name == "stop":
+            self.auto_focus_recovery = False
             self.want_live = False
             self.stop_input.set()
             self.history_cancel.set()
@@ -110,6 +113,7 @@ class MonitoringService(threading.Thread):
     def suspend_recovery(self):
         """Reserve a manual action while the GUI yields foreground to the chat."""
         self.want_live = self.recoverable = False
+        self.auto_focus_recovery = False
         self.stop_input.set()
 
     def record(self, image, region, mode):
@@ -210,6 +214,7 @@ class MonitoringService(threading.Thread):
 
     def dispatch(self, command):
         if command == "stop":
+            self.auto_focus_recovery = False
             self.incoming_workflow.reset()
             self.auto_catch.reset()
             self.recoverable = False
@@ -311,6 +316,20 @@ class MonitoringService(threading.Thread):
                 self.stop_input.set()
 
     def pause(self, error):
+        if (
+            isinstance(error, ForegroundLost)
+            and self.auto_catch.active
+            and not self.stop_input.is_set()
+        ):
+            # Only retry BEFORE a reply attempt. Never clear the operator's Stop event.
+            self.auto_focus_recovery = True
+            self.recoverable = False
+            self.next_recovery = time.monotonic() + 2
+            reason = "Auto Catch waiting for chat focus; retrying automatically; Stop cancels"
+            if self.state != State.PAUSED or self.reason != reason:
+                self.transition(State.PAUSED, reason)
+            return
+        self.auto_focus_recovery = False
         self.incoming_workflow.reset()
         self.auto_catch.reset()
         self.recoverable = (
@@ -354,6 +373,20 @@ class MonitoringService(threading.Thread):
                 f"Watching for incoming text; {self.auto_catch.reply_count} replies submitted",
             )
 
+    def try_recover_auto_focus(self):
+        self.next_recovery = time.monotonic() + 2
+        if not self.auto_focus_recovery or self.stop_input.is_set() or self.shutdown.is_set():
+            return
+        self.auto_catch.check()
+        self.desktop.activate_target(self.stop_input)
+        self.auto_catch.check()
+        self.desktop.validate()
+        self.auto_focus_recovery = False
+        self.next_capture = 0
+        self.transition(
+            State.AUTO_CATCHING, "Chat focus recovered; continuing from previous capture"
+        )
+
     def run(self):
         while not self.shutdown.is_set():
             try:
@@ -382,12 +415,19 @@ class MonitoringService(threading.Thread):
                         self.poll_incoming()
                 elif (
                     self.state == State.PAUSED
+                    and self.auto_focus_recovery
+                    and now >= self.next_recovery
+                ):
+                    self.try_recover_auto_focus()
+                elif (
+                    self.state == State.PAUSED
                     and self.recoverable
                     and self.config.auto_resume
                     and now >= self.next_recovery
                 ):
                     self.try_recover()
             except Cancelled:
+                self.auto_focus_recovery = False
                 self.incoming_workflow.reset()
                 self.auto_catch.reset()
                 self.stop_input.set()
@@ -398,6 +438,7 @@ class MonitoringService(threading.Thread):
                 else:
                     self.pause(error)
             except Exception as error:
+                self.auto_focus_recovery = False
                 self.incoming_workflow.reset()
                 self.auto_catch.reset()
                 # Do not expose OS exception text, which may include private paths/content.

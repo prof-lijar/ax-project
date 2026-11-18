@@ -178,7 +178,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.auto_catch_button)
         auto_hint = QLabel(
             "Select the open group chat, then Auto Catch. It detects the message area if needed, "
-            "keeps watching, and replies with [AI] plus your suffix. Keep the latest chat visible. "
+            "keeps the selected chat in front, and replies with [AI] plus your suffix. Keep it open at the latest messages. "
             "Stop / Ctrl+Shift+F12 ends Auto Catch."
         )
         auto_hint.setWordWrap(True)

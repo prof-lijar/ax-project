@@ -1,5 +1,9 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+**Fixed: Auto Catch stops after its initial capture when the chat loses foreground focus.** Auto Catch now reactivates the same verified chat while watching and after classification. If Windows temporarily denies activation, it waits between bounded retries and preserves the previous screenshot, reply count, and duplicate guard. When focus returns, it continues comparing new content instead of silently resetting the baseline. Stop / Ctrl+Shift+F12 cancels recovery.
+
+This mode may bring the selected chat in front of the agent or other applications. Keep that chat open and the Windows session unlocked. Lock, minimization/closure, identity/size changes, persistent obstruction, and uncertain reply submission still require intervention. Focus failure inside a reply attempt never causes an automatic resend.
+
 **New: Auto Catch.** Select the open KakaoTalk group chat and click **Auto Catch**. If needed, the agent detects the capture area above its message box and generates a chat identifier automatically. It watches incoming text, saves local captures, asks your configured LLM for a response, and sends `[AI] ... (자동 응답)`. It keeps watching until Stop / Ctrl+Shift+F12; there is no one-cycle timeout and no Bizgo step.
 
 Default polling is twice per second with a short debounce; LLM inference adds response latency. Several newly visible incoming messages can be combined into one response. Outgoing/AI replies are ignored, and a bounded 60-second duplicate guard plus a three-second pause between replies reduces repeat sends. Messages arriving during inference remain eligible for the next comparison. Change the suffix and timing in Settings. Actual message coverage and classification remain approximate.

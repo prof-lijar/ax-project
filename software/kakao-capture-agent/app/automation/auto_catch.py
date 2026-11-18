@@ -11,7 +11,7 @@ from app.api.workflow_llm import check_cancel
 from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
-from app.models import AgentError
+from app.models import AgentError, ForegroundLost
 
 
 class AutoCatchWorkflow(IncomingReplyWorkflow):
@@ -25,6 +25,18 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         check_cancel(self.cancel)
         if self.identity() != self.original_identity:
             raise AgentError("Auto Catch target changed; stopped without replying")
+
+    def ensure_foreground(self):
+        """Recover focus only, without resetting the incoming-message baseline."""
+        self.check()
+        try:
+            self.desktop.validate()
+        except ForegroundLost:
+            self.progress("Auto Catch: activating the selected chat to continue watching")
+            self.check()
+            self.desktop.activate_target(self.cancel)
+            self.check()
+            self.desktop.validate()
 
     def arm(self):
         self.reset()
@@ -78,7 +90,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         self.check()
         if not self.active:
             raise AgentError("Auto Catch is not armed; no automatic retry")
-        self.desktop.validate()
+        self.ensure_foreground()
         if self.clock() < self.next_reply_at:
             return None
         frame, region = self.capture.grab()
@@ -90,7 +102,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         self.progress("Auto Catch: identifying new incoming text")
         incoming = self.llm.classify(self.baseline, png, self.cancel, batch=True)
         self.check()
-        self.desktop.validate()
+        self.ensure_foreground()
         if incoming.kind == "uncertain":
             raise AgentError("Auto Catch could not verify incoming text; stopped without replying")
         fingerprint = self.fingerprint(incoming)

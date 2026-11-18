@@ -12,6 +12,10 @@ class TargetUnavailable(AgentError):
     pass
 
 
+class ForegroundLost(TargetUnavailable):
+    """The target needs foreground activation; callers decide whether recovery is safe."""
+
+
 class ReselectionRequired(TargetUnavailable):
     pass
 
@@ -60,7 +64,7 @@ TRANSITIONS = {
     },
     State.HISTORY_SCANNING: {State.RESTORING_POSITION, State.PAUSED, State.STOPPED},
     State.RESTORING_POSITION: {State.LIVE_MONITORING, State.PAUSED, State.STOPPED},
-    State.PAUSED: {State.INITIALIZING, State.STOPPED},
+    State.PAUSED: {State.INITIALIZING, State.AUTO_CATCHING, State.STOPPED},
 }
 
 

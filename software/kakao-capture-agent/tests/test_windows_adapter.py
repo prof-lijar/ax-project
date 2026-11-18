@@ -4,7 +4,14 @@ from types import SimpleNamespace
 import pytest
 
 from app.automation.window_manager import WindowsDesktop
-from app.models import Region, ReselectionRequired, Selection, Target, TargetUnavailable
+from app.models import (
+    ForegroundLost,
+    Region,
+    ReselectionRequired,
+    Selection,
+    Target,
+    TargetUnavailable,
+)
 
 
 def adapter(config):
@@ -28,7 +35,7 @@ def test_native_guard_rejects_lock_foreground_and_small_obstruction(config):
         desktop.validate()
     desktop.session_available = lambda: True
     desktop.gui.GetForegroundWindow = lambda: 99
-    with pytest.raises(TargetUnavailable, match="foreground"):
+    with pytest.raises(ForegroundLost, match="foreground"):
         desktop.validate()
     desktop.gui.GetForegroundWindow = lambda: 42
     desktop.gui.GetWindow = lambda *_: 99
@@ -75,7 +82,7 @@ def test_reply_activation_refuses_reused_handle_and_windows_denial(config):
     activated = []
     desktop.gui.SetForegroundWindow = activated.append
     desktop.gui.GetForegroundWindow = lambda: 99
-    with pytest.raises(TargetUnavailable, match="did not allow"):
+    with pytest.raises(ForegroundLost, match="did not allow"):
         desktop.activate_target()
     assert activated == [42]
     activated.clear()

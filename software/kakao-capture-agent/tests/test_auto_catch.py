@@ -281,3 +281,212 @@ def test_auto_config_rejects_invalid_values(field, value):
     setattr(config, field, value)
     with pytest.raises(ValueError):
         config.validate()
+
+
+def lose_focus(w, *, denied=False):
+    from app.models import Cancelled, ForegroundLost
+
+    focus = {"foreground": False, "denied": denied, "attempts": 0}
+    original_validate = w.desktop.validate
+
+    def validate():
+        region = original_validate()
+        if not focus["foreground"]:
+            raise ForegroundLost("Bring the selected conversation to the foreground")
+        return region
+
+    def activate(cancel):
+        if cancel.is_set():
+            raise Cancelled("Stopped")
+        original_validate()
+        focus["attempts"] += 1
+        if focus["denied"]:
+            raise ForegroundLost("Windows denied focus")
+        focus["foreground"] = True
+
+    w.desktop.validate = validate
+    w.desktop.activate_target = activate
+    return focus
+
+
+def test_auto_catch_restores_focus_and_processes_incoming_without_rearming(watching):
+    w = watching
+    baseline = w.workflow.baseline
+    focus = lose_focus(w)
+    changed(w)
+    assert focus["attempts"] == 1
+    assert w.comparisons[0][0] == baseline
+    assert len(w.sent) == 1 and w.service.state == State.AUTO_CATCHING
+    assert w.workflow.reply_count == 1
+
+
+def test_focus_lost_during_classification_is_restored_before_reply(watching):
+    w = watching
+    focus = lose_focus(w)
+    focus["foreground"] = True
+    original = w.llm.classify
+
+    def classify(*args, **kwargs):
+        focus["foreground"] = False
+        return original(*args, **kwargs)
+
+    w.llm.classify = classify
+    changed(w)
+    assert focus["attempts"] == 1 and len(w.sent) == 1
+
+
+def test_denied_focus_retries_preserve_baseline_and_duplicate_guard(watching):
+    from app.models import ForegroundLost
+
+    w = watching
+    changed(w)
+    baseline, recent = w.workflow.baseline, dict(w.workflow.recent)
+    focus = lose_focus(w, denied=True)
+    w.now[0] += 4
+    w.capture.frame = 255 - w.capture.frame
+    with pytest.raises(ForegroundLost) as error:
+        w.service.poll_auto_catch()
+    w.service.pause(error.value)
+    assert w.service.auto_focus_recovery and w.workflow.active
+    assert w.service.state == State.PAUSED and not w.service.stop_input.is_set()
+    assert not w.service.recoverable  # This must never start normal live scrolling.
+    log_count = len(w.logs)
+    for _ in range(2):
+        with pytest.raises(ForegroundLost) as error:
+            w.service.try_recover_auto_focus()
+        w.service.pause(error.value)
+    assert len(w.logs) == log_count  # Quiet waiting, not repeated state churn.
+    assert w.workflow.baseline == baseline and dict(w.workflow.recent) == recent
+    assert len(w.sent) == 1 and not w.desktop.calls
+    focus["denied"] = False
+    w.service.try_recover_auto_focus()
+    assert w.service.state == State.AUTO_CATCHING and not w.service.auto_focus_recovery
+    assert w.workflow.baseline == baseline and dict(w.workflow.recent) == recent
+    w.service.poll_auto_catch()
+    w.now[0] += 0.5
+    w.service.poll_auto_catch()
+    assert len(w.sent) == 1  # Previously handled text cannot replay after focus recovery.
+
+
+@pytest.mark.parametrize("action", ["stop", "reserve_other_action", "shutdown"])
+def test_stop_or_new_action_cancels_pending_focus_recovery(watching, action):
+    from app.models import ForegroundLost
+
+    w = watching
+    focus = lose_focus(w, denied=True)
+    with pytest.raises(ForegroundLost) as error:
+        w.service.poll_auto_catch()
+    w.service.pause(error.value)
+    attempts = focus["attempts"]
+    if action == "stop":
+        w.service.command("stop")
+    elif action == "reserve_other_action":
+        w.service.suspend_recovery()
+    else:
+        w.service.shutdown.set()
+    focus["denied"] = False
+    w.service.try_recover_auto_focus()
+    assert focus["attempts"] == attempts and not w.sent
+    if action != "shutdown":
+        assert w.service.stop_input.is_set() and not w.service.auto_focus_recovery
+
+
+@pytest.mark.parametrize("reason", ["locked", "minimized", "covered", "retargeted"])
+def test_non_focus_failure_during_recovery_stops_auto_catch(watching, reason):
+    from app.models import ForegroundLost, ReselectionRequired
+
+    w = watching
+    lose_focus(w, denied=True)
+    with pytest.raises(ForegroundLost) as error:
+        w.service.poll_auto_catch()
+    w.service.pause(error.value)
+
+    def invalid(cancel):
+        if reason == "retargeted":
+            raise ReselectionRequired("Changed window identity")
+        raise TargetUnavailable(reason)
+
+    w.desktop.activate_target = invalid
+    with pytest.raises(AgentError) as error:
+        w.service.try_recover_auto_focus()
+    w.service.pause(error.value)
+    assert not w.service.auto_focus_recovery and not w.workflow.active
+    assert w.service.stop_input.is_set() and not w.sent
+
+
+def test_focus_failure_inside_send_never_retries_submission(watching):
+    from app.models import ForegroundLost
+
+    w = watching
+    attempts = []
+
+    def send(text):
+        attempts.append(text)
+        raise ForegroundLost("Focus lost during sending")
+
+    w.workflow.sender.send = send
+    with pytest.raises(ForegroundLost) as error:
+        changed(w)
+    w.service.pause(error.value)
+    assert len(attempts) == 1 and not w.service.auto_focus_recovery
+    w.service.try_recover_auto_focus()
+    assert len(attempts) == 1 and w.service.stop_input.is_set()
+
+
+def test_real_worker_recovers_focus_then_answers_and_stops(config, queue, frame, region):
+    import threading
+
+    import numpy as np
+
+    from app.models import ForegroundLost, Selection
+
+    desktop = Desktop(region)
+    config.selection = Selection(region, 300, 300, 96)
+    config.auto_catch_interval_seconds = 0.25
+    foreground = [True]
+    attempts = []
+
+    def validate():
+        if not foreground[0]:
+            raise ForegroundLost("Foreground lost")
+        return region
+
+    def activate(cancel):
+        attempts.append(True)
+        foreground[0] = True
+
+    desktop.validate, desktop.activate_target = validate, activate
+    capture = Capture(desktop, frame)
+    started, sent = threading.Event(), threading.Event()
+
+    def status(state, reason):
+        if state == State.AUTO_CATCHING.value:
+            started.set()
+
+    service = MonitoringService(
+        desktop, capture, queue, config, status, lambda _: None, lambda _: None
+    )
+    service.auto_catch.llm_factory = lambda _: SimpleNamespace(
+        classify=lambda *a, **kw: IncomingMessage("incoming", "New text"),
+        answer=lambda *a: "[AI] Reply",
+    )
+
+    def send(text):
+        sent.set()
+        return "send requested"
+
+    service.auto_catch.sender = SimpleNamespace(send=send, composer_cleared=True)
+    service.start()
+    try:
+        service.command("auto_catch")
+        assert started.wait(2)
+        foreground[0] = False
+        capture.frame = np.zeros_like(frame)
+        assert sent.wait(3)
+        assert len(attempts) >= 2  # Startup and automatic focus recovery.
+        service.command("stop")
+    finally:
+        service.shutdown.set()
+        service.command("stop")
+        service.join(3)
+    assert not service.is_alive()
