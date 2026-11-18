@@ -1,5 +1,6 @@
 """Read a verified conversation through Windows accessibility in a bounded helper process."""
 
+import ctypes
 import json
 import os
 import subprocess
@@ -24,12 +25,74 @@ class WindowsChatText:
         self.desktop, self.report = desktop, report
         self.diagnostic = {}
 
+    def native_text(self, region, target, cancel):
+        """Standard read-only Win32 editors expose text even without a UIA proxy."""
+        d = self.desktop
+        if not hasattr(d, "gui"):
+            return None
+        candidates = []
+
+        def eligible(handle):
+            name = d.gui.GetClassName(handle).lower()
+            style = d.gui.GetWindowLong(handle, -16)
+            if not (name == "edit" or name.startswith("richedit")):
+                return False
+            if not style & 0x4 or not style & 0x800 or style & 0x20:
+                return False
+            if not d.gui.IsWindowVisible(handle) or not d.gui.IsChild(target.hwnd, handle):
+                return False
+            if d.process.GetWindowThreadProcessId(handle)[1] != target.pid:
+                return False
+            from app.models import Region
+
+            left, top, right, bottom = d.gui.GetWindowRect(handle)
+            bounds = Region(left, top, right - left, bottom - top)
+            return (
+                region.contains(bounds)
+                and bounds.width >= region.width * 0.4
+                and bounds.height >= region.height * 0.25
+            )
+
+        def visit(handle, _):
+            if eligible(handle):
+                candidates.append(handle)
+
+        d.gui.EnumChildWindows(target.hwnd, visit, None)
+        if not candidates:
+            return None
+        if len(candidates) != 1:
+            raise AgentError(
+                "Multiple read-only transcript controls found; select only the conversation text area"
+            )
+        from app.automation.windows_composer import WindowsComposer
+
+        handle = candidates[0]
+        message = WindowsComposer(d).message
+        check_cancel(cancel)
+        if message(handle, 0x000E) > 1_000_000:
+            raise AgentError("Native transcript exceeds the text reader limit")
+        buffer = ctypes.create_unicode_buffer(1_000_001)
+        count = message(handle, 0x000D, len(buffer), ctypes.addressof(buffer))
+        check_cancel(cancel)
+        d.validate()
+        if d.config.target != target or not eligible(handle) or count >= len(buffer) - 1:
+            raise AgentError("Native transcript changed or exceeded the read limit")
+        text = buffer.value.replace("\r\n", "\n").replace("\r", "\n")
+        if len(text) > 32000:
+            text = text[-32000:]
+            if "\n" in text:
+                text = text.split("\n", 1)[1]
+        return ChatText(text.strip(), "Windows read-only Edit text", f"win32:{handle}")
+
     def read(self, cancel):
         check_cancel(cancel)
         region = self.desktop.validate()
         target = self.desktop.config.target
         if sys.platform != "win32":
             raise AgentError("Direct chat text requires Windows UI Automation")
+        native = self.native_text(region, target, cancel)
+        if native is not None:
+            return native
         powershell = (
             Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
         )

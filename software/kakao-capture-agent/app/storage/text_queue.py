@@ -34,7 +34,7 @@ class TextQueue:
         with self.storage.lock:
             if self.storage.usage() >= self.storage.config.storage_limit_bytes:
                 raise StorageFull(
-                    "Text queue storage limit reached; incoming text was not discarded"
+                    "Text queue storage limit reached; collection stopped; previously queued text retained"
                 )
             with self.storage.connect() as db:
                 count = db.execute(

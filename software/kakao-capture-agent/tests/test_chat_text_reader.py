@@ -63,9 +63,12 @@ def test_bounded_helper_validates_target_and_never_uses_pixels(monkeypatch, case
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Native Windows accessibility provider")
 def test_native_readonly_transcript_excludes_composer_and_reads_korean():
+    import ctypes
+
     import win32api
     import win32con
     import win32gui
+    import win32process
 
     ready, handles, errors = threading.Event(), {}, []
 
@@ -135,6 +138,9 @@ def test_native_readonly_transcript_excludes_composer_and_reads_korean():
         desktop = SimpleNamespace(
             config=SimpleNamespace(target=SimpleNamespace(hwnd=handles["parent"], pid=os.getpid())),
             validate=lambda: Region(left, top, right - left, bottom - top),
+            gui=win32gui,
+            process=win32process,
+            user=ctypes.WinDLL("user32", use_last_error=True),
         )
         reader = WindowsChatText(desktop)
         try:
@@ -142,9 +148,60 @@ def test_native_readonly_transcript_excludes_composer_and_reads_korean():
         except AgentError:
             pytest.fail(f"Native text reader diagnostics: {reader.diagnostic}")
         assert "새 질문" in result.text and "PRIVATE DRAFT" not in result.text
-        assert result.key and result.source.startswith("Windows")
+        assert result.key and result.source == "Windows read-only Edit text"
+        # Some Windows hosts expose this editor only as a generic UIA pane. The
+        # UIA path must either return the same safe text or explicitly report that.
+        reader.native_text = lambda *args: None
+        try:
+            accessible = reader.read(threading.Event())
+        except AgentError:
+            assert reader.diagnostic.get("reason") == "unsupported", reader.diagnostic
+        else:
+            assert "새 질문" in accessible.text and "PRIVATE DRAFT" not in accessible.text
     finally:
         if handles:
             win32gui.PostMessage(handles["parent"], win32con.WM_CLOSE, 0, 0)
         worker.join(3)
     assert not worker.is_alive()
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_native_reader_never_reads_writable_or_foreign_controls(monkeypatch, allowed):
+    import ctypes
+
+    from app.automation.windows_composer import WindowsComposer
+
+    calls = []
+    region = Region(0, 0, 500, 500)
+    target = SimpleNamespace(hwnd=42, pid=7)
+    desktop = SimpleNamespace(
+        config=SimpleNamespace(target=target),
+        validate=lambda: region,
+        gui=SimpleNamespace(
+            EnumChildWindows=lambda parent, visit, arg: [visit(h, arg) for h in (43, 44, 45)],
+            GetClassName=lambda h: "Edit",
+            GetWindowLong=lambda h, index: 0x4 if h == 44 else 0x804,
+            IsWindowVisible=lambda h: True,
+            IsChild=lambda parent, h: True,
+            GetWindowRect=lambda h: (0, 0, 500, 500),
+        ),
+        process=SimpleNamespace(
+            GetWindowThreadProcessId=lambda h: (1, 7 if h == 44 or (h == 43 and allowed) else 99)
+        ),
+    )
+
+    def message(self, handle, command, wparam=0, lparam=0):
+        calls.append(handle)
+        assert handle == 43
+        if command == 0x000E:
+            return 5
+        text = ctypes.create_unicode_buffer("hello")
+        ctypes.memmove(lparam, text, ctypes.sizeof(text))
+        return 5
+
+    monkeypatch.setattr(WindowsComposer, "message", message)
+    result = WindowsChatText(desktop).native_text(region, target, threading.Event())
+    if allowed:
+        assert result.text == "hello" and calls == [43, 43]
+    else:
+        assert result is None and not calls

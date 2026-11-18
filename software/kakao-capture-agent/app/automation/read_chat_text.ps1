@@ -3,13 +3,8 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
-$stage = 'providers'
+$stage = 'input'
 try {
-    # Explicitly initialize the standard Win32 control proxies in the PowerShell host.
-    Add-Type -AssemblyName UIAutomationClientsideProviders
-    $providers = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'UIAutomationClientsideProviders' } | Select-Object -First 1
-    [System.Windows.Automation.ClientSettings]::RegisterClientSideProviderAssembly($providers.GetName())
-    $stage = 'input'
     $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
     $stage = 'root'
     $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][long]$request.hwnd)

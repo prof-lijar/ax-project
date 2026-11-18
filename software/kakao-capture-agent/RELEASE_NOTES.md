@@ -1,6 +1,6 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
-**Auto Catch now reads text directly—no screenshots.** Select the open conversation and start Auto Catch. Windows accessibility provides the transcript; only newly appended text is sent to the LLM. The text preview shows the source. Unsupported KakaoTalk clients report that direct text is unavailable, with no screenshot fallback.
+**Auto Catch now reads text directly—no screenshots.** Select the open conversation and start Auto Catch. Read-only Windows text controls or accessibility provide the transcript; only newly appended text is sent to the LLM. The text preview shows the source. Unsupported KakaoTalk clients report that direct text is unavailable, with no screenshot fallback.
 
 **Incoming text queues while the previous request is processing.** A durable SQLite FIFO retains later arrivals while one background LLM job runs. Replies are submitted sequentially. Stop/restart preserves pending work; uncertain sends require review and are never replayed automatically. Use Stop → inspect the chat → Review Text Replies → Auto Catch to continue after resolving an uncertain attempt.
 
