@@ -370,7 +370,8 @@ class MonitoringService(threading.Thread):
         if self.state != State.AUTO_CATCHING:
             self.transition(
                 State.AUTO_CATCHING,
-                f"Watching for incoming text; {self.auto_catch.reply_count} replies submitted",
+                self.auto_catch.waiting_reason
+                or f"Watching for incoming text; {self.auto_catch.reply_count} replies submitted",
             )
 
     def try_recover_auto_focus(self):

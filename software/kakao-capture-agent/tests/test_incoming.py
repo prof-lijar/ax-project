@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.api.incoming_llm import IncomingLLM, IncomingMessage, parse_incoming
+from app.api.incoming_llm import IncomingAnalysisError, IncomingLLM, IncomingMessage, parse_incoming
 from app.api.workflow_llm import LLMSettings
 from app.automation.monitoring_service import MonitoringService
 from app.capture.screen_capture import encode_png
@@ -39,6 +39,7 @@ def test_two_images_then_one_prefixed_answer(frame, batch):
         data = json.loads(request.content)
         requests.append(data)
         if len(requests) == 1:
+            assert data["response_format"] == {"type": "json_object"}
             system = data["messages"][0]["content"]
             assert ("include all new readable incoming" in system) == batch
             images = [
@@ -51,6 +52,7 @@ def test_two_images_then_one_prefixed_answer(frame, batch):
                 dict(kind="incoming", text="2 더하기 2는?", sender="테스트", is_ai=False)
             )
         assert json.loads(data["messages"][1]["content"])["message"] == "2 더하기 2는?"
+        assert "response_format" not in data
         return completion({"reply": "[AI] [AI] 4입니다."})
 
     llm = IncomingLLM(
@@ -90,6 +92,92 @@ def test_generated_messages_are_ignored_even_if_model_misclassifies(text):
 def test_bad_analysis_never_generates_reply(body):
     with pytest.raises(AgentError, match="invalid JSON"):
         parse_incoming(json.dumps(body))
+
+
+@pytest.mark.parametrize("fence", ["json\n", "JSON\r\n", "\n", "json \n"])
+def test_single_json_fence_variants(fence):
+    content = json.dumps(dict(kind="incoming", text='질문 "안녕"\n두 줄', sender="", is_ai=False))
+    assert parse_incoming("```" + fence + content + "\n```").text == '질문 "안녕"\n두 줄'
+
+
+@pytest.mark.parametrize(
+    "content,reason",
+    [
+        ('{"kind":"incoming","kind":"none"}', "duplicate fields"),
+        ("private chat contents", "syntax"),
+        ('{"kind":"incoming"}', "missing fields"),
+        (
+            '{"kind":"incoming","text":"secret","sender":"","is_ai":"false"}',
+            "invalid classification fields",
+        ),
+        ('{"kind":"none","text":"","sender":"","is_ai":false} trailing', "syntax"),
+    ],
+)
+def test_analysis_errors_have_safe_specific_diagnostics(content, reason):
+    with pytest.raises(IncomingAnalysisError, match=reason) as error:
+        parse_incoming(content)
+    assert "private" not in str(error.value) and "secret" not in str(error.value)
+
+
+@pytest.mark.parametrize("reply", ["4입니다.", "[AI] 4입니다.", "첫째 줄\n둘째 줄"])
+def test_reply_accepts_plain_text(reply):
+    def api(request):
+        body = json.loads(request.content)
+        assert "response_format" not in body
+        return httpx.Response(
+            200, json={"choices": [{"finish_reason": "stop", "message": {"content": reply}}]}
+        )
+
+    llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
+    result = llm.answer(IncomingMessage("incoming", "질문"), threading.Event())
+    assert result == (reply if reply.startswith("[AI]") else "[AI] " + reply)
+
+
+def test_structured_output_falls_back_only_once_when_explicitly_unsupported():
+    requests = []
+
+    def api(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if "response_format" in body:
+            return httpx.Response(422, json={"error": "response_format is unsupported"})
+        return completion(dict(kind="incoming", text="Hello", sender="", is_ai=False))
+
+    llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
+    for _ in range(2):
+        assert llm.classify(b"before", b"after", threading.Event()).kind == "incoming"
+    assert len(requests) == 3
+    assert ["response_format" in r for r in requests] == [True, False, False]
+
+
+@pytest.mark.parametrize(
+    "status,body", [(401, "response_format"), (500, "response_format"), (400, "model not found")]
+)
+def test_other_api_errors_do_not_trigger_format_fallback(status, body):
+    calls = []
+
+    def api(request):
+        calls.append(request)
+        return httpx.Response(status, text=body)
+
+    llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
+    with pytest.raises(AgentError, match=f"HTTP {status}"):
+        llm.classify(b"before", b"after", threading.Event())
+    assert len(calls) == 1
+
+
+def test_stop_prevents_structured_output_fallback_request():
+    cancel, calls = threading.Event(), []
+
+    def api(request):
+        calls.append(request)
+        cancel.set()
+        return httpx.Response(400, text="response_format unsupported")
+
+    llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
+    with pytest.raises(Cancelled):
+        llm.classify(b"before", b"after", cancel)
+    assert len(calls) == 1
 
 
 def test_cancel_active_comparison_request():

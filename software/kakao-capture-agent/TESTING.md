@@ -14,6 +14,16 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Incoming-message analysis recovery and plain-text replies — 2026-11-18
+
+Portable suite: **276 passed, 19 native Windows cases skipped in 8.20 seconds**; Ruff lint/format and diff checks passed. Focused Auto Catch/incoming/workflow coverage passed **127 tests in 2.04 seconds**. A mocked HTTP workflow follows typing indicator → malformed analysis on the incoming frame → automatic recheck against the retained baseline → plain Korean reply → outgoing reply ignored. It verifies exactly one local capture and one submission, with no manual restart. Other cases cover bounded retry frequency, persistent uncertainty, Stop/target loss during failed analysis, plain-text answers, invalid/duplicate JSON fields, fence variations, and cancellation/no extra request on API errors.
+
+The configured local `gemma-4-31b` server also passed a live synthetic paired-image test: typing activity was classified `none`, the subsequent question was `incoming`, and the plain-text answer became `[AI] 2 plus 2 is 4. (자동 응답)`. Its structured JSON mode was accepted without fallback. No real chat contents or desktop input were used. Actual Korean KakaoTalk message detection and automatic reply delivery still require the user's Windows test.
+
+Analysis uses the OpenAI-compatible `response_format: {"type":"json_object"}` option, documented by [vLLM](https://docs.vllm.ai/en/stable/serving/online_serving/openai_compatible_server/). Servers explicitly rejecting that parameter with HTTP 400/422 receive one cancellable fallback without it; subsequent analysis calls on that workflow instance omit it. Other HTTP errors are not retried. Model analysis still undergoes field/type/length checks. Unreadable analysis leaves the previous baseline untouched and backs off up to 30 seconds while Auto Catch remains armed; this does not retry reply generation or chat submission. Test Workflow 2 remains one-shot and still stops on invalid analysis.
+
+Client acceptance: start Auto Catch before another participant types. Typing dots should cause no reply. Submit a short question such as `2 더하기 2는?`; verify one `[AI] 4입니다. (자동 응답)` answer (wording can vary), then ask a different question without restarting. Confirm the agent ignores its own answer. If analysis needs another check, the log must show a delay while remaining AUTO_CATCHING, and Stop/hotkey must still end the workflow. All image-based coverage remains approximate.
+
 ### Auto Catch foreground recovery — 2026-11-18
 
 Portable validation: **253 tests passed, 19 native Windows cases skipped in 7.80 seconds**; Ruff lint/format checks passed. New cases exercise focus loss after startup and during classification, temporary activation denial, quiet periodic retries, preserved baseline/reply count/duplicate cache, Stop/new-action/shutdown cancellation, and refusal to recover after lock/minimization/obstruction/retargeting or a send attempt. A real MonitoringService thread with fake desktop/model/composer adapters starts watching, loses focus, reacquires it, processes incoming text, and stops. Native adapter tests distinguish foreground-only failures from other target failures; no real desktop input or messages are sent by these tests.

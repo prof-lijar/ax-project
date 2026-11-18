@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api.incoming_llm import IncomingMessage
+from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage
 from app.automation.monitoring_service import MonitoringService
 from app.capture.screen_capture import encode_png
 from app.config import Config, load, save
@@ -173,7 +173,6 @@ def test_duplicate_cache_expires_and_is_bounded(watching):
         "cancel",
         "retarget",
         "hidden",
-        "uncertain",
         "network",
         "storage",
         "answer_cancel",
@@ -189,8 +188,6 @@ def test_interruptions_pause_without_rearming(watching, failure, monkeypatch):
         w.service.config.chat_id = "other"
     elif failure == "hidden":
         w.desktop.valid = False
-    elif failure == "uncertain":
-        w.llm.outcome = IncomingMessage("uncertain")
     elif failure == "submission_uncertain":
         w.workflow.sender.composer_cleared = False
     elif failure == "answer_cancel":
@@ -231,6 +228,117 @@ def test_target_lost_during_model_call_blocks_reply(watching):
     with pytest.raises(TargetUnavailable):
         changed(w)
     assert not w.sent
+
+
+@pytest.mark.parametrize("kind", ["invalid_format", "uncertain"])
+def test_analysis_retry_keeps_baseline_and_later_replies_without_rearming(watching, kind):
+    w = watching
+    baseline = w.workflow.baseline
+    original = w.llm.classify
+
+    def incomplete(*a, **kw):
+        if kind == "uncertain":
+            return IncomingMessage("uncertain")
+        raise IncomingAnalysisError("Synthetic invalid JSON")
+
+    w.llm.classify = incomplete
+    changed(w)
+    assert w.workflow.active and w.service.state == State.AUTO_CATCHING
+    assert w.workflow.baseline == baseline and not w.sent and not w.workflow.recent
+    assert "checking again in 2s" in w.service.reason
+    assert not list(w.queue.images.glob("*.png"))
+    w.llm.classify = original
+    w.service.poll_auto_catch()
+    assert not w.comparisons  # Backoff, no repeated LLM request at the poll interval.
+    w.now[0] += 2
+    w.service.poll_auto_catch()  # Same pixels must still be eligible, without a new message.
+    assert w.comparisons[0][0] == baseline
+    assert w.sent == ["[AI] 답변 (자동 응답)"] and w.workflow.reply_count == 1
+    assert w.workflow.analysis_failures == 0 and not w.workflow.waiting_reason
+
+
+def test_repeated_analysis_failure_is_rate_limited_and_stop_cancels(watching):
+    w = watching
+    baseline = w.workflow.baseline
+    w.llm.outcome = IncomingMessage("uncertain")
+    changed(w)
+    for delay in [4, 8, 16, 30, 30]:
+        w.now[0] = w.workflow.next_analysis_at
+        w.service.poll_auto_catch()
+        assert w.workflow.next_analysis_at - w.now[0] == delay
+        assert w.workflow.baseline == baseline and not w.sent
+    w.service.command("stop")
+    with pytest.raises(AgentError):
+        w.service.poll_auto_catch()
+    assert not w.sent
+
+
+@pytest.mark.parametrize("failure", ["cancel", "retarget", "hidden"])
+def test_failed_analysis_does_not_bypass_target_and_cancel_checks(watching, failure):
+    w = watching
+
+    def classify(*a, **kw):
+        if failure == "cancel":
+            w.service.command("stop")
+        elif failure == "retarget":
+            w.service.config.chat_id = "other"
+        else:
+            w.desktop.valid = False
+        raise IncomingAnalysisError("Invalid analysis")
+
+    w.llm.classify = classify
+    with pytest.raises(AgentError):
+        changed(w)
+    assert not w.sent and w.workflow.analysis_failures == 0
+
+
+def test_typing_then_bad_analysis_then_incoming_plain_reply(watching):
+    import base64
+    import json
+
+    import httpx
+
+    from app.api.incoming_llm import IncomingLLM
+    from app.api.workflow_llm import LLMSettings
+
+    w = watching
+    requests, before_images = [], []
+    outcomes = [
+        '{"kind":"none","text":"","sender":"","is_ai":false}',
+        "unusable analysis",
+        '{"kind":"incoming","text":"2 더하기 2는?","sender":"테스트","is_ai":false}',
+        "4입니다.",
+        '{"kind":"outgoing","text":"[AI] 4입니다.","sender":"","is_ai":true}',
+    ]
+
+    def api(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if "response_format" in body:
+            image = body["messages"][1]["content"][1]["image_url"]["url"]
+            before_images.append(base64.b64decode(image.split(",")[1]))
+        return httpx.Response(
+            200,
+            json={"choices": [{"finish_reason": "stop", "message": {"content": outcomes.pop(0)}}]},
+        )
+
+    w.workflow.llm = IncomingLLM(
+        LLMSettings("https://llm.test", "vision", 5), "synthetic-key", httpx.MockTransport(api)
+    )
+    changed(w)  # Only typing dots: no answer, continue watching.
+    typing_baseline = w.workflow.baseline
+    assert not w.sent and any("typing/UI" in line for line in w.logs)
+    changed(w)  # Actual text arrives, but the first analysis is malformed.
+    assert not w.sent and w.workflow.baseline == typing_baseline
+    w.now[0] += 2
+    w.service.poll_auto_catch()  # No new frame needed for recovery.
+    assert before_images[1] == before_images[2] == typing_baseline
+    assert w.sent == ["[AI] 4입니다. (자동 응답)"]
+    w.now[0] += 4
+    changed(w)  # Our outgoing reply is visible: do not answer it.
+    assert len(w.sent) == 1 and not outcomes and len(requests) == 5
+    assert w.workflow.active and w.service.state == State.AUTO_CATCHING
+    assert len(list(w.queue.images.glob("*.png"))) == 1
 
 
 def test_stop_then_rearm_keeps_selected_region_and_ignores_existing(watching):

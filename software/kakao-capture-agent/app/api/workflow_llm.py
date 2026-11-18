@@ -14,6 +14,10 @@ from app.models import AgentError, Cancelled
 from app.utils.windows import get_token
 
 
+class ResponseFormatUnsupported(AgentError):
+    """The server explicitly rejected the optional structured-output parameter."""
+
+
 def validate_llm_url(url, allow_http=False):
     parsed = urlsplit(url)
     try:
@@ -110,28 +114,37 @@ class WorkflowLLM:
     def __init__(self, settings, token, transport=None):
         self.settings, self.token, self.transport = settings, token, transport
 
-    async def completion(self, client, messages):
+    async def completion(self, client, messages, *, response_format=None):
+        payload = {
+            "model": self.settings.model,
+            "messages": messages,
+            "stream": False,
+            "temperature": 0,
+            "max_tokens": 2048,
+        }
+        if response_format is not None:
+            payload["response_format"] = response_format
         async with client.stream(
             "POST",
             self.settings.url,
             headers={"Authorization": f"Bearer {self.token}"},
-            json={
-                "model": self.settings.model,
-                "messages": messages,
-                "stream": False,
-                "temperature": 0,
-                "max_tokens": 2048,
-            },
+            json=payload,
         ) as response:
-            if not 200 <= response.status_code < 300:
-                raise AgentError(
-                    f"LLM rejected request (HTTP {response.status_code}); nothing sent"
-                )
             body = bytearray()
             async for chunk in response.aiter_bytes():
                 body.extend(chunk)
                 if len(body) > 128 * 1024:
                     raise AgentError("LLM response exceeded size limit; nothing sent")
+            if not 200 <= response.status_code < 300:
+                if (
+                    response_format is not None
+                    and response.status_code in (400, 422)
+                    and b"response_format" in body.lower()
+                ):
+                    raise ResponseFormatUnsupported("LLM does not support response_format")
+                raise AgentError(
+                    f"LLM rejected request (HTTP {response.status_code}); nothing sent"
+                )
         try:
             choice = json.loads(body)["choices"][0]
             text = choice["message"]["content"]

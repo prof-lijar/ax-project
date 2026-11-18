@@ -6,7 +6,7 @@ from collections import OrderedDict
 from dataclasses import replace
 from uuid import uuid4
 
-from app.api.incoming_llm import automated_text
+from app.api.incoming_llm import IncomingAnalysisError, automated_text
 from app.api.workflow_llm import check_cancel
 from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.capture.change_detector import ChangeDetector
@@ -20,6 +20,9 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         self.recent = OrderedDict()
         self.reply_count = 0
         self.next_reply_at = 0
+        self.analysis_failures = 0
+        self.next_analysis_at = 0
+        self.waiting_reason = ""
 
     def check(self):
         check_cancel(self.cancel)
@@ -86,12 +89,23 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
             self.recent.popitem(last=False)
         return fingerprint in self.recent
 
+    def defer_analysis(self, reason):
+        """Keep the last verified baseline; no message has been consumed or sent."""
+        self.check()
+        self.ensure_foreground()
+        self.analysis_failures += 1
+        delay = min(2 ** min(self.analysis_failures, 5), 30)
+        self.next_analysis_at = self.clock() + delay
+        self.waiting_reason = f"Auto Catch: {reason}; checking again in {delay}s; no reply sent"
+        self.progress(self.waiting_reason)
+        self.queue.event("auto_catch_analysis_retry", self.waiting_reason)
+
     def tick(self):
         self.check()
         if not self.active:
             raise AgentError("Auto Catch is not armed; no automatic retry")
         self.ensure_foreground()
-        if self.clock() < self.next_reply_at:
+        if self.clock() < max(self.next_reply_at, self.next_analysis_at):
             return None
         frame, region = self.capture.grab()
         self.check()
@@ -100,11 +114,19 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         png = encode_png(frame)
         self.preview(png)
         self.progress("Auto Catch: identifying new incoming text")
-        incoming = self.llm.classify(self.baseline, png, self.cancel, batch=True)
+        try:
+            incoming = self.llm.classify(self.baseline, png, self.cancel, batch=True)
+        except IncomingAnalysisError as error:
+            self.defer_analysis(str(error))
+            return None
         self.check()
         self.ensure_foreground()
         if incoming.kind == "uncertain":
-            raise AgentError("Auto Catch could not verify incoming text; stopped without replying")
+            self.defer_analysis("incoming text not clear yet")
+            return None
+        self.analysis_failures = 0
+        self.next_analysis_at = 0
+        self.waiting_reason = ""
         fingerprint = self.fingerprint(incoming)
         if (
             incoming.kind != "incoming"
@@ -113,6 +135,11 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         ):
             self.accept(frame, png)
             self.queue.event("auto_catch_ignored", "Outgoing, cosmetic, or recently handled change")
+            self.progress(
+                "Auto Catch: no new incoming text (typing/UI change)"
+                if incoming.kind == "none"
+                else "Auto Catch: outgoing/AI or recently handled text ignored"
+            )
             return None
         # Mark this attempt BEFORE inference/input. Errors require explicit rearming.
         self.active = False
