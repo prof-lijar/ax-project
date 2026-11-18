@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
-from app.automation.auto_catch import AutoCatchWorkflow
 from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
 from app.automation.test_workflow import OneCycleWorkflow
+from app.automation.text_auto_catch import TextAutoCatchWorkflow
 from app.automation.windows_composer import WindowsComposer
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
@@ -25,7 +25,17 @@ from app.models import (
 
 
 class MonitoringService(threading.Thread):
-    def __init__(self, desktop, capture, queue, config, status, preview, activity):
+    def __init__(
+        self,
+        desktop,
+        capture,
+        queue,
+        config,
+        status,
+        preview,
+        activity,
+        text_preview=lambda _: None,
+    ):
         super().__init__(name="capture", daemon=False)
         self.desktop, self.capture, self.queue, self.config = desktop, capture, queue, config
         self.status, self.preview, self.activity = status, preview, activity
@@ -70,7 +80,7 @@ class MonitoringService(threading.Thread):
             lambda message: self.transition(State.INITIALIZING, message),
         )
 
-        self.auto_catch = AutoCatchWorkflow(
+        self.auto_catch = TextAutoCatchWorkflow(
             desktop,
             capture,
             queue,
@@ -79,6 +89,7 @@ class MonitoringService(threading.Thread):
             self.stop_input,
             preview,
             lambda message: self.transition(State.INITIALIZING, message),
+            text_preview=text_preview,
         )
 
     def transition(self, state, reason=""):
@@ -451,3 +462,6 @@ class MonitoringService(threading.Thread):
                 self.state, self.reason = State.PAUSED, reason
                 self.status(State.PAUSED.value, reason)
                 self.activity(reason)
+        # Shutdown may exit before the queued Stop command is dispatched.
+        self.stop_input.set()
+        self.auto_catch.reset()

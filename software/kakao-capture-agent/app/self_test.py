@@ -19,6 +19,7 @@ def run(report_path):
         from PySide6.QtWidgets import QApplication
 
         from app.api.upload_worker import UploadWorker
+        from app.automation import windows_chat_text
         from app.automation.monitoring_service import MonitoringService
         from app.automation.window_manager import WindowsDesktop
         from app.capture.screen_capture import ScreenCapture, encode_png
@@ -28,6 +29,10 @@ def run(report_path):
         from app.storage.capture_queue import CaptureQueue
         from app.utils.windows import secure_directory
 
+        text_helper = Path(windows_chat_text.__file__).with_name("read_chat_text.ps1")
+        assert text_helper.is_file() and "UIAutomationClient" in text_helper.read_text(
+            encoding="utf-8"
+        )
         application = QApplication([])
         with tempfile.TemporaryDirectory(prefix="kakao-self-test-") as temporary:
             root = Path(temporary)
@@ -72,6 +77,7 @@ def run(report_path):
             "status": "passed",
             "checks": [
                 "native imports",
+                "packaged Windows text-reader resource",
                 "restricted data directory",
                 "configuration",
                 "SQLite schema",

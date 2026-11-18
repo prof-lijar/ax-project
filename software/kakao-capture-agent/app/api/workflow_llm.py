@@ -62,7 +62,7 @@ class LLMSettings:
     timeout: int
 
     @classmethod
-    def resolve(cls, config, environ=None):
+    def resolve(cls, config, environ=None, *, require_vision=True):
         env = os.environ if environ is None else environ
         url = env.get("OPENAI_BASE_URL") or env.get("URL") or config.llm_url
         model = env.get("OPENAI_MODEL") or env.get("MODEL") or config.llm_model
@@ -73,7 +73,7 @@ class LLMSettings:
             validate_llm_url(url, config.llm_allow_http)
         except ValueError as error:
             raise AgentError(str(error)) from None
-        if flag not in {"1", "true", "yes", "on"}:
+        if require_vision and flag not in {"1", "true", "yes", "on"}:
             raise AgentError(
                 "Test Workflow needs an image-capable model; enable LLM vision in Settings"
             )

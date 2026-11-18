@@ -184,10 +184,28 @@ class WindowsComposer:
 
     def read(self, handle):
         self.guard(handle)
+        return self.read_text(handle)
+
+    def read_text(self, handle):
         # Up to 2,000 reply characters, including UTF-16 surrogate pairs and CRLF.
         text = ctypes.create_unicode_buffer(4096)
         self.message(handle, 0x000D, len(text), ctypes.addressof(text))  # WM_GETTEXT
         return text.value
+
+    def read_after_send(self, handle):
+        """Read the original composer without requiring that it still owns keyboard focus."""
+        d = self.desktop
+        region = d.validate()
+        target = d.config.target
+        if (
+            not d.gui.IsChild(target.hwnd, handle)
+            or d.process.GetWindowThreadProcessId(handle)[1] != target.pid
+        ):
+            raise AgentError("Original message box is no longer in the selected conversation")
+        self.validate_control(handle, region)
+        text = self.read_text(handle)
+        d.validate()
+        return text
 
     def write(self, handle, text):
         self.guard(handle)
@@ -217,10 +235,10 @@ class WindowsComposer:
                     "Observation stopped after Enter; delivery uncertain, no automatic retry"
                 )
             try:
-                text = self.read(handle)
+                text = self.read_after_send(handle)
             except AgentError:
                 return SubmissionObservation(
-                    "Focus changed after Enter; delivery uncertain, no automatic retry"
+                    "Original message box could not be verified after Enter; delivery uncertain, no automatic retry"
                 )
             except Exception:
                 return SubmissionObservation(

@@ -66,7 +66,7 @@ def test_final_submit_guard_blocks_input(failure, monkeypatch):
 )
 def test_submission_observation_reports_remaining_text_without_retry(text, expected, monkeypatch):
     composer = WindowsComposer(None)
-    monkeypatch.setattr(composer, "read", lambda _: text)
+    monkeypatch.setattr(composer, "read_after_send", lambda _: text)
     result = composer.observe_submission(43, threading.Event(), timeout=0)
     assert expected in result.message
     assert result.composer_cleared == (expected == "cleared")
@@ -82,6 +82,27 @@ def test_submission_observation_stops_after_cancellation_or_focus_loss(monkeypat
     def changed(_):
         raise Cancelled("Focus changed")
 
-    monkeypatch.setattr(composer, "read", changed)
+    monkeypatch.setattr(composer, "read_after_send", changed)
     observation = composer.observe_submission(43, cancel, timeout=0)
     assert "uncertain" in observation.message and not observation.composer_cleared
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_read_after_send_does_not_require_keyboard_focus_but_checks_owner(valid, monkeypatch):
+    target = SimpleNamespace(hwnd=42, pid=7)
+    desktop = SimpleNamespace(
+        config=SimpleNamespace(target=target),
+        validate=lambda: None,
+        gui=SimpleNamespace(IsChild=lambda parent, child: valid),
+        process=SimpleNamespace(GetWindowThreadProcessId=lambda handle: (1, 7)),
+    )
+    composer = WindowsComposer(desktop)
+    monkeypatch.setattr(
+        composer,
+        "focused",
+        lambda: (_ for _ in ()).throw(AssertionError("No keyboard focus required for observation")),
+    )
+    monkeypatch.setattr(composer, "validate_control", lambda *args: None)
+    monkeypatch.setattr(composer, "read_text", lambda handle: "")
+    result = composer.observe_submission(43, threading.Event(), timeout=0)
+    assert result.composer_cleared == valid

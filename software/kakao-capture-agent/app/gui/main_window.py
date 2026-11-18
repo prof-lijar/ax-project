@@ -37,6 +37,7 @@ class Signals(QObject):
     activity = Signal(str)
     upload = Signal(str)
     stats = Signal(object)
+    text_preview = Signal(str)
 
 
 class EmergencyHotkey(QAbstractNativeEventFilter):
@@ -177,12 +178,24 @@ class MainWindow(QMainWindow):
         self.auto_catch_button.clicked.connect(lambda: self.action("auto_catch"))
         layout.addWidget(self.auto_catch_button)
         auto_hint = QLabel(
-            "Select the open group chat, then Auto Catch. It detects the message area if needed, "
-            "keeps the selected chat in front, and replies with [AI] plus your suffix. Keep it open at the latest messages. "
+            "Auto Catch reads conversation text through Windows accessibility—no screenshots. "
+            "New arrivals queue locally while the LLM answers; replies are sent in order. "
+            "Keep the selected chat open at the latest messages. "
             "Stop / Ctrl+Shift+F12 ends Auto Catch."
         )
         auto_hint.setWordWrap(True)
         layout.addWidget(auto_hint)
+        self.text_preview = QTextEdit()
+        self.text_preview.setReadOnly(True)
+        self.text_preview.setPlaceholderText(
+            "Direct chat text appears here when supported by KakaoTalk"
+        )
+        self.text_preview.setMaximumHeight(130)
+        signals.text_preview.connect(self.text_preview.setPlainText)
+        layout.addWidget(self.text_preview)
+        self.review_text_button = QPushButton("Review Text Replies")
+        self.review_text_button.clicked.connect(self.review_text_replies)
+        layout.addWidget(self.review_text_button)
         self.incoming_test_button = QPushButton("Test Workflow 2: Reply to Next Message")
         self.incoming_test_button.clicked.connect(lambda: self.action("incoming_test"))
         layout.addWidget(self.incoming_test_button)
@@ -251,6 +264,7 @@ class MainWindow(QMainWindow):
         self.auto_catch_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.AUTO_CATCHING.value
         )
+        self.review_text_button.setEnabled(state == State.STOPPED.value)
         self.incoming_test_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
         )
@@ -511,7 +525,7 @@ class MainWindow(QMainWindow):
             from app.api.workflow_llm import LLMSettings
 
             try:
-                LLMSettings.resolve(self.config)
+                LLMSettings.resolve(self.config, require_vision=command != "auto_catch")
             except AgentError as error:
                 QMessageBox.warning(self, "LLM settings required", str(error))
                 return
@@ -543,6 +557,8 @@ class MainWindow(QMainWindow):
             self.monitor.suspend_recovery()
         if command == "auto_catch":
             self.auto_setup_saved = False
+            self.preview_label.clear()
+            self.preview_label.setText("Auto Catch uses direct text; see the text preview below")
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
@@ -558,7 +574,7 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
-            else "Starting Auto Catch: detect incoming text and keep replying until Stop. Ctrl+Shift+F12 cancels"
+            else "Starting Auto Catch: read direct text, queue incoming messages, and reply in order. No screenshots. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
             if command == "incoming_test"
@@ -612,6 +628,28 @@ class MainWindow(QMainWindow):
             "Failed uploads reset",
             "Could not reset failed jobs; check local storage",
         )
+
+    def review_text_replies(self):
+        from app.automation.text_auto_catch import chat_queue_key
+
+        if self.monitor.state != State.STOPPED or not self.config.target:
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "Review uncertain text replies",
+                "Inspect the selected KakaoTalk chat first. Mark its uncertain reply attempts as handled "
+                "without sending them again? Other queued incoming text will be retained. "
+                "Start Auto Catch afterward to process the remaining queue.",
+            )
+            == QMessageBox.Yes
+        ):
+            key = chat_queue_key(self.config)
+            self.queue_action(
+                lambda: self.monitor.auto_catch.jobs.resolve_review(key),
+                "Uncertain text replies marked handled; pending incoming text retained",
+                "Could not update text reply review; check local storage",
+            )
 
     def queue_action(self, action, success, failure):
         # SQLite may wait for another transaction; never do that on Qt's event loop.

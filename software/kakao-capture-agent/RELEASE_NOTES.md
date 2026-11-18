@@ -1,5 +1,13 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+**Auto Catch now reads text directly—no screenshots.** Select the open conversation and start Auto Catch. Windows accessibility provides the transcript; only newly appended text is sent to the LLM. The text preview shows the source. Unsupported KakaoTalk clients report that direct text is unavailable, with no screenshot fallback.
+
+**Incoming text queues while the previous request is processing.** A durable SQLite FIFO retains later arrivals while one background LLM job runs. Replies are submitted sequentially. Stop/restart preserves pending work; uncertain sends require review and are never replayed automatically. Use Stop → inspect the chat → Review Text Replies → Auto Catch to continue after resolving an uncertain attempt.
+
+**Fixed a post-send focus check that could stop after one reply.** The agent can now inspect the original verified composer after KakaoTalk moves keyboard focus elsewhere within the selected conversation. Remaining text, an invalid target, or an unverifiable composer still prevents an automatic resend.
+
+The notes below describe earlier releases; their visual Auto Catch behavior is superseded by the text-only mode above. The explicit screenshot test workflows remain available.
+
 **Fixed: Auto Catch detects typing activity but stops before answering the actual incoming message.** It now requests structured analysis when the LLM supports it, accepts common JSON code fences, and keeps watching through malformed or temporarily unclear analysis. Rechecks retain the last valid capture, with delays from 2 seconds up to 30 seconds, so the pending message remains eligible without clicking Auto Catch again. Typing-only changes are logged and ignored. The answer itself is plain text: `[AI] response (자동 응답)`. Analysis retries never repeat a chat submission.
 
 **Fixed: Auto Catch stops after its initial capture when the chat loses foreground focus.** Auto Catch now reactivates the same verified chat while watching and after classification. If Windows temporarily denies activation, it waits between bounded retries and preserves the previous screenshot, reply count, and duplicate guard. When focus returns, it continues comparing new content instead of silently resetting the baseline. Stop / Ctrl+Shift+F12 cancels recovery.

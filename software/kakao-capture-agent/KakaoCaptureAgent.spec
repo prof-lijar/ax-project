@@ -3,7 +3,8 @@ from pathlib import Path
 
 root = Path(SPECPATH)
 a = Analysis([str(root / 'app' / 'main.py')], pathex=[str(root)],
-             datas=[(str(root / 'app' / 'storage' / 'schema.sql'), 'app/storage')],
+             datas=[(str(root / 'app' / 'storage' / 'schema.sql'), 'app/storage'),
+                    (str(root / 'app' / 'automation' / 'read_chat_text.ps1'), 'app/automation')],
              hiddenimports=['win32timezone'],
              excludes=['PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets'],
              noarchive=False)

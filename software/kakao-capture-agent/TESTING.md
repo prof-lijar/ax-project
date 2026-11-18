@@ -14,6 +14,24 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Direct-text Auto Catch and queued replies — 2026-11-18
+
+Portable validation: **300 passed, 20 native Windows cases skipped in 8.46 seconds** in the final portable suite. Ruff checks pass. New tests prohibit screenshot calls in Auto Catch, exercise two consecutive text replies, and hold the first LLM request open while second and third arrivals are durably queued and later answered in FIFO order. They cover Stop during inference, retained jobs, invalid-analysis backoff, restart recovery, uncertain-send quarantine/review, prepared-answer preservation across focus recovery, own-reply suppression, changed/unavailable controls, text-only HTTP requests, and cancellation of the Windows helper. Post-send observation tests allow changed keyboard focus while still checking the original composer's owner and validity.
+
+The configured local LLM passed synthetic Korean text-only checks: `테스터: 2 더하기 2는?` was classified incoming, generated `[AI] 4입니다. (자동 응답)`, and the agent's own reply was ignored. No images, real conversation contents, or real chat input were used.
+
+A Windows-only integration test opens a synthetic native read-only transcript and a separate writable composer. The real PowerShell/.NET UI Automation helper must read Korean transcript text and exclude the private synthetic draft. The packaged startup check verifies that the helper resource is included. This validates Windows APIs and packaging; it does **not** establish whether the installed KakaoTalk client exposes equivalent accessibility data. If it does not, Auto Catch explicitly reports unsupported direct text and never switches to screenshots.
+
+Manual acceptance on the user's PC:
+
+1. Select the open group and click Auto Catch. Confirm `Text source ready` and readable conversation text in the new text preview; no PNG should be created by Auto Catch. If the selected region excludes part of the transcript pane, reselect its full message area.
+2. Send a Korean question from another participant, verify a reply, then send another question without restarting.
+3. While the first LLM request is processing, send two more questions. Confirm queue counts increase and replies follow in order. Multiple messages observed in one read may be batched.
+4. Stop during processing, restart Auto Catch, and verify pending text resumes. Restart the application during inference and verify explicit rearming is required. Change to another chat and verify pending work is not sent there.
+5. Test focus movement after Enter: a cleared original composer should permit continued watching. Remaining text, target loss, and unverified sends must stop. Inspect chat, click Stop → Review Text Replies → Auto Catch, and confirm only later queued batches proceed without resending the uncertain attempt.
+
+Text collection is polling of accessible transcript content, not a server-side incoming-message API. Read latency, accessibility support, visible/accessible coverage, sender labels, transcript trimming and interpretation remain client-dependent. Pending text is stored privately in `queue.db`; sent/ignored payloads are cleared. No phone/Bizgo or screenshot-upload calls occur in Auto Catch.
+
 ### Incoming-message analysis recovery and plain-text replies — 2026-11-18
 
 Portable suite: **276 passed, 19 native Windows cases skipped in 8.20 seconds**; Ruff lint/format and diff checks passed. Focused Auto Catch/incoming/workflow coverage passed **127 tests in 2.04 seconds**. A mocked HTTP workflow follows typing indicator → malformed analysis on the incoming frame → automatic recheck against the retained baseline → plain Korean reply → outgoing reply ignored. It verifies exactly one local capture and one submission, with no manual restart. Other cases cover bounded retry frequency, persistent uncertainty, Stop/target loss during failed analysis, plain-text answers, invalid/duplicate JSON fields, fence variations, and cancellation/no extra request on API errors.

@@ -3,11 +3,28 @@ from types import SimpleNamespace
 import pytest
 
 from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage
-from app.automation.monitoring_service import MonitoringService
+from app.automation.auto_catch import AutoCatchWorkflow
+from app.automation.monitoring_service import MonitoringService as RealMonitoringService
 from app.capture.screen_capture import encode_png
 from app.config import Config, load, save
 from app.models import AgentError, Selection, State, TargetUnavailable
 from tests.test_automation import Capture, Desktop
+
+
+def MonitoringService(desktop, capture, queue, config, status, preview, activity):
+    # Regression coverage for the former visual workflow and shared focus guards.
+    service = RealMonitoringService(desktop, capture, queue, config, status, preview, activity)
+    service.auto_catch = AutoCatchWorkflow(
+        desktop,
+        capture,
+        queue,
+        config,
+        service.reply_sender,
+        service.stop_input,
+        preview,
+        lambda message: service.transition(State.INITIALIZING, message),
+    )
+    return service
 
 
 @pytest.fixture
