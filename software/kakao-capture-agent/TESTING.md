@@ -2,13 +2,13 @@
 
 ## Windows release validation
 
-[Release v0.1.0-rc.21](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.21) was built and published on 2026-11-18 by [Windows Actions run 44264761931](https://github.com/prof-lijar/ax-project/actions/runs/44264761931).
+[Release v0.1.0-rc.22](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.22) was built and published on 2026-11-18 by [Windows Actions run 44271661775](https://github.com/prof-lijar/ax-project/actions/runs/44271661775).
 
-- Windows Server 2022 x64, Python 3.12.10: **322 tests passed in 93.29 seconds**, including direct native Korean transcript reading, exclusion of writable/foreign controls, queued arrivals during slow LLM inference, FIFO replies, restart/review handling, post-send observation without composer focus, and existing GUI/capture/reply/Bizgo regressions.
+- Windows Server 2022 x64, Python 3.12: **335 tests passed in 101.71 seconds**, including continuous screenshot collection during slow inference, FIFO replies, repeated replies, image persistence/integrity/retention, Stop/restart and uncertain-send review, post-send observation without composer focus, and existing GUI/capture/reply/Bizgo regressions.
 - Both source and standalone executable passed their synthetic startup checks; the executable exited with code 0.
 - Startup checks covered native imports, private-directory ACL setup, configuration, SQLite, synthetic PNG creation, retention, and Qt window/preview initialization. They captured no screen content and sent no input.
-- Published executable: `KakaoCaptureAgent-v0.1.0-rc.21-windows-x64.exe`, 109,053,118 bytes.
-- SHA-256 reported by GitHub for the uploaded executable: `4ca1615aaf928c74c8f4845d25abeaed8712192fa6149790fdf4eb88a145d6c5`.
+- Published executable: `KakaoCaptureAgent-v0.1.0-rc.22-windows-x64.exe`, 109,061,643 bytes.
+- SHA-256 reported by GitHub for the uploaded executable: `cfcd6375acaa50035b52919d0ef57029120a487cec59d61ec22f1adc431745d5`.
 
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
