@@ -6,7 +6,15 @@ import time
 from ctypes import wintypes
 from pathlib import Path
 
-from app.models import Cancelled, Region, ReselectionRequired, Target, TargetUnavailable
+from app.models import (
+    AgentError,
+    Cancelled,
+    Region,
+    ReselectionRequired,
+    Selection,
+    Target,
+    TargetUnavailable,
+)
 
 
 def enable_dpi_awareness():
@@ -155,6 +163,43 @@ class WindowsDesktop:
                     raise TargetUnavailable("Another window overlaps the selected region")
             other = self.gui.GetWindow(other, self.con.GW_HWNDPREV)
         return region
+
+    def suggest_chat_region(self):
+        """Derive a capture area above one native composer without capturing or clicking."""
+        if not self.session_available():
+            raise TargetUnavailable("Interactive desktop is locked or unavailable")
+        target = self.config.target
+        client, dpi = self.geometry()
+        composers = []
+
+        def visit(handle, _):
+            if not self.gui.IsChild(target.hwnd, handle):
+                return
+            name = self.gui.GetClassName(handle).lower()
+            style = self.gui.GetWindowLong(handle, -16)
+            if not (name == "edit" or name.startswith("richedit")):
+                return
+            if not style & 0x0004 or style & (0x0020 | 0x0800):
+                return
+            if not self.gui.IsWindowVisible(handle) or not self.gui.IsWindowEnabled(handle):
+                return
+            left, top, right, bottom = self.gui.GetWindowRect(handle)
+            bounds = Region(left, top, right - left, bottom - top)
+            if bounds.width >= 32 and bounds.height > 0 and client.contains(bounds):
+                composers.append(bounds)
+
+        self.gui.EnumChildWindows(target.hwnd, visit, None)
+        if len(composers) != 1 or composers[0].top < client.top + client.height // 2:
+            raise AgentError(
+                "Cannot identify one message box below the conversation. "
+                "Select the actual chat window, close search panels, or use Select Region."
+            )
+        region = Region(0, 0, client.width, composers[0].top - client.top)
+        selection = Selection(region, client.width, client.height, dpi)
+        selection.resolve(client, dpi, self.monitors())
+        if self.config.target != target or self.geometry() != (client, dpi):
+            raise ReselectionRequired("Chat moved or changed while detecting its message area")
+        return selection
 
     def request_target_activation(self):
         """Request activation from the Send button while the agent owns foreground."""

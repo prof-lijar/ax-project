@@ -2,7 +2,7 @@
 
 Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
 
-**Send Test Reply** sends the fixed message `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → KakaoTalk reply → optional Bizgo SMS/LMS cycle. **Send Bizgo Sample** tests only the configured phone-message connection. **Test Workflow 2: Reply to Next Message** explicitly arms a one-shot watcher: a newly observed incoming message triggers one `[AI]` reply, then it stops. Incoming messages do not trigger replies unless this watcher is armed.
+**Send Test Reply** sends the fixed message `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → KakaoTalk reply → optional Bizgo SMS/LMS cycle. **Send Bizgo Sample** tests only the configured phone-message connection. **Test Workflow 2: Reply to Next Message** explicitly arms a one-shot watcher: a newly observed incoming message triggers one `[AI]` reply, then it stops. **Auto Catch** continuously watches and replies until stopped. Incoming messages trigger replies only while one of these modes is explicitly armed.
 
 **Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI selection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
@@ -97,6 +97,25 @@ Temporary focus loss, obstruction, or session unavailability pauses collection. 
 If the status says **Bring the selected conversation to the foreground**, click the exact chat window chosen in Select Window and keep it active. Merely leaving it visible beside the agent is insufficient; inspecting the agent takes focus away from the chat. Recovery checks wait quietly while the same condition persists. For a one-shot test, click **Stop**, then **Save Capture Locally** (below the Preview/Scroll controls), and bring the chat forward during the three-second delay. If this still fails, reselect the conversation window rather than KakaoTalk's main contacts/chat-list window.
 
 Closing the application stops navigation and waits for the current upload (bounded by the configured request deadline). Remaining jobs persist. Optional sign-in launch is configured in Settings; automatic monitoring at sign-in is a separate opt-in. A new KakaoTalk process/window after reboot requires reselection.
+
+## Auto Catch: continuously reply to incoming group messages
+
+With your existing LLM settings saved:
+
+1. Open the intended KakaoTalk group chat at its latest messages.
+2. Click **Select Window** and choose that conversation, then click **Auto Catch**. If no target has been selected, Auto Catch opens the window selector first.
+3. Keep the chat visible. The agent detects incoming text, saves the incoming screenshot locally, asks the LLM for a response, and sends **`[AI] response (자동 응답)`**. It keeps watching for the next message.
+4. Use **Stop** or **Ctrl+Shift+F12** to end Auto Catch.
+
+No manual region selection or chat identifier entry is required for supported windows. If no region is saved, the agent finds one visible writable multiline Edit/RichEdit composer in the lower half of the selected window and uses the client area above it. Coordinates are physical and window-relative. The preview may include chat header controls, which the vision prompt ignores. If the composer is unsupported or ambiguous, close search panels/select the actual conversation or use **Select Region**. An existing manually selected region is respected. A blank chat identifier is generated automatically; both values are saved after arming. Resizing/DPI changes require reselection.
+
+Auto Catch records the current view as its initial baseline, so it does not answer old messages. It polls every **0.5 seconds** by default and applies a short visual debounce. This is screenshot comparison plus vision interpretation, not a KakaoTalk incoming-message notification API; LLM inference adds latency. When multiple readable incoming messages are visible in a changed frame, it asks the model to include them in one reply, within a 1,200-character extraction limit. Rapid traffic, scrolling, ambiguous bubbles, cropped text, and OCR errors can still cause missed or misclassified messages. Keep the latest messages visible and do not scroll during Auto Catch.
+
+Outgoing/generated messages are ignored. The pre-reply image remains the baseline after sending so incoming text that appeared during inference can still be compared next time. A bounded in-memory guard suppresses the same normalized sender/text for 60 seconds; an intentionally repeated identical message can also be ignored during that window. There is a configurable pause between replies (default 3 seconds), and the agent continues only after observing that the composer cleared. This observation does not independently prove delivery. Sending replaces the current composer draft, so leave the message box unused while Auto Catch is active.
+
+The mode remains armed until Stop or an error; it has no five-minute waiting limit. Lost visibility, lock, target changes, uncertain classification/submission, model errors, and storage exhaustion pause it without automatic resend or recovery. Restarting the app does not arm Auto Catch. Start it explicitly again after resolving the interruption; the new baseline excludes existing visible messages.
+
+In **Settings**, adjust **Auto Catch polling interval**, **Auto Catch pause between replies**, **Auto Catch reply suffix**, and **Incoming-message changed pixel fraction**. The suffix defaults to `(자동 응답)` and can be left blank. Auto Catch uses the existing vision LLM configuration and does not call Bizgo. It sends screenshots to the configured LLM even in local-only mode. Accepted incoming captures stay locally in `%LOCALAPPDATA%\KakaoCaptureAgent\captures`, with the exact file path in the activity log; **Open Captures Folder** opens it. These images remain unassigned to the ordinary screenshot-upload API.
 
 ## Test one capture → LLM → reply workflow
 

@@ -257,3 +257,68 @@ def test_native_focus_helper_apis_available(config):
     assert desktop.api.GetCurrentThreadId() > 0
     desktop.gui.PeekMessage(None, 0, 0, 0)
     assert desktop.user.AttachThreadInput
+
+
+def region_adapter(config, editors):
+    desktop = adapter(config)
+    desktop.config.selection = None
+    desktop.gui.IsChild = lambda parent, child: parent == 42 and child in editors
+    desktop.gui.EnumChildWindows = lambda hwnd, visit, arg: [visit(h, arg) for h in editors]
+    desktop.gui.GetClassName = lambda h: editors[h].get("name", "RichEdit50W")
+    desktop.gui.GetWindowLong = lambda h, _: editors[h].get("style", 4)
+    desktop.gui.IsWindowVisible = lambda h: editors[h].get("visible", True)
+    desktop.gui.IsWindowEnabled = lambda h: editors[h].get("enabled", True)
+    desktop.gui.GetWindowRect = lambda h: editors[h]["rect"]
+    return desktop
+
+
+def test_auto_region_uses_native_composer_and_physical_client_coordinates(config):
+    desktop = region_adapter(
+        config,
+        {
+            43: {"rect": (-490, 200, -210, 280)},
+            44: {"rect": (-490, 10, -210, 40), "style": 0},  # Search box.
+            45: {"rect": (-490, 50, -210, 195), "style": 4 | 0x800},  # Read-only history.
+        },
+    )
+    selection = desktop.suggest_chat_region()
+    assert selection == Selection(Region(0, 0, 300, 200), 300, 300, 144)
+    assert selection.resolve(*desktop.geometry(), desktop.monitors()) == Region(-500, 0, 300, 200)
+    assert config.selection is None  # Suggesting layout never changes config or sends input.
+
+
+@pytest.mark.parametrize(
+    "editors",
+    [
+        {},
+        {43: {"rect": (-490, 200, -210, 280)}, 44: {"rect": (-490, 220, -210, 280)}},
+        {43: {"rect": (-490, 200, -210, 280), "style": 4 | 0x20}},
+        {43: {"rect": (-490, 200, -210, 280), "enabled": False}},
+        {43: {"rect": (-490, 200, -210, 280), "visible": False}},
+        {43: {"rect": (-490, 200, -210, 280), "name": "UnknownCustomControl"}},
+        {43: {"rect": (-490, 10, -210, 70)}},
+        {43: {"rect": (-510, 200, -210, 280)}},
+    ],
+)
+def test_auto_region_refuses_ambiguous_or_unsupported_composers(config, editors):
+    from app.models import AgentError
+
+    desktop = region_adapter(config, editors)
+    with pytest.raises(AgentError, match="Select Region"):
+        desktop.suggest_chat_region()
+
+
+def test_auto_region_refuses_locked_moved_and_offscreen_desktops(config):
+    desktop = region_adapter(config, {43: {"rect": (-490, 200, -210, 280)}})
+    desktop.session_available = lambda: False
+    with pytest.raises(TargetUnavailable):
+        desktop.suggest_chat_region()
+    desktop.session_available = lambda: True
+    desktop.monitors = lambda: [Region(0, 0, 1920, 1080)]
+    with pytest.raises(ReselectionRequired):
+        desktop.suggest_chat_region()
+    desktop.monitors = lambda: [Region(-1920, 0, 3840, 1080)]
+    geometry = iter([(Region(-500, 0, 300, 300), 144), (Region(-501, 0, 300, 300), 144)])
+    desktop.geometry = lambda: next(geometry)
+    with pytest.raises(ReselectionRequired, match="moved"):
+        desktop.suggest_chat_region()

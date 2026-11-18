@@ -60,7 +60,7 @@ class IncomingLLM(WorkflowLLM):
         ) as client:
             return await self.completion(client, messages)
 
-    def classify(self, before, after, cancel):
+    def classify(self, before, after, cancel, *, batch=False):
         if max(len(before), len(after)) > 20 * 1024**2:
             raise AgentError("Workflow image exceeds 20 MiB; select a smaller region")
         parts = []
@@ -77,6 +77,16 @@ class IncomingLLM(WorkflowLLM):
                     },
                 },
             ]
+        message_rule = (
+            "If several new incoming messages arrived, include all new readable incoming "
+            "messages in chronological order within the 1200-character limit. Preserve "
+            "sender names in text when multiple participants speak, and set sender to empty "
+            "then. Prefer the newest complete messages if the limit is exceeded. Exclude "
+            "all outgoing/AI messages from this batch. Transcribe exactly, preserving language. "
+            if batch
+            else "If several new incoming messages arrived, select only the latest "
+            "complete readable one. Transcribe it exactly, preserving its language. "
+        )
         messages = [
             {
                 "role": "system",
@@ -92,9 +102,9 @@ class IncomingLLM(WorkflowLLM):
                     "message. Ordinary upward movement caused by a new bottom message is allowed. "
                     "Never choose incoming for outgoing messages or messages prefixed [AI], [test], "
                     "or [AI가 답장드렸습니다]. If direction, chronology, or readability is unclear, "
-                    "choose uncertain. If several new incoming messages arrived, select only the latest "
-                    "complete readable one. Transcribe it exactly, preserving its language. "
-                    'Return only JSON: {"kind":"incoming|outgoing|none|uncertain", "text":"new message only, max 1200 characters", '
+                    "choose uncertain. "
+                    + message_rule
+                    + 'Return only JSON: {"kind":"incoming|outgoing|none|uncertain", "text":"new message only, max 1200 characters", '
                     '"sender":"visible sender name or empty, max 100 characters", "is_ai":false}. '
                     "Use none for no meaningful message change; set text and sender to empty then."
                 ),
@@ -109,7 +119,7 @@ class IncomingLLM(WorkflowLLM):
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant replying to one new message in a group chat. "
+                    "You are a helpful assistant replying to new incoming text in a group chat. "
                     "Answer the participant's question or request directly, concisely, in the same "
                     "language. This is a real conversational answer, not a pretend completion summary. "
                     "You have no tools, browsing, account access, or ability to carry out external tasks; "
@@ -139,5 +149,5 @@ def create_incoming_llm(config):
     settings = LLMSettings.resolve(config)
     token = llm_token(settings.url)
     if not token:
-        raise AgentError("Configure the LLM API key before starting Test Workflow 2")
+        raise AgentError("Configure the LLM API key before starting incoming-message replies")
     return IncomingLLM(settings, token)

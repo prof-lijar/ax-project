@@ -173,6 +173,16 @@ class MainWindow(QMainWindow):
         )
         workflow_hint.setWordWrap(True)
         layout.addWidget(workflow_hint)
+        self.auto_catch_button = QPushButton("Auto Catch")
+        self.auto_catch_button.clicked.connect(lambda: self.action("auto_catch"))
+        layout.addWidget(self.auto_catch_button)
+        auto_hint = QLabel(
+            "Select the open group chat, then Auto Catch. It detects the message area if needed, "
+            "keeps watching, and replies with [AI] plus your suffix. Keep the latest chat visible. "
+            "Stop / Ctrl+Shift+F12 ends Auto Catch."
+        )
+        auto_hint.setWordWrap(True)
+        layout.addWidget(auto_hint)
         self.incoming_test_button = QPushButton("Test Workflow 2: Reply to Next Message")
         self.incoming_test_button.clicked.connect(lambda: self.action("incoming_test"))
         layout.addWidget(self.incoming_test_button)
@@ -223,6 +233,9 @@ class MainWindow(QMainWindow):
         logging.getLogger("kakao").info(message)
 
     def update_status(self, state, reason):
+        if state == State.AUTO_CATCHING.value and not getattr(self, "auto_setup_saved", True):
+            self.persist()  # Save the automatically detected region and generated chat identifier.
+            self.auto_setup_saved = True
         self.state_label.setText(state + (": " + reason if reason else ""))
         stopped = state == State.STOPPED.value
         for button in self.setup_buttons:
@@ -235,6 +248,9 @@ class MainWindow(QMainWindow):
         )
         self.test_workflow_button.setEnabled(self.send_test_button.isEnabled())
         self.bizgo_test_button.setEnabled(self.send_test_button.isEnabled())
+        self.auto_catch_button.setEnabled(
+            self.send_test_button.isEnabled() and state != State.AUTO_CATCHING.value
+        )
         self.incoming_test_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
         )
@@ -461,10 +477,17 @@ class MainWindow(QMainWindow):
             return
         if self.pending_action:
             return
-        automatic_reply = command in ("send_test", "test_workflow", "incoming_test")
+        automatic_reply = command in ("send_test", "test_workflow", "incoming_test", "auto_catch")
         sending = automatic_reply or command == "bizgo_test"
         if sending and self.monitor.state == State.INITIALIZING:
             return
+        if command == "auto_catch":
+            if self.monitor.state == State.AUTO_CATCHING:
+                return
+            if not self.config.target:
+                self.select_window()
+                if not self.config.target:
+                    return
         if command == "bizgo_test":
             from app.api.bizgo_client import BizgoSettings
 
@@ -473,7 +496,9 @@ class MainWindow(QMainWindow):
             except AgentError as error:
                 QMessageBox.warning(self, "Bizgo settings required", str(error))
                 return
-        elif not self.config.target or not self.config.selection or not self.config.chat_id:
+        elif command != "auto_catch" and (
+            not self.config.target or not self.config.selection or not self.config.chat_id
+        ):
             QMessageBox.warning(
                 self,
                 "Setup required",
@@ -482,7 +507,7 @@ class MainWindow(QMainWindow):
             return
         if command == "incoming_test" and self.monitor.state == State.WAITING_FOR_MESSAGE:
             return
-        if command in ("test_workflow", "incoming_test"):
+        if command in ("test_workflow", "incoming_test", "auto_catch"):
             from app.api.workflow_llm import LLMSettings
 
             try:
@@ -516,6 +541,8 @@ class MainWindow(QMainWindow):
             self.monitor.command("stop")
         if command != "history":
             self.monitor.suspend_recovery()
+        if command == "auto_catch":
+            self.auto_setup_saved = False
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
@@ -523,6 +550,7 @@ class MainWindow(QMainWindow):
         self.test_workflow_button.setEnabled(False)
         self.bizgo_test_button.setEnabled(False)
         self.incoming_test_button.setEnabled(False)
+        self.auto_catch_button.setEnabled(False)
         self.log(
             (
                 "Sending one Bizgo sandbox sample (no phone delivery)"
@@ -530,6 +558,8 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
+            else "Starting Auto Catch: detect incoming text and keep replying until Stop. Ctrl+Shift+F12 cancels"
+            if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
             if command == "incoming_test"
             else "Starting one test workflow: capture, LLM extraction/summary, and automatic reply. Ctrl+Shift+F12 cancels"
@@ -547,6 +577,7 @@ class MainWindow(QMainWindow):
                 self.test_workflow_button.setEnabled(True)
                 self.bizgo_test_button.setEnabled(True)
                 self.incoming_test_button.setEnabled(True)
+                self.auto_catch_button.setEnabled(True)
                 reason = (
                     str(error)
                     if isinstance(error, AgentError)

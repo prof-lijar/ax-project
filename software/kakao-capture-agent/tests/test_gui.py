@@ -11,7 +11,7 @@ from app.models import Selection, State, Target, TargetUnavailable
 
 
 @pytest.mark.parametrize(
-    "reply_command", ["send_test", "test_workflow", "bizgo_test", "incoming_test"]
+    "reply_command", ["send_test", "test_workflow", "bizgo_test", "incoming_test", "auto_catch"]
 )
 def test_full_window_preview_and_settings(
     tmp_path, config, queue, frame, region, monkeypatch, qt_app, reply_command
@@ -80,6 +80,9 @@ def test_full_window_preview_and_settings(
     if reply_command == "bizgo_test":
         config.target = config.selection = None
         config.chat_id = ""  # A standalone phone test does not require chat setup.
+    if reply_command == "auto_catch":
+        config.selection = None
+        config.chat_id = ""  # Selecting a window suffices; worker creates the rest.
     timers = []
     activation = []
     desktop.request_target_activation = lambda: activation.append(window.isMinimized()) or True
@@ -93,6 +96,7 @@ def test_full_window_preview_and_settings(
     assert len(timers) == 1 and not window.send_test_button.isEnabled()
     assert not window.test_workflow_button.isEnabled()
     assert not window.bizgo_test_button.isEnabled()
+    assert not window.auto_catch_button.isEnabled()
     assert activation == ([] if reply_command == "bizgo_test" else [False])
     assert monitor.stop_input.is_set() and not monitor.want_live
     window.action("stop")
@@ -117,10 +121,20 @@ def test_full_window_preview_and_settings(
         assert len(timers) == 2
         assert monitor.commands.get_nowait() == "stop"  # Failed activation never queues a send.
         assert monitor.commands.empty()
+    if reply_command == "auto_catch":
+        monitor.state = State.AUTO_CATCHING
+        window.update_status(State.AUTO_CATCHING.value, "watching")
+        assert not window.auto_catch_button.isEnabled()
+        window.action("auto_catch")
+        assert len(timers) == 2
+        monitor.state = State.STOPPED
+        window.update_status(State.STOPPED.value, "")
     dialog = SettingsDialog(config, window)
     dialog.controls["chat_id"].setText("changed-chat")
     dialog.controls["local_only"].setChecked(True)
     dialog.controls["llm_model"].setText("changed-model")
+    dialog.controls["auto_reply_suffix"].setText("(Auto reply)")
+    dialog.controls["auto_catch_interval_seconds"].setValue(0.25)
     dialog.controls["bizgo_recipient"].setText("01000000003")
     dialog.controls["bizgo_enabled"].setChecked(True)
     dialog.controls["bizgo_sandbox"].setChecked(False)
@@ -133,6 +147,8 @@ def test_full_window_preview_and_settings(
     stored = load(tmp_path / "local-config.json")
     assert stored.bizgo_recipient == "01000000003" and stored.bizgo_enabled
     assert not stored.bizgo_sandbox
+    assert stored.auto_reply_suffix == "(Auto reply)"
+    assert stored.auto_catch_interval_seconds == 0.25
     window.closing = True
     window.close()
     app.removeNativeEventFilter(window.hotkey)

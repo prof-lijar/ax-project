@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
+from app.automation.auto_catch import AutoCatchWorkflow
 from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
@@ -57,6 +58,17 @@ class MonitoringService(threading.Thread):
             lambda message: self.transition(State.INITIALIZING, message),
         )
         self.incoming_workflow = IncomingReplyWorkflow(
+            desktop,
+            capture,
+            queue,
+            config,
+            self.reply_sender,
+            self.stop_input,
+            preview,
+            lambda message: self.transition(State.INITIALIZING, message),
+        )
+
+        self.auto_catch = AutoCatchWorkflow(
             desktop,
             capture,
             queue,
@@ -199,6 +211,7 @@ class MonitoringService(threading.Thread):
     def dispatch(self, command):
         if command == "stop":
             self.incoming_workflow.reset()
+            self.auto_catch.reset()
             self.recoverable = False
             self.operator_bottom = False
             self.transition(State.STOPPED)
@@ -208,6 +221,20 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
+        elif command == "auto_catch" and self.state == State.STOPPED:
+            self.want_live = self.recoverable = False
+            self.stop_input.clear()
+            self.transition(State.INITIALIZING, "Starting Auto Catch")
+            try:
+                self.auto_catch.arm()
+                self.next_capture = time.monotonic() + self.config.auto_catch_interval_seconds
+                self.transition(
+                    State.AUTO_CATCHING, "Watching for incoming text; Stop ends Auto Catch"
+                )
+            except Exception:
+                self.stop_input.set()
+                self.auto_catch.reset()
+                raise
         elif command == "incoming_test" and self.state == State.STOPPED:
             self.want_live = self.recoverable = False
             self.stop_input.clear()
@@ -285,6 +312,7 @@ class MonitoringService(threading.Thread):
 
     def pause(self, error):
         self.incoming_workflow.reset()
+        self.auto_catch.reset()
         self.recoverable = (
             self.want_live
             and isinstance(error, TargetUnavailable)
@@ -317,6 +345,15 @@ class MonitoringService(threading.Thread):
         elif self.state != State.WAITING_FOR_MESSAGE:
             self.transition(State.WAITING_FOR_MESSAGE, "Watching for one new incoming message")
 
+    def poll_auto_catch(self):
+        self.auto_catch.tick()
+        self.next_capture = time.monotonic() + self.config.auto_catch_interval_seconds
+        if self.state != State.AUTO_CATCHING:
+            self.transition(
+                State.AUTO_CATCHING,
+                f"Watching for incoming text; {self.auto_catch.reply_count} replies submitted",
+            )
+
     def run(self):
         while not self.shutdown.is_set():
             try:
@@ -337,6 +374,9 @@ class MonitoringService(threading.Thread):
                         image, region = self.capture.grab()
                         self.record(image, region, "live")
                         self.next_capture = now + self.config.capture_interval_seconds
+                elif self.state == State.AUTO_CATCHING and not self.stop_input.is_set():
+                    if now >= self.next_capture:
+                        self.poll_auto_catch()
                 elif self.state == State.WAITING_FOR_MESSAGE and not self.stop_input.is_set():
                     if now >= self.next_capture:
                         self.poll_incoming()
@@ -349,6 +389,7 @@ class MonitoringService(threading.Thread):
                     self.try_recover()
             except Cancelled:
                 self.incoming_workflow.reset()
+                self.auto_catch.reset()
                 self.stop_input.set()
                 self.transition(State.STOPPED, "Input stopped")
             except AgentError as error:
@@ -358,6 +399,7 @@ class MonitoringService(threading.Thread):
                     self.pause(error)
             except Exception as error:
                 self.incoming_workflow.reset()
+                self.auto_catch.reset()
                 # Do not expose OS exception text, which may include private paths/content.
                 self.stop_input.set()
                 self.recoverable = False

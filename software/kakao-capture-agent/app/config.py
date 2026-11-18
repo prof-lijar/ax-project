@@ -44,6 +44,9 @@ class Config:
     bizgo_sender: str = ""
     bizgo_recipient: str = ""
     bizgo_timeout_seconds: int = 15
+    auto_catch_interval_seconds: float = 0.5
+    auto_reply_cooldown_seconds: float = 3
+    auto_reply_suffix: str = "(자동 응답)"
     incoming_wait_timeout_seconds: int = 300
     incoming_difference_threshold: float = 0.001
     capture_interval_seconds: float = 2
@@ -79,7 +82,15 @@ class Config:
             validate_llm_url(self.llm_url, self.llm_allow_http)
         if not isinstance(self.llm_model, str):
             raise ValueError("LLM model must be text")
+        if (
+            not isinstance(self.auto_reply_suffix, str)
+            or len(self.auto_reply_suffix) > 100
+            or any(ord(c) < 32 for c in self.auto_reply_suffix)
+        ):
+            raise ValueError("Auto Catch suffix must be one line of at most 100 characters")
         ranges = {
+            "auto_catch_interval_seconds": (0.25, 5),
+            "auto_reply_cooldown_seconds": (1, 60),
             "bizgo_timeout_seconds": (5, 120),
             "llm_timeout_seconds": (5, 300),
             "incoming_wait_timeout_seconds": (30, 3600),

@@ -14,6 +14,22 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Auto Catch — 2026-11-18
+
+Portable suite: **241 tests passed, 19 native Windows cases skipped in 7.07 seconds** in the full portable suite. The final focused Auto Catch/LLM/GUI/Windows-adapter suite passed **89 tests with 2 native cases skipped in 2.43 seconds**. New coverage includes continuous replies beyond the one-shot timeout, window-only setup, respecting manual regions, local capture retention, cooldown and 60-second duplicate suppression, a 256-entry cache bound, messages arriving during inference, generated/outgoing message rejection, cancellation, target loss/change, storage/model failures, uncertain submission, explicit rearming, suffix settings/migration, and GUI serialization. Physical-coordinate region tests cover negative monitor origins, DPI, search/history controls, missing/ambiguous/password/disabled/custom composers, off-screen geometry, locks, and movement during detection. Existing one-shot/Bizgo/capture regressions pass. Automated tests send no real chat or phone messages.
+
+The existing local `gemma-4-31b` server passed synthetic paired-image checks for new incoming text, outgoing AI text, and unchanged content. A two-message frame produced both extracted questions and `[AI] 2 plus 2 is 4, and 3 plus 3 is 6. (자동 응답)`. No actual chat screenshots or messages were used. This establishes model support for the batch prompt on the development host, not actual Korean-chat OCR accuracy or Windows UI behavior.
+
+Manual acceptance on Windows with the installed KakaoTalk client:
+
+1. With only a chat window selected and no region/chat identifier configured, start Auto Catch. Verify the detected preview excludes the composer and follows small window movements. Stop/restart and verify configuration persistence.
+2. Have another participant send text. Verify one local PNG, one `[AI] ... (자동 응답)` answer, and automatic return to AUTO_CATCHING. Send another different message without clicking Auto Catch again and verify another answer.
+3. Send text while the first answer is being generated. Verify it remains eligible on the next comparison. Test several incoming bubbles in one frame, Korean text, photos, rapid traffic, animations, and cropped bubbles; coverage is approximate, not guaranteed.
+4. Verify existing baseline text, outgoing replies, and unchanged frames cause no answers. Test that identical sender/text within 60 seconds is suppressed and that the guard expires. Check no Bizgo request occurs even when Workflow 1's Bizgo option is enabled.
+5. Stop/hotkey during waiting and model inference; obscure/minimize/close/resize the chat, lock the session, or force model/storage errors. Verify no automatic restart or uncertain-send retry. Leave the chat visible for an extended run and measure target-PC CPU/memory/latency before unattended use.
+
+Auto region detection relies on the native composer classes already supported by the reply sender, with explicit ambiguity/geometry checks. It has not yet been validated against the user's actual Windows/KakaoTalk layout. Model OCR/direction inference, foreground transitions, and continuous message delivery also remain client acceptance checks.
+
 ### Incoming-message workflow and focus recovery — 2026-11-17
 
 Portable validation: **201 tests passed, 19 native Windows cases skipped in 6.58 seconds**. Tests cover paired-image HTTP payloads, Korean reply formatting, malformed classifications, generated-message suppression, baseline/debounce behavior, one-shot sending, ignored changes, timeout at each stage, cancellation during active inference, lost/changed targets, storage/send failures, rearming, GUI command serialization, and temporary Windows input-queue cleanup. Existing workflow and Bizgo regressions still pass. Mocked focus tests cover delayed activation, cancellation, attachment failure, activation errors, modifier guards, and detachment. A native Windows case checks required APIs without activating another window.

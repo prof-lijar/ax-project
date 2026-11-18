@@ -29,7 +29,8 @@ def completion(body):
     )
 
 
-def test_two_images_then_one_prefixed_answer(frame):
+@pytest.mark.parametrize("batch", [False, True])
+def test_two_images_then_one_prefixed_answer(frame, batch):
     before, after = encode_png(frame), encode_png(255 - frame)
     requests = []
 
@@ -38,6 +39,8 @@ def test_two_images_then_one_prefixed_answer(frame):
         data = json.loads(request.content)
         requests.append(data)
         if len(requests) == 1:
+            system = data["messages"][0]["content"]
+            assert ("include all new readable incoming" in system) == batch
             images = [
                 part["image_url"]["url"]
                 for part in data["messages"][1]["content"]
@@ -55,7 +58,7 @@ def test_two_images_then_one_prefixed_answer(frame):
         "synthetic-key",
         httpx.MockTransport(api),
     )
-    incoming = llm.classify(before, after, threading.Event())
+    incoming = llm.classify(before, after, threading.Event(), batch=batch)
     assert incoming.kind == "incoming"
     assert llm.answer(incoming, threading.Event()) == "[AI] 4입니다."
     assert len(requests) == 2

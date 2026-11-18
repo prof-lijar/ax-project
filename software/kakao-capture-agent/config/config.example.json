@@ -37,5 +37,8 @@
   "target": null,
   "selection": null,
   "incoming_wait_timeout_seconds": 300,
-  "incoming_difference_threshold": 0.001
+  "incoming_difference_threshold": 0.001,
+  "auto_catch_interval_seconds": 0.5,
+  "auto_reply_cooldown_seconds": 3,
+  "auto_reply_suffix": "(자동 응답)"
 }
