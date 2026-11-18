@@ -178,8 +178,8 @@ class MainWindow(QMainWindow):
         self.auto_catch_button.clicked.connect(lambda: self.action("auto_catch"))
         layout.addWidget(self.auto_catch_button)
         auto_hint = QLabel(
-            "Auto Catch reads conversation text through Windows accessibility—no screenshots. "
-            "New arrivals queue locally while the LLM answers; replies are sent in order. "
+            "Auto Catch watches the selected chat region using screenshots. "
+            "Changed captures queue locally while the vision LLM answers; replies are sent in order. "
             "Keep the selected chat open at the latest messages. "
             "Stop / Ctrl+Shift+F12 ends Auto Catch."
         )
@@ -191,9 +191,10 @@ class MainWindow(QMainWindow):
             "Direct chat text appears here when supported by KakaoTalk"
         )
         self.text_preview.setMaximumHeight(130)
+        self.text_preview.hide()
         signals.text_preview.connect(self.text_preview.setPlainText)
         layout.addWidget(self.text_preview)
-        self.review_text_button = QPushButton("Review Text Replies")
+        self.review_text_button = QPushButton("Review Replies")
         self.review_text_button.clicked.connect(self.review_text_replies)
         layout.addWidget(self.review_text_button)
         self.incoming_test_button = QPushButton("Test Workflow 2: Reply to Next Message")
@@ -525,7 +526,7 @@ class MainWindow(QMainWindow):
             from app.api.workflow_llm import LLMSettings
 
             try:
-                LLMSettings.resolve(self.config, require_vision=command != "auto_catch")
+                LLMSettings.resolve(self.config)
             except AgentError as error:
                 QMessageBox.warning(self, "LLM settings required", str(error))
                 return
@@ -558,7 +559,7 @@ class MainWindow(QMainWindow):
         if command == "auto_catch":
             self.auto_setup_saved = False
             self.preview_label.clear()
-            self.preview_label.setText("Auto Catch uses direct text; see the text preview below")
+            self.preview_label.setText("Preparing Auto Catch screenshot preview")
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
@@ -574,7 +575,7 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
-            else "Starting Auto Catch: read direct text, queue incoming messages, and reply in order. No screenshots. Ctrl+Shift+F12 cancels"
+            else "Starting Auto Catch: watch screenshots, queue changed captures, and reply in order. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
             if command == "incoming_test"
@@ -637,9 +638,9 @@ class MainWindow(QMainWindow):
         if (
             QMessageBox.question(
                 self,
-                "Review uncertain text replies",
+                "Review uncertain replies",
                 "Inspect the selected KakaoTalk chat first. Mark its uncertain reply attempts as handled "
-                "without sending them again? Other queued incoming text will be retained. "
+                "without sending them again? Other queued captures will be retained. "
                 "Start Auto Catch afterward to process the remaining queue.",
             )
             == QMessageBox.Yes
@@ -647,8 +648,8 @@ class MainWindow(QMainWindow):
             key = chat_queue_key(self.config)
             self.queue_action(
                 lambda: self.monitor.auto_catch.jobs.resolve_review(key),
-                "Uncertain text replies marked handled; pending incoming text retained",
-                "Could not update text reply review; check local storage",
+                "Uncertain replies marked handled; pending captures retained",
+                "Could not update reply review; check local storage",
             )
 
     def queue_action(self, action, success, failure):

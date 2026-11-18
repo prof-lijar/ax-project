@@ -6,10 +6,10 @@ from uuid import uuid4
 
 from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
 from app.automation.incoming_workflow import IncomingReplyWorkflow
+from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
 from app.automation.reply_service import TestReplySender
 from app.automation.scroll_controller import ScrollController
 from app.automation.test_workflow import OneCycleWorkflow
-from app.automation.text_auto_catch import TextAutoCatchWorkflow
 from app.automation.windows_composer import WindowsComposer
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
@@ -80,7 +80,7 @@ class MonitoringService(threading.Thread):
             lambda message: self.transition(State.INITIALIZING, message),
         )
 
-        self.auto_catch = TextAutoCatchWorkflow(
+        self.auto_catch = QueuedVisualCatchWorkflow(
             desktop,
             capture,
             queue,

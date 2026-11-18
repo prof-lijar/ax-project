@@ -42,8 +42,9 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         clock=time.monotonic,
         text_reader=None,
         text_preview=lambda _: None,
+        jobs_factory=TextQueue,
     ):
-        self.jobs = TextQueue(queue)
+        self.jobs = jobs_factory(queue)
         self.text_reader = text_reader or WindowsChatText(desktop, progress)
         self.text_preview = text_preview
         super().__init__(
@@ -123,20 +124,24 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         self.pending_text = None
         self.text_preview(snapshot.text[-4000:])
 
+    def analyze_job(self, llm, job, cancel):
+        return llm.classify_text(job["text"], cancel)
+
     def begin_job(self, job):
         self.job = job
         self.work_cancel = threading.Event()
         self.results = queues.Queue(maxsize=1)
         # Capture immutable references so Stop/rearming cannot redirect an old worker.
         llm, cancel, results = self.llm, self.work_cancel, self.results
+        analyze = self.analyze_job
 
         def process():
             try:
-                incoming = llm.classify_text(job["text"], cancel)
+                incoming = analyze(llm, job, cancel)
                 check_cancel(cancel)
                 if incoming.kind == "uncertain":
                     raise IncomingAnalysisError(
-                        "Incoming text cannot yet be separated from UI/outgoing text"
+                        "Incoming message cannot yet be separated from UI/outgoing activity"
                     )
                 reply = None
                 if incoming.kind == "incoming" and not automated_text(incoming.text):
@@ -148,7 +153,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
 
         self.worker = threading.Thread(target=process, name="auto-text-llm", daemon=False)
         self.worker.start()
-        self.progress("Processing queued text with the LLM; new incoming text will keep queuing")
+        self.progress("Processing queued messages with the LLM; collection continues")
 
     def finish_job(self):
         if self.outcome is None and (self.worker is None or self.worker.is_alive()):
@@ -161,14 +166,12 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         if isinstance(error, IncomingAnalysisError):
             delay = self.jobs.retry(self.job["job_id"])
             self.job = self.outcome = None
-            self.progress(
-                f"Text analysis needs another check in {delay}s; incoming text continues queuing"
-            )
+            self.progress(f"Message analysis needs another check in {delay}s; collection continues")
             return
         if error is not None:
             if isinstance(error, AgentError):
                 raise error
-            raise AgentError("Text LLM processing failed; queued text retained") from None
+            raise AgentError("LLM processing failed; queued work retained") from None
         if reply is None:
             self.jobs.finish(self.job["job_id"], "ignored")
             self.job = self.outcome = None
@@ -185,20 +188,18 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             self.check()
             if not self.sender.composer_cleared:
                 raise AgentError(
-                    "Reply send is uncertain; inspect the chat and use Review Text Replies. Queued messages retained"
+                    "Reply send is uncertain; inspect the chat and use Review Replies. Queued messages retained"
                 )
             self.jobs.finish(self.job["job_id"], "sent")
         except Exception:
             self.jobs.finish(self.job["job_id"], "review")
             raise
-        self.queue.event("auto_text_reply", self.job["job_id"] + ": " + observation)
+        self.queue.event("auto_reply", self.job["job_id"] + ": " + observation)
         self.job = self.outcome = None
         self.sending, self.active = False, True
         self.reply_count += 1
         self.next_reply_at = self.clock() + self.config.auto_reply_cooldown_seconds
-        self.progress(
-            f"Reply submitted; {self.jobs.count(self.chat_key)} text batch(es) remain queued"
-        )
+        self.progress(f"Reply submitted; {self.jobs.count(self.chat_key)} job(s) remain queued")
 
     def tick(self):
         self.check()

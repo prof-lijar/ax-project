@@ -7,11 +7,15 @@ from app.models import AgentError, StorageFull
 
 
 class TextQueue:
+    table = "text_reply_queue"
+
     def __init__(self, storage):
+        if self.table not in {"text_reply_queue", "image_reply_queue"}:
+            raise ValueError("Unsupported reply queue table")
         self.storage = storage
         with storage.connect() as db:
-            db.executescript("""
-                CREATE TABLE IF NOT EXISTS text_reply_queue (
+            db.executescript(f"""
+                CREATE TABLE IF NOT EXISTS {self.table} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_id TEXT NOT NULL UNIQUE,
                     chat_key TEXT NOT NULL,
@@ -21,12 +25,12 @@ class TextQueue:
                     attempts INTEGER NOT NULL DEFAULT 0,
                     next_attempt REAL NOT NULL DEFAULT 0
                 );
-                CREATE INDEX IF NOT EXISTS text_reply_pending ON text_reply_queue(chat_key, status, id);
+                CREATE INDEX IF NOT EXISTS {self.table}_pending ON {self.table}(chat_key, status, id);
             """)
-            db.execute("UPDATE text_reply_queue SET status='pending' WHERE status='processing'")
-            db.execute("UPDATE text_reply_queue SET status='review' WHERE status='sending'")
+            db.execute(f"UPDATE {self.table} SET status='pending' WHERE status='processing'")
+            db.execute(f"UPDATE {self.table} SET status='review' WHERE status='sending'")
             db.execute(
-                "DELETE FROM text_reply_queue WHERE status IN ('sent','ignored') AND created_at<?",
+                f"DELETE FROM {self.table} WHERE status IN ('sent','ignored') AND created_at<?",
                 (time.time() - storage.config.metadata_retention_days * 86400,),
             )
 
@@ -34,17 +38,17 @@ class TextQueue:
         with self.storage.lock:
             if self.storage.usage() >= self.storage.config.storage_limit_bytes:
                 raise StorageFull(
-                    "Text queue storage limit reached; collection stopped; previously queued text retained"
+                    "Reply queue storage limit reached; collection stopped; previously queued text retained"
                 )
             with self.storage.connect() as db:
                 count = db.execute(
-                    "SELECT count(*) FROM text_reply_queue WHERE status IN ('pending','processing','sending','review')"
+                    f"SELECT count(*) FROM {self.table} WHERE status IN ('pending','processing','sending','review')"
                 ).fetchone()[0]
                 if count >= 1000:
-                    raise StorageFull("Text queue has 1000 unfinished batches; stopped collecting")
+                    raise StorageFull("Reply queue has 1000 unfinished batches; stopped collecting")
                 job_id = str(uuid4())
                 db.execute(
-                    "INSERT INTO text_reply_queue(job_id,chat_key,text,status,created_at) VALUES(?,?,?,'pending',?)",
+                    f"INSERT INTO {self.table}(job_id,chat_key,text,status,created_at) VALUES(?,?,?,'pending',?)",
                     (job_id, chat_key, text, time.time()),
                 )
                 return job_id
@@ -52,26 +56,26 @@ class TextQueue:
     def claim(self, chat_key):
         with self.storage.lock, self.storage.connect() as db:
             row = db.execute(
-                "SELECT * FROM text_reply_queue WHERE chat_key=? AND status IN ('pending','processing','sending','review') ORDER BY id LIMIT 1",
+                f"SELECT * FROM {self.table} WHERE chat_key=? AND status IN ('pending','processing','sending','review') ORDER BY id LIMIT 1",
                 (chat_key,),
             ).fetchone()
             if row is None:
                 return None
             if row["status"] == "review":
                 raise AgentError(
-                    "A previous text reply has uncertain delivery; inspect the chat and review the queue before continuing"
+                    "A previous reply has uncertain delivery; inspect the chat and review the queue before continuing"
                 )
             if row["status"] != "pending" or row["next_attempt"] > time.time():
                 return None
             db.execute(
-                "UPDATE text_reply_queue SET status='processing' WHERE job_id=?", (row["job_id"],)
+                f"UPDATE {self.table} SET status='processing' WHERE job_id=?", (row["job_id"],)
             )
             return dict(row)
 
     def count(self, chat_key):
         with self.storage.connect() as db:
             return db.execute(
-                "SELECT count(*) FROM text_reply_queue WHERE chat_key=? AND status IN ('pending','processing','sending','review')",
+                f"SELECT count(*) FROM {self.table} WHERE chat_key=? AND status IN ('pending','processing','sending','review')",
                 (chat_key,),
             ).fetchone()[0]
 
@@ -79,7 +83,7 @@ class TextQueue:
         assert status in ("sent", "ignored", "review", "sending", "pending")
         with self.storage.connect() as db:
             db.execute(
-                "UPDATE text_reply_queue SET status=?, text=CASE WHEN ? IN ('sent','ignored') THEN '' ELSE text END WHERE job_id=?",
+                f"UPDATE {self.table} SET status=?, text=CASE WHEN ? IN ('sent','ignored') THEN '' ELSE text END WHERE job_id=?",
                 (status, status, job_id),
             )
 
@@ -87,13 +91,13 @@ class TextQueue:
         with self.storage.connect() as db:
             attempts = (
                 db.execute(
-                    "SELECT attempts FROM text_reply_queue WHERE job_id=?", (job_id,)
+                    f"SELECT attempts FROM {self.table} WHERE job_id=?", (job_id,)
                 ).fetchone()[0]
                 + 1
             )
             delay = min(2 ** min(attempts, 5), 30)
             db.execute(
-                "UPDATE text_reply_queue SET status='pending',attempts=?,next_attempt=? WHERE job_id=?",
+                f"UPDATE {self.table} SET status='pending',attempts=?,next_attempt=? WHERE job_id=?",
                 (attempts, time.time() + delay, job_id),
             )
             return delay
@@ -101,6 +105,6 @@ class TextQueue:
     def resolve_review(self, chat_key):
         with self.storage.connect() as db:
             db.execute(
-                "UPDATE text_reply_queue SET status='ignored',text='' WHERE chat_key=? AND status='review'",
+                f"UPDATE {self.table} SET status='ignored',text='' WHERE chat_key=? AND status='review'",
                 (chat_key,),
             )

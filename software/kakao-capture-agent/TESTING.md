@@ -14,7 +14,26 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
-### Direct-text Auto Catch and queued replies — 2026-11-18
+### Queued screenshot Auto Catch — 2026-11-18
+
+Portable validation: **315 passed, 20 native Windows cases skipped in 9.14 seconds**. Ruff lint/format and diff checks passed.
+
+Auto Catch now captures changed before/after image pairs continuously while one background vision/answer job runs. Automated coverage includes two consecutive replies without rearming, typing and outgoing-AI suppression, three captures queued during blocked inference then answered in FIFO order, adjacent-frame sharing, Stop and explicit restart, malformed-analysis backoff while later frames queue, prepared-answer preservation across focus recovery, and uncertain-send quarantine. Missing/modified images and invalid paths require review before calling the LLM. Storage failure leaves the previous baseline unchanged. Native-text jobs remain isolated.
+
+Manual acceptance on the user's Windows/KakaoTalk client remains required:
+
+1. Select the open group, configure a vision model, and click Auto Catch. Verify the screenshot preview and local path under `captures\auto_catch`.
+2. Send a question from another participant. Verify one `[AI] ... (자동 응답)` reply, then send another without restarting and verify a second reply.
+3. Send two more questions while the first LLM request is processing. Confirm capture paths and queue counts appear before the first reply completes, then verify replies follow in order. Messages visible in one changed frame may be batched.
+4. Verify typing indicators and the agent's own reply cause no answer. Move focus within KakaoTalk after Enter and confirm watching continues when the original composer clears.
+5. Stop during inference, restart Auto Catch, and verify queued work resumes. Restart the application and verify it waits for explicit rearming. Another selected chat must not receive the old chat's replies.
+6. Test an uncertain send: inspect the chat, then Stop → Review Replies → Auto Catch. The uncertain attempt must never be resent automatically. Test storage capacity and unavailable targets; already queued captures must survive.
+
+Tests use synthetic images/mocked inference and send no real messages. Actual client geometry, Korean OCR/classification, sending behavior, and complete message coverage are not established by these tests. The post-send observation fix remains covered by Windows composer tests.
+
+### Historical rc.21: direct-text Auto Catch and queued replies — 2026-11-18
+
+This describes the previous release; the current Auto Catch uses the queued screenshot workflow above.
 
 Release rc.20 was not published: [Windows run 44262942622](https://github.com/prof-lijar/ax-project/actions/runs/44262942622) passed 319 cases but failed the native transcript test because the managed UIA provider exposed the editor as a generic pane. Diagnostic runs confirmed that explicitly registering managed providers did not resolve it. The reader now supports standard read-only Win32 text controls directly and retains UIA for other accessible transcript providers. No screenshots or clipboard fallbacks were added.
 

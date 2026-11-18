@@ -8,6 +8,7 @@ import pytest
 from app.api.incoming_llm import IncomingAnalysisError, IncomingLLM, IncomingMessage
 from app.api.workflow_llm import LLMSettings, check_cancel
 from app.automation.monitoring_service import MonitoringService
+from app.automation.text_auto_catch import TextAutoCatchWorkflow
 from app.automation.text_changes import appended_text
 from app.automation.windows_chat_text import ChatText
 from app.models import AgentError, ForegroundLost, Selection, State, TargetUnavailable
@@ -36,6 +37,18 @@ def watching(config, queue, region):
         lambda *a: None,
         no_pixels,
         logs.append,
+        text_preview=preview.append,
+    )
+    # Retain regression coverage for the previous optional text workflow.
+    service.auto_catch = TextAutoCatchWorkflow(
+        desktop,
+        service.capture,
+        queue,
+        config,
+        service.reply_sender,
+        service.stop_input,
+        no_pixels,
+        lambda message: service.transition(State.INITIALIZING, message),
         text_preview=preview.append,
     )
     w = service.auto_catch
