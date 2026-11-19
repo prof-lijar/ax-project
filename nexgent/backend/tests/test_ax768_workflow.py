@@ -13,12 +13,12 @@ def payload():
     return {'member_note': {'status':'saved','member_id':12,'name':'김순옥','address':'울진북로164','note':'2026-11-04 [현지관리자 방문] 기기위치조정','verified':True,'candidates':[]}, 'signal': {'status':'connected','imei_column':'AA','imei':'861212072106726','sn':'00300016','connected':True,'fresh':True}, 'status': 'completed', 'response': 'AS 80행', 'parsed': {'name': '김순옥', 'lookup_name': '김순옥', 'address': '울진북로 164'}, 'roster': match, 'as_lookup': {**match, 'row': 80, 'sheet_alias': 'AS'}, 'attempts': [], 'candidates': [], 'notices': [], 'as_update': {'status':'updated','row':80,'date':'2026-11-04','changes':[{'column':'S','value':'처리완료'},{'column':'X','value':'2026-11-04'}],'y_action':'unchanged','verified':True,'reason':'saved'}}
 
 
-def setup(monkeypatch, *, admin=True, result=None, schema_status=200, version='5', error=False):
+def setup(monkeypatch, *, admin=True, result=None, schema_status=200, version='5', note_mode='prepend', error=False):
     requests=[]
     async def upstream(request):
         if request.method == 'GET':
             assert request.url.path == f'/assistants/{ASSISTANT_ID}/schemas'
-            return httpx.Response(schema_status, json={'input_schema': {'properties': {'workflow_version': {'const': version}}}})
+            return httpx.Response(schema_status, json={'input_schema': {'properties': {'workflow_version': {'const': version}, 'member_note_mode': {'const': note_mode}}}})
         requests.append(request)
         if error: raise httpx.ReadTimeout('timeout', request=request)
         return httpx.Response(200, json=payload() if result is None else result)
@@ -219,3 +219,10 @@ def test_member_result_accepts_only_known_prefix_equivalence(address, accepted):
     else:
         with pytest.raises(ValueError):
             normalize(result)
+
+
+@pytest.mark.parametrize('mode', [None, 'replace', 'append'])
+def test_old_note_policy_cannot_execute_from_web(monkeypatch, mode):
+    client, requests = setup(monkeypatch, note_mode=mode)
+    assert client.post(PATH, json=BODY, headers=authenticated_headers()).status_code == 409
+    assert not requests

@@ -12,12 +12,12 @@ The supplied request `기기위치조정/왕피길83-15,정영자,기기위치�
 
 The device member writer now uses the existing information workflow's region-bound address equivalence, extracted into `member_address.py`. Only the known province and county/city prefixes for the verified roster region may be omitted: 경상북도/경북 + 울진군 or 영덕군; 경기도/경기 + 광명시. Unicode and whitespace are normalized. The remaining 읍/면, road, house number and suffix must match; a different county, town or house is rejected. Name matching and single-candidate selection remain required. No LLM is allowed to choose an approximately matching house. Actual master addresses remain unchanged and appear in receipts.
 
-Backend and browser receipt validators apply the same region-bound rule, so a valid write is not rejected afterward merely because the master receipt contains the extra prefix. The device workflow advertises `member_note_mode: prepend`; rc.32 checks that capability before execution. The pending rc.31 Windows build was cancelled when the user clarified first-line placement. Older queue plans remain isolated by a new policy key. Workflow version 5, credentials, API destinations and other workflows stay compatible.
+The backend also requires the prepend capability before executing browser-originated requests, blocking older runtimes with HTTP 409. Backend and browser receipt validators apply the same region-bound rule, so a valid write is not rejected afterward merely because the master receipt contains the extra prefix. The device workflow advertises `member_note_mode: prepend`; rc.32 checks that capability before execution. The pending rc.31 Windows build was cancelled when the user clarified first-line placement. Older queue plans remain isolated by a new policy key. Workflow version 5, credentials, API destinations and other workflows stay compatible.
 
 ## Validation
 
 - Agent tests: **243 passed**, including information-workflow regressions, the supplied Korean cases, the reported address, rejected different houses/counties, preserved existing text and duplicate suppression.
-- Backend tests: **72 passed**, including matching receipt normalization and rejection of genuinely different addresses.
+- Backend tests: **75 passed**, including matching receipt normalization and rejection of genuinely different addresses.
 - Frontend tests: **57 passed**; TypeScript/Vite production build passed (existing bundle-size warning).
 - Backend lint has 15 pre-existing E7 style findings (the same in HEAD); E4/E9/F checks and agent/desktop lint passed.
 - The required dependency audit reports the existing **8 findings: 4 low, 2 moderate, 2 high**. No dependency changes were made.

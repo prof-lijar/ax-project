@@ -8,7 +8,8 @@ preflight. Existing history is preserved and duplicate lines skipped. Device
 member resolution reuses the information workflow's known region-prefix
 normalization through `member_address.py`, while retaining both name/address
 and single-candidate gates. Backend/browser validate the same equivalence and
-retain the full actual master address in receipts. No approximate house-number
+retain the full actual master address in receipts. The backend rejects older
+note-writing capabilities before dispatching browser requests. No approximate house-number
 matching, new credentials, process or LLM write authority is introduced.
 See [final policy and activation](device-workflow-first-line-notes-and-address-matching.md).
 

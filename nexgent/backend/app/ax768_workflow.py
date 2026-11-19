@@ -207,7 +207,8 @@ async def run(body: WorkflowInput):
             if not isinstance(schema, dict):
                 raise ValueError("Invalid workflow schema")
             policy = schema.get("input_schema", {}).get("properties", {}).get("workflow_version", {})
-            if policy.get("const") != "5":
+            note_policy = schema.get("input_schema", {}).get("properties", {}).get("member_note_mode", {})
+            if policy.get("const") != "5" or note_policy.get("const") != "prepend":
                 raise HTTPException(409, detail="Restart Agent Server to enable the unified workflow.")
             response = await client.post(f"{url}/runs/wait", json={
                 "assistant_id": "ax768_workflow",
