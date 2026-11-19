@@ -62,7 +62,15 @@ def test_final_submit_guard_blocks_input(failure, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "text,expected", [("", "cleared"), ("\r\n", "cleared"), (TEST_REPLY, "NOT confirmed")]
+    "text,expected",
+    [
+        ("", "cleared"),
+        ("\r\n", "cleared"),
+        ("메시지 입력", "cleared"),
+        (" \r\n메시지 입력\r\n", "cleared"),
+        ("메시지 입력 중인 실제 내용", "NOT confirmed"),
+        (TEST_REPLY, "NOT confirmed"),
+    ],
 )
 def test_submission_observation_reports_remaining_text_without_retry(text, expected, monkeypatch):
     composer = WindowsComposer(None)

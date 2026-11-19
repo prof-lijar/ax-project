@@ -186,6 +186,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.auto_catch_button)
         auto_hint = QLabel(
             f"Start by sending {RUN_AGENT_GREETING} once. "
+            "The startup message and each reply replace existing message-box contents. "
             "Watch display changes → capture → extract text → process with the LLM → reply. "
             "New captures queue while earlier work is processing; replies are sent in capture order. "
             "Keep the selected chat open at the latest messages. "

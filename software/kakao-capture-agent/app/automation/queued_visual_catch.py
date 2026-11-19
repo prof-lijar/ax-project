@@ -75,9 +75,9 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.text_preview("")
         # Keep the pre-send baseline: a participant may respond while the sender
         # observes the composer. The first poll must still see that new message.
-        self.progress("Sending the Run Agent (auto) startup message once")
+        self.progress("Sending the startup message once; replacing message-box contents")
         self.check()
-        observation = self.sender.send(RUN_AGENT_GREETING, require_empty=True)
+        observation = self.sender.send(RUN_AGENT_GREETING, require_empty=False)
         self.check()
         self.queue.event("auto_agent_greeting", observation)
         self.progress("Startup message submitted once; " + observation)
@@ -110,7 +110,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         super().begin_job(dict(job, before_png=before, after_png=after))
 
     def send_queued_reply(self, reply):
-        return self.sender.send(reply, require_empty=True)
+        return self.sender.send(reply, require_empty=False)
 
     def analyze_job(self, llm, job, cancel):
         return llm.classify(job["before_png"], job["after_png"], cancel, batch=True)

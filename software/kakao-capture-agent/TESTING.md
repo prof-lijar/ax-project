@@ -16,6 +16,14 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Composer replacement and placeholder — 2026-11-19
+
+Portable validation: **357 passed, 24 Windows-only tests skipped in 11.92 seconds**. Ruff lint/format and diff checks passed. Native Windows edit-control cases now include the Korean placeholder as initial composer contents.
+
+Run Agent (auto) now replaces message-box contents for both startup and queued replies. Regression cases start with the exact `메시지 입력` placeholder, an actual Korean draft, a leftover greeting, and whitespace. Each case verifies the exact greeting, two ordered replies, replacement of another draft during the session, recognition of the post-send placeholder as empty, and continued watching. Further tests keep the prior reply text after an unobserved submission and verify the next queued reply replaces it without resending the previous job. Partial writes and changed text still prevent unverified input from being submitted. The older empty-composer behavior recorded below is superseded by this release.
+
+Windows acceptance: start with the placeholder or an existing draft, click Run Agent (auto), and verify the greeting replaces the contents and sends once. Send incoming messages from another participant; the agent should replace any composer contents with each generated reply and keep watching.
+
 ### Startup greeting — 2026-11-19
 
 Portable validation: **350 passed, 20 Windows-only tests skipped in 11.72 seconds**. Ruff lint/format and diff checks passed. Each explicit Run Agent (auto) start sends the exact greeting `[AI 테스트 보내보시지요!` once without a suffix. Tests cover repeated polling, ignored duplicate starts while running, explicit restart, continued queued replies, greeting suppression even after incorrect incoming classification, and an incoming message arriving during greeting submission. Draft refusal, partial submission, and cancellation prevent startup and automatic retry.

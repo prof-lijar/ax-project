@@ -59,8 +59,8 @@ def watching(config, queue, region):
     workflow.llm_factory = lambda _: llm
 
     def send(text, **kwargs):
+        assert kwargs == {"require_empty": False}
         if text == RUN_AGENT_GREETING:
-            assert kwargs == {"require_empty": True}
             greetings.append(text)
             return "composer cleared"
         stages.append(("reply", text))
@@ -158,7 +158,7 @@ def test_greeting_is_ignored_even_if_extraction_misclassifies_it(watching):
     assert w.sent == ["[AI] Question 30 (자동 응답)"]
 
 
-@pytest.mark.parametrize("failure", ["draft", "partial", "cancel"])
+@pytest.mark.parametrize("failure", ["verification", "partial", "cancel"])
 def test_greeting_failure_does_not_arm_or_automatically_retry(watching, failure):
     from app.automation.reply_service import TestReplySender as ReplySender
     from app.models import Cancelled
@@ -167,7 +167,15 @@ def test_greeting_failure_does_not_arm_or_automatically_retry(watching, failure)
     w = watching
     w.service.command("stop")
     w.service.dispatch(w.service.commands.get_nowait())
-    composer = Composer("Operator draft" if failure == "draft" else "")
+    composer = Composer("Previous message-box contents")
+    if failure == "verification":
+        original_write = composer.write
+
+        def changed_write(handle, text):
+            original_write(handle, text)
+            composer.text += "unexpected text"
+
+        composer.write = changed_write
 
     def submit(handle):
         composer.submits.append(handle)
@@ -185,11 +193,52 @@ def test_greeting_failure_does_not_arm_or_automatically_retry(watching, failure)
     assert not w.workflow.active and not w.service.auto_focus_recovery
     assert w.service.stop_input.is_set()
     assert w.workflow.jobs.count(w.workflow.chat_key) == 0
-    if failure == "draft":
-        assert composer.text == "Operator draft" and not composer.writes and not composer.submits
+    assert composer.writes == [(10, RUN_AGENT_GREETING)]
+    if failure == "verification":
+        assert not composer.submits
     else:
-        assert composer.writes == [(10, RUN_AGENT_GREETING)]
         assert composer.submits == [10]
+
+
+@pytest.mark.parametrize(
+    "draft", ["메시지 입력", "Existing message 한글", RUN_AGENT_GREETING, " \r\n"]
+)
+def test_startup_and_queued_replies_replace_contents_and_continue(watching, draft):
+    from app.automation.reply_service import TestReplySender as ReplySender
+    from app.automation.windows_composer import WindowsComposer
+    from tests.test_replies import Composer
+
+    w = watching
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    composer = Composer(draft)
+    submitted = []
+
+    def submit(handle):
+        submitted.append(composer.text)
+        composer.submits.append(handle)
+        composer.text = "메시지 입력"  # The empty box exposes its placeholder again.
+
+    composer.submit = submit
+    observer = WindowsComposer(None)
+    observer.read_after_send = composer.read
+    composer.observe_submission = observer.observe_submission
+    w.workflow.sender = ReplySender(composer, w.queue.event, w.service.stop_input)
+    w.service.dispatch("auto_catch")
+    assert submitted == [RUN_AGENT_GREETING]
+    assert w.workflow.sender.composer_cleared and w.service.state == State.AUTO_CATCHING
+    changed(w, 30)
+    finish(w)
+    composer.text = "Another existing draft before the next reply"
+    w.now[0] += 4
+    changed(w, 60)
+    finish(w)
+    expected = [RUN_AGENT_GREETING, "[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
+    assert submitted == expected
+    assert [text for _, text in composer.writes] == expected
+    assert w.service.state == State.AUTO_CATCHING and w.workflow.active
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    assert w.workflow.sender.composer_cleared
 
 
 def test_continues_after_first_reply_and_ignores_typing_and_own_reply(watching):
@@ -525,7 +574,7 @@ def test_atomic_image_write_failure_creates_no_queue_job(queue, frame, monkeypat
 
 
 @pytest.mark.parametrize("clears", [True, False])
-def test_unobserved_submission_continues_but_next_send_requires_empty_composer(watching, clears):
+def test_unobserved_submission_continues_and_next_reply_replaces_remaining_text(watching, clears):
     from app.automation.reply_service import TestReplySender as ReplySender
     from app.models import SubmissionObservation
     from tests.test_replies import Composer
@@ -551,43 +600,15 @@ def test_unobserved_submission_continues_but_next_send_requires_empty_composer(w
     # A subsequent incoming change queues normally even if observation failed.
     w.now[0] += 4
     changed(w, 60)
-    if clears:
-        finish(w)
-        assert w.workflow.reply_count == 2 and len(composer.submits) == 2
-        assert [text for _, text in composer.writes] == [
-            "[AI] Question 30 (자동 응답)",
-            "[AI] Question 60 (자동 응답)",
-        ]
-        jobs = ImageReplyQueue(w.queue)
-        assert jobs.claim(w.workflow.chat_key) is None  # No replay, including after restart.
-    else:
-        with pytest.raises(AgentError, match="not empty") as blocked:
-            finish(w)
-        w.service.pause(blocked.value)
-        assert len(composer.submits) == 1 and len(composer.writes) == 1
-        assert composer.text == "[AI] Question 30 (자동 응답)"
-        with w.queue.connect() as db:
-            assert [
-                r[0] for r in db.execute("SELECT status FROM image_reply_queue ORDER BY id")
-            ] == ["submitted", "pending"]
-        # Clearing the draft and explicitly restarting must process the untouched
-        # job without forcing review or replaying the previous submission.
-        composer.text = ""
-
-        # The restarted greeting clears normally; the pending reply can follow.
-        def clear_on_submit(handle):
-            composer.submits.append(handle)
-            composer.text = ""
-
-        composer.submit = clear_on_submit
-        w.service.dispatch("stop")
-        w.service.dispatch("auto_catch")
-        w.service.poll_auto_catch()
-        finish(w)
-        assert w.service.state == State.AUTO_CATCHING
-        assert len(composer.submits) == 3  # First reply, restarted greeting, pending reply.
-        assert composer.writes[-2][1] == RUN_AGENT_GREETING
-        assert composer.writes[-1][1] == "[AI] Question 60 (자동 응답)"
+    finish(w)
+    assert w.workflow.reply_count == 2 and len(composer.submits) == 2
+    assert [text for _, text in composer.writes] == [
+        "[AI] Question 30 (자동 응답)",
+        "[AI] Question 60 (자동 응답)",
+    ]
+    jobs = ImageReplyQueue(w.queue)
+    assert jobs.claim(w.workflow.chat_key) is None  # No replay, including after restart.
+    assert w.service.state == State.AUTO_CATCHING
 
 
 def test_partial_draft_write_still_requires_review(watching):

@@ -226,7 +226,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             self.progress(
                 "Enter submitted once; composer clearing unconfirmed. "
                 "Watching continues; this reply will not be resent. "
-                "The next reply requires an empty message box. " + observation
+                "The next queued reply will replace the message-box contents. " + observation
             )
         self.queue.event("auto_reply", self.job["job_id"] + ": " + observation)
         self.job = self.outcome = None

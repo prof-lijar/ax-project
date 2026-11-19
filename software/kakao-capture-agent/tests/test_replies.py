@@ -301,7 +301,7 @@ def test_native_composer_focus_ownership_and_obstruction_guards(config, monkeypa
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Requires standard Win32 edit controls")
-@pytest.mark.parametrize("draft", ["", "Existing draft 한글", " \r\n", TEST_REPLY])
+@pytest.mark.parametrize("draft", ["", "메시지 입력", "Existing draft 한글", " \r\n", TEST_REPLY])
 @pytest.mark.parametrize(
     "reply,scrollable",
     [

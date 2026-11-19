@@ -1,5 +1,6 @@
 """One explicit operator action sends one bounded reply; no automatic retries."""
 
+from app.automation.composer_text import composer_is_empty
 from app.models import AgentError, Cancelled
 
 TEST_REPLY = "[AI가 답장드렸습니다]"
@@ -44,7 +45,7 @@ class TestReplySender:
             self.composer.prepare(self.cancel)
             handle = self.check()
             self.check(handle)
-            if require_empty and self.composer.read(handle).strip():
+            if require_empty and not composer_is_empty(self.composer.read(handle)):
                 raise AgentError(
                     "Message box is not empty; no text replaced or Enter sent. Clear the draft before restarting Run Agent (auto)"
                 )

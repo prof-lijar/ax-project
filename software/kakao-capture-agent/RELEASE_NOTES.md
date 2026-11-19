@@ -1,5 +1,11 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.27
+
+**Run Agent (auto) clears existing composer contents and continues.** The startup greeting and each subsequent generated reply replace the selected message box's contents, including the `메시지 입력` placeholder, real drafts, and leftover text. Manual clearing is no longer required. The exact new text is verified before Enter is sent; target, focus, cancellation, and partial-input checks remain in effect.
+
+Post-send observation recognizes the exact Korean input placeholder as an empty composer. An accepted but unconfirmed submission is never replayed; later queued replies replace remaining composer contents with their own generated message. Continuous capture, FIFO processing, the startup greeting, and Stop behavior are unchanged.
+
 ## v0.1.0-rc.26
 
 **Run Agent (auto) now initiates the conversation.** Each explicit start sends the exact message `[AI 테스트 보내보시지요!` once, then continuously watches incoming messages and runs capture → extraction → LLM processing → queued replies as before. The startup message has no response suffix, is excluded from incoming-message analysis, and is not repeated by polling or focus recovery. The composer must be empty. Failed/interrupted startup sends are not automatically retried.

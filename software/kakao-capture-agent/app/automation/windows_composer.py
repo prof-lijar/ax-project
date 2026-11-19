@@ -4,6 +4,7 @@ import ctypes
 import time
 from ctypes import wintypes
 
+from app.automation.composer_text import composer_is_empty
 from app.automation.keyboard_input import press_enter
 from app.models import AgentError, Cancelled, Region, SubmissionObservation, covered_by_monitors
 
@@ -256,7 +257,7 @@ class WindowsComposer:
                     )
                 cancel.wait(0.1)
                 continue
-            if not text.strip():
+            if composer_is_empty(text):
                 return SubmissionObservation(
                     "Enter keypress sent; message box cleared. Delivery not independently verified",
                     composer_cleared=True,
