@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Device workflow appended general notes](device-workflow-append-general-notes.md): Name/address matching, preserved history, duplicate prevention, desktop compatibility gate, tests and activation.
+
 - [AX768 information update workflow](ax768-information-update-workflow.md): Structured/dotted birthday support, bounded name-first three-roster lookup without region input, guardian handling, all matching information AS cases, region-aware master identity and address-conflict reporting, appended notes, verified stages, file-registration startup regression and activation.
 
 - [AX768 information extraction](ax768-information-extraction.md): Workflow-specific agent analysis, source-grounded fields, chat sender/subject separation, OCR noise filtering, cancellation, tests and runtime activation.

@@ -8,6 +8,7 @@ import pytest
 from app.api.device_request import CLARIFY, parse_requests
 from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage
 from app.api.operations_client import (
+    ASSISTANT_ID,
     OperationsClient,
     OperationsResult,
     OperationsSettings,
@@ -48,6 +49,11 @@ def test_authenticated_api_contract_and_receipts():
         assert request.headers["cookie"] == "session=test"
         if request.url.path == "/api/me":
             return httpx.Response(200, json={"is_admin": True, "csrf_token": "csrf"})
+        if request.url.path.endswith("/schemas"):
+            return httpx.Response(
+                200,
+                json={"input_schema": {"properties": {"member_note_mode": {"const": "append"}}}},
+            )
         assert request.url.path == "/api/ax768/workflow/runs"
         assert (
             request.headers["origin"] == "https://nexgent.test"
@@ -65,7 +71,12 @@ def test_authenticated_api_contract_and_receipts():
     )
     result = client.run("헌릉로8길58 이은경님 기기위치조정 신호확인요.", threading.Event())
     assert result.completed
-    assert calls == ["/auth/login", "/api/me", "/api/ax768/workflow/runs"]
+    assert calls == [
+        "/auth/login",
+        "/api/me",
+        f"/agent-server/assistants/{ASSISTANT_ID}/schemas",
+        "/api/ax768/workflow/runs",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -85,6 +96,11 @@ def test_api_failures_never_retry_or_forward_credentials(failure):
         if request.url.path == "/api/me":
             return httpx.Response(
                 200, json={"is_admin": failure != "permission", "csrf_token": "csrf"}
+            )
+        if request.url.path.endswith("/schemas"):
+            return httpx.Response(
+                200,
+                json={"input_schema": {"properties": {"member_note_mode": {"const": "append"}}}},
             )
         if failure == "timeout":
             raise httpx.ReadTimeout("private response")
@@ -204,7 +220,7 @@ def test_pipeline_order_and_resume_does_not_repeat_api_or_sms(processor):
     assert len(p.stages) == 2
 
 
-@pytest.mark.parametrize("missing", ["action", "name"])
+@pytest.mark.parametrize("missing", ["action", "name", "address"])
 def test_missing_fields_ask_and_never_execute(processor, missing):
     p = processor
     p.plan[0][missing] = ""
@@ -298,7 +314,7 @@ def test_device_mode_queues_while_api_runs_then_replies_and_continues(watching, 
     monkeypatch.setattr(
         "app.automation.device_workflow.extract_requests",
         lambda llm, incoming, cancel: [
-            {"name": incoming.text, "address": "", "action": "전원연결"}
+            {"name": incoming.text, "address": "테스트로1", "action": "전원연결"}
         ],
     )
 
@@ -394,3 +410,26 @@ def test_device_destination_settings_isolate_retained_jobs(watching):  # noqa: F
         assert device.queue_key() != original
         setattr(device.config, field, before)
     assert device.queue_key() == original
+
+
+@pytest.mark.parametrize("mode", [None, "replace"])
+def test_old_server_cannot_execute_replacing_workflow(mode):
+    calls = []
+
+    def server(request):
+        calls.append(request.url.path)
+        if request.url.path == "/auth/login":
+            return httpx.Response(200, json={})
+        if request.url.path == "/api/me":
+            return httpx.Response(200, json={"is_admin": True, "csrf_token": "csrf"})
+        assert request.url.path.endswith("/schemas")
+        return httpx.Response(
+            200, json={"input_schema": {"properties": {"member_note_mode": {"const": mode}}}}
+        )
+
+    client = OperationsClient(
+        OperationsSettings("https://nexgent.test", "admin"), "secret", httpx.MockTransport(server)
+    )
+    with pytest.raises(AgentError, match="no workflow executed"):
+        client.run("테스트로1 이은경님 전원연결 신호확인요.", threading.Event())
+    assert "/api/ax768/workflow/runs" not in calls

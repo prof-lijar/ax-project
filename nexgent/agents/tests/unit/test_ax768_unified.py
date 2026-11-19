@@ -177,7 +177,8 @@ def mock_workflow(
             "reason": "done",
         }
 
-    async def member(message):
+    async def member(message, *, append=False):
+        assert append is True
         from workflows.ax768.member_note import parse_member_note
 
         parsed = parse_member_note(message)

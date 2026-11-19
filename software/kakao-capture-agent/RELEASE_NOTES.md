@@ -1,5 +1,11 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.31
+
+**Device requests require name and address.** Missing either field, or the requested action, produces a clarification reply without calling the operations API. The updated operations workflow matches both name and address and appends its dated entry to the final line of 일반 사항, preserving history and avoiding duplicate lines.
+
+The desktop verifies the server's append capability before workflow execution and refuses older replacing runtimes. Update/rebuild Nexgent Agent Server before using this mode; see [activation instructions](https://github.com/prof-lijar/ax-project/blob/kakao-capture-agent-v0.1.0-rc.31/nexgent/agents/docs/device-workflow-append-general-notes.md). Existing older business captures are kept separate from requests captured under the new policy. General Run Agent (auto) behavior is unchanged.
+
 ## v0.1.0-rc.30
 
 **New: 기기위치조정/전원연결.** A dedicated button continuously watches incoming requests, extracts the target name/address/action, and asks for clarification when needed. Complete requests call 운영시트에이젠트's existing `device_adjustment_power` API. Verified completion sends a fixed success-test notification to the configured Bizgo number, then replies with the returned result in KakaoTalk. Later captures queue while a request is processing.

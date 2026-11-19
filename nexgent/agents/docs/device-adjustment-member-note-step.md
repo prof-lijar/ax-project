@@ -2,6 +2,12 @@
 
 Date: 2026-11-10
 
+## Update — 2026-11-19
+
+The device workflow now **appends** to the last line and preserves history,
+matching both name and address. The replacement behavior below describes the
+original implementation. See [current policy and activation](device-workflow-append-general-notes.md).
+
 ## Implemented behavior
 
 Only the AX768 `기기위치조정/전원연결` workflow gains a final member-admin

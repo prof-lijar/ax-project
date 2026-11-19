@@ -1,4 +1,4 @@
-"""Explicit member Test case: identify one member, replace general notes, verify readback."""
+"""Identify one member and verify a replacement or workflow-only appended note."""
 
 import asyncio
 import re
@@ -88,8 +88,12 @@ def notes_of(row):
     return value
 
 
-async def run_member_note(message):
+async def run_member_note(message, *, append=False):
     parsed = parse_member_note(message)
+    if append and not parsed["address"]:
+        raise ValueError(
+            "기존 일반 사항에 추가하려면 대상자의 이름과 주소가 모두 필요합니다."
+        )
     receipt = {
         "status": "failed",
         "member_id": None,
@@ -151,13 +155,34 @@ async def run_member_note(message):
                     "가입자 이름 또는 주소가 변경되어 저장하지 않았습니다."
                 )
             old = notes_of(before)
-            if parsed["note"] == old:
+            already_present = (
+                any(line.strip() == parsed["note"] for line in old.splitlines())
+                if append
+                else parsed["note"] == old
+            )
+            if already_present:
                 receipt.update(status="already_present", verified=True)
                 return output(
                     "completed",
-                    "일반 사항이 입력 내용과 같아 변경하지 않았습니다.",
+                    "동일한 기록이 일반 사항에 이미 있어 추가하지 않았습니다."
+                    if append
+                    else "일반 사항이 입력 내용과 같아 변경하지 않았습니다.",
                 )
-            desired = parsed["note"]
+            if append:
+                separator = (
+                    ""
+                    if not old or old.endswith(("\n", "\r"))
+                    else "\r\n"
+                    if "\r\n" in old
+                    else "\n"
+                )
+                desired = old + separator + parsed["note"]
+                if len(desired) > 2000:
+                    raise MembersError(
+                        "기존 일반 사항을 보존하고 추가하면 2,000자를 초과하여 저장하지 않았습니다."
+                    )
+            else:
+                desired = parsed["note"]
             fresh = await client.detail(selected["member_id"])
             if identity(fresh) != selected or notes_of(fresh) != old:
                 raise MembersError(
@@ -175,7 +200,9 @@ async def run_member_note(message):
             receipt.update(status="saved", verified=True)
             return output(
                 "completed",
-                f"{selected['name']}님의 일반 사항을 입력 내용으로 교체하고 저장을 확인했습니다.\n{parsed['note']}",
+                f"{selected['name']}님의 일반 사항 마지막 줄에 기록을 추가하고 저장을 확인했습니다.\n{parsed['note']}"
+                if append
+                else f"{selected['name']}님의 일반 사항을 입력 내용으로 교체하고 저장을 확인했습니다.\n{parsed['note']}",
             )
     except (MembersError, TimeoutError) as exc:
         receipt["status"] = "unknown" if dispatched else "failed"

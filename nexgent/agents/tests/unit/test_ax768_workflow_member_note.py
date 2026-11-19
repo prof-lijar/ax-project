@@ -1,4 +1,4 @@
-"""Member replacement follows successful signal/AS and preserves partial outcomes."""
+"""Member append follows successful signal/AS and preserves partial outcomes."""
 
 import importlib
 from datetime import date
@@ -34,7 +34,8 @@ def state(message="김영호님 기기위치조정 신호확인요", *, missing_
 def service(monkeypatch, status="saved"):
     calls = []
 
-    async def run(message):
+    async def run(message, *, append=False):
+        assert append is True
         parsed = parse_member_note(message)
         calls.append(parsed)
         return {
@@ -164,3 +165,8 @@ async def test_old_version_and_prior_member_receipt_are_rejected():
         }
     )
     assert result["status"] == "blocked" and result["member_note"] is None
+
+
+def test_workflow_advertises_append_capability():
+    schema = workflow.graph.get_input_jsonschema()
+    assert schema["properties"]["member_note_mode"]["const"] == "append"

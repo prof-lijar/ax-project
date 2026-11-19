@@ -139,7 +139,7 @@ def synthetic_services(
                 body = json.loads(request.content)
                 assert set(body) == {"general_notes"}
                 assert body["general_notes"].endswith(" [현지관리자 방문] 기기위치조정")
-                assert "기존 메모" not in body["general_notes"]
+                assert body["general_notes"].startswith("기존 메모\n보존하지 않을 줄\n")
                 member.update(body)
                 events.append("member write")
             return httpx.Response(200, json={"data": member.copy()})

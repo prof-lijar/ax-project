@@ -1,4 +1,4 @@
-"""Replace member general notes after verified signal and optional AS completion."""
+"""Append member general notes after verified signal and optional AS completion."""
 
 import re
 from datetime import date
@@ -87,7 +87,7 @@ async def member_note_node(state):
             )
         note = f"{day} [현지관리자 방문] {action}"
         result = await run_member_note(
-            f"이름: {name}\n주소: {address}\n일반 사항: {note}"
+            f"이름: {name}\n주소: {address}\n일반 사항: {note}", append=True
         )
     except ValueError as exc:
         return {

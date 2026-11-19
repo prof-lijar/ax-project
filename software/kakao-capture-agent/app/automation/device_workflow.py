@@ -28,7 +28,7 @@ class DeviceProcessor:
 
     def process_request(self, request, job_id, index, cancel):
         check_cancel(cancel)
-        if not request["action"] or not request["name"]:
+        if not request["action"] or not request["name"] or not request["address"]:
             return CLARIFY
         reference = f"{job_id}-{index}"
         key = reference + ":api"
@@ -119,6 +119,7 @@ class DeviceWorkflow(QueuedVisualCatchWorkflow):
     def queue_key(self):
         # Old captures cannot change purpose or destination after a settings edit.
         destination = [
+            "append-name-address-v1",
             self.config.operations_url.rstrip("/"),
             self.config.operations_username,
             self.config.bizgo_sender,

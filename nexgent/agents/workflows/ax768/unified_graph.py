@@ -29,6 +29,7 @@ from workflows.ax768.workflow_member_note import (
 
 class WorkflowState(TypedDict, total=False):
     workflow_version: Literal["5"]
+    member_note_mode: Literal["append"]
     message: str
     confirmed_name: str | None
     status: str

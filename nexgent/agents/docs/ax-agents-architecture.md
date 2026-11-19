@@ -1,5 +1,16 @@
 # AX Agents Architecture
 
+## Device workflow appended master-page notes (2026-11-19)
+
+The device workflow now opts into the existing member writer's append mode,
+using both the resolved name and address. It preserves old text, deduplicates
+whole lines, bounds the combined field and verifies full-field readback. The
+standalone Test case keeps its replacement policy. Workflow version 5 gains
+an append capability marker; the desktop checks it before dispatch and requires
+name/address/action. No new process, credentials or result schema is introduced.
+See [implementation and activation](device-workflow-append-general-notes.md).
+
+
 ## Information master-page address equivalence (2026-11-13)
 
 Information-update member matching allows omission of known administrative

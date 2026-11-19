@@ -4,6 +4,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+from uuid import UUID, uuid5
 
 import httpx
 
@@ -12,6 +13,7 @@ from app.models import AgentError
 from app.utils.windows import get_token
 
 WORKFLOW_ID = "device_adjustment_power"
+ASSISTANT_ID = str(uuid5(UUID("6ba7b821-9dad-11d1-80b4-00c04fd430c8"), "ax768_workflow"))
 
 
 def credential_destination(url, username):
@@ -136,6 +138,18 @@ class OperationsClient:
                 or not account["csrf_token"]
             ):
                 raise AgentError("Nexgent administrator access and CSRF token are required")
+            check_cancel(cancel)
+            schema = await self.request(
+                client, "GET", f"/agent-server/assistants/{ASSISTANT_ID}/schemas"
+            )
+            try:
+                mode = schema["input_schema"]["properties"]["member_note_mode"]["const"]
+            except (KeyError, TypeError):
+                mode = None
+            if mode != "append":
+                raise AgentError(
+                    "Update/rebuild Nexgent Agent Server to enable appending general notes; no workflow executed"
+                )
             check_cancel(cancel)
             body = await self.request(
                 client,

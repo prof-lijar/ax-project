@@ -41,7 +41,9 @@ def test_keep_explicit_date_and_normalize_only_identity_spacing():
     )
 
 
-def service(monkeypatch, tmp_path, scenario):
+def service(
+    monkeypatch, tmp_path, scenario, *, initial_notes=None, expected_notes=NOTE
+):
     credential = tmp_path / "credentials.json"
     credential.write_text(json.dumps({"username": "test", "password": "secret-test"}))
     credential.chmod(0o600)
@@ -60,6 +62,8 @@ def service(monkeypatch, tmp_path, scenario):
         row["general_notes"] += NOTE
     if scenario == "overflow":
         row["general_notes"] = "x" * 1999
+    if initial_notes is not None:
+        row["general_notes"] = initial_notes
     reads, writes = [], []
 
     def handle(request):
@@ -84,7 +88,7 @@ def service(monkeypatch, tmp_path, scenario):
         if request.method == "PUT":
             assert request.url.path == "/api/admin/wards/12/update/"
             body = json.loads(request.content)
-            assert body == {"general_notes": NOTE}
+            assert body == {"general_notes": expected_notes}
             writes.append(body)
             if scenario == "rejected":
                 return httpx.Response(403, json={})
@@ -237,3 +241,102 @@ async def test_old_append_capability_cannot_dispatch_replacement(monkeypatch, tm
     )
     assert result["status"] == "blocked"
     assert not writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "old",
+    [
+        "",
+        "기존 기록",
+        "기존 기록\n둘째 줄",
+        "기존 기록\n",
+        "기존 기록\r\n둘째 줄\r\n",
+        "기존 기록  \n\n",
+    ],
+)
+async def test_append_preserves_history_and_repeat_skips_write(
+    monkeypatch, tmp_path, old
+):
+    expected = old + ("" if not old or old.endswith(("\n", "\r")) else "\n") + NOTE
+    reads, writes = service(
+        monkeypatch, tmp_path, "saved", initial_notes=old, expected_notes=expected
+    )
+    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    assert result["observations"][0]["result"]["status"] == "saved"
+    assert "마지막 줄에" in result["response"]
+    assert writes == [{"general_notes": expected}] and len(reads) == 3
+    again = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    assert again["observations"][0]["result"]["status"] == "already_present"
+    assert len(writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_append_duplicate_in_middle_preserves_following_lines(
+    monkeypatch, tmp_path
+):
+    _, writes = service(
+        monkeypatch,
+        tmp_path,
+        "saved",
+        initial_notes="기존 기록\n" + NOTE + "\n나중 기록",
+    )
+    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    assert result["observations"][0]["result"]["status"] == "already_present"
+    assert not writes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scenario,status",
+    [
+        ("changed", "failed"),
+        ("identity", "failed"),
+        ("overflow", "failed"),
+        ("timeout", "unknown"),
+        ("mismatch", "unknown"),
+        ("readback_error", "unknown"),
+    ],
+)
+async def test_append_blocks_overflow_and_conflicts_and_verifies_full_history(
+    monkeypatch, tmp_path, scenario, status
+):
+    _, writes = service(
+        monkeypatch, tmp_path, scenario, expected_notes="기존 기록\n" + NOTE
+    )
+    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    receipt = result["observations"][0]["result"]
+    assert receipt["status"] == status and receipt["verified"] is False
+    assert len(writes) == (status == "unknown")
+    if scenario == "overflow":
+        assert "2,000" in result["response"]
+
+
+@pytest.mark.asyncio
+async def test_append_requires_address_before_any_io():
+    with pytest.raises(ValueError, match="이름과 주소"):
+        await run_member_note(MESSAGE, append=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name,address,writes_expected",
+    [
+        ("이은경", "테스트로 1", 1),
+        ("이은경", "다른 주소", 0),
+        ("다른사람", "테스트로 1", 0),
+    ],
+)
+async def test_append_matches_name_and_address_together(
+    monkeypatch, tmp_path, name, address, writes_expected
+):
+    _, writes = service(
+        monkeypatch, tmp_path, "multiple", expected_notes="기존 기록\n" + NOTE
+    )
+    result = await run_member_note(
+        f"이름: {name}\n주소: {address}\n일반 사항: {NOTE}", append=True
+    )
+    assert len(writes) == writes_expected
+    assert result["observations"][0]["result"]["status"] == (
+        "saved" if writes_expected else "not_found"
+    )

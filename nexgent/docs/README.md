@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [Device workflow appended general notes](../agents/docs/device-workflow-append-general-notes.md): Name/address matching, preserved history, duplicate prevention, desktop compatibility gate, tests and activation.
+
 - [AX768 clipboard screenshot input](08-implementation/ax768-clipboard-screenshot-input.md): Ctrl+V image attachment through the existing preview, validation and extraction flow.
 
 - [AX768 information update workspace](08-implementation/ax768-information-update-workspace.md): workflow-specific extraction, bounded automatic three-roster lookup, structured/dotted birthdays and phone/guardian edits, matching AS completion, region-aware master-page matching, preserved history and image popup preview.

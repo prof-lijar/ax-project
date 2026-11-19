@@ -16,6 +16,12 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Append capability and required address — 2026-11-19
+
+Portable suite: **403 passed, 24 Windows-only tests skipped in 12.98 seconds**. Focused server suite: **189 passed**.
+
+The device mode now requires name/address/action and reads the authenticated workflow schema before POST. Regression tests verify that absent/replacing capabilities never call the workflow. Runtime activation requires administrator Docker access; the rc.31 client refuses the old server until the append marker is available. Verify a designated person's existing notes remain intact, the new line is last, wrong address/name requests do not update another member, and an identical repeat does not duplicate the entry.
+
 ### Device location / power workflow — 2026-11-19
 
 Portable validation: **400 passed, 24 Windows-only tests skipped in 12.85 seconds**.
