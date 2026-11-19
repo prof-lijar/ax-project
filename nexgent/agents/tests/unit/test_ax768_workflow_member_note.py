@@ -4,7 +4,6 @@ import importlib
 from datetime import date
 
 import pytest
-
 from workflows.ax768 import workflow_member_note as member
 from workflows.ax768.member_note import parse_member_note
 
@@ -34,8 +33,8 @@ def state(message="김영호님 기기위치조정 신호확인요", *, missing_
 def service(monkeypatch, status="saved"):
     calls = []
 
-    async def run(message, *, append=False):
-        assert append is True
+    async def run(message, *, placement="replace", region=None):
+        assert placement == "prepend"
         parsed = parse_member_note(message)
         calls.append(parsed)
         return {
@@ -169,4 +168,4 @@ async def test_old_version_and_prior_member_receipt_are_rejected():
 
 def test_workflow_advertises_append_capability():
     schema = workflow.graph.get_input_jsonschema()
-    assert schema["properties"]["member_note_mode"]["const"] == "append"
+    assert schema["properties"]["member_note_mode"]["const"] == "prepend"

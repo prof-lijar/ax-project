@@ -201,3 +201,21 @@ def test_unknown_member_write_retains_verified_as_result():
 def test_no_member_write_after_failed_as():
     result=payload();result.update(status='failed',as_update={'status':'failed','verified':False})
     with pytest.raises(ValueError):normalize(result)
+
+
+@pytest.mark.parametrize('address,accepted', [
+    ('울진군 금강송면 왕피길 83-15', True),
+    ('경상북도 울진군 금강송면 왕피길 83-15', True),
+    ('영덕군 금강송면 왕피길 83-15', False),
+    ('울진군 금강송면 왕피길 83-16', False),
+    ('울진군 북면 왕피길 83-15', False),
+])
+def test_member_result_accepts_only_known_prefix_equivalence(address, accepted):
+    result = payload()
+    result['roster'].update(name='정영자', address='금강송면 왕피길 83-15')
+    result['member_note'].update(name='정영자', address=address)
+    if accepted:
+        assert normalize(result)['member_note']['address'] == address
+    else:
+        with pytest.raises(ValueError):
+            normalize(result)

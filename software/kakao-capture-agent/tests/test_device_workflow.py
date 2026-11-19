@@ -52,7 +52,7 @@ def test_authenticated_api_contract_and_receipts():
         if request.url.path.endswith("/schemas"):
             return httpx.Response(
                 200,
-                json={"input_schema": {"properties": {"member_note_mode": {"const": "append"}}}},
+                json={"input_schema": {"properties": {"member_note_mode": {"const": "prepend"}}}},
             )
         assert request.url.path == "/api/ax768/workflow/runs"
         assert (
@@ -100,7 +100,7 @@ def test_api_failures_never_retry_or_forward_credentials(failure):
         if request.url.path.endswith("/schemas"):
             return httpx.Response(
                 200,
-                json={"input_schema": {"properties": {"member_note_mode": {"const": "append"}}}},
+                json={"input_schema": {"properties": {"member_note_mode": {"const": "prepend"}}}},
             )
         if failure == "timeout":
             raise httpx.ReadTimeout("private response")
@@ -412,7 +412,7 @@ def test_device_destination_settings_isolate_retained_jobs(watching):  # noqa: F
     assert device.queue_key() == original
 
 
-@pytest.mark.parametrize("mode", [None, "replace"])
+@pytest.mark.parametrize("mode", [None, "replace", "append"])
 def test_old_server_cannot_execute_replacing_workflow(mode):
     calls = []
 

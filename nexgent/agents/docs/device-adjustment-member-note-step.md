@@ -2,6 +2,11 @@
 
 Date: 2026-11-10
 
+## Final clarification — 2026-11-19
+
+The user subsequently specified **일반 사항 first line + existing text**.
+The rc.31 build was cancelled. See [the final first-line policy, address fix and rc.32 activation](device-workflow-first-line-notes-and-address-matching.md).
+
 ## Update — 2026-11-19
 
 The device workflow now **appends** to the last line and preserves history,

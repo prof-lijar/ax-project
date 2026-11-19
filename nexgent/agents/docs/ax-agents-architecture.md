@@ -1,5 +1,18 @@
 # AX Agents Architecture
 
+## Device general notes: newest first and region prefixes (2026-11-19)
+
+The user's final placement is first-line 일반 사항. The workflow uses the
+verified writer's prepend mode and advertises that capability for desktop
+preflight. Existing history is preserved and duplicate lines skipped. Device
+member resolution reuses the information workflow's known region-prefix
+normalization through `member_address.py`, while retaining both name/address
+and single-candidate gates. Backend/browser validate the same equivalence and
+retain the full actual master address in receipts. No approximate house-number
+matching, new credentials, process or LLM write authority is introduced.
+See [final policy and activation](device-workflow-first-line-notes-and-address-matching.md).
+
+
 ## Device workflow appended master-page notes (2026-11-19)
 
 The device workflow now opts into the existing member writer's append mode,

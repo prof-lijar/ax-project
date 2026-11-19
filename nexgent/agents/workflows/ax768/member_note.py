@@ -12,6 +12,8 @@ from ax_integrations.ansimk_members import (
     MembersRejected,
 )
 
+from workflows.ax768.member_address import member_address_matches
+
 
 def compact(value):
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value))
@@ -88,9 +90,12 @@ def notes_of(row):
     return value
 
 
-async def run_member_note(message, *, append=False):
+async def run_member_note(message, *, placement="replace", region=None):
     parsed = parse_member_note(message)
-    if append and not parsed["address"]:
+    if placement not in {"replace", "append", "prepend"}:
+        raise ValueError("지원하지 않는 메모 기록 방식입니다.")
+    preserve_history = placement != "replace"
+    if preserve_history and not parsed["address"]:
         raise ValueError(
             "기존 일반 사항에 추가하려면 대상자의 이름과 주소가 모두 필요합니다."
         )
@@ -126,7 +131,13 @@ async def run_member_note(message, *, append=False):
                 if compact(parsed["name"]) in compact(row["name"])
                 and (
                     not parsed["address"]
-                    or compact(row["address"]) == compact(parsed["address"])
+                    or (
+                        member_address_matches(
+                            parsed["address"], row["address"], region
+                        )
+                        if region is not None
+                        else compact(row["address"]) == compact(parsed["address"])
+                    )
                 )
                 and (not parsed["member_id"] or row["member_id"] == parsed["member_id"])
             ]
@@ -157,7 +168,7 @@ async def run_member_note(message, *, append=False):
             old = notes_of(before)
             already_present = (
                 any(line.strip() == parsed["note"] for line in old.splitlines())
-                if append
+                if preserve_history
                 else parsed["note"] == old
             )
             if already_present:
@@ -165,10 +176,10 @@ async def run_member_note(message, *, append=False):
                 return output(
                     "completed",
                     "동일한 기록이 일반 사항에 이미 있어 추가하지 않았습니다."
-                    if append
+                    if preserve_history
                     else "일반 사항이 입력 내용과 같아 변경하지 않았습니다.",
                 )
-            if append:
+            if preserve_history:
                 separator = (
                     ""
                     if not old or old.endswith(("\n", "\r"))
@@ -176,7 +187,13 @@ async def run_member_note(message, *, append=False):
                     if "\r\n" in old
                     else "\n"
                 )
-                desired = old + separator + parsed["note"]
+                desired = (
+                    parsed["note"]
+                    + (("\r\n" if "\r\n" in old else "\n") if old else "")
+                    + old
+                    if placement == "prepend"
+                    else old + separator + parsed["note"]
+                )
                 if len(desired) > 2000:
                     raise MembersError(
                         "기존 일반 사항을 보존하고 추가하면 2,000자를 초과하여 저장하지 않았습니다."
@@ -200,8 +217,8 @@ async def run_member_note(message, *, append=False):
             receipt.update(status="saved", verified=True)
             return output(
                 "completed",
-                f"{selected['name']}님의 일반 사항 마지막 줄에 기록을 추가하고 저장을 확인했습니다.\n{parsed['note']}"
-                if append
+                f"{selected['name']}님의 일반 사항 {'첫' if placement == 'prepend' else '마지막'} 줄에 기록을 추가하고 저장을 확인했습니다.\n{parsed['note']}"
+                if preserve_history
                 else f"{selected['name']}님의 일반 사항을 입력 내용으로 교체하고 저장을 확인했습니다.\n{parsed['note']}",
             )
     except (MembersError, TimeoutError) as exc:

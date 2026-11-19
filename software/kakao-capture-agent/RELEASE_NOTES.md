@@ -1,6 +1,12 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
-## v0.1.0-rc.31
+## v0.1.0-rc.32
+
+**일반 사항: new entry first, existing text preserved.** The device workflow now matches name and address while accepting the verified region's administrative prefix (for example, `금강송면 왕피길 83-15` and `울진군 금강송면 왕피길 83-15`). Different towns, counties or house numbers remain rejected. The dated entry is inserted on the first line of 일반 사항; identical existing lines are not duplicated. 설치 정보 is not modified.
+
+The desktop requires both name and address and checks the runtime's `prepend` capability before executing the workflow. Update Nexgent Agent Server and the backend/frontend receipt validators using [these activation instructions](https://github.com/prof-lijar/ax-project/blob/kakao-capture-agent-v0.1.0-rc.32/nexgent/agents/docs/device-workflow-first-line-notes-and-address-matching.md). This runtime activation needs administrator access and has not been performed automatically. Older note-writing runtimes are refused.
+
+## v0.1.0-rc.31 (build cancelled; superseded by rc.32)
 
 **Device requests require name and address.** Missing either field, or the requested action, produces a clarification reply without calling the operations API. The updated operations workflow matches both name and address and appends its dated entry to the final line of 일반 사항, preserving history and avoiding duplicate lines.
 

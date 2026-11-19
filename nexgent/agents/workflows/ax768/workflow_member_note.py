@@ -1,4 +1,4 @@
-"""Append member general notes after verified signal and optional AS completion."""
+"""Prepend member general notes after verified signal and optional AS completion."""
 
 import re
 from datetime import date
@@ -87,7 +87,13 @@ async def member_note_node(state):
             )
         note = f"{day} [현지관리자 방문] {action}"
         result = await run_member_note(
-            f"이름: {name}\n주소: {address}\n일반 사항: {note}", append=True
+            f"이름: {name}\n주소: {address}\n일반 사항: {note}",
+            placement="prepend",
+            region={
+                "uljin-users": "울진",
+                "yeongdeok-users": "영덕",
+                "gwangmyeon-users": "광명",
+            }.get(roster.get("sheet_alias")),
         )
     except ValueError as exc:
         return {

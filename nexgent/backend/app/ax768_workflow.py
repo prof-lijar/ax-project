@@ -104,6 +104,35 @@ def signal_receipt(value, roster):
             "reason": text(value.get("reason"), 1000)}
 
 
+def member_address_matches(roster_address, member_address, sheet_alias):
+    """Allow only known administrative prefixes of the resolved roster region."""
+    region = {"uljin-users": "울진", "yeongdeok-users": "영덕", "gwangmyeon-users": "광명"}.get(sheet_alias)
+    prefixes = {
+        "울진": (("경상북도", "경북"), ("울진군",)),
+        "영덕": (("경상북도", "경북"), ("영덕군",)),
+        "광명": (("경기도", "경기"), ("광명시",)),
+    }
+    if region not in prefixes or not all(
+        isinstance(v, str) and v.strip() for v in (roster_address, member_address)
+    ):
+        return False
+
+    def canonical(value):
+        value = unicodedata.normalize("NFKC", value).strip()
+        for choices in prefixes[region]:
+            value = re.sub(
+                r"^(?:" + "|".join(map(re.escape, choices)) + r")\s+",
+                "",
+                value,
+                count=1,
+            )
+        return re.sub(r"\s+", "", value)
+
+    return bool(canonical(roster_address)) and canonical(roster_address) == canonical(
+        member_address
+    )
+
+
 def member_receipt(value, roster, lookup, update, signal):
     if value is None:
         return None
@@ -121,7 +150,7 @@ def member_receipt(value, roster, lookup, update, signal):
     if update["status"] == "updated" and member["note"][:10] != update["date"]:
         raise ValueError("Member date differs from AS completion")
     compact = lambda v: re.sub(r"\s+", "", unicodedata.normalize("NFKC", v or ""))
-    if not compact(roster["name"]) or compact(roster["name"]) not in compact(member["name"]) or not compact(roster["address"]) or compact(roster["address"]) != compact(member["address"]):
+    if not compact(roster["name"]) or compact(roster["name"]) not in compact(member["name"]) or not compact(roster["address"]) or not member_address_matches(roster["address"], member["address"], roster["sheet_alias"]):
         raise ValueError("Member identity differs from roster")
     return member
 

@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [Device workflow first-line notes and address matching](../agents/docs/device-workflow-first-line-notes-and-address-matching.md): 일반 사항 newest-first history, known region-prefix equivalence, receipt validation, tests and activation.
+
 - [Device workflow appended general notes](../agents/docs/device-workflow-append-general-notes.md): Name/address matching, preserved history, duplicate prevention, desktop compatibility gate, tests and activation.
 
 - [AX768 clipboard screenshot input](08-implementation/ax768-clipboard-screenshot-input.md): Ctrl+V image attachment through the existing preview, validation and extraction flow.

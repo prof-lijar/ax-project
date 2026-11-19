@@ -2,7 +2,6 @@
 
 import asyncio
 import re
-import unicodedata
 from datetime import date
 from typing import Literal, TypedDict
 
@@ -31,7 +30,8 @@ from workflows.ax768.information_sheets import (
     same_name,
     select_as,
 )
-from workflows.ax768.member_note import compact, identity, notes_of
+from workflows.ax768.member_address import member_address_matches
+from workflows.ax768.member_note import identity, notes_of
 
 STAGES = ("roster", "as_update", "member_note")
 
@@ -346,34 +346,6 @@ async def as_step(state):
             "명부 반영 후 AS 처리 결과를 확인하지 못했습니다. AS 행을 확인해 주세요.",
             dispatched,
         )
-
-
-def member_address_matches(roster_address, member_address, region):
-    """Allow only known administrative prefixes of the resolved roster region."""
-    prefixes = {
-        "울진": (("경상북도", "경북"), ("울진군",)),
-        "영덕": (("경상북도", "경북"), ("영덕군",)),
-        "광명": (("경기도", "경기"), ("광명시",)),
-    }
-    if region not in prefixes or not all(
-        isinstance(v, str) and v.strip() for v in (roster_address, member_address)
-    ):
-        return False
-
-    def canonical(value):
-        value = unicodedata.normalize("NFKC", value).strip()
-        for choices in prefixes[region]:
-            value = re.sub(
-                r"^(?:" + "|".join(map(re.escape, choices)) + r")\s+",
-                "",
-                value,
-                count=1,
-            )
-        return compact(value)
-
-    return bool(canonical(roster_address)) and canonical(roster_address) == canonical(
-        member_address
-    )
 
 
 def resolve_information_member(rows, selected, region):

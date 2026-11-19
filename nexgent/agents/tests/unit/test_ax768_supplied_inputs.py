@@ -138,8 +138,12 @@ def synthetic_services(
             if request.method == "PUT":
                 body = json.loads(request.content)
                 assert set(body) == {"general_notes"}
-                assert body["general_notes"].endswith(" [현지관리자 방문] 기기위치조정")
-                assert body["general_notes"].startswith("기존 메모\n보존하지 않을 줄\n")
+                assert (
+                    body["general_notes"]
+                    .splitlines()[0]
+                    .endswith(" [현지관리자 방문] 기기위치조정")
+                )
+                assert body["general_notes"].endswith("\n기존 메모\n보존하지 않을 줄")
                 member.update(body)
                 events.append("member write")
             return httpx.Response(200, json={"data": member.copy()})

@@ -2,6 +2,11 @@
 
 Date: 2026-11-19
 
+## Final clarification — 2026-11-19
+
+The user subsequently specified **일반 사항 first line + existing text**.
+The rc.31 build was cancelled. See [the final first-line policy, address fix and rc.32 activation](device-workflow-first-line-notes-and-address-matching.md).
+
 The 기기위치조정/전원연결 workflow now requires the resolved roster name and address for the final member lookup and appends `YYYY-MM-DD [현지관리자 방문] 기기위치조정` or `전원연결` to the last line of 일반 사항. Existing text, whitespace, and line endings are preserved; a separator is added only when needed. The matching policy retains exact-name preference and existing unique partial-name support, always constrained by normalized address equality. Ambiguity or mismatch does not write.
 
 `member_note_node` calls the existing verified writer with an internal `append=True` flag. It cannot be selected by message text. The standalone member-note Test case retains its existing replacement behavior. Append requires an explicit address, skips an identical standalone line anywhere in history, and stops before writing if the full result would exceed 2,000 characters. It rechecks identity and the whole old field before writing, then verifies the whole combined field afterward. No automatic write retries are introduced. The upstream still has no conditional-write/ETag contract, so an external edit racing the final read and write remains possible.

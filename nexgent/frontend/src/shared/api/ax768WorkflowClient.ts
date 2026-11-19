@@ -68,6 +68,21 @@ function isSignal(value: unknown, roster: WorkflowStage): value is WorkflowSigna
   }
   return v.sn === null && v.connected === null && v.fresh === null;
 }
+function memberAddressMatches(roster: WorkflowStage, address: string | null): boolean {
+  const prefixes: Record<string, string[][]> = {
+    "uljin-users": [["경상북도", "경북"], ["울진군"]],
+    "yeongdeok-users": [["경상북도", "경북"], ["영덕군"]],
+    "gwangmyeon-users": [["경기도", "경기"], ["광명시"]]
+  };
+  const allowed = prefixes[roster.sheet_alias ?? ""];
+  if (!allowed || !roster.address?.trim() || !address?.trim()) return false;
+  const canonical = (value: string) => {
+    let text = value.normalize("NFKC").trim();
+    for (const choices of allowed) text = text.replace(new RegExp("^(?:" + choices.join("|") + ")\\s+"), "");
+    return text.replace(/\s+/g, "");
+  };
+  return !!canonical(roster.address) && canonical(roster.address) === canonical(address);
+}
 function isWorkflowMember(value: unknown, v: WorkflowResult): boolean {
   if (value === null) return v.status !== "completed";
   if (!value || typeof value !== "object") return false;
@@ -80,7 +95,7 @@ function isWorkflowMember(value: unknown, v: WorkflowResult): boolean {
     /^\d{4}-\d{2}-\d{2} \[현지관리자 방문\] (기기위치조정|전원연결)$/.test(m.note ?? "") &&
     (v.as_update.status !== "updated" || m.note?.slice(0, 10) === v.as_update.date) &&
     !!compact(v.roster.name) && compact(m.name).includes(compact(v.roster.name)) &&
-    !!compact(v.roster.address) && compact(m.address) === compact(v.roster.address) &&
+    memberAddressMatches(v.roster, m.address) &&
     (m.verified === (v.status === "completed"));
 }
 function isResult(value: unknown): value is WorkflowResult {

@@ -8,7 +8,6 @@ import pytest
 from ax_integrations import sheets_lookup
 from ax_integrations.ansimk import AnsimkError
 from ax_integrations.google_sheets import GoogleSheetsClient, SheetsError
-
 from workflows.ax768.request_parser import parse_request
 
 workflow = importlib.import_module("workflows.ax768.unified_graph")
@@ -177,8 +176,8 @@ def mock_workflow(
             "reason": "done",
         }
 
-    async def member(message, *, append=False):
-        assert append is True
+    async def member(message, *, placement="replace", region=None):
+        assert placement == "prepend"
         from workflows.ax768.member_note import parse_member_note
 
         parsed = parse_member_note(message)

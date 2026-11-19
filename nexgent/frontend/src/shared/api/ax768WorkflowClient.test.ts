@@ -87,3 +87,16 @@ describe("Unified AX768 workflow API", () => {
     await expect(runAx768Workflow("device_adjustment_power", " ")).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+it.each([
+  ["울진군 금강송면 왕피길 83-15", true],
+  ["경상북도 울진군 금강송면 왕피길 83-15", true],
+  ["영덕군 금강송면 왕피길 83-15", false],
+  ["울진군 금강송면 왕피길 83-16", false],
+  ["울진군 북면 왕피길 83-15", false],
+])("validates the reported member address %s", async (address, accepted) => {
+  const body = {...fixture, roster: {...stage, name: "정영자", address: "금강송면 왕피길 83-15"}, member_note: {...memberNote, name: "정영자", address}};
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(body))));
+  if (accepted) expect((await runAx768Workflow("device_adjustment_power", "text")).member_note?.address).toBe(address);
+  else await expect(runAx768Workflow("device_adjustment_power", "text")).rejects.toThrow();
+});

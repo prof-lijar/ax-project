@@ -119,7 +119,7 @@ class DeviceWorkflow(QueuedVisualCatchWorkflow):
     def queue_key(self):
         # Old captures cannot change purpose or destination after a settings edit.
         destination = [
-            "append-name-address-v1",
+            "prepend-name-address-v2",
             self.config.operations_url.rstrip("/"),
             self.config.operations_username,
             self.config.bizgo_sender,

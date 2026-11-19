@@ -16,6 +16,12 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### First-line notes and region-prefix matching — 2026-11-19
+
+Portable suite: **404 passed, 24 Windows-only tests skipped in 12.74 seconds**. Server checks: **243 agent, 72 backend and 57 frontend tests passed**. Vite production build and Rust check with a fresh temporary target directory passed.
+
+The runtime preflight now requires `member_note_mode: prepend` and rejects older append/replacement servers before workflow execution. Name/address/action remain required. Server tests reproduce the reported 정영자 address-prefix mismatch, verify first-line placement with full history preserved, and reject different towns, counties or house numbers. The rc.31 build was cancelled after the user's placement clarification. Runtime activation remains pending interactive administrator access; use the rc.32 activation document before live testing.
+
 ### Append capability and required address — 2026-11-19
 
 Portable suite: **403 passed, 24 Windows-only tests skipped in 12.98 seconds**. Focused server suite: **189 passed**.

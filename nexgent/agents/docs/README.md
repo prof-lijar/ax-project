@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Device workflow first-line notes and address matching](device-workflow-first-line-notes-and-address-matching.md): 일반 사항 newest-first history, known region-prefix equivalence, receipt validation, tests and activation.
+
 - [Device workflow appended general notes](device-workflow-append-general-notes.md): Name/address matching, preserved history, duplicate prevention, desktop compatibility gate, tests and activation.
 
 - [AX768 information update workflow](ax768-information-update-workflow.md): Structured/dotted birthday support, bounded name-first three-roster lookup without region input, guardian handling, all matching information AS cases, region-aware master identity and address-conflict reporting, appended notes, verified stages, file-registration startup regression and activation.

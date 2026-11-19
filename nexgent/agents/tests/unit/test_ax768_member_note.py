@@ -6,7 +6,6 @@ import json
 import httpx
 import pytest
 from ax_integrations.ansimk_members import AnsimkMembersClient, MembersError
-
 from workflows.ax768.member_note import parse_member_note, run_member_note
 
 NOTE = "2026-10-28 [현지관리자 방문] 기기위치조정"
@@ -42,7 +41,14 @@ def test_keep_explicit_date_and_normalize_only_identity_spacing():
 
 
 def service(
-    monkeypatch, tmp_path, scenario, *, initial_notes=None, expected_notes=NOTE
+    monkeypatch,
+    tmp_path,
+    scenario,
+    *,
+    initial_notes=None,
+    expected_notes=NOTE,
+    initial_name=None,
+    initial_address=None,
 ):
     credential = tmp_path / "credentials.json"
     credential.write_text(json.dumps({"username": "test", "password": "secret-test"}))
@@ -62,6 +68,10 @@ def service(
         row["general_notes"] += NOTE
     if scenario == "overflow":
         row["general_notes"] = "x" * 1999
+    if initial_name is not None:
+        row["full_name"] = initial_name
+    if initial_address is not None:
+        row["address"] = initial_address
     if initial_notes is not None:
         row["general_notes"] = initial_notes
     reads, writes = [], []
@@ -262,11 +272,11 @@ async def test_append_preserves_history_and_repeat_skips_write(
     reads, writes = service(
         monkeypatch, tmp_path, "saved", initial_notes=old, expected_notes=expected
     )
-    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", placement="append")
     assert result["observations"][0]["result"]["status"] == "saved"
     assert "마지막 줄에" in result["response"]
     assert writes == [{"general_notes": expected}] and len(reads) == 3
-    again = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    again = await run_member_note(MESSAGE + "\n주소: 테스트로 1", placement="append")
     assert again["observations"][0]["result"]["status"] == "already_present"
     assert len(writes) == 1
 
@@ -281,7 +291,7 @@ async def test_append_duplicate_in_middle_preserves_following_lines(
         "saved",
         initial_notes="기존 기록\n" + NOTE + "\n나중 기록",
     )
-    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", placement="append")
     assert result["observations"][0]["result"]["status"] == "already_present"
     assert not writes
 
@@ -304,7 +314,7 @@ async def test_append_blocks_overflow_and_conflicts_and_verifies_full_history(
     _, writes = service(
         monkeypatch, tmp_path, scenario, expected_notes="기존 기록\n" + NOTE
     )
-    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", append=True)
+    result = await run_member_note(MESSAGE + "\n주소: 테스트로 1", placement="append")
     receipt = result["observations"][0]["result"]
     assert receipt["status"] == status and receipt["verified"] is False
     assert len(writes) == (status == "unknown")
@@ -315,7 +325,7 @@ async def test_append_blocks_overflow_and_conflicts_and_verifies_full_history(
 @pytest.mark.asyncio
 async def test_append_requires_address_before_any_io():
     with pytest.raises(ValueError, match="이름과 주소"):
-        await run_member_note(MESSAGE, append=True)
+        await run_member_note(MESSAGE, placement="append")
 
 
 @pytest.mark.asyncio
@@ -334,9 +344,67 @@ async def test_append_matches_name_and_address_together(
         monkeypatch, tmp_path, "multiple", expected_notes="기존 기록\n" + NOTE
     )
     result = await run_member_note(
-        f"이름: {name}\n주소: {address}\n일반 사항: {NOTE}", append=True
+        f"이름: {name}\n주소: {address}\n일반 사항: {NOTE}", placement="append"
     )
     assert len(writes) == writes_expected
     assert result["observations"][0]["result"]["status"] == (
         "saved" if writes_expected else "not_found"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "old",
+    [
+        "",
+        "기존 첫 줄\n기존 마지막 줄",
+        "기존 첫 줄\r\n기존 마지막 줄\r\n",
+        "\n기존 기록  \n",
+    ],
+)
+async def test_prepend_preserves_entire_old_text_and_deduplicates(
+    monkeypatch, tmp_path, old
+):
+    expected = NOTE + (("\r\n" if "\r\n" in old else "\n") if old else "") + old
+    _, writes = service(
+        monkeypatch, tmp_path, "saved", initial_notes=old, expected_notes=expected
+    )
+    for _ in range(2):
+        result = await run_member_note(
+            MESSAGE + "\n주소: 테스트로 1", placement="prepend"
+        )
+        assert result["observations"][0]["result"]["verified"] is True
+    assert writes == [{"general_notes": expected}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "master_address,expected",
+    [
+        ("울진군 금강송면 왕피길 83-15", True),
+        ("경상북도 울진군 금강송면 왕피길 83-15", True),
+        ("영덕군 금강송면 왕피길 83-15", False),
+        ("울진군 금강송면 왕피길 83-16", False),
+        ("울진군 북면 왕피길 83-15", False),
+    ],
+)
+async def test_reported_wangpi_address_prefix_matches_only_same_house(
+    monkeypatch, tmp_path, master_address, expected
+):
+    _, writes = service(
+        monkeypatch,
+        tmp_path,
+        "saved",
+        initial_name="정영자",
+        initial_address=master_address,
+        expected_notes=NOTE + "\n기존 기록\n",
+    )
+    result = await run_member_note(
+        f"이름: 정영자\n주소: 금강송면 왕피길 83-15\n일반 사항: {NOTE}",
+        placement="prepend",
+        region="울진",
+    )
+    assert len(writes) == int(expected)
+    assert result["observations"][0]["result"]["status"] == (
+        "saved" if expected else "not_found"
     )

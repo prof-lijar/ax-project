@@ -146,9 +146,9 @@ class OperationsClient:
                 mode = schema["input_schema"]["properties"]["member_note_mode"]["const"]
             except (KeyError, TypeError):
                 mode = None
-            if mode != "append":
+            if mode != "prepend":
                 raise AgentError(
-                    "Update/rebuild Nexgent Agent Server to enable appending general notes; no workflow executed"
+                    "Update/rebuild Nexgent Agent Server to enable adding general notes at the first line; no workflow executed"
                 )
             check_cancel(cancel)
             body = await self.request(
