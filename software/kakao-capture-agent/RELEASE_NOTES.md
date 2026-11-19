@@ -1,5 +1,15 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.30
+
+**New: 기기위치조정/전원연결.** A dedicated button continuously watches incoming requests, extracts the target name/address/action, and asks for clarification when needed. Complete requests call 운영시트에이젠트's existing `device_adjustment_power` API. Verified completion sends a fixed success-test notification to the configured Bizgo number, then replies with the returned result in KakaoTalk. Later captures queue while a request is processing.
+
+Configure the Nexgent origin URL, administrator username, and password in Settings, alongside the existing LLM and Bizgo settings. The password is stored in Windows Credential Manager. Sandbox/production follows your existing Bizgo setting; sandbox does not deliver a phone message. This button invokes the real operations workflow and includes Bizgo on success even if the optional Bizgo checkbox for the older Test Workflow is off.
+
+The business queue is separate from general replies and bound to its configured destinations. Persisted action receipts prevent automatically repeating an API or SMS attempt after interruption. Unverified or failed results never produce a success notification. API/Bizgo uncertainty is reported in the KakaoTalk reply, and later requests continue. Clarification replies ask participants to resend their full name/address/action together.
+
+Automated coverage uses mocked services. Live Nexgent access, operations updates, actual screenshot interpretation, and real Bizgo/KakaoTalk delivery still require the configured Windows test.
+
 ## v0.1.0-rc.29
 
 **Fixed: one successful reply followed by an endlessly stalled queue.** A capture with ambiguous or malformed text extraction could retry forever at the front of the queue, blocking every later message. Each capture now gets at most three analysis attempts; an unresolved capture is retained for review and later queued captures proceed. Attempts survive restart, and existing entries with three or more failures are set aside immediately after updating, without another model call.

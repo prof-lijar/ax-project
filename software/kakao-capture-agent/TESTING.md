@@ -16,6 +16,24 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Device location / power workflow — 2026-11-19
+
+Portable validation: **400 passed, 24 Windows-only tests skipped in 12.85 seconds**.
+
+New regression coverage exercises the Nexgent login cookie/Origin/CSRF contract, administrator checks, response limits, redirects, timeouts and malformed/unverified results; structured LLM extraction and source grounding; missing-field/unrelated/ambiguous clarification; API → Bizgo → KakaoTalk order; multiple requests; collection while API work is blocked; destination isolation; and durable resume after API/SMS interruption without repeated side effects. GUI tests include the new button and password storage/redaction. The emitted Korean request format was also checked against the actual Nexgent deterministic parser for address/name and name-only inputs. Tests use mocked services and synthetic recipients; they do not mutate live sheets or send messages.
+
+Windows real-case acceptance:
+
+1. Configure the Nexgent browser origin, administrator username/password, existing vision LLM, and Bizgo test-recipient settings. Clear Bizgo sandbox for actual test-number delivery.
+2. Select the KakaoTalk group, click **기기위치조정/전원연결**, and verify its invitation appears once.
+3. Send `안녕하세요` and an incomplete `전원연결 해주세요`. Expect clarification, no operations API call and no phone notification.
+4. Send a designated test person's full `이름 / 주소 / 기기위치조정` request, then another `이름 / 주소 / 전원연결` while the first is processing. Confirm both are queued and processed in order, both actual operations results are correct, one success-test notification is accepted per completed request, and KakaoTalk replies continue.
+5. Check disconnected/not-found/needs-confirmation responses: KakaoTalk must explain the result without a success SMS. Supply a corrected full request rather than a partial name-only confirmation.
+6. Interrupt during the API or SMS stage, then restart. Check the external system before resending manually. No automatically repeated API/SMS attempt is expected for an uncertain saved stage.
+7. Stop and switch back to **Run Agent (auto)**. General replies must continue without executing saved business requests.
+
+Live service acceptance remains pending configuration on the Windows test PC.
+
 ### Bounded screenshot analysis retries — 2026-11-19
 
 Portable validation: **368 passed, 24 Windows-only tests skipped in 12.51 seconds**. Ruff lint/format and diff checks passed.

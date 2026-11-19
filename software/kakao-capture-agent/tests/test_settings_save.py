@@ -55,13 +55,17 @@ def test_native_credential_roundtrip_and_replacement(monkeypatch):
                 raise
 
 
-@pytest.mark.parametrize("failure", [None, "upload", "llm", "bizgo", "startup", "file"])
+@pytest.mark.parametrize(
+    "failure", [None, "upload", "llm", "bizgo", "operations", "startup", "file"]
+)
 def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch, failure):
     new = deepcopy(config)
     new.chat_id = "updated-chat"
     new.llm_url = "https://llm.test/v1"
     new.llm_model = "vision"
     new.llm_supports_vision = True
+    new.operations_url = "https://nexgent.test"
+    new.operations_username = "admin"
     new.launch_at_signin = failure == "startup"
     secret = "synthetic-never-log-this"
     dialog = SimpleNamespace(
@@ -69,6 +73,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
         token=secret,
         llm_token=secret,
         bizgo_token=secret,
+        operations_password=secret,
         exec=lambda: main_window.QDialog.Accepted,
     )
     logs, errors, writes, startup = [], [], [], []
@@ -90,7 +95,9 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
 
     def write(destination, token):
         kind = (
-            "bizgo"
+            "operations"
+            if destination.startswith("operations:")
+            else "bizgo"
             if destination.startswith("bizgo:")
             else "llm"
             if destination.startswith("llm:")
@@ -116,6 +123,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
             "upload": "upload API token",
             "llm": "LLM API key",
             "bizgo": "Bizgo API key",
+            "operations": "Nexgent password",
             "startup": "launch at sign-in",
             "file": "configuration file",
         }[failure]
@@ -124,6 +132,6 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
     else:
         assert not errors and not startup  # Disabled startup needs no registry access.
         assert config.chat_id == load(window.config_path).chat_id == "updated-chat"
-        assert len(writes) == 3
+        assert len(writes) == 4
         assert writes[1][0] == credential_destination(new.llm_url)
         assert secret not in window.config_path.read_text()

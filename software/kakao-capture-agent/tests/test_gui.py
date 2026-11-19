@@ -11,7 +11,8 @@ from app.models import State, Target, TargetUnavailable
 
 
 @pytest.mark.parametrize(
-    "reply_command", ["send_test", "test_workflow", "bizgo_test", "incoming_test", "auto_catch"]
+    "reply_command",
+    ["send_test", "test_workflow", "bizgo_test", "incoming_test", "auto_catch", "device_workflow"],
 )
 def test_full_window_preview_and_settings(
     tmp_path, config, queue, frame, region, monkeypatch, qt_app, reply_command
@@ -54,6 +55,7 @@ def test_full_window_preview_and_settings(
     window.show()
     assert all(button.text() != "Select Region" for button in window.setup_buttons)
     assert window.auto_catch_button.text() == "Run Agent (auto)"
+    assert window.device_workflow_button.text() == "기기위치조정/전원연결"
     window.test_reply_edit.setPlainText("테스트 메시지\nDifferent reply")
     signals.preview.emit(encode_png(frame))
     signals.stats.emit(queue.stats())
@@ -81,6 +83,10 @@ def test_full_window_preview_and_settings(
     config.llm_supports_vision = True
     config.bizgo_sender = "01000000001"
     config.bizgo_recipient = "01000000002"
+    config.operations_url = "https://nexgent.test"
+    config.operations_username = "admin"
+    monkeypatch.setenv("OPERATIONS_PASSWORD", "synthetic-password")
+    monkeypatch.setenv("BIZGO_API_KEY", "synthetic-key")
     if reply_command == "bizgo_test":
         config.target = config.selection = None
         config.chat_id = ""  # A standalone phone test does not require chat setup.
@@ -119,6 +125,7 @@ def test_full_window_preview_and_settings(
     assert not window.test_workflow_button.isEnabled()
     assert not window.bizgo_test_button.isEnabled()
     assert not window.auto_catch_button.isEnabled()
+    assert not window.device_workflow_button.isEnabled()
     assert activation == ([] if reply_command == "bizgo_test" else [False])
     assert monitor.stop_input.is_set() and not monitor.want_live
     window.action("stop")
@@ -192,7 +199,10 @@ def test_full_window_preview_and_settings(
     dialog.controls["bizgo_recipient"].setText("01000000003")
     dialog.controls["bizgo_enabled"].setChecked(True)
     dialog.controls["bizgo_sandbox"].setChecked(False)
+    dialog.operations_secret.setText("new-secret")
     dialog.accept()
+    assert dialog.operations_password == "new-secret"
+    assert not hasattr(dialog.result_config, "operations_password")
     assert dialog.result_config.chat_id == "changed-chat"
     assert config.chat_id != "changed-chat"
     save(tmp_path / "local-config.json", dialog.result_config)

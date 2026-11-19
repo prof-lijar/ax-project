@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
+from app.automation.device_workflow import DeviceWorkflow
 from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
 from app.automation.reply_service import TestReplySender
@@ -92,6 +93,19 @@ class MonitoringService(threading.Thread):
             preview,
             lambda message: self.transition(State.INITIALIZING, message),
             text_preview=text_preview,
+        )
+        self.general_auto_catch = self.auto_catch
+        self.device_workflow = DeviceWorkflow(
+            desktop,
+            capture,
+            queue,
+            config,
+            self.reply_sender,
+            self.stop_input,
+            preview,
+            lambda message: self.transition(State.INITIALIZING, message),
+            text_preview=text_preview,
+            activity=activity,
         )
 
     def transition(self, state, reason=""):
@@ -258,10 +272,21 @@ class MonitoringService(threading.Thread):
             self.initialize(confirmed=command == "confirm_bottom")
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
-        elif command == "auto_catch" and self.state == State.STOPPED:
+        elif command in ("auto_catch", "device_workflow") and self.state == State.STOPPED:
+            if command == "device_workflow":
+                if self.auto_catch is not self.device_workflow:
+                    self.general_auto_catch = self.auto_catch
+                self.auto_catch = self.device_workflow
+            elif self.auto_catch is self.device_workflow:
+                self.auto_catch = self.general_auto_catch
             self.want_live = self.recoverable = False
             self.stop_input.clear()
-            self.transition(State.INITIALIZING, "Starting Run Agent (auto)")
+            self.transition(
+                State.INITIALIZING,
+                "Starting 기기위치조정/전원연결"
+                if command == "device_workflow"
+                else "Starting Run Agent (auto)",
+            )
             try:
                 self.prepare_chat()
                 self.auto_catch.arm()

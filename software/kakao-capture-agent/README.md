@@ -14,6 +14,18 @@ The executable includes its runtime and libraries; the first launch may take a m
 
 Open the intended KakaoTalk conversation, choose **Select Window**. All chat features detect the message area automatically; a blank chat identifier is generated automatically. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
 
+## 기기위치조정/전원연결
+
+The **기기위치조정/전원연결** button starts a continuous business workflow in the selected chat. It sends a short invitation, watches changed screenshots, extracts new participant requests, and queues later captures while the previous request runs. Send, for example, `이은경 / 헌릉로8길58 / 위치변경` or `김순옥 / 울진북로164 / 전원연결`.
+
+In **Settings**, enter the **운영시트에이젠트 Nexgent URL** (the origin you open in your browser, without an API path), administrator username, and password. Enable Nexgent trusted LAN HTTP only for an HTTP LAN installation. The password is saved in Windows Credential Manager, scoped to the URL and username; `OPERATIONS_PASSWORD` can supply it instead. Keep the existing vision LLM settings. Configure the Bizgo sender, recipient, and key; turn **Bizgo sandbox** off for a real message to your test number. This button always includes Bizgo on verified success, regardless of the older Test Workflow's optional Bizgo checkbox.
+
+The LLM extracts a target name, address, and one action. Missing names/actions, ambiguous choices, and unrelated text get a Korean request to resend the name/address/action together; fields are not carried across participants. An explicit name and action can be submitted without an address, using the operations agent's existing name-only lookup. Include an address to disambiguate people. Several requests in one visible batch are handled in order, with one numbered KakaoTalk reply; screenshot extraction is limited to 1,200 characters and at most ten requests per batch.
+
+The app authenticates through Nexgent `/auth/login`, reads `/api/me` for the administrator and CSRF checks, and posts `workflow_id: device_adjustment_power` to `/api/ax768/workflow/runs`. It sends the parser-compatible form `주소 이름님 작업 신호확인요.` and leaves `confirmed_name` unset. This invokes the existing **real** signal/sheet/member-note workflow. The default timeout is 435 seconds. Needs-confirmation, disconnected, not-found, and failed results are returned to KakaoTalk without a success SMS. A verified completed result triggers the fixed Bizgo text `[test] 기기위치조정/전원연결 처리 성공` to the configured number, followed by the API result and Bizgo acceptance status in KakaoTalk. Acceptance is not proof of handset delivery.
+
+This mode has a separate queue identity from general Run Agent (auto), scoped to the operations URL/account and Bizgo destination/environment. Durable plans and receipts prevent automatic repetition of API/SMS attempts after Stop/restart or uncertain outcomes. An interrupted API request may still finish on the server: check the operations sheet/member notes before manually resubmitting. Bizgo failure does not suppress the completed operations result in KakaoTalk. Stop / Ctrl+Shift+F12 cancels further local actions; already submitted external actions cannot be recalled. The ordinary upload API is unrelated to this workflow.
+
 ## Run from source on Windows
 
 Use Windows 10/11 with an unlocked interactive desktop and an authenticated KakaoTalk conversation. Start with a conversation authorized for testing. The setup below uses **uv** to install Python 3.12 (the version used for the automated tests), create the project environment, and install dependencies. You do not need to install Python or the `py` launcher separately.

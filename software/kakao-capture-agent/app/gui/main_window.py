@@ -194,6 +194,15 @@ class MainWindow(QMainWindow):
         )
         auto_hint.setWordWrap(True)
         layout.addWidget(auto_hint)
+        self.device_workflow_button = QPushButton("기기위치조정/전원연결")
+        self.device_workflow_button.clicked.connect(lambda: self.action("device_workflow"))
+        layout.addWidget(self.device_workflow_button)
+        device_hint = QLabel(
+            "대상자 이름 / 주소 / 작업을 보내주세요. 운영시트에이젠트 처리 후 설정된 Bizgo 번호로 "
+            "테스트 결과를 보내고 카카오톡에 답장합니다. Stop을 누를 때까지 계속 대기합니다."
+        )
+        device_hint.setWordWrap(True)
+        layout.addWidget(device_hint)
         self.text_preview = QTextEdit()
         self.text_preview.setReadOnly(True)
         self.text_preview.setPlaceholderText(
@@ -273,6 +282,7 @@ class MainWindow(QMainWindow):
         self.auto_catch_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.AUTO_CATCHING.value
         )
+        self.device_workflow_button.setEnabled(self.auto_catch_button.isEnabled())
         self.review_text_button.setEnabled(self.can_review_replies(state))
         self.incoming_test_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
@@ -285,9 +295,9 @@ class MainWindow(QMainWindow):
             )
 
     def refresh_storage_mode(self):
-        if not self.config.bizgo_enabled:
+        if not self.config.bizgo_recipient or not self.config.bizgo_sender:
             self.bizgo_status.setText(
-                "Bizgo: disabled — enable in Settings to add the final phone-message step"
+                "Bizgo: set sender, recipient, and API key in Settings for phone notifications"
             )
         else:
             from app.api.bizgo_client import phone_number
@@ -413,6 +423,14 @@ class MainWindow(QMainWindow):
 
                 stage = "saving the Bizgo API key in Windows Credential Manager"
                 set_token(BIZGO_CREDENTIAL, dialog.bizgo_token)
+            if getattr(dialog, "operations_password", ""):
+                from app.api.operations_client import credential_destination
+
+                stage = "saving the Nexgent password in Windows Credential Manager"
+                set_token(
+                    credential_destination(new.operations_url, new.operations_username),
+                    dialog.operations_password,
+                )
             # Do not access the Run registry key for ordinary settings saves when
             # sign-in launch was and remains disabled. Refresh the EXE path if enabled.
             if new.launch_at_signin or self.config.launch_at_signin:
@@ -450,12 +468,21 @@ class MainWindow(QMainWindow):
             return
         if self.pending_action:
             return
-        automatic_reply = command in ("send_test", "test_workflow", "incoming_test", "auto_catch")
+        automatic_reply = command in (
+            "send_test",
+            "test_workflow",
+            "incoming_test",
+            "auto_catch",
+            "device_workflow",
+        )
         sending = automatic_reply or command == "bizgo_test"
         if sending and self.monitor.state == State.INITIALIZING:
             return
         if command != "bizgo_test":
-            if command == "auto_catch" and self.monitor.state == State.AUTO_CATCHING:
+            if (
+                command in ("auto_catch", "device_workflow")
+                and self.monitor.state == State.AUTO_CATCHING
+            ):
                 return
             if not self.config.target:
                 self.select_window()
@@ -486,13 +513,23 @@ class MainWindow(QMainWindow):
             self.persist()
         if command == "incoming_test" and self.monitor.state == State.WAITING_FOR_MESSAGE:
             return
-        if command in ("test_workflow", "incoming_test", "auto_catch"):
+        if command in ("test_workflow", "incoming_test", "auto_catch", "device_workflow"):
             from app.api.workflow_llm import LLMSettings
 
             try:
                 LLMSettings.resolve(self.config)
             except AgentError as error:
                 QMessageBox.warning(self, "LLM settings required", str(error))
+                return
+        if command == "device_workflow":
+            from app.api.bizgo_client import create_bizgo
+            from app.api.operations_client import create_operations
+
+            try:
+                create_operations(self.config)
+                create_bizgo(self.config, self.queue.event, force=True)
+            except AgentError as error:
+                QMessageBox.warning(self, "운영시트 / Bizgo settings required", str(error))
                 return
         if (
             command == "confirm_bottom"
@@ -520,7 +557,7 @@ class MainWindow(QMainWindow):
             self.monitor.command("stop")
         if command != "history":
             self.monitor.suspend_recovery()
-        if command == "auto_catch":
+        if command in ("auto_catch", "device_workflow"):
             self.preview_label.clear()
             self.preview_label.setText("Preparing Run Agent (auto) screenshot preview")
             self.text_preview.clear()
@@ -534,6 +571,7 @@ class MainWindow(QMainWindow):
         self.bizgo_test_button.setEnabled(False)
         self.incoming_test_button.setEnabled(False)
         self.auto_catch_button.setEnabled(False)
+        self.device_workflow_button.setEnabled(False)
         self.log(
             (
                 "Sending one Bizgo sandbox sample (no phone delivery)"
@@ -541,6 +579,8 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
+            else "Starting 기기위치조정/전원연결: incoming request → 운영시트에이젠트 → Bizgo test notification → KakaoTalk reply. Ctrl+Shift+F12 cancels"
+            if command == "device_workflow"
             else "Starting Run Agent (auto): watch display changes, capture, extract text, process with the LLM, and reply in queue order. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
@@ -561,6 +601,7 @@ class MainWindow(QMainWindow):
                 self.bizgo_test_button.setEnabled(True)
                 self.incoming_test_button.setEnabled(True)
                 self.auto_catch_button.setEnabled(True)
+                self.device_workflow_button.setEnabled(True)
                 reason = (
                     str(error)
                     if isinstance(error, AgentError)
@@ -608,8 +649,6 @@ class MainWindow(QMainWindow):
         )
 
     def review_text_replies(self):
-        from app.automation.text_auto_catch import chat_queue_key
-
         if not self.can_review_replies(self.monitor.state.value) or not self.config.target:
             return
         if (
@@ -622,7 +661,7 @@ class MainWindow(QMainWindow):
             )
             == QMessageBox.Yes
         ):
-            key = chat_queue_key(self.config)
+            key = self.monitor.auto_catch.queue_key()
             self.queue_action(
                 lambda: self.monitor.auto_catch.jobs.resolve_review(key),
                 "Set-aside captures marked handled; pending captures retained",

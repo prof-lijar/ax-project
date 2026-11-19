@@ -40,6 +40,10 @@ class Config:
     llm_supports_vision: bool = False
     llm_allow_http: bool = False
     llm_timeout_seconds: int = 120
+    operations_url: str = ""
+    operations_username: str = ""
+    operations_allow_http: bool = False
+    operations_timeout_seconds: int = 435
     bizgo_enabled: bool = False
     bizgo_sandbox: bool = True
     bizgo_sender: str = ""
@@ -81,6 +85,14 @@ class Config:
 
         if self.llm_url:
             validate_llm_url(self.llm_url, self.llm_allow_http)
+        if not isinstance(self.operations_url, str) or not isinstance(
+            self.operations_username, str
+        ):
+            raise ValueError("Nexgent URL and username must be text")
+        if self.operations_url:
+            validate_llm_url(self.operations_url, self.operations_allow_http)
+            if urlsplit(self.operations_url).path not in ("", "/"):
+                raise ValueError("Use the Nexgent origin URL without an API path")
         if not isinstance(self.llm_model, str):
             raise ValueError("LLM model must be text")
         if (
@@ -90,6 +102,7 @@ class Config:
         ):
             raise ValueError("Run Agent (auto) suffix must be one line of at most 100 characters")
         ranges = {
+            "operations_timeout_seconds": (30, 900),
             "auto_catch_interval_seconds": (0.25, 5),
             "auto_reply_cooldown_seconds": (1, 60),
             "bizgo_timeout_seconds": (5, 120),
@@ -121,6 +134,7 @@ class Config:
             ):
                 raise ValueError(f"Invalid {name}: expected {low} through {high}")
         for name in (
+            "operations_timeout_seconds",
             "bizgo_timeout_seconds",
             "llm_timeout_seconds",
             "incoming_wait_timeout_seconds",
@@ -139,6 +153,7 @@ class Config:
             if type(getattr(self, name)) is not int:
                 raise ValueError(f"{name} must be an integer")
         for name in (
+            "operations_allow_http",
             "bizgo_enabled",
             "bizgo_sandbox",
             "llm_supports_vision",

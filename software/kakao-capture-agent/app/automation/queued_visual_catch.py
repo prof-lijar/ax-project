@@ -14,6 +14,7 @@ from app.storage.image_reply_queue import CaptureReviewRequired, ImageReplyQueue
 
 
 class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
+    greeting = RUN_AGENT_GREETING
     continue_after_submission = True
     extraction_progress = "Extracting new message text from queued capture; watching continues"
 
@@ -61,6 +62,9 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
                 )
         return count
 
+    def queue_key(self):
+        return chat_queue_key(self.config)
+
     def arm(self):
         self.reset()
         check_cancel(self.cancel)
@@ -73,7 +77,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.original_identity = self.identity()
         self.desktop.activate_target(self.cancel)
         self.check()
-        self.chat_key = chat_queue_key(self.config)
+        self.chat_key = self.queue_key()
         frame, _ = self.capture.grab()
         self.check()
         self.detector = ChangeDetector(
@@ -92,7 +96,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         # observes the composer. The first poll must still see that new message.
         self.progress("Sending the startup message once; replacing message-box contents")
         self.check()
-        observation = self.sender.send(RUN_AGENT_GREETING, require_empty=False)
+        observation = self.sender.send(self.greeting, require_empty=False)
         self.check()
         self.queue.event("auto_agent_greeting", observation)
         self.progress("Startup message submitted once; " + observation)

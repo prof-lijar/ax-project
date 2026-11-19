@@ -131,6 +131,9 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
     def analyze_job(self, llm, job, cancel):
         return llm.classify_text(job["text"], cancel)
 
+    def answer_job(self, llm, incoming, job, cancel):
+        return llm.answer(incoming, cancel)
+
     def begin_job(self, job):
         self.job = job
         self.work_cancel = threading.Event()
@@ -140,6 +143,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         llm, cancel, results = self.llm, self.work_cancel, self.results
         extracted = self.extracted
         analyze = self.analyze_job
+        answer = self.answer_job
 
         def process():
             try:
@@ -156,7 +160,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                     # Publish to the capture thread; an old worker cannot update a
                     # rearmed session's preview or monitoring state after Stop.
                     extracted.put(incoming.text)
-                    reply = llm.answer(incoming, cancel)
+                    reply = answer(llm, incoming, job, cancel)
                 check_cancel(cancel)
                 results.put((reply, None, kind))
             except Exception as error:

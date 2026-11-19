@@ -25,6 +25,7 @@ class SettingsDialog(QDialog):
         self.token = ""
         self.llm_token = ""
         self.bizgo_token = ""
+        self.operations_password = ""
         self.resize(650, 700)
         layout = QVBoxLayout(self)
         scroll = QScrollArea()
@@ -62,6 +63,20 @@ class SettingsDialog(QDialog):
             "Leave blank to keep saved key; OPENAI_API_KEY also supported"
         )
         form.addRow("LLM API key", self.llm_secret)
+        for name, label, placeholder in [
+            ("operations_url", "운영시트에이젠트 Nexgent URL", "https://your-nexgent-server"),
+            ("operations_username", "Nexgent administrator username", ""),
+        ]:
+            control = QLineEdit(getattr(config, name))
+            control.setPlaceholderText(placeholder)
+            form.addRow(label, control)
+            self.controls[name] = control
+        self.operations_secret = QLineEdit()
+        self.operations_secret.setEchoMode(QLineEdit.Password)
+        self.operations_secret.setPlaceholderText(
+            "Leave blank to keep saved password; OPERATIONS_PASSWORD also supported"
+        )
+        form.addRow("Nexgent password", self.operations_secret)
         for name, label in [
             ("bizgo_sender", "Bizgo registered sender number"),
             ("bizgo_recipient", "Bizgo recipient phone number"),
@@ -77,6 +92,7 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Bizgo API key", self.bizgo_secret)
         for name, label, low, high, decimals in [
+            ("operations_timeout_seconds", "Operations workflow timeout (seconds)", 30, 900, 0),
             ("bizgo_timeout_seconds", "Bizgo request timeout (seconds)", 5, 120, 0),
             ("llm_timeout_seconds", "LLM operation timeout (seconds)", 5, 300, 0),
             (
@@ -122,6 +138,7 @@ class SettingsDialog(QDialog):
         self.storage.setValue(config.storage_limit_bytes / 1024**3)
         form.addRow("Storage budget (GiB)", self.storage)
         for name, label in [
+            ("operations_allow_http", "Allow Nexgent HTTP on trusted LAN/localhost"),
             ("bizgo_enabled", "Enable Bizgo SMS/LMS after the KakaoTalk workflow reply"),
             ("bizgo_sandbox", "Bizgo sandbox: test requests only, no real phone delivery"),
             ("llm_supports_vision", "Enable image input for this vision-capable LLM"),
@@ -160,10 +177,15 @@ class SettingsDialog(QDialog):
                 from app.api.workflow_llm import LLMSettings
 
                 LLMSettings.resolve(self.result_config)
+            if self.operations_secret.text():
+                from app.api.operations_client import OperationsSettings
+
+                OperationsSettings.resolve(self.result_config)
         except (ValueError, AgentError) as error:
             QMessageBox.warning(self, "Invalid settings", str(error))
             return
         self.token = self.secret.text().strip()
         self.llm_token = self.llm_secret.text().strip()
         self.bizgo_token = self.bizgo_secret.text().strip()
+        self.operations_password = self.operations_secret.text()
         super().accept()
