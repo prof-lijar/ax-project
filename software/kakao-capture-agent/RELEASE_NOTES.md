@@ -1,5 +1,9 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+**Select Window is now the only chat-area setup.** Select Region and its drag overlay have been removed. Preview, local capture, live monitoring, history/manual scrolling, Send Test Reply, both test workflows, and Auto Catch use the automatically detected area above the selected chat's message box. Each new action replaces any saved manual crop and generates a chat identifier if blank. Unsupported or ambiguous layouts stop with guidance to select the actual chat window and close search panels. Service credentials/settings remain required for features that use them.
+
+**Send Test Reply is editable.** Enter your own Korean, emoji, or multiline message in the main window (up to 2,000 characters), then click Send Test Reply. The default is `[AI가 답장드렸습니다]`. The last submitted text is saved locally; LLM-generated responses are unaffected. Stop still cancels a pending action, and a send is never automatically repeated.
+
 **Fixed: Auto Catch pauses after the first visible reply.** Once Windows accepts Enter, an inconclusive composer-clearing observation no longer stops watching. That job is recorded as submitted and is never resent; later incoming captures continue through the queue. Each new Auto Catch reply requires a freshly verified empty message box, so a leftover reply/draft is not overwritten. Transient post-send read failures retry observation only, with diagnostic reasons in the log. Delivery is still not independently verified.
 
 If rc.22 already left a job paused for review, inspect the chat and use **Stop → Review Replies → Auto Catch** once after updating. Failed/partial keyboard input and crashes during sending still require review.

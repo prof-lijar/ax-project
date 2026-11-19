@@ -257,7 +257,9 @@ class WorkflowLLM:
 
     async def run_async(self, png, cancel, progress):
         if len(png) > 20 * 1024**2:
-            raise AgentError("Workflow image exceeds 20 MiB; select a smaller region")
+            raise AgentError(
+                "Workflow image exceeds 20 MiB; make the chat window smaller and restart the action"
+            )
         return await self.run_operation(lambda: self.generate(png, cancel, progress), cancel)
 
     def run(self, png, cancel, progress):

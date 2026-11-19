@@ -35,10 +35,12 @@ class MonitoringService(threading.Thread):
         preview,
         activity,
         text_preview=lambda _: None,
+        setup_ready=lambda: None,
     ):
         super().__init__(name="capture", daemon=False)
         self.desktop, self.capture, self.queue, self.config = desktop, capture, queue, config
         self.status, self.preview, self.activity = status, preview, activity
+        self.setup_ready = setup_ready
         self.state = State.STOPPED
         self.reason = ""
         self.stop_input = threading.Event()
@@ -145,9 +147,28 @@ class MonitoringService(threading.Thread):
         self.preview(png)
         return capture_id
 
+    def prepare_chat(self):
+        """Refresh geometry from the chosen window; saved manual rectangles are never reused."""
+        if self.stop_input.is_set():
+            raise Cancelled("Chat setup cancelled")
+        target = self.config.target
+        selection = self.desktop.suggest_chat_region()
+        if self.stop_input.is_set():
+            raise Cancelled("Chat setup cancelled")
+        if self.config.target != target:
+            raise ReselectionRequired("Selected conversation changed during setup")
+        if self.config.selection != selection:
+            self.scroller.calibrated = False
+        self.config.selection = selection
+        if not self.config.chat_id.strip():
+            self.config.chat_id = "chat-" + uuid4().hex[:12]
+        self.activity("Conversation area detected automatically from the selected window")
+        self.setup_ready()
+
     def initialize(self, confirmed=False):
-        self.scroller.check()
         self.transition(State.INITIALIZING)
+        self.prepare_chat()
+        self.scroller.check()
         self.desktop.validate()
         image, _ = self.capture.grab()
         self.preview(encode_png(image))
@@ -242,6 +263,7 @@ class MonitoringService(threading.Thread):
             self.stop_input.clear()
             self.transition(State.INITIALIZING, "Starting Auto Catch")
             try:
+                self.prepare_chat()
                 self.auto_catch.arm()
                 self.next_capture = time.monotonic() + self.config.auto_catch_interval_seconds
                 self.transition(
@@ -256,6 +278,7 @@ class MonitoringService(threading.Thread):
             self.stop_input.clear()
             self.transition(State.INITIALIZING, "Arming Test Workflow 2")
             try:
+                self.prepare_chat()
                 self.incoming_workflow.arm()
                 self.next_capture = time.monotonic() + self.config.capture_interval_seconds
                 self.transition(State.WAITING_FOR_MESSAGE, "Watching for one new incoming message")
@@ -282,10 +305,11 @@ class MonitoringService(threading.Thread):
                     message = client.prepare(BIZGO_SAMPLE, str(uuid4()))
                     result = client.send(message, self.stop_input)
                 else:
+                    self.prepare_chat()
                     result = (
                         self.test_workflow.run()
                         if command == "test_workflow"
-                        else self.reply_sender.send()
+                        else self.reply_sender.send(self.config.test_reply_text)
                     )
                 self.transition(State.STOPPED, result)
             finally:
@@ -298,6 +322,7 @@ class MonitoringService(threading.Thread):
             self.stop_input.clear()
             self.transition(State.INITIALIZING)
             try:
+                self.prepare_chat()
                 if command in ("preview", "save_local"):
                     self.scroller.check()
                     image, region = self.capture.grab()

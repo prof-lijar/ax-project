@@ -1,10 +1,10 @@
 # KakaoTalk Capture Agent
 
-Windows desktop application for capturing an explicitly selected KakaoTalk conversation region, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
+Windows desktop application for capturing the automatically detected message area of a selected KakaoTalk conversation window, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
 
-**Send Test Reply** sends the fixed message `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → KakaoTalk reply → optional Bizgo SMS/LMS cycle. **Send Bizgo Sample** tests only the configured phone-message connection. **Test Workflow 2: Reply to Next Message** explicitly arms a one-shot watcher: a newly observed incoming message triggers one `[AI]` reply, then it stops. **Auto Catch** continuously watches and replies until stopped. Incoming messages trigger replies only while one of these modes is explicitly armed.
+**Send Test Reply** sends the editable **Test reply message**, initially `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → KakaoTalk reply → optional Bizgo SMS/LMS cycle. **Send Bizgo Sample** tests only the configured phone-message connection. **Test Workflow 2: Reply to Next Message** explicitly arms a one-shot watcher: a newly observed incoming message triggers one `[AI]` reply, then it stops. **Auto Catch** continuously watches and replies until stopped. Incoming messages trigger replies only while one of these modes is explicitly armed.
 
-**Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI selection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
+**Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI window detection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
 ## Download and run the executable
 
@@ -12,7 +12,7 @@ Open [GitHub Releases](https://github.com/prof-lijar/ax-project/releases) and do
 
 The executable includes its runtime and libraries; the first launch may take a moment while they unpack. It is unsigned, so Windows may show an unrecognized-app prompt. Windows 11 Smart App Control may block it without offering a per-app override; this requires a trusted signed distribution to resolve reliably, and the current release remains unsigned. See [Microsoft's Smart App Control FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions). Each release includes a `.sha256` checksum file. Configuration and captures stay in `%LOCALAPPDATA%\KakaoCaptureAgent`, separate from the executable.
 
-Open the intended KakaoTalk conversation, choose **Select Window** and **Select Region**, then enter a chat identifier in **Settings**. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
+Open the intended KakaoTalk conversation, choose **Select Window**. All chat features detect the message area automatically; a blank chat identifier is generated automatically. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
 
 ## Run from source on Windows
 
@@ -49,8 +49,8 @@ The GUI does not run on Linux. Linux can run the portable tests and mock API. No
 
 1. Open the intended KakaoTalk conversation in a separate, visible window.
 2. Choose **Select Window**, review the executable and title, and confirm the authorized conversation. All accessible titled windows are listed because the application does not assume a fixed KakaoTalk executable or title format. Likely KakaoTalk executables sort first.
-3. Choose **Select Region** and drag over the message area, excluding the message composer, sidebars, and unrelated content. Press Escape to cancel. The selection must be at least 32 × 32 physical pixels and entirely inside the target client area.
-4. In **Settings**, enter a chat identifier. Configure the API URL and bearer token if uploads are desired. A blank URL enables local collection; it is not an API connectivity check.
+3. No region selection is needed. Each chat action detects the area above the message box from the selected window. Old saved manual rectangles are replaced automatically. The message box must be visible and unambiguous; close search panels if detection reports an unsupported layout.
+4. In **Settings**, optionally customize the automatically generated chat identifier. Configure the API URL and bearer token if uploads are desired. A blank URL enables local collection; it is not an API connectivity check.
 5. Choose **Preview**. The agent minimizes itself and allows three seconds to bring the selected chat to the foreground. Restore the agent to inspect the preview; taking foreground focus pauses active monitoring.
 6. Use **Scroll Up** and **Scroll Down** while stopped to establish that wheel events move the selected conversation and preserve overlap. These actions also queue captures as history.
 7. Choose **Start / Resume** and bring the chat to the foreground within three seconds. The agent verifies the latest-message position before monitoring.
@@ -62,7 +62,7 @@ Keep the selected chat in the foreground, unobscured, and the Windows session un
 
 ### Check capture by saving a local PNG
 
-1. Select the KakaoTalk window and message region. In **Settings**, enter a **Chat identifier** such as `test-chat`. This is your own label attached to screenshot metadata, not a KakaoTalk login or internal chat ID.
+1. Select the KakaoTalk window. A **Chat identifier** is generated if blank; optionally customize it in **Settings**, for example `test-chat`. This is your own label attached to screenshot metadata, not a KakaoTalk login or internal chat ID.
 2. While stopped, click **Save Capture Locally** and bring the selected conversation to the foreground within three seconds. This takes one screenshot without scrolling, even if the image is unchanged.
 3. Restore the agent and click **Open Captures Folder**. Open the newest PNG (sort by Date modified) to inspect it at full resolution. The activity log shows its exact filename.
 
@@ -78,8 +78,8 @@ Turning local-only mode off resumes previously assigned upload jobs; it does not
 | Stop | Cancels pending GUI actions and stops capture/navigation; uploads continue |
 | Save Capture Locally | Saves one PNG without scrolling or assigning it to an API; available while stopped or paused |
 | Open Captures Folder | Opens the local PNG folder in File Explorer |
-| Send Test Reply | Stops capture/navigation, activates the selected chat, replaces its message-box contents with the fixed reply, and requests Enter once |
-| Test Workflow | Saves the current selected region, extracts text with the configured vision LLM, generates a simulated summary, and sends one `[test]` reply |
+| Send Test Reply | Stops capture/navigation, activates the selected chat, replaces its message-box contents with your entered test message, and requests Enter once |
+| Test Workflow | Saves the automatically detected conversation area, extracts text with the configured vision LLM, generates a simulated summary, and sends one `[test]` reply |
 | Send Bizgo Sample | Sends one fixed sample using the Bizgo sender, recipient, key, and environment saved in Settings; no KakaoTalk/LLM setup required |
 | Capture History | Pauses live capture, scans upward within the limit, and restores downward |
 | Cancel History | Stops the upward scan and attempts bounded restoration |
@@ -102,8 +102,8 @@ Closing the application stops navigation and waits for the current upload (bound
 
 1. Open the intended KakaoTalk group at its latest messages.
 2. Configure the LLM URL/model/key in **Settings** and enable vision support. The model must accept two images in one request.
-3. Click **Select Window**, select that conversation, then click **Auto Catch**. If no region exists, the agent detects the message area above the composer; existing manual regions are respected.
-4. The agent captures the selected region, saves meaningful changes, and queues before/after image pairs. The vision LLM extracts newly visible incoming text, generates an answer, and the agent submits `[AI] response (자동 응답)` to the same chat.
+3. Click **Select Window**, select that conversation, then click **Auto Catch**. The agent refreshes the message area above the composer automatically, just like all other chat features.
+4. The agent captures the detected conversation area, saves meaningful changes, and queues before/after image pairs. The vision LLM extracts newly visible incoming text, generates an answer, and the agent submits `[AI] response (자동 응답)` to the same chat.
 5. **Capture continues while the previous LLM request processes and during the reply cooldown.** Jobs process one at a time in capture order. Several messages appearing between captures can form one batch. Queue counts and submitted-reply counts appear in the status/log.
 6. After a reply, Auto Catch keeps watching automatically. **Stop** or **Ctrl+Shift+F12** cancels processing and retains unsent queued captures. Click Auto Catch again to resume the selected chat's pending queue. Application restart never starts sending automatically.
 
@@ -138,7 +138,7 @@ In **Settings**, configure the separate LLM connection using the same OpenAI-com
 
 These are examples, not embedded server settings. The Windows PC must be able to reach the model server. The configured server passed a generated English image extraction/summary test on 2026-11-17; real Korean chat extraction still needs testing. Use HTTPS for non-local endpoints. HTTP requires the explicit LAN option and a private IP or localhost; it carries the image and key without encryption.
 
-Save Settings, select the chat window and message region, then click **Test Workflow** once. The agent stops monitoring, activates that same conversation, captures the region at its current scroll position, and saves its PNG in `%LOCALAPPDATA%\KakaoCaptureAgent\captures`. The activity log shows the exact file path. It makes two non-streaming `/v1/chat/completions` calls: an image-input request extracting visible message text, followed by a text request generating a simulated completion summary. It then focuses the verified composer, replaces its contents, and sends one message:
+Save Settings, select the chat window, then click **Test Workflow** once. The agent stops monitoring, activates that same conversation, captures the region at its current scroll position, and saves its PNG in `%LOCALAPPDATA%\KakaoCaptureAgent\captures`. The activity log shows the exact file path. It makes two non-streaming `/v1/chat/completions` calls: an image-input request extracting visible message text, followed by a text request generating a simulated completion summary. It then focuses the verified composer, replaces its contents, and sends one message:
 
 ```text
 [test]
@@ -179,7 +179,7 @@ There is one attempt and no automatic resend, fallback, or restart replay. Stop 
 ## Test Workflow 2: reply to the next incoming message
 
 1. Configure the same vision LLM URL, model, and key used by **Test Workflow**. The model must accept two images in one request.
-2. Open the selected conversation at its **latest messages**. Include the message bubbles and their left/right alignment in the selected region; keep the typing box outside it.
+2. Open the selected conversation at its **latest messages**. The area above the message box is detected automatically, including the visible message bubbles.
 3. Click **Test Workflow 2: Reply to Next Message**. The app stops ordinary monitoring, activates that conversation, records a baseline in memory, and shows **WAITING_FOR_MESSAGE**.
 4. Have another participant send a new text message. Keep the selected chat visible. The agent compares changed frames with the baseline, asks the vision model to identify new incoming text, generates a direct response in the message's language, and automatically sends **`[AI] ...response`** to that same chat.
 5. The workflow stops after one reply. Click the button again for another test. **Stop** or **Ctrl+Shift+F12** cancels it.
@@ -190,14 +190,16 @@ The positive incoming screenshot is saved in `%LOCALAPPDATA%\KakaoCaptureAgent\c
 
 Settings include **Workflow 2 waiting limit** (default 300 seconds) and **Workflow 2 changed pixel fraction** (default 0.001). Polling uses the capture interval, with a short debounce independent of the normal change-detection toggle. Timeout is checked on polling and after model calls; an in-flight request remains cancellable and has the configured LLM timeout. No reply starts after the waiting deadline. Lost visibility, session lock, target changes, API failures, or failed sending stop this test without automatic recovery/retry. Restarting the app does not rearm it. Sending uses the existing verified composer and replaces its current contents, just like the other reply tests.
 
-## Send the fixed test reply
+## Send an editable test reply
 
-1. Select the intended KakaoTalk group window and capture region. Check the target title shown in the agent. Message-box discovery is independent of the capture rectangle; including the composer in a screenshot no longer excludes it from sending.
-2. KakaoTalk must be configured to send on Enter. Click **Send Test Reply** beside `[AI가 답장드렸습니다]`.
+1. Select the intended KakaoTalk group window and check its title in the agent. No manual region or chat identifier is required.
+2. Edit **Test reply message** in the main window, then click **Send Test Reply**. The default is `[AI가 답장드렸습니다]`; Korean text, emoji and multiple lines are supported, up to 2,000 characters. Empty messages and unsupported control characters are rejected. KakaoTalk must send on Enter.
 3. The agent stops capture/navigation, requests activation of the verified chat before minimizing, then automatically locates and focuses its message box. No manual Stop, clearing, or chat/message-box click is needed; leave the mouse and keyboard alone during the operation.
 4. The agent requires exactly one supported writable multiline Edit/RichEdit control inside the selected window. It checks the target, visibility, and focus, replaces the entire draft through an edit operation that notifies the client of the change, verifies the exact test text, and sends one native Enter keypress. It then observes the message box for up to two seconds and reports **message box cleared**, **text remains / send NOT confirmed**, or **delivery uncertain**. A cleared box is not independent proof of server delivery. Capture remains stopped afterward.
 
-The button click authorizes replacement of existing message-box contents and the fixed reply; no additional confirmation dialog is shown. Existing text, whitespace, and leftover test drafts are replaced automatically. Ctrl+Shift+F12 or Stop cancels a pending action. Unsupported controls, changed focus, locked sessions, and mismatched targets stop the operation. A partial attempt may leave the test text as a draft. The agent never retries a send automatically or claims backend delivery based on an Enter request. Local-only mode governs screenshot uploads and does not disable an explicitly clicked test reply.
+The last submitted test text is saved in local configuration and restored at launch. It does not change the generated responses used by Auto Catch or the LLM workflows.
+
+The button click authorizes replacement of existing message-box contents with your entered text; no additional confirmation dialog is shown. Existing text, whitespace, and leftover test drafts are replaced automatically. Ctrl+Shift+F12 or Stop cancels a pending action. Unsupported controls, changed focus, locked sessions, and mismatched targets stop the operation. A partial attempt may leave the test text as a draft. The agent never retries a send automatically or claims backend delivery based on an Enter request. Local-only mode governs screenshot uploads and does not disable an explicitly clicked test reply.
 
 Text replacement uses targeted `EM_SETSEL` and `EM_REPLACESEL` operations so the client receives edit-change notifications; [Microsoft documents that `WM_SETTEXT` omits `EN_CHANGE` for multiline controls](https://learn.microsoft.com/en-us/windows/win32/controls/en-change). Enter uses a checked [Win32 `SendInput`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) scan-code down/up pair after revalidating cancellation, foreground, composer focus, and keyboard modifiers. The clipboard is not used. Native keyboard input goes to the foreground window, so leave the mouse and keyboard alone during sending; Windows does not make focus checks and input atomic. Failed/partial input is reported and never automatically retried.
 
@@ -275,7 +277,7 @@ Data layout:
 
 ```text
 %LOCALAPPDATA%\KakaoCaptureAgent\
-  config.json          Non-secret configuration and window-relative selection
+  config.json          Configuration, last test message, and detected window-relative geometry
   queue.db             SQLite queue, metadata, and audit events
   captures\            Pending/retained PNGs
   logs\agent.log       Rotating diagnostic logs
@@ -331,5 +333,5 @@ Implementation modules follow the PRD: GUI on the Qt thread; capture and scrolli
 - Settings and target changes require Stop. Normal GUI interaction takes focus away from KakaoTalk and pauses capture. There is no tray interface in this release.
 - Only standard scrollbar position is read; custom KakaoTalk controls use the measured visual fallback. Bottom position and overlap must be calibrated against the installed client. Uncertain checks remain paused.
 - Native Win32 `SendInput` emits one 120-unit wheel notch and verifies success. PyAutoGUI supplies the mouse fail-safe. This deliberately replaces its wheel helper because [the Windows implementation passes raw wheel data and suppresses some OS input errors](https://github.com/asweigart/pyautogui/blob/master/pyautogui/_pyautogui_win.py).
-- The selection uses native cursor coordinates rather than multiplying Qt global positions, because [Qt logical screen geometry differs from physical geometry on mixed-DPI Windows displays](https://doc.qt.io/qtforpython-6/overviews/qtdoc-highdpi.html). Real mixed-DPI behavior remains a manual acceptance check.
+- Automatic geometry uses native physical client/control coordinates and Windows DPI. Resizing or a DPI change during an active workflow pauses it; Stop and restart the action to detect the new area. Real mixed-DPI behavior remains a manual acceptance check.
 - Dependency versions have bounded ranges; the tested versions are recorded in `TESTING.md`. Packaging and runtime compatibility must be confirmed on the target Python/Windows combination before unattended use.

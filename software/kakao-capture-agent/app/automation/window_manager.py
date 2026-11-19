@@ -150,7 +150,7 @@ class WindowsDesktop:
             raise TargetUnavailable("Interactive desktop is locked or unavailable")
         client, dpi = self.geometry()
         if self.config.selection is None:
-            raise ReselectionRequired("Select the conversation message region")
+            raise ReselectionRequired("Restart the action to detect the conversation area")
         region = self.config.selection.resolve(client, dpi, self.monitors())
         hwnd = self.config.target.hwnd
         if self.gui.GetForegroundWindow() != hwnd:
@@ -193,7 +193,7 @@ class WindowsDesktop:
         if len(composers) != 1 or composers[0].top < client.top + client.height // 2:
             raise AgentError(
                 "Cannot identify one message box below the conversation. "
-                "Select the actual chat window, close search panels, or use Select Region."
+                "Select the actual chat window and close search panels so its message box is visible."
             )
         region = Region(0, 0, client.width, composers[0].top - client.top)
         selection = Selection(region, client.width, client.height, dpi)

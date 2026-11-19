@@ -37,8 +37,10 @@ class SettingsDialog(QDialog):
         for name, label in [("chat_id", "Chat identifier"), ("api_url", "Upload URL")]:
             control = QLineEdit(getattr(config, name))
             if name == "chat_id":
-                control.setPlaceholderText("Your label, e.g. team-sales (not a KakaoTalk ID)")
-                control.setToolTip("A label attached to captures to identify this conversation.")
+                control.setPlaceholderText("Optional label; generated automatically when blank")
+                control.setToolTip(
+                    "A label attached to captures; generated automatically if blank, not a KakaoTalk ID."
+                )
             form.addRow(label, control)
             self.controls[name] = control
         self.secret = QLineEdit()

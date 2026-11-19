@@ -147,7 +147,7 @@ class Selection:
         self.region.validate()
         if (client.width, client.height, dpi) != (self.client_width, self.client_height, self.dpi):
             raise ReselectionRequired(
-                "Window size or display scaling changed; select the region again"
+                "Window size or display scaling changed; stop and restart the action to detect the conversation area again"
             )
         result = Region(
             client.left + self.region.left,

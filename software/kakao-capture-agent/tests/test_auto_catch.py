@@ -367,7 +367,7 @@ def test_stop_then_rearm_keeps_selected_region_and_ignores_existing(watching):
     assert w.service.state == State.STOPPED
     w.service.dispatch("auto_catch")
     w.service.poll_auto_catch()
-    assert w.selections == [True]  # Saved/manual selection is respected.
+    assert w.selections == [True, True]  # Every explicit action refreshes window geometry.
     assert len(w.sent) == 1 and len(w.comparisons) == 1
 
 

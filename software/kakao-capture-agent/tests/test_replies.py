@@ -192,7 +192,7 @@ def test_send_is_manual_stopped_only_and_failure_cannot_auto_resume(config, fram
         lambda *a: None,
     )
     calls = []
-    service.reply_sender = SimpleNamespace(send=lambda: calls.append(True) or "requested")
+    service.reply_sender = SimpleNamespace(send=lambda text: calls.append(text) or "requested")
     service.state = State.LIVE_MONITORING
     service.dispatch("send_test")
     service.state = State.PAUSED
@@ -200,10 +200,10 @@ def test_send_is_manual_stopped_only_and_failure_cannot_auto_resume(config, fram
     assert not calls
     service.state = State.STOPPED
     service.dispatch("send_test")
-    assert calls == [True] and service.state == State.STOPPED
+    assert calls == [config.test_reply_text] and service.state == State.STOPPED
     assert service.stop_input.is_set() and not service.want_live
 
-    def lost():
+    def lost(*args):
         raise TargetUnavailable("Focus lost")
 
     service.reply_sender.send = lost

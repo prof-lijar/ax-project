@@ -14,6 +14,14 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Window-only setup and editable test replies — 2026-11-19
+
+Portable validation: **339 passed, 20 native Windows cases skipped in 11.46 seconds**. Ruff lint/format and diff checks passed.
+
+Coverage exercises every chat action with a previously saved manual rectangle and blank chat identifier: start, confirm latest position, preview, save locally, scroll up/down, Send Test Reply, Test Workflow, Workflow 2, and Auto Catch. All derive fresh geometry and persist an automatically generated identifier. History uses the area prepared by live monitoring. Unsupported detection, cancellation and target changes block input/capture. GUI checks verify Select Region is absent, sending requires no saved region or chat ID, entered Korean/multiline text persists, invalid messages queue no action, and pending sends remain cancellable.
+
+Manual Windows acceptance: select only the open group; try Preview, Save Capture Locally, custom Send Test Reply, both test workflows, Auto Catch, and monitoring/history. Check the detected preview excludes the typing box. Restart the app and verify the last test text returns. Stop, resize the chat, and restart a feature to verify fresh detection. Existing LLM/API/Bizgo credentials and foreground requirements still apply. Native client geometry and actual message delivery require a real KakaoTalk check; automated tests send no real messages.
+
 ### Continue after accepted Enter with unconfirmed observation — 2026-11-18
 
 Portable validation: **321 passed, 20 native Windows cases skipped in 8.68 seconds**. Ruff lint/format and diff checks passed.

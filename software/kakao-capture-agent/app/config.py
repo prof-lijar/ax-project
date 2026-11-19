@@ -31,6 +31,7 @@ class Config:
     version: int = 1
     device_id: str = field(default_factory=lambda: str(uuid4()))
     chat_id: str = ""
+    test_reply_text: str = "[AI가 답장드렸습니다]"
     api_url: str = ""
     local_only: bool = False
     allow_local_http: bool = False
@@ -159,6 +160,15 @@ class Config:
             or not isinstance(self.chat_id, str)
         ):
             raise ValueError("Device ID is required and chat ID must be text")
+        if (
+            not isinstance(self.test_reply_text, str)
+            or not self.test_reply_text.strip()
+            or len(self.test_reply_text) > 2000
+            or any(ord(c) < 32 and c not in "\r\n\t" for c in self.test_reply_text)
+        ):
+            raise ValueError(
+                "Test reply must contain 1–2,000 characters without unsupported controls"
+            )
         if self.selection:
             self.selection.region.validate()
 

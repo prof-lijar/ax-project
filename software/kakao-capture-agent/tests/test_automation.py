@@ -4,7 +4,7 @@ import pytest
 
 from app.automation.monitoring_service import MonitoringService
 from app.automation.scroll_controller import ScrollController
-from app.models import AgentError, Cancelled, State, TargetUnavailable
+from app.models import AgentError, Cancelled, Selection, State, TargetUnavailable
 
 
 class Desktop:
@@ -17,6 +17,10 @@ class Desktop:
         if not self.valid:
             raise TargetUnavailable("Target unavailable")
         return self.region
+
+    def suggest_chat_region(self):
+        self.validate()
+        return Selection(self.region, 300, 300, 96)
 
     def scroll(self, direction, cancel):
         self.validate()

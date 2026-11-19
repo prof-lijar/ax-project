@@ -137,7 +137,9 @@ class IncomingLLM(WorkflowLLM):
 
     def classify(self, before, after, cancel, *, batch=False):
         if max(len(before), len(after)) > 20 * 1024**2:
-            raise AgentError("Workflow image exceeds 20 MiB; select a smaller region")
+            raise AgentError(
+                "Workflow image exceeds 20 MiB; make the chat window smaller and restart the action"
+            )
         parts = []
         for label, png in (
             ("BEFORE (already visible; do not answer these old messages)", before),

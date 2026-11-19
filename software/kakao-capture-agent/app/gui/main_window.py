@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QTextEdit,
@@ -23,11 +24,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.automation.reply_service import TEST_REPLY
 from app.config import save
-from app.gui.region_selector import RegionSelector
 from app.gui.settings_dialog import SettingsDialog
-from app.models import AgentError, Region, Selection, State
+from app.models import AgentError, State
 from app.utils.windows import configure_startup, set_token
 
 
@@ -38,6 +37,7 @@ class Signals(QObject):
     upload = Signal(str)
     stats = Signal(object)
     text_preview = Signal(str)
+    setup_ready = Signal()
 
 
 class EmergencyHotkey(QAbstractNativeEventFilter):
@@ -65,7 +65,6 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config, self.config_path, self.desktop = config, config_path, desktop
         self.monitor, self.uploader, self.queue, self.signals = monitor, uploader, queue, signals
-        self.overlays = []
         self.closing = False
         self.pending_action = None
         self.control_threads = []
@@ -91,7 +90,6 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         for title, action in [
             ("Select Window", self.select_window),
-            ("Select Region", self.select_region),
             ("Settings", self.settings),
         ]:
             button = QPushButton(title)
@@ -99,7 +97,9 @@ class MainWindow(QMainWindow):
             self.setup_buttons.append(button)
             row.addWidget(button)
         layout.addLayout(row)
-        self.preview_label = QLabel("Select a window and message region to preview")
+        self.preview_label = QLabel(
+            "Select a chat window; the conversation area is detected automatically"
+        )
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setMinimumHeight(220)
         layout.addWidget(self.preview_label)
@@ -150,7 +150,13 @@ class MainWindow(QMainWindow):
         self.capture_folder_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         layout.addWidget(self.capture_folder_label)
         row = QHBoxLayout()
-        row.addWidget(QLabel(f"Test reply: {TEST_REPLY}"))
+        layout.addWidget(QLabel("Test reply message"))
+        self.test_reply_edit = QPlainTextEdit(config.test_reply_text)
+        self.test_reply_edit.setMaximumHeight(80)
+        self.test_reply_edit.setPlaceholderText(
+            "Enter the message to send (up to 2,000 characters)"
+        )
+        layout.addWidget(self.test_reply_edit)
         self.send_test_button = QPushButton("Send Test Reply")
         self.send_test_button.clicked.connect(lambda: self.action("send_test"))
         row.addWidget(self.send_test_button)
@@ -162,7 +168,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self.bizgo_test_button)
         layout.addLayout(row)
         hint = QLabel(
-            "Send Test Reply stops capture, focuses the selected chat, replaces its message-box contents with the test reply, and sends once."
+            "Send Test Reply stops capture, focuses the selected chat, replaces its message-box contents with your entered message, and sends once."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -193,6 +199,7 @@ class MainWindow(QMainWindow):
         self.text_preview.setMaximumHeight(130)
         self.text_preview.hide()
         signals.text_preview.connect(self.text_preview.setPlainText)
+        signals.setup_ready.connect(self.persist)
         layout.addWidget(self.text_preview)
         self.review_text_button = QPushButton("Review Replies")
         self.review_text_button.clicked.connect(self.review_text_replies)
@@ -247,9 +254,6 @@ class MainWindow(QMainWindow):
         logging.getLogger("kakao").info(message)
 
     def update_status(self, state, reason):
-        if state == State.AUTO_CATCHING.value and not getattr(self, "auto_setup_saved", True):
-            self.persist()  # Save the automatically detected region and generated chat identifier.
-            self.auto_setup_saved = True
         self.state_label.setText(state + (": " + reason if reason else ""))
         stopped = state == State.STOPPED.value
         for button in self.setup_buttons:
@@ -260,6 +264,7 @@ class MainWindow(QMainWindow):
         self.send_test_button.setEnabled(
             state != State.INITIALIZING.value and not self.pending_action and not self.closing
         )
+        self.test_reply_edit.setEnabled(self.send_test_button.isEnabled())
         self.test_workflow_button.setEnabled(self.send_test_button.isEnabled())
         self.bizgo_test_button.setEnabled(self.send_test_button.isEnabled())
         self.auto_catch_button.setEnabled(
@@ -382,56 +387,6 @@ class MainWindow(QMainWindow):
         self.queue.event("target", "Operator selected target window")
         self.persist()
 
-    def select_region(self):
-        if self.pending_action or self.monitor.state != State.STOPPED:
-            return
-        try:
-            self.selection_geometry = self.desktop.geometry()
-        except Exception as error:
-            QMessageBox.warning(self, "Region", str(error))
-            return
-        self.hide()
-        shared = {"overlays": self.overlays}
-        for screen in QApplication.screens():
-            overlay = RegionSelector(screen, self.desktop.api.GetCursorPos, shared)
-            overlay.selected.connect(self.finish_region)
-            overlay.cancelled.connect(self.cancel_region)
-            self.overlays.append(overlay)
-            overlay.show()
-        self.overlays[0].activateWindow()
-
-    def cancel_region(self):
-        for overlay in self.overlays:
-            overlay.close()
-            overlay.deleteLater()
-        self.overlays.clear()
-        self.showNormal()
-
-    def finish_region(self, region):
-        self.cancel_region()
-        try:
-            region.validate()
-            client, dpi = self.desktop.geometry()
-            if (client, dpi) != self.selection_geometry:
-                raise ValueError("Target moved during selection; select again")
-            if not client.contains(region):
-                raise ValueError("Selection must be entirely inside the chosen conversation window")
-            self.config.selection = Selection(
-                Region(
-                    region.left - client.left, region.top - client.top, region.width, region.height
-                ),
-                client.width,
-                client.height,
-                dpi,
-            )
-            self.config.selection.resolve(client, dpi, self.desktop.monitors())
-            self.monitor.scroller.calibrated = False
-            self.persist()
-            self.queue.event("region", "Operator selected message region")
-            self.log("Region saved. Start monitoring to preview; keep the conversation in front")
-        except Exception as error:
-            QMessageBox.warning(self, "Region", str(error))
-
     def settings(self):
         if self.pending_action or self.monitor.state != State.STOPPED:
             return
@@ -496,8 +451,8 @@ class MainWindow(QMainWindow):
         sending = automatic_reply or command == "bizgo_test"
         if sending and self.monitor.state == State.INITIALIZING:
             return
-        if command == "auto_catch":
-            if self.monitor.state == State.AUTO_CATCHING:
+        if command != "bizgo_test":
+            if command == "auto_catch" and self.monitor.state == State.AUTO_CATCHING:
                 return
             if not self.config.target:
                 self.select_window()
@@ -511,15 +466,21 @@ class MainWindow(QMainWindow):
             except AgentError as error:
                 QMessageBox.warning(self, "Bizgo settings required", str(error))
                 return
-        elif command != "auto_catch" and (
-            not self.config.target or not self.config.selection or not self.config.chat_id
-        ):
-            QMessageBox.warning(
-                self,
-                "Setup required",
-                "Select a window and region, then set a chat identifier in Settings",
-            )
-            return
+        if command == "send_test":
+            text = self.test_reply_edit.toPlainText()
+            if (
+                not text.strip()
+                or len(text) > 2000
+                or any(ord(c) < 32 and c not in "\r\n\t" for c in text)
+            ):
+                QMessageBox.warning(
+                    self,
+                    "Test reply",
+                    "Enter a message of 1–2,000 characters without unsupported control characters",
+                )
+                return
+            self.config.test_reply_text = text
+            self.persist()
         if command == "incoming_test" and self.monitor.state == State.WAITING_FOR_MESSAGE:
             return
         if command in ("test_workflow", "incoming_test", "auto_catch"):
@@ -557,13 +518,13 @@ class MainWindow(QMainWindow):
         if command != "history":
             self.monitor.suspend_recovery()
         if command == "auto_catch":
-            self.auto_setup_saved = False
             self.preview_label.clear()
             self.preview_label.setText("Preparing Auto Catch screenshot preview")
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
         self.send_test_button.setEnabled(False)
+        self.test_reply_edit.setEnabled(False)
         self.test_workflow_button.setEnabled(False)
         self.bizgo_test_button.setEnabled(False)
         self.incoming_test_button.setEnabled(False)

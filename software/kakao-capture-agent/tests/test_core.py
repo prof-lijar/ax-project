@@ -108,3 +108,10 @@ def test_state_machine_has_no_direct_history_resume():
     assert State.LIVE_MONITORING not in TRANSITIONS[State.HISTORY_SCANNING]
     assert State.RESTORING_POSITION in TRANSITIONS[State.HISTORY_SCANNING]
     assert State.INITIALIZING in TRANSITIONS[State.PAUSED]
+
+
+@pytest.mark.parametrize("text", [None, "", " ", "x" * 2001, "bad\x01text"])
+def test_invalid_test_reply_configuration(text, config):
+    config.test_reply_text = text
+    with pytest.raises(ValueError, match="Test reply"):
+        config.validate()

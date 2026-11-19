@@ -311,7 +311,7 @@ def test_auto_region_refuses_ambiguous_or_unsupported_composers(config, editors)
     from app.models import AgentError
 
     desktop = region_adapter(config, editors)
-    with pytest.raises(AgentError, match="Select Region"):
+    with pytest.raises(AgentError, match="Select the actual chat window"):
         desktop.suggest_chat_region()
 
 

@@ -7,7 +7,7 @@ from app.automation.monitoring_service import MonitoringService
 from app.config import load, save
 from app.gui import main_window
 from app.gui.settings_dialog import SettingsDialog
-from app.models import Selection, State, Target, TargetUnavailable
+from app.models import State, Target, TargetUnavailable
 
 
 @pytest.mark.parametrize(
@@ -52,6 +52,8 @@ def test_full_window_preview_and_settings(
         config, tmp_path / "config.json", desktop, monitor, Uploader(), queue, signals
     )
     window.show()
+    assert all(button.text() != "Select Region" for button in window.setup_buttons)
+    window.test_reply_edit.setPlainText("테스트 메시지\nDifferent reply")
     signals.preview.emit(encode_png(frame))
     signals.stats.emit(queue.stats())
     app.processEvents()
@@ -71,7 +73,8 @@ def test_full_window_preview_and_settings(
     assert window.save_local_button.isEnabled()
     assert window.send_test_button.isEnabled()
     config.target = Target(42, 1, "start", "kakao.exe", "chat", "test conversation")
-    config.selection = Selection(region, 300, 300, 96)
+    config.selection = None
+    config.chat_id = ""
     config.llm_url = "https://llm.test/v1"
     config.llm_model = "vision"
     config.llm_supports_vision = True
@@ -83,6 +86,15 @@ def test_full_window_preview_and_settings(
     if reply_command == "auto_catch":
         config.selection = None
         config.chat_id = ""  # Selecting a window suffices; worker creates the rest.
+    if reply_command == "send_test":
+        warnings = []
+        monkeypatch.setattr(main_window.QMessageBox, "warning", lambda *a: warnings.append(a))
+        for invalid in ("", "x" * 2001):
+            window.test_reply_edit.setPlainText(invalid)
+            window.action("send_test")
+            assert window.pending_action is None and monitor.commands.empty()
+        assert len(warnings) == 2
+        window.test_reply_edit.setPlainText("테스트 메시지\nDifferent reply")
     timers = []
     activation = []
     desktop.request_target_activation = lambda: activation.append(window.isMinimized()) or True
@@ -92,6 +104,10 @@ def test_full_window_preview_and_settings(
     monitor.state = State.LIVE_MONITORING
     monitor.want_live = True
     window.action(reply_command)
+    if reply_command == "send_test":
+        assert config.test_reply_text == "테스트 메시지\nDifferent reply"
+        assert load(tmp_path / "config.json").test_reply_text == config.test_reply_text
+        assert not window.test_reply_edit.isEnabled()
     window.action(reply_command)
     assert len(timers) == 1 and not window.send_test_button.isEnabled()
     assert not window.test_workflow_button.isEnabled()
