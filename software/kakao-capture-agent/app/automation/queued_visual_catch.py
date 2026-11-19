@@ -10,7 +10,7 @@ from app.automation.text_auto_catch import TextAutoCatchWorkflow, chat_queue_key
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
 from app.models import AgentError
-from app.storage.image_reply_queue import ImageReplyQueue
+from app.storage.image_reply_queue import CaptureReviewRequired, ImageReplyQueue
 
 
 class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
@@ -45,6 +45,21 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
             text_preview=text_preview,
             jobs_factory=ImageReplyQueue,
         )
+
+    def reset(self):
+        super().reset()
+        self.reported_review_count = None
+
+    def report_review(self):
+        count = self.jobs.review_count(self.chat_key)
+        if count != self.reported_review_count:
+            self.reported_review_count = count
+            if count:
+                self.progress(
+                    f"{count} capture(s) set aside for review; no automatic resend. "
+                    "Watching and processing other captures continues"
+                )
+        return count
 
     def arm(self):
         self.reset()
@@ -84,6 +99,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.queue.event(
             "auto_visual_armed", "Initial screen ignored; existing queued screenshot pairs retained"
         )
+        self.report_review()
         self.progress(f"Watching display changes continuously; local captures: {self.jobs.images}")
         self.active = True
 
@@ -106,7 +122,12 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
     def begin_job(self, job):
         # Read/verify files before assigning the active job, so a missing image stays
         # marked for review rather than being reset to pending by Stop.
-        before, after = self.jobs.load_images(job)
+        try:
+            before, after = self.jobs.load_images(job)
+        except CaptureReviewRequired as error:
+            self.queue.event("auto_visual_review", job["job_id"] + ": " + str(error))
+            self.progress(str(error) + "; watching continues")
+            return
         super().begin_job(dict(job, before_png=before, after_png=after))
 
     def send_queued_reply(self, reply):
@@ -128,5 +149,9 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
             job = self.jobs.claim(self.chat_key)
             if job is not None:
                 self.begin_job(job)
-        self.waiting_reason = f"Watching screenshots; {self.jobs.count(self.chat_key)} queued; {self.reply_count} replies submitted"
+        reviews = self.report_review()
+        self.waiting_reason = (
+            f"Watching screenshots; {self.jobs.count(self.chat_key)} queued; "
+            f"{reviews} set aside for review; {self.reply_count} replies submitted"
+        )
         return None

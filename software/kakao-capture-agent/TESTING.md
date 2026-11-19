@@ -16,6 +16,14 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Review items do not block new replies — 2026-11-19
+
+Portable validation: **363 passed, 24 Windows-only tests skipped in 12.73 seconds**. Ruff lint/format and diff checks passed.
+
+Regression cases reproduce a restart with a persisted review item (including crash recovery from `sending`), then verify new participant captures receive replies without resolving or resending the old item. Missing, modified, and invalid saved captures are set aside while healthy pending and new captures continue. Tests verify that 1,000 review items do not use active queue capacity, processing still serializes the active FIFO, review metadata remains intact, and unchanged review counts are logged once per run. Existing text-only queue behavior and active-send failure handling remain covered separately.
+
+Windows acceptance: update with an existing review queue, start Run Agent (auto), and verify the startup greeting is followed by continued watching and a set-aside count instead of an immediate pause. Send a new message from another participant and verify a reply. A missing old screenshot should produce a set-aside diagnostic while other work continues.
+
 ### Composer replacement and placeholder — 2026-11-19
 
 Portable validation: **357 passed, 24 Windows-only tests skipped in 11.92 seconds**. Ruff lint/format and diff checks passed. Native Windows edit-control cases now include the Korean placeholder as initial composer contents.

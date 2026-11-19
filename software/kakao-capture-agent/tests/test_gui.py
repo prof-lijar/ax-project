@@ -165,7 +165,7 @@ def test_full_window_preview_and_settings(
             main_window.QMessageBox, "question", lambda *a: main_window.QMessageBox.No
         )
         window.review_text_replies()
-        assert jobs.count(key) == 2
+        assert jobs.count(key) == 1 and jobs.review_count(key) == 1
         monkeypatch.setattr(
             main_window.QMessageBox, "question", lambda *a: main_window.QMessageBox.Yes
         )

@@ -150,7 +150,8 @@ class CaptureQueue:
             for row in rows:
                 if row["upload_status"] != "uploaded" and not Path(row["image_path"]).exists():
                     self.recovery_messages.append(
-                        "Queued image is missing; operator review required"
+                        "Upload queue image is missing; retained as failed for review. "
+                        "Run Agent (auto) uses a separate reply queue"
                     )
                     db.execute(
                         "UPDATE capture_queue SET upload_status='failed',last_error=? WHERE capture_id=?",

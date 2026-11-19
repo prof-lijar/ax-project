@@ -11,8 +11,14 @@ from app.models import AgentError, StorageFull
 from app.storage.text_queue import TextQueue
 
 
+class CaptureReviewRequired(AgentError):
+    """One saved capture cannot be processed; later captures can still proceed."""
+
+
 class ImageReplyQueue(TextQueue):
     table = "image_reply_queue"
+    # Review is a side queue, never an eligible job or an ordering barrier.
+    active_statuses = ("pending", "processing", "sending")
 
     def __init__(self, storage):
         self.images = storage.images / "auto_catch"
@@ -35,7 +41,8 @@ class ImageReplyQueue(TextQueue):
         with self.storage.lock:
             with self.storage.connect() as db:
                 count = db.execute(
-                    f"SELECT count(*) FROM {self.table} WHERE status IN ('pending','processing','sending','review')"
+                    f"SELECT count(*) FROM {self.table} WHERE status IN ({self.status_placeholders})",
+                    self.active_statuses,
                 ).fetchone()[0]
             if count >= 1000:
                 raise StorageFull(
@@ -83,8 +90,8 @@ class ImageReplyQueue(TextQueue):
             return result
         except (OSError, ValueError, AgentError):
             self.finish(job["job_id"], "review")
-            raise AgentError(
-                "Queued screenshot is missing or changed; review required; no reply sent"
+            raise CaptureReviewRequired(
+                "Queued screenshot is missing, changed, or invalid; set aside for review; no reply sent"
             ) from None
 
     def finish(self, job_id, status):

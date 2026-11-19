@@ -615,17 +615,17 @@ class MainWindow(QMainWindow):
         if (
             QMessageBox.question(
                 self,
-                "Review uncertain replies",
-                "Inspect the selected KakaoTalk chat first. Mark its uncertain reply attempts as handled "
+                "Review set-aside captures",
+                "Inspect the selected KakaoTalk chat first. Mark its set-aside captures as handled "
                 "without sending them again? Other queued captures will be retained. "
-                "Start Run Agent (auto) afterward to process the remaining queue.",
+                "Run Agent (auto) can process other captures without resolving these items.",
             )
             == QMessageBox.Yes
         ):
             key = chat_queue_key(self.config)
             self.queue_action(
                 lambda: self.monitor.auto_catch.jobs.resolve_review(key),
-                "Uncertain replies marked handled; pending captures retained",
+                "Set-aside captures marked handled; pending captures retained",
                 "Could not update reply review; check local storage",
             )
 

@@ -431,16 +431,8 @@ def test_uncertain_send_never_replays_and_later_captures_remain(watching):
         w.service.poll_auto_catch()
     w.service.pause(error.value)
     jobs = ImageReplyQueue(w.queue)
-    with pytest.raises(AgentError, match="uncertain"):
-        jobs.claim(w.workflow.chat_key)
-    assert len(w.sent) == 1 and jobs.count(w.workflow.chat_key) == 2
-    w.service.dispatch("stop")
-    w.service.dispatch("auto_catch")
-    with pytest.raises(AgentError, match="click Review Replies") as blocked:
-        w.service.poll_auto_catch()
-    w.service.pause(blocked.value)
-    assert w.service.state == State.PAUSED and len(w.sent) == 1
-    jobs.resolve_review(w.workflow.chat_key)
+    assert len(w.sent) == 1 and jobs.count(w.workflow.chat_key) == 1
+    assert jobs.review_count(w.workflow.chat_key) == 1
     w.workflow.sender.send = w.send
     w.service.dispatch("stop")
     w.service.dispatch("auto_catch")
@@ -448,6 +440,9 @@ def test_uncertain_send_never_replays_and_later_captures_remain(watching):
     finish(w)
     assert w.sent == ["[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
     assert w.service.state == State.AUTO_CATCHING
+    assert jobs.review_count(w.workflow.chat_key) == 1
+    assert jobs.claim(w.workflow.chat_key) is None
+    assert any("1 capture(s) set aside for review" in line for line in w.logs)
 
 
 def test_bad_analysis_retries_same_pair_while_new_frames_queue(watching):
@@ -510,8 +505,8 @@ def test_images_survive_restart_and_are_isolated_from_text_queue(queue, frame):
     assert jobs.claim("different chat") is None
     jobs.finish(first, "sending")
     jobs = ImageReplyQueue(queue)
-    with pytest.raises(AgentError, match="uncertain"):
-        jobs.claim("chat")
+    assert jobs.claim("chat") is None
+    assert jobs.review_count("chat") == 1
 
 
 @pytest.mark.parametrize("failure", ["missing", "modified", "metadata"])
@@ -536,8 +531,8 @@ def test_invalid_image_job_requires_review_before_any_llm_call(queue, frame, fai
     row = jobs.claim("chat")
     with pytest.raises(AgentError, match="review"):
         jobs.load_images(row)
-    with pytest.raises(AgentError, match="Review Replies"):
-        jobs.claim("chat")
+    assert jobs.claim("chat") is None
+    assert jobs.review_count("chat") == 1
 
 
 def test_retention_preserves_pending_pair_when_completed_pair_expires(queue, frame):
@@ -629,5 +624,94 @@ def test_partial_draft_write_still_requires_review(watching):
         finish(w)
     w.service.pause(blocked.value)
     assert composer.text and not composer.submits
-    with pytest.raises(AgentError, match="Review Replies"):
-        w.workflow.jobs.claim(w.workflow.chat_key)
+    assert w.workflow.jobs.claim(w.workflow.chat_key) is None
+    assert w.workflow.jobs.review_count(w.workflow.chat_key) == 1
+
+
+@pytest.mark.parametrize("previous_status", ["review", "sending"])
+def test_restart_with_old_review_job_still_catches_and_replies_to_new_messages(
+    watching, previous_status
+):
+    w = watching
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    old, _ = w.workflow.jobs.enqueue_pair(
+        w.workflow.chat_key, encode_png(w.capture.frame), encode_png(255 - w.capture.frame)
+    )
+    w.workflow.jobs.finish(old, previous_status)
+    w.workflow.jobs = ImageReplyQueue(w.queue)  # Includes crash recovery from sending to review.
+    w.service.dispatch("auto_catch")
+    w.service.poll_auto_catch()
+    assert w.service.state == State.AUTO_CATCHING and not w.sent and not w.comparisons
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    assert w.workflow.jobs.review_count(w.workflow.chat_key) == 1
+    changed(w, 30)
+    finish(w)
+    w.now[0] += 4
+    changed(w, 60)
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
+    assert w.service.state == State.AUTO_CATCHING
+    with w.queue.connect() as db:
+        assert (
+            db.execute("SELECT status FROM image_reply_queue WHERE job_id=?", (old,)).fetchone()[0]
+            == "review"
+        )
+    # The notification is emitted once for the unchanged review count, not every poll.
+    assert sum("1 capture(s) set aside for review" in line for line in w.logs) == 1
+
+
+@pytest.mark.parametrize("failure", ["missing", "modified", "metadata"])
+def test_unusable_saved_capture_is_set_aside_without_stopping_later_replies(watching, failure):
+    w = watching
+    before = encode_png(w.capture.frame)
+    broken, path = w.workflow.jobs.enqueue_pair(
+        w.workflow.chat_key, before, encode_png(255 - w.capture.frame)
+    )
+    if failure == "missing":
+        path.unlink()
+    elif failure == "modified":
+        path.write_bytes(b"changed")
+    else:
+        with w.queue.connect() as db:
+            db.execute("UPDATE image_reply_queue SET text='invalid' WHERE job_id=?", (broken,))
+    # A healthy capture is already queued behind the unusable one.
+    w.workflow.jobs.enqueue_pair(
+        w.workflow.chat_key, before, encode_png(np.full_like(w.capture.frame, 30))
+    )
+    w.service.poll_auto_catch()
+    assert w.service.state == State.AUTO_CATCHING
+    assert not w.sent and not w.comparisons
+    assert w.workflow.job is None and w.workflow.worker is None
+    assert w.workflow.jobs.review_count(w.workflow.chat_key) == 1
+    w.service.poll_auto_catch()
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)"]
+    # New display changes still enter the queue and receive replies.
+    w.now[0] += 4
+    changed(w, 60)
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
+    assert w.service.state == State.AUTO_CATCHING
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    assert w.workflow.jobs.review_count(w.workflow.chat_key) == 1
+
+
+def test_review_items_do_not_use_active_queue_capacity_and_are_preserved(queue, frame):
+    import time
+
+    jobs = ImageReplyQueue(queue)
+    with queue.connect() as db:
+        db.executemany(
+            "INSERT INTO image_reply_queue(job_id,chat_key,text,status,created_at) VALUES(?,?,?,'review',?)",
+            [(f"old-{i}", "chat", "retained review metadata", time.time()) for i in range(1000)],
+        )
+    first, _ = jobs.enqueue_pair("chat", encode_png(frame), encode_png(255 - frame))
+    second, _ = jobs.enqueue_pair("chat", encode_png(255 - frame), encode_png(frame // 2))
+    assert jobs.count("chat") == 2 and jobs.review_count("chat") == 1000
+    assert jobs.claim("other chat") is None
+    assert jobs.claim("chat")["job_id"] == first
+    assert jobs.claim("chat") is None  # A processing job still serializes the active FIFO.
+    jobs.finish(first, "sent")
+    assert jobs.claim("chat")["job_id"] == second
+    assert jobs.review_count("chat") == 1000

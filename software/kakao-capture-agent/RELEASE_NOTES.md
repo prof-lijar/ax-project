@@ -1,5 +1,13 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.28
+
+**Old review items no longer stop Run Agent (auto).** Existing uncertain attempts remain saved for review and are never automatically resent, while pending and new captures continue through extraction, LLM processing, and replies in order. No queue deletion or manual Review Replies step is needed to start watching again after updating.
+
+Missing, changed, or invalid saved screenshots are set aside individually instead of pausing the whole watcher. The log distinguishes active queued captures from items set aside for review. Review items do not consume the 1,000 active-capture limit, although retained images still use storage. A new failed/partial keyboard operation can still pause the current run; its review item will not block later work after an explicit restart.
+
+Missing-image warnings from the separate upload queue now identify that queue explicitly. Messages received while the agent was paused are not recovered unless already captured; send a fresh participant message after restarting.
+
 ## v0.1.0-rc.27
 
 **Run Agent (auto) clears existing composer contents and continues.** The startup greeting and each subsequent generated reply replace the selected message box's contents, including the `메시지 입력` placeholder, real drafts, and leftover text. Manual clearing is no longer required. The exact new text is verified before Enter is sent; target, focus, cancellation, and partial-input checks remain in effect.

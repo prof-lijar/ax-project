@@ -8,11 +8,13 @@ from app.models import AgentError, StorageFull
 
 class TextQueue:
     table = "text_reply_queue"
+    active_statuses = ("pending", "processing", "sending", "review")
 
     def __init__(self, storage):
         if self.table not in {"text_reply_queue", "image_reply_queue"}:
             raise ValueError("Unsupported reply queue table")
         self.storage = storage
+        self.status_placeholders = ",".join("?" for _ in self.active_statuses)
         with storage.connect() as db:
             db.executescript(f"""
                 CREATE TABLE IF NOT EXISTS {self.table} (
@@ -42,7 +44,8 @@ class TextQueue:
                 )
             with self.storage.connect() as db:
                 count = db.execute(
-                    f"SELECT count(*) FROM {self.table} WHERE status IN ('pending','processing','sending','review')"
+                    f"SELECT count(*) FROM {self.table} WHERE status IN ({self.status_placeholders})",
+                    self.active_statuses,
                 ).fetchone()[0]
                 if count >= 1000:
                     raise StorageFull("Reply queue has 1000 unfinished batches; stopped collecting")
@@ -56,8 +59,8 @@ class TextQueue:
     def claim(self, chat_key):
         with self.storage.lock, self.storage.connect() as db:
             row = db.execute(
-                f"SELECT * FROM {self.table} WHERE chat_key=? AND status IN ('pending','processing','sending','review') ORDER BY id LIMIT 1",
-                (chat_key,),
+                f"SELECT * FROM {self.table} WHERE chat_key=? AND status IN ({self.status_placeholders}) ORDER BY id LIMIT 1",
+                (chat_key, *self.active_statuses),
             ).fetchone()
             if row is None:
                 return None
@@ -77,7 +80,14 @@ class TextQueue:
     def count(self, chat_key):
         with self.storage.connect() as db:
             return db.execute(
-                f"SELECT count(*) FROM {self.table} WHERE chat_key=? AND status IN ('pending','processing','sending','review')",
+                f"SELECT count(*) FROM {self.table} WHERE chat_key=? AND status IN ({self.status_placeholders})",
+                (chat_key, *self.active_statuses),
+            ).fetchone()[0]
+
+    def review_count(self, chat_key):
+        with self.storage.connect() as db:
+            return db.execute(
+                f"SELECT count(*) FROM {self.table} WHERE chat_key=? AND status='review'",
                 (chat_key,),
             ).fetchone()[0]
 
