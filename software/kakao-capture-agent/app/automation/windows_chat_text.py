@@ -145,6 +145,6 @@ class WindowsChatText:
         except (ValueError, KeyError, TypeError):
             raise AgentError(
                 "KakaoTalk did not expose a readable conversation through Windows accessibility. "
-                "Auto Catch uses no screenshots. Direct text is unavailable for this window/client."
+                "Run Agent (auto) uses no screenshots. Direct text is unavailable for this window/client."
             ) from None
         return ChatText(text.replace("\r\n", "\n").replace("\r", "\n").strip(), source, key)

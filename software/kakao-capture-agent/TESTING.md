@@ -16,6 +16,14 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Run Agent (auto) pipeline — 2026-11-19
+
+Portable validation: **343 passed, 20 Windows-only tests skipped in 12.22 seconds**. Ruff lint/format and diff checks passed.
+
+The control formerly called Auto Catch is labeled **Run Agent (auto)**. Queue tests block text extraction and answer generation separately, capture additional changes during each blocked stage, then verify all jobs extract, process, and reply in capture order. A sustained-stream test starts with eight queued captures and keeps receiving changes while the queue drains, verifying all 32 captures receive ordered replies, including repeated questions, and that watching remains active afterward. These counts are test cases; there is no session message-count limit. Tests also verify extracted-text previews, stage logs, an empty queue after completion, Stop/restart persistence, cooldown collection, outgoing-message filtering, and uncertain-submission review.
+
+Windows acceptance: select the chat and click **Run Agent (auto)**. Send a question, then two more while extraction or reply generation is still processing. Confirm that all incoming batches receive replies in order, queue counts drain, extracted text appears in the preview, and watching continues after the last reply. Messages arriving between polls can share one captured batch.
+
 ### Window-only setup and editable test replies — 2026-11-19
 
 Portable validation: **339 passed, 20 native Windows cases skipped in 11.46 seconds**. Ruff lint/format and diff checks passed.

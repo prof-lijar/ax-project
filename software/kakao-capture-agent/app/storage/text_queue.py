@@ -63,7 +63,9 @@ class TextQueue:
                 return None
             if row["status"] == "review":
                 raise AgentError(
-                    "A previous reply has uncertain delivery; inspect the chat and review the queue before continuing"
+                    "A previous reply has uncertain delivery; inspect the selected chat, "
+                    "click Review Replies to mark that attempt handled without resending, "
+                    "then click Run Agent (auto) to resume the remaining queue"
                 )
             if row["status"] != "pending" or row["next_attempt"] > time.time():
                 return None

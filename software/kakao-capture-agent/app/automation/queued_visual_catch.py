@@ -15,6 +15,7 @@ from app.storage.image_reply_queue import ImageReplyQueue
 
 class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
     continue_after_submission = True
+    extraction_progress = "Extracting new message text from queued capture; watching continues"
 
     def __init__(
         self,
@@ -51,7 +52,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.llm = self.llm_factory(self.config)
         if self.config.selection is None:
             self.config.selection = self.desktop.suggest_chat_region()
-            self.progress("Auto Catch detected the message area above the typing box")
+            self.progress("Run Agent (auto) detected the message area above the typing box")
         if not self.config.chat_id:
             self.config.chat_id = "chat-" + uuid4().hex[:12]
         self.original_identity = self.identity()
@@ -71,10 +72,11 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         )
         self.accept(frame, encode_png(frame))
         self.preview(self.baseline)
+        self.text_preview("")
         self.queue.event(
             "auto_visual_armed", "Initial screen ignored; existing queued screenshot pairs retained"
         )
-        self.progress(f"Watching screenshots continuously; local captures: {self.jobs.images}")
+        self.progress(f"Watching display changes continuously; local captures: {self.jobs.images}")
         self.active = True
 
     def collect(self):
@@ -88,7 +90,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.accept(frame, png)
         self.preview(png)
         self.queue.event("auto_visual_queued", job_id)
-        self.progress(f"Capture saved locally: {path}")
+        self.progress(f"Display change captured and queued: {path}")
         self.progress(
             f"{self.jobs.count(self.chat_key)} capture(s) queued or processing; watching continues"
         )
@@ -108,7 +110,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
     def tick(self):
         self.check()
         if not self.active:
-            raise AgentError("Auto Catch is not armed")
+            raise AgentError("Run Agent (auto) is not armed")
         self.ensure_foreground()
         # Capture is independent of inference and reply cooldown. Sending is still
         # serialized on this thread; no keyboard/mouse actions run concurrently.

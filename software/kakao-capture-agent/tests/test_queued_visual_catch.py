@@ -25,12 +25,13 @@ def watching(config, queue, region):
     config.selection = None
     frame = np.zeros((100, 80, 3), dtype=np.uint8)
     capture = Capture(desktop, frame)
-    sent, comparisons, logs = [], [], []
+    sent, comparisons, logs, extracted, stages = [], [], [], [], []
     now = [0]
     service = MonitoringService(
         desktop, capture, queue, config, lambda *a: None, lambda png: None, logs.append
     )
     workflow = service.auto_catch
+    workflow.text_preview = extracted.append
     workflow.clock = lambda: now[0]
     workflow.text_reader.read = lambda *a: (_ for _ in ()).throw(
         AssertionError("Native text must not be used")
@@ -42,6 +43,7 @@ def watching(config, queue, region):
             check_cancel(cancel)
             comparisons.append((before, after))
             marker = int(cv2.imdecode(np.frombuffer(after, np.uint8), cv2.IMREAD_COLOR)[0, 0, 0])
+            stages.append(("extract", marker))
             if marker == 10:
                 return IncomingMessage("none")
             if marker == 220:
@@ -50,13 +52,18 @@ def watching(config, queue, region):
 
         def answer(self, incoming, cancel):
             check_cancel(cancel)
+            stages.append(("process", incoming.text))
             return "[AI] " + incoming.text
 
     llm = LLM()
     workflow.llm_factory = lambda _: llm
-    workflow.sender = SimpleNamespace(
-        send=lambda text, **kw: sent.append(text) or "composer cleared", composer_cleared=True
-    )
+
+    def send(text, **kwargs):
+        stages.append(("reply", text))
+        sent.append(text)
+        return "composer cleared"
+
+    workflow.sender = SimpleNamespace(send=send, composer_cleared=True)
     service.dispatch("auto_catch")
     yield SimpleNamespace(
         service=service,
@@ -69,6 +76,8 @@ def watching(config, queue, region):
         comparisons=comparisons,
         now=now,
         logs=logs,
+        extracted=extracted,
+        stages=stages,
     )
     service.command("stop")
     workflow.reset()
@@ -114,19 +123,31 @@ def test_continues_after_first_reply_and_ignores_typing_and_own_reply(watching):
     assert any(str(w.workflow.jobs.images) in line for line in w.logs)
 
 
-def test_capture_and_durable_fifo_continue_during_slow_llm(watching):
+@pytest.mark.parametrize("blocked_stage", ["extraction", "processing"])
+def test_capture_and_durable_fifo_continue_during_slow_llm(watching, blocked_stage):
     w = watching
     entered, release = threading.Event(), threading.Event()
-    original = w.llm.answer
+    original_extract, original_answer = w.llm.classify, w.llm.answer
 
-    def slow(incoming, cancel):
+    def wait_for_release(incoming, cancel):
         if incoming.text == "Question 30":
             entered.set()
             while not release.wait(0.01):
                 check_cancel(cancel)
-        return original(incoming, cancel)
 
-    w.llm.answer = slow
+    def slow_extract(before, after, cancel, *, batch):
+        incoming = original_extract(before, after, cancel, batch=batch)
+        wait_for_release(incoming, cancel)
+        return incoming
+
+    def slow_answer(incoming, cancel):
+        wait_for_release(incoming, cancel)
+        return original_answer(incoming, cancel)
+
+    if blocked_stage == "extraction":
+        w.llm.classify = slow_extract
+    else:
+        w.llm.answer = slow_answer
     changed(w, 30)
     assert entered.wait(1)
     changed(w, 60)
@@ -146,6 +167,21 @@ def test_capture_and_durable_fifo_continue_during_slow_llm(watching):
     assert w.sent == [f"[AI] Question {m} (자동 응답)" for m in (30, 60, 90)]
     assert w.comparisons[1][0] == w.comparisons[0][1]
     assert w.comparisons[2][0] == w.comparisons[1][1]
+    assert w.extracted == ["", "Question 30", "Question 60", "Question 90"]
+    assert w.stages == [
+        stage
+        for marker in (30, 60, 90)
+        for stage in (
+            ("extract", marker),
+            ("process", f"Question {marker}"),
+            ("reply", f"[AI] Question {marker} (자동 응답)"),
+        )
+    ]
+    assert sum("Extracting new message text" in line for line in w.logs) == 3
+    assert sum("Text extracted; processing with the LLM" in line for line in w.logs) == 3
+    assert sum("LLM reply ready" in line for line in w.logs) == 3
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    assert w.service.state == State.AUTO_CATCHING
 
 
 def test_stop_retains_images_and_pending_work_for_explicit_rearm(watching):
@@ -181,6 +217,55 @@ def test_stop_retains_images_and_pending_work_for_explicit_rearm(watching):
     assert w.sent == ["[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
 
 
+def test_sustained_arrivals_all_reply_while_queue_drains(watching):
+    w = watching
+    entered, release = threading.Event(), threading.Event()
+    original = w.llm.answer
+
+    def first_answer_waits(incoming, cancel):
+        if not entered.is_set():
+            entered.set()
+            while not release.wait(0.01):
+                check_cancel(cancel)
+        return original(incoming, cancel)
+
+    w.llm.answer = first_answer_waits
+    # Repeated question text is intentional: distinct later captures must still
+    # receive replies. The running agent has no message-count stopping condition.
+    markers = [30, 60, 90, 120, 150, 180, 210, 240] * 4
+    changed(w, markers[0])
+    assert entered.wait(1)
+    for marker in markers[1:8]:
+        changed(w, marker)
+    assert not w.sent and w.workflow.jobs.count(w.workflow.chat_key) == 8
+    release.set()
+    finish(w)
+
+    # Keep receiving new changes while earlier queued jobs are replying.
+    for marker in markers[8:]:
+        w.now[0] += 4
+        changed(w, marker)
+        finish(w)
+        assert w.workflow.jobs.count(w.workflow.chat_key) > 0
+        assert w.service.state == State.AUTO_CATCHING
+
+    # Bounded test loop only; the production watcher runs until Stop.
+    for _ in markers:
+        if w.workflow.jobs.count(w.workflow.chat_key) == 0:
+            break
+        w.now[0] += 4
+        w.service.poll_auto_catch()
+        finish(w)
+    assert w.sent == [f"[AI] Question {marker} (자동 응답)" for marker in markers]
+    assert len(w.comparisons) == w.workflow.reply_count == len(markers)
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    assert w.workflow.active and w.service.state == State.AUTO_CATCHING
+    with w.queue.connect() as db:
+        assert db.execute("SELECT count(*) FROM image_reply_queue WHERE status='sent'").fetchone()[
+            0
+        ] == len(markers)
+
+
 def test_uncertain_send_never_replays_and_later_captures_remain(watching):
     w = watching
     changed(w, 30)
@@ -203,10 +288,20 @@ def test_uncertain_send_never_replays_and_later_captures_remain(watching):
     with pytest.raises(AgentError, match="uncertain"):
         jobs.claim(w.workflow.chat_key)
     assert len(w.sent) == 1 and jobs.count(w.workflow.chat_key) == 2
+    w.service.dispatch("stop")
+    w.service.dispatch("auto_catch")
+    with pytest.raises(AgentError, match="click Review Replies") as blocked:
+        w.service.poll_auto_catch()
+    w.service.pause(blocked.value)
+    assert w.service.state == State.PAUSED and len(w.sent) == 1
     jobs.resolve_review(w.workflow.chat_key)
-    remaining = jobs.claim(w.workflow.chat_key)
-    assert jobs.load_images(remaining)[1] == encode_png(w.capture.frame)
-    assert len(w.sent) == 1
+    w.workflow.sender.send = lambda text, **kw: w.sent.append(text) or "composer cleared"
+    w.service.dispatch("stop")
+    w.service.dispatch("auto_catch")
+    w.service.poll_auto_catch()
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
+    assert w.service.state == State.AUTO_CATCHING
 
 
 def test_bad_analysis_retries_same_pair_while_new_frames_queue(watching):
@@ -295,7 +390,7 @@ def test_invalid_image_job_requires_review_before_any_llm_call(queue, frame, fai
     row = jobs.claim("chat")
     with pytest.raises(AgentError, match="review"):
         jobs.load_images(row)
-    with pytest.raises(AgentError, match="review"):
+    with pytest.raises(AgentError, match="Review Replies"):
         jobs.claim("chat")
 
 
@@ -369,7 +464,44 @@ def test_unobserved_submission_continues_but_next_send_requires_empty_composer(w
         jobs = ImageReplyQueue(w.queue)
         assert jobs.claim(w.workflow.chat_key) is None  # No replay, including after restart.
     else:
-        with pytest.raises(AgentError, match="not empty"):
+        with pytest.raises(AgentError, match="not empty") as blocked:
             finish(w)
+        w.service.pause(blocked.value)
         assert len(composer.submits) == 1 and len(composer.writes) == 1
         assert composer.text == "[AI] Question 30 (자동 응답)"
+        with w.queue.connect() as db:
+            assert [
+                r[0] for r in db.execute("SELECT status FROM image_reply_queue ORDER BY id")
+            ] == ["submitted", "pending"]
+        # Clearing the draft and explicitly restarting must process the untouched
+        # job without forcing review or replaying the previous submission.
+        composer.text = ""
+        w.service.dispatch("stop")
+        w.service.dispatch("auto_catch")
+        w.service.poll_auto_catch()
+        finish(w)
+        assert w.service.state == State.AUTO_CATCHING
+        assert len(composer.submits) == 2
+        assert composer.writes[-1][1] == "[AI] Question 60 (자동 응답)"
+
+
+def test_partial_draft_write_still_requires_review(watching):
+    from app.automation.reply_service import TestReplySender as ReplySender
+    from tests.test_replies import Composer
+
+    w = watching
+    composer = Composer()
+
+    def partial_write(handle, text):
+        composer.text = text[:5]
+        raise AgentError("Draft write interrupted")
+
+    composer.write = partial_write
+    w.workflow.sender = ReplySender(composer, w.queue.event, w.service.stop_input)
+    changed(w, 30)
+    with pytest.raises(AgentError, match="interrupted") as blocked:
+        finish(w)
+    w.service.pause(blocked.value)
+    assert composer.text and not composer.submits
+    with pytest.raises(AgentError, match="Review Replies"):
+        w.workflow.jobs.claim(w.workflow.chat_key)

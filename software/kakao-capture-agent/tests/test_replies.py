@@ -396,3 +396,15 @@ def test_continuous_reply_empty_guard_never_overwrites_existing_text(draft):
     with pytest.raises(AgentError, match="not empty"):
         sender.send("[AI] Next reply", require_empty=True)
     assert composer.text == draft and not composer.writes and not composer.submits
+    assert not sender.input_started
+
+
+def test_input_tracking_resets_before_each_attempt():
+    composer = Composer()
+    sender = ReplySender(composer, lambda *a: None, threading.Event())
+    sender.send()
+    assert sender.input_started
+    with pytest.raises(AgentError, match="not empty"):
+        sender.send("[AI] Next reply", require_empty=True)
+    assert not sender.input_started
+    assert len(composer.writes) == len(composer.submits) == 1

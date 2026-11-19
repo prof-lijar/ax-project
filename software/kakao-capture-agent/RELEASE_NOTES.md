@@ -1,12 +1,27 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.25
+
+- **Run Agent (auto)** continuously watches chat display changes, captures them, extracts incoming text, processes it with the LLM, and replies in capture order until Stop.
+- New captures queue while earlier extraction or reply generation is running. There is no session message-count limit; pending work survives Stop and restart.
+- The interface shows extracted text and logs extraction, processing, and reply stages.
+- **Review Replies** works directly from a paused state without automatic recovery. Attempts refused before typing remain pending; partial or uncertain sends still require review.
+
+Screen polling can combine closely timed messages into one captured batch. UI-only changes and outgoing AI messages are ignored. Existing settings and saved queues remain compatible.
+
+## Changes and earlier release notes
+
+**Auto Catch is now Run Agent (auto).** It watches the selected conversation for display changes and repeats capture → text extraction → LLM processing → reply. New captures are saved and queued even while an earlier extraction or answer is still running. Jobs are processed and replied to in capture order. The interface now shows extracted incoming text and logs extraction, processing, and reply stages. Existing settings, capture files, and pending queues are preserved. UI-only changes and the agent's own outgoing messages remain excluded to prevent reply loops.
+
 **Select Window is now the only chat-area setup.** Select Region and its drag overlay have been removed. Preview, local capture, live monitoring, history/manual scrolling, Send Test Reply, both test workflows, and Auto Catch use the automatically detected area above the selected chat's message box. Each new action replaces any saved manual crop and generates a chat identifier if blank. Unsupported or ambiguous layouts stop with guidance to select the actual chat window and close search panels. Service credentials/settings remain required for features that use them.
 
 **Send Test Reply is editable.** Enter your own Korean, emoji, or multiline message in the main window (up to 2,000 characters), then click Send Test Reply. The default is `[AI가 답장드렸습니다]`. The last submitted text is saved locally; LLM-generated responses are unaffected. Stop still cancels a pending action, and a send is never automatically repeated.
 
 **Fixed: Auto Catch pauses after the first visible reply.** Once Windows accepts Enter, an inconclusive composer-clearing observation no longer stops watching. That job is recorded as submitted and is never resent; later incoming captures continue through the queue. Each new Auto Catch reply requires a freshly verified empty message box, so a leftover reply/draft is not overwritten. Transient post-send read failures retry observation only, with diagnostic reasons in the log. Delivery is still not independently verified.
 
-If rc.22 already left a job paused for review, inspect the chat and use **Stop → Review Replies → Auto Catch** once after updating. Failed/partial keyboard input and crashes during sending still require review.
+**Fixed: recovery from an immediate Auto Catch queue pause.** The uncertain-delivery message now names the recovery controls, and **Review Replies** is available directly while safely paused. Inspect the selected chat and draft, click **Review Replies**, confirm marking the old attempts handled without resending, then click **Auto Catch**. Other pending captures remain. On older builds, click **Stop** before Review Replies. Failed/partial keyboard input and crashes during sending still require review.
+
+An empty-composer or focus check that refuses a reply before writing now leaves that job pending instead of incorrectly marking delivery uncertain. Clear the draft or restore the chat and explicitly restart Auto Catch to resume it. Once a draft write begins, failures still require review to avoid replaying partial input.
 
 **Auto Catch returns to screenshots, with continuous collection and a persistent reply queue.** Select the open group and click Auto Catch. Changed frames are saved as before/after pairs while the vision LLM handles earlier work. Replies are submitted sequentially as `[AI] response (자동 응답)`, and watching continues after each reply. Windows accessibility and notification readers are not needed.
 

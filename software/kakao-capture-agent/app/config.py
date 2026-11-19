@@ -88,7 +88,7 @@ class Config:
             or len(self.auto_reply_suffix) > 100
             or any(ord(c) < 32 for c in self.auto_reply_suffix)
         ):
-            raise ValueError("Auto Catch suffix must be one line of at most 100 characters")
+            raise ValueError("Run Agent (auto) suffix must be one line of at most 100 characters")
         ranges = {
             "auto_catch_interval_seconds": (0.25, 5),
             "auto_reply_cooldown_seconds": (1, 60),

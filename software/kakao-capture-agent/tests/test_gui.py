@@ -53,6 +53,7 @@ def test_full_window_preview_and_settings(
     )
     window.show()
     assert all(button.text() != "Select Region" for button in window.setup_buttons)
+    assert window.auto_catch_button.text() == "Run Agent (auto)"
     window.test_reply_edit.setPlainText("테스트 메시지\nDifferent reply")
     signals.preview.emit(encode_png(frame))
     signals.stats.emit(queue.stats())
@@ -104,6 +105,11 @@ def test_full_window_preview_and_settings(
     monitor.state = State.LIVE_MONITORING
     monitor.want_live = True
     window.action(reply_command)
+    if reply_command == "auto_catch":
+        assert not window.text_preview.isHidden()
+        signals.text_preview.emit("Extracted participant message")
+        app.processEvents()
+        assert window.text_preview.toPlainText() == "Extracted participant message"
     if reply_command == "send_test":
         assert config.test_reply_text == "테스트 메시지\nDifferent reply"
         assert load(tmp_path / "config.json").test_reply_text == config.test_reply_text
@@ -143,6 +149,38 @@ def test_full_window_preview_and_settings(
         assert not window.auto_catch_button.isEnabled()
         window.action("auto_catch")
         assert len(timers) == 2
+        from app.automation.text_auto_catch import chat_queue_key
+
+        key = chat_queue_key(config)
+        jobs = monitor.auto_catch.jobs
+        uncertain = jobs.enqueue(key, "uncertain capture")
+        pending = jobs.enqueue(key, "pending capture")
+        other = jobs.enqueue("other chat", "other uncertain capture")
+        jobs.finish(uncertain, "review")
+        jobs.finish(other, "review")
+        monitor.state = State.PAUSED
+        window.update_status(State.PAUSED.value, "Review Replies")
+        assert window.review_text_button.isEnabled()
+        monkeypatch.setattr(
+            main_window.QMessageBox, "question", lambda *a: main_window.QMessageBox.No
+        )
+        window.review_text_replies()
+        assert jobs.count(key) == 2
+        monkeypatch.setattr(
+            main_window.QMessageBox, "question", lambda *a: main_window.QMessageBox.Yes
+        )
+        window.review_text_replies()
+        for thread in window.control_threads:
+            thread.join(2)
+            assert not thread.is_alive()
+        with queue.connect() as db:
+            statuses = dict(db.execute("SELECT job_id,status FROM image_reply_queue"))
+        assert statuses == {uncertain: "ignored", pending: "pending", other: "review"}
+        assert monitor.commands.empty()  # Reviewing does not itself send or restart.
+        monitor.auto_focus_recovery = True
+        window.update_status(State.PAUSED.value, "Recovering focus")
+        assert not window.review_text_button.isEnabled()
+        monitor.auto_focus_recovery = False
         monitor.state = State.STOPPED
         window.update_status(State.STOPPED.value, "")
     dialog = SettingsDialog(config, window)

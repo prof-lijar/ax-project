@@ -16,5 +16,5 @@ def appended_text(before, after):
         if old[-count:] == new[:count]:
             return "\n".join(new[count:]).strip()
     raise AgentError(
-        "Conversation text changed without a verifiable append; keep the latest messages visible and restart Auto Catch"
+        "Conversation text changed without a verifiable append; keep the latest messages visible and restart Run Agent (auto)"
     )

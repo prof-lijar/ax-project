@@ -180,21 +180,21 @@ class MainWindow(QMainWindow):
         )
         workflow_hint.setWordWrap(True)
         layout.addWidget(workflow_hint)
-        self.auto_catch_button = QPushButton("Auto Catch")
+        self.auto_catch_button = QPushButton("Run Agent (auto)")
         self.auto_catch_button.clicked.connect(lambda: self.action("auto_catch"))
         layout.addWidget(self.auto_catch_button)
         auto_hint = QLabel(
-            "Auto Catch watches the selected chat region using screenshots. "
-            "Changed captures queue locally while the vision LLM answers; replies are sent in order. "
+            "Watch display changes → capture → extract text → process with the LLM → reply. "
+            "New captures queue while earlier work is processing; replies are sent in capture order. "
             "Keep the selected chat open at the latest messages. "
-            "Stop / Ctrl+Shift+F12 ends Auto Catch."
+            "Stop / Ctrl+Shift+F12 ends Run Agent (auto)."
         )
         auto_hint.setWordWrap(True)
         layout.addWidget(auto_hint)
         self.text_preview = QTextEdit()
         self.text_preview.setReadOnly(True)
         self.text_preview.setPlaceholderText(
-            "Direct chat text appears here when supported by KakaoTalk"
+            "Latest incoming text extracted from a queued capture appears here"
         )
         self.text_preview.setMaximumHeight(130)
         self.text_preview.hide()
@@ -270,7 +270,7 @@ class MainWindow(QMainWindow):
         self.auto_catch_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.AUTO_CATCHING.value
         )
-        self.review_text_button.setEnabled(state == State.STOPPED.value)
+        self.review_text_button.setEnabled(self.can_review_replies(state))
         self.incoming_test_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
         )
@@ -519,7 +519,9 @@ class MainWindow(QMainWindow):
             self.monitor.suspend_recovery()
         if command == "auto_catch":
             self.preview_label.clear()
-            self.preview_label.setText("Preparing Auto Catch screenshot preview")
+            self.preview_label.setText("Preparing Run Agent (auto) screenshot preview")
+            self.text_preview.clear()
+            self.text_preview.show()
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
@@ -536,7 +538,7 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
-            else "Starting Auto Catch: watch screenshots, queue changed captures, and reply in order. Ctrl+Shift+F12 cancels"
+            else "Starting Run Agent (auto): watch display changes, capture, extract text, process with the LLM, and reply in queue order. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
             if command == "incoming_test"
@@ -591,10 +593,21 @@ class MainWindow(QMainWindow):
             "Could not reset failed jobs; check local storage",
         )
 
+    def can_review_replies(self, state):
+        return (
+            state in (State.STOPPED.value, State.PAUSED.value)
+            and self.monitor.stop_input.is_set()
+            and not self.monitor.auto_catch.active
+            and not self.monitor.recoverable
+            and not self.monitor.auto_focus_recovery
+            and not self.pending_action
+            and not self.closing
+        )
+
     def review_text_replies(self):
         from app.automation.text_auto_catch import chat_queue_key
 
-        if self.monitor.state != State.STOPPED or not self.config.target:
+        if not self.can_review_replies(self.monitor.state.value) or not self.config.target:
             return
         if (
             QMessageBox.question(
@@ -602,7 +615,7 @@ class MainWindow(QMainWindow):
                 "Review uncertain replies",
                 "Inspect the selected KakaoTalk chat first. Mark its uncertain reply attempts as handled "
                 "without sending them again? Other queued captures will be retained. "
-                "Start Auto Catch afterward to process the remaining queue.",
+                "Start Run Agent (auto) afterward to process the remaining queue.",
             )
             == QMessageBox.Yes
         ):

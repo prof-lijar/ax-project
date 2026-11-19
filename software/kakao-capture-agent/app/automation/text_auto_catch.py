@@ -29,6 +29,7 @@ def chat_queue_key(config):
 
 class TextAutoCatchWorkflow(AutoCatchWorkflow):
     continue_after_submission = False
+    extraction_progress = "Extracting incoming messages from queued text; watching continues"
 
     def __init__(
         self,
@@ -72,6 +73,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         if job is not None and not getattr(self, "sending", False):
             self.jobs.finish(job["job_id"], "pending")
         self.worker = self.job = self.results = self.work_cancel = self.outcome = None
+        self.extracted = None
         self.sending = False
         self.pending_text = None
         self.text_key = None
@@ -133,8 +135,10 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         self.job = job
         self.work_cancel = threading.Event()
         self.results = queues.Queue(maxsize=1)
+        self.extracted = queues.Queue(maxsize=1)
         # Capture immutable references so Stop/rearming cannot redirect an old worker.
         llm, cancel, results = self.llm, self.work_cancel, self.results
+        extracted = self.extracted
         analyze = self.analyze_job
 
         def process():
@@ -147,6 +151,9 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                     )
                 reply = None
                 if incoming.kind == "incoming" and not automated_text(incoming.text):
+                    # Publish to the capture thread; an old worker cannot update a
+                    # rearmed session's preview or monitoring state after Stop.
+                    extracted.put(incoming.text)
                     reply = llm.answer(incoming, cancel)
                 check_cancel(cancel)
                 results.put((reply, None))
@@ -155,17 +162,28 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
 
         self.worker = threading.Thread(target=process, name="auto-text-llm", daemon=False)
         self.worker.start()
-        self.progress("Processing queued messages with the LLM; collection continues")
+        self.progress(self.extraction_progress)
 
     def send_queued_reply(self, reply):
         return self.sender.send(reply)
 
     def finish_job(self):
-        if self.outcome is None and (self.worker is None or self.worker.is_alive()):
-            return
-        if self.outcome is None:
+        waiting = self.outcome is None and (self.worker is None or self.worker.is_alive())
+        if not waiting and self.outcome is None:
             self.outcome = self.results.get_nowait()
             self.worker = None
+        # Once a result is ready, its extraction event is also ready. Read events
+        # after checking completion so a fast worker cannot log extraction after sending.
+        if self.extracted is not None:
+            try:
+                text = self.extracted.get_nowait()
+            except queues.Empty:
+                pass
+            else:
+                self.text_preview(text)
+                self.progress("Text extracted; processing with the LLM; watching continues")
+        if waiting:
+            return
         reply, error = self.outcome
         self.check()
         if isinstance(error, IncomingAnalysisError):
@@ -186,6 +204,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         suffix = self.config.auto_reply_suffix.strip()
         if suffix:
             reply += " " + suffix
+        self.progress("LLM reply ready; submitting the next queued reply")
         self.jobs.finish(self.job["job_id"], "sending")  # Durable BEFORE touching the composer.
         self.sending, self.active = True, False
         try:
@@ -198,7 +217,10 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             status = "sent" if self.sender.composer_cleared else "submitted"
             self.jobs.finish(self.job["job_id"], status)
         except Exception:
-            self.jobs.finish(self.job["job_id"], "review")
+            # A refused empty-composer/focus check has not attempted delivery.
+            # Keep that job for explicit restart; partial input still needs review.
+            status = "pending" if getattr(self.sender, "input_started", True) is False else "review"
+            self.jobs.finish(self.job["job_id"], status)
             raise
         if not self.sender.composer_cleared:
             self.progress(
@@ -216,7 +238,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
     def tick(self):
         self.check()
         if not self.active:
-            raise AgentError("Auto Catch is not armed")
+            raise AgentError("Run Agent (auto) is not armed")
         self.ensure_foreground()
         # Always collect first, even during LLM inference and reply cooldown.
         self.collect()

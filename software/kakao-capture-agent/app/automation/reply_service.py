@@ -9,6 +9,7 @@ class TestReplySender:
     def __init__(self, composer, audit, cancel):
         self.composer, self.audit, self.cancel = composer, audit, cancel
         self.composer_cleared = False
+        self.input_started = False
 
     def check(self, handle=None):
         if self.cancel.is_set():
@@ -22,6 +23,7 @@ class TestReplySender:
 
     def send(self, text=TEST_REPLY, *, require_empty=False):
         self.composer_cleared = False
+        self.input_started = False
         if (
             not isinstance(text, str)
             or not text.strip()
@@ -44,10 +46,12 @@ class TestReplySender:
             self.check(handle)
             if require_empty and self.composer.read(handle).strip():
                 raise AgentError(
-                    "Message box is not empty; no text replaced or Enter sent. Clear the draft before restarting Auto Catch"
+                    "Message box is not empty; no text replaced or Enter sent. Clear the draft before restarting Run Agent (auto)"
                 )
             self.check(handle)
             # Win32 multiline editors may normalize LF to CRLF on readback.
+            # Set before writing: even a failed write may have changed the draft.
+            self.input_started = True
             self.composer.write(handle, normalized.replace("\n", "\r\n"))
             self.check(handle)
             actual = self.composer.read(handle).replace("\r\n", "\n").replace("\r", "\n")

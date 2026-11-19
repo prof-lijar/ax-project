@@ -1,4 +1,4 @@
-"""Durable ordered screenshot pairs for Auto Catch, separate from API uploads."""
+"""Durable ordered screenshot pairs for Run Agent (auto), separate from API uploads."""
 
 import hashlib
 import json
@@ -39,20 +39,24 @@ class ImageReplyQueue(TextQueue):
                 ).fetchone()[0]
             if count >= 1000:
                 raise StorageFull(
-                    "Auto Catch has 1000 unfinished captures; collection stopped; queue retained"
+                    "Run Agent (auto) has 1000 unfinished captures; collection stopped; queue retained"
                 )
             files = {self.images / (h + ".png"): png for h, png in zip(hashes, (before, after))}
             needed = sum(len(png) for path, png in files.items() if not path.exists()) + 1024**2
             if self.storage.usage() + needed > self.storage.config.storage_limit_bytes:
-                raise StorageFull("Auto Catch storage limit reached; queued captures retained")
+                raise StorageFull(
+                    "Run Agent (auto) storage limit reached; queued captures retained"
+                )
             if shutil.disk_usage(self.images).free < needed + 32 * 1024**2:
                 raise StorageFull(
-                    "Disk space is low; Auto Catch paused with queued captures retained"
+                    "Disk space is low; Run Agent (auto) paused with queued captures retained"
                 )
             for path, png in files.items():
                 if path.exists():
                     if hashlib.sha256(path.read_bytes()).hexdigest() != path.stem:
-                        raise AgentError("Stored Auto Catch image changed; inspect local storage")
+                        raise AgentError(
+                            "Stored Run Agent (auto) image changed; inspect local storage"
+                        )
                     continue
                 temporary = path.with_suffix(".tmp")
                 try:

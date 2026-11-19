@@ -261,13 +261,14 @@ class MonitoringService(threading.Thread):
         elif command == "auto_catch" and self.state == State.STOPPED:
             self.want_live = self.recoverable = False
             self.stop_input.clear()
-            self.transition(State.INITIALIZING, "Starting Auto Catch")
+            self.transition(State.INITIALIZING, "Starting Run Agent (auto)")
             try:
                 self.prepare_chat()
                 self.auto_catch.arm()
                 self.next_capture = time.monotonic() + self.config.auto_catch_interval_seconds
                 self.transition(
-                    State.AUTO_CATCHING, "Watching for incoming text; Stop ends Auto Catch"
+                    State.AUTO_CATCHING,
+                    "Watching display changes; captures queue for text extraction, LLM processing, and reply; Stop ends Run Agent (auto)",
                 )
             except Exception:
                 self.stop_input.set()
@@ -361,7 +362,7 @@ class MonitoringService(threading.Thread):
             self.auto_focus_recovery = True
             self.recoverable = False
             self.next_recovery = time.monotonic() + 2
-            reason = "Auto Catch waiting for chat focus; retrying automatically; Stop cancels"
+            reason = "Run Agent (auto) waiting for chat focus; retrying automatically; Stop cancels"
             if self.state != State.PAUSED or self.reason != reason:
                 self.transition(State.PAUSED, reason)
             return

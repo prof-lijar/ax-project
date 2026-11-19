@@ -48,7 +48,7 @@ class SettingsDialog(QDialog):
         self.secret.setPlaceholderText("Leave blank to keep the saved token")
         form.addRow("Bearer token", self.secret)
         for name, label, placeholder in [
-            ("auto_reply_suffix", "Auto Catch reply suffix", "(자동 응답)"),
+            ("auto_reply_suffix", "Run Agent (auto) reply suffix", "(자동 응답)"),
             ("llm_url", "LLM base URL", "http://192.168.0.17:8000/v1"),
             ("llm_model", "Vision LLM model", "Use your server's image-capable model name"),
         ]:
@@ -79,8 +79,20 @@ class SettingsDialog(QDialog):
         for name, label, low, high, decimals in [
             ("bizgo_timeout_seconds", "Bizgo request timeout (seconds)", 5, 120, 0),
             ("llm_timeout_seconds", "LLM operation timeout (seconds)", 5, 300, 0),
-            ("auto_catch_interval_seconds", "Auto Catch polling interval (seconds)", 0.25, 5, 2),
-            ("auto_reply_cooldown_seconds", "Auto Catch pause between replies (seconds)", 1, 60, 1),
+            (
+                "auto_catch_interval_seconds",
+                "Run Agent (auto) polling interval (seconds)",
+                0.25,
+                5,
+                2,
+            ),
+            (
+                "auto_reply_cooldown_seconds",
+                "Run Agent (auto) pause between replies (seconds)",
+                1,
+                60,
+                1,
+            ),
             ("incoming_wait_timeout_seconds", "Workflow 2 waiting limit (seconds)", 30, 3600, 0),
             (
                 "incoming_difference_threshold",

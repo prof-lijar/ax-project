@@ -27,7 +27,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
     def check(self):
         check_cancel(self.cancel)
         if self.identity() != self.original_identity:
-            raise AgentError("Auto Catch target changed; stopped without replying")
+            raise AgentError("Run Agent (auto) target changed; stopped without replying")
 
     def ensure_foreground(self):
         """Recover focus only, without resetting the incoming-message baseline."""
@@ -35,7 +35,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         try:
             self.desktop.validate()
         except ForegroundLost:
-            self.progress("Auto Catch: activating the selected chat to continue watching")
+            self.progress("Run Agent (auto): activating the selected chat to continue watching")
             self.check()
             self.desktop.activate_target(self.cancel)
             self.check()
@@ -47,7 +47,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         self.llm = self.llm_factory(self.config)
         if self.config.selection is None:
             self.config.selection = self.desktop.suggest_chat_region()
-            self.progress("Auto Catch detected the area above the message box")
+            self.progress("Run Agent (auto) detected the area above the message box")
         if not self.config.chat_id:
             self.config.chat_id = "chat-" + uuid4().hex[:12]
         self.original_identity = self.identity()
@@ -96,14 +96,16 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         self.analysis_failures += 1
         delay = min(2 ** min(self.analysis_failures, 5), 30)
         self.next_analysis_at = self.clock() + delay
-        self.waiting_reason = f"Auto Catch: {reason}; checking again in {delay}s; no reply sent"
+        self.waiting_reason = (
+            f"Run Agent (auto): {reason}; checking again in {delay}s; no reply sent"
+        )
         self.progress(self.waiting_reason)
         self.queue.event("auto_catch_analysis_retry", self.waiting_reason)
 
     def tick(self):
         self.check()
         if not self.active:
-            raise AgentError("Auto Catch is not armed; no automatic retry")
+            raise AgentError("Run Agent (auto) is not armed; no automatic retry")
         self.ensure_foreground()
         if self.clock() < max(self.next_reply_at, self.next_analysis_at):
             return None
@@ -113,7 +115,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
             return None
         png = encode_png(frame)
         self.preview(png)
-        self.progress("Auto Catch: identifying new incoming text")
+        self.progress("Run Agent (auto): identifying new incoming text")
         try:
             incoming = self.llm.classify(self.baseline, png, self.cancel, batch=True)
         except IncomingAnalysisError as error:
@@ -136,9 +138,9 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
             self.accept(frame, png)
             self.queue.event("auto_catch_ignored", "Outgoing, cosmetic, or recently handled change")
             self.progress(
-                "Auto Catch: no new incoming text (typing/UI change)"
+                "Run Agent (auto): no new incoming text (typing/UI change)"
                 if incoming.kind == "none"
-                else "Auto Catch: outgoing/AI or recently handled text ignored"
+                else "Run Agent (auto): outgoing/AI or recently handled text ignored"
             )
             return None
         # Mark this attempt BEFORE inference/input. Errors require explicit rearming.
@@ -147,8 +149,10 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         while len(self.recent) > 256:
             self.recent.popitem(last=False)
         capture_id = self.queue.enqueue(png, region, "live", local_only=True)
-        self.progress(f"Auto Catch saved locally: {self.queue.images / (capture_id + '.png')}")
-        self.progress("Auto Catch: generating an [AI] reply")
+        self.progress(
+            f"Run Agent (auto) saved locally: {self.queue.images / (capture_id + '.png')}"
+        )
+        self.progress("Run Agent (auto): generating an [AI] reply")
         reply = self.llm.answer(incoming, self.cancel)
         self.check()
         suffix = self.config.auto_reply_suffix.strip()
@@ -159,7 +163,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
         self.queue.event("auto_catch_reply", capture_id + ": " + result)
         if not self.sender.composer_cleared:
             raise AgentError(
-                "Auto Catch reply submission is uncertain; stopped to prevent duplicate replies. "
+                "Run Agent (auto) reply submission is uncertain; stopped to prevent duplicate replies. "
                 "Inspect the chat before restarting."
             )
         # Keep the PRE-REPLY frame as baseline. A post-send reset would swallow incoming
