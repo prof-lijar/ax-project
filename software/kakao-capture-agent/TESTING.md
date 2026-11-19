@@ -16,6 +16,14 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Bounded screenshot analysis retries — 2026-11-19
+
+Portable validation: **368 passed, 24 Windows-only tests skipped in 12.51 seconds**. Ruff lint/format and diff checks passed.
+
+Regression cases reproduce the reported sequence: startup greeting, first participant reply, an ambiguous or invalid-JSON screenshot, and four later captures queued behind it. They verify exactly three failed analysis attempts, preservation of that capture for review, ordered replies for all later valid captures, and continued watching. Upgrade cases begin with three or ten persisted failures and a future retry deadline, then verify the stuck capture is set aside without another LLM call. Another case verifies retry counts survive restarts, early retries retain FIFO order, and the third failure releases the next pending job.
+
+Windows acceptance: update and start Run Agent (auto) with the existing queue. Previously exhausted captures should appear in the set-aside count, and pending valid messages should process. Send multiple new messages after the greeting and verify continued replies. If a capture is ambiguous, its analysis retries must stop after three attempts while watching remains active.
+
 ### Review items do not block new replies — 2026-11-19
 
 Portable validation: **363 passed, 24 Windows-only tests skipped in 12.73 seconds**. Ruff lint/format and diff checks passed.

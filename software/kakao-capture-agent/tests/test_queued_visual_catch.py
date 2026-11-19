@@ -7,7 +7,12 @@ import cv2
 import numpy as np
 import pytest
 
-from app.api.incoming_llm import RUN_AGENT_GREETING, IncomingAnalysisError, IncomingMessage
+from app.api.incoming_llm import (
+    RUN_AGENT_GREETING,
+    IncomingAnalysisError,
+    IncomingMessage,
+    parse_incoming,
+)
 from app.api.workflow_llm import check_cancel
 from app.automation.monitoring_service import MonitoringService
 from app.capture.screen_capture import encode_png
@@ -459,6 +464,121 @@ def test_bad_analysis_retries_same_pair_while_new_frames_queue(watching):
     w.service.poll_auto_catch()
     finish(w)
     assert w.sent == ["[AI] Question 30 (자동 응답)"]
+
+
+@pytest.mark.parametrize("failure", ["uncertain", "invalid_json"])
+def test_first_reply_then_bad_capture_cannot_block_second_message_and_later_backlog(
+    watching, failure
+):
+    w = watching
+    original = w.llm.classify
+
+    def classify(before, after, cancel, *, batch):
+        incoming = original(before, after, cancel, batch=batch)
+        if incoming.kind == "outgoing":
+            if failure == "invalid_json":
+                return parse_incoming("not JSON")
+            return IncomingMessage("uncertain")
+        return incoming
+
+    w.llm.classify = classify
+    changed(w, 30)
+    finish(w)
+    assert len(w.sent) == 1
+    w.now[0] += 4
+    changed(w, 220)  # An unclear screenshot after the first reply.
+    finish(w)
+    for marker in (60, 90, 120, 150):
+        changed(w, marker)
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 5
+    assert len(w.sent) == 1
+
+    for _ in range(2):
+        with w.queue.connect() as db:
+            db.execute("UPDATE image_reply_queue SET next_attempt=0 WHERE status='pending'")
+        w.service.poll_auto_catch()
+        finish(w)
+    assert w.workflow.jobs.review_count(w.workflow.chat_key) == 1
+    for _ in range(5):
+        w.now[0] += 4
+        w.service.poll_auto_catch()
+        finish(w)
+    assert w.sent == [f"[AI] Question {marker} (자동 응답)" for marker in (30, 60, 90, 120, 150)]
+    assert (
+        sum(
+            int(cv2.imdecode(np.frombuffer(after, np.uint8), cv2.IMREAD_COLOR)[0, 0, 0]) == 220
+            for _, after in w.comparisons
+        )
+        == 3
+    )
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    assert w.service.state == State.AUTO_CATCHING
+    with w.queue.connect() as db:
+        row = db.execute(
+            "SELECT attempts,text FROM image_reply_queue WHERE status='review'"
+        ).fetchone()
+    assert row["attempts"] == 3 and row["text"]
+    assert any("set aside after 3 failed analysis attempts" in line for line in w.logs)
+    reason = "syntax" if failure == "invalid_json" else "ambiguous incoming/outgoing text"
+    assert any(reason in line for line in w.logs)
+
+
+@pytest.mark.parametrize("old_attempts", [3, 10])
+def test_existing_endless_retry_is_set_aside_before_another_llm_request(watching, old_attempts):
+    import time
+
+    w = watching
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    before = encode_png(w.capture.frame)
+    stuck, _ = w.workflow.jobs.enqueue_pair(
+        w.workflow.chat_key, before, encode_png(255 - w.capture.frame)
+    )
+    with w.queue.connect() as db:
+        db.execute(
+            "UPDATE image_reply_queue SET attempts=?,next_attempt=? WHERE job_id=?",
+            (old_attempts, time.time() + 3600, stuck),
+        )
+    w.workflow.jobs.enqueue_pair(
+        w.workflow.chat_key, before, encode_png(np.full_like(w.capture.frame, 60))
+    )
+    w.workflow.jobs = ImageReplyQueue(w.queue)
+    w.service.dispatch("auto_catch")
+    w.service.poll_auto_catch()
+    finish(w)
+    assert w.sent == ["[AI] Question 60 (자동 응답)"]
+    assert len(w.comparisons) == 1  # The exhausted capture never reaches the LLM again.
+    assert w.workflow.jobs.review_count(w.workflow.chat_key) == 1
+    assert w.service.state == State.AUTO_CATCHING
+
+
+def test_analysis_retry_budget_survives_restart_and_preserves_early_retry_fifo(queue, frame):
+    import time
+
+    jobs = ImageReplyQueue(queue)
+    first, _ = jobs.enqueue_pair("chat", encode_png(frame), encode_png(255 - frame))
+    second, _ = jobs.enqueue_pair("chat", encode_png(255 - frame), encode_png(frame // 2))
+    assert jobs.claim("chat")["job_id"] == first
+    assert jobs.retry(first) == 2
+    jobs = ImageReplyQueue(queue)
+    assert jobs.claim("chat") is None  # The early retry keeps its place during backoff.
+    with queue.connect() as db:
+        db.execute("UPDATE image_reply_queue SET next_attempt=0 WHERE job_id=?", (first,))
+    assert jobs.claim("chat")["job_id"] == first
+    assert jobs.retry(first) == 4
+    jobs = ImageReplyQueue(queue)
+    with queue.connect() as db:
+        db.execute("UPDATE image_reply_queue SET next_attempt=0 WHERE job_id=?", (first,))
+    assert jobs.claim("chat")["job_id"] == first
+    assert jobs.retry(first) is None
+    assert jobs.claim("chat")["job_id"] == second
+    with queue.connect() as db:
+        row = db.execute(
+            "SELECT status,attempts,next_attempt,text FROM image_reply_queue WHERE job_id=?",
+            (first,),
+        ).fetchone()
+    assert row["status"] == "review" and row["attempts"] == 3 and row["next_attempt"] <= time.time()
+    assert row["text"]
 
 
 def test_focus_recovery_retains_prepared_vision_reply(watching):

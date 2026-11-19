@@ -19,6 +19,8 @@ class ImageReplyQueue(TextQueue):
     table = "image_reply_queue"
     # Review is a side queue, never an eligible job or an ordering barrier.
     active_statuses = ("pending", "processing", "sending")
+    # Reanalyzing the same immutable screenshots indefinitely cannot unblock FIFO.
+    max_analysis_attempts = 3
 
     def __init__(self, storage):
         self.images = storage.images / "auto_catch"

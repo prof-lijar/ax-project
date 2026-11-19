@@ -37,11 +37,16 @@ def automated_text(text):
 class IncomingAnalysisError(AgentError):
     """Invalid analysis can be retried before any reply is generated or submitted."""
 
+    def __init__(self, message, *, category="invalid analysis"):
+        super().__init__(message)
+        self.category = category
+
 
 def analysis_error(reason):
     # Only fixed diagnostic categories, never model output or chat text.
     return IncomingAnalysisError(
-        f"Incoming-message analysis returned invalid JSON ({reason}); no reply sent"
+        f"Incoming-message analysis returned invalid JSON ({reason}); no reply sent",
+        category=reason,
     )
 
 

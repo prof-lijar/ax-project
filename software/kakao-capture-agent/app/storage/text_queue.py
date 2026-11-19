@@ -9,6 +9,7 @@ from app.models import AgentError, StorageFull
 class TextQueue:
     table = "text_reply_queue"
     active_statuses = ("pending", "processing", "sending", "review")
+    max_analysis_attempts = None
 
     def __init__(self, storage):
         if self.table not in {"text_reply_queue", "image_reply_queue"}:
@@ -58,6 +59,14 @@ class TextQueue:
 
     def claim(self, chat_key):
         with self.storage.lock, self.storage.connect() as db:
+            if self.max_analysis_attempts is not None:
+                # Also unblock queues saved by versions that retried forever,
+                # regardless of their old backoff deadline. Never touch sends.
+                db.execute(
+                    f"UPDATE {self.table} SET status='review',next_attempt=0 "
+                    "WHERE chat_key=? AND status='pending' AND attempts>=?",
+                    (chat_key, self.max_analysis_attempts),
+                )
             row = db.execute(
                 f"SELECT * FROM {self.table} WHERE chat_key=? AND status IN ({self.status_placeholders}) ORDER BY id LIMIT 1",
                 (chat_key, *self.active_statuses),
@@ -100,13 +109,19 @@ class TextQueue:
             )
 
     def retry(self, job_id):
-        with self.storage.connect() as db:
+        with self.storage.lock, self.storage.connect() as db:
             attempts = (
                 db.execute(
                     f"SELECT attempts FROM {self.table} WHERE job_id=?", (job_id,)
                 ).fetchone()[0]
                 + 1
             )
+            if self.max_analysis_attempts is not None and attempts >= self.max_analysis_attempts:
+                db.execute(
+                    f"UPDATE {self.table} SET status='review',attempts=?,next_attempt=0 WHERE job_id=?",
+                    (attempts, job_id),
+                )
+                return None
             delay = min(2 ** min(attempts, 5), 30)
             db.execute(
                 f"UPDATE {self.table} SET status='pending',attempts=?,next_attempt=? WHERE job_id=?",

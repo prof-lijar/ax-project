@@ -147,18 +147,20 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                 check_cancel(cancel)
                 if incoming.kind == "uncertain":
                     raise IncomingAnalysisError(
-                        "Incoming message cannot yet be separated from UI/outgoing activity"
+                        "Incoming message cannot yet be separated from UI/outgoing activity",
+                        category="ambiguous incoming/outgoing text",
                     )
                 reply = None
-                if incoming.kind == "incoming" and not automated_text(incoming.text):
+                kind = "outgoing" if automated_text(incoming.text) else incoming.kind
+                if kind == "incoming":
                     # Publish to the capture thread; an old worker cannot update a
                     # rearmed session's preview or monitoring state after Stop.
                     extracted.put(incoming.text)
                     reply = llm.answer(incoming, cancel)
                 check_cancel(cancel)
-                results.put((reply, None))
+                results.put((reply, None, kind))
             except Exception as error:
-                results.put((None, error))
+                results.put((None, error, None))
 
         self.worker = threading.Thread(target=process, name="auto-text-llm", daemon=False)
         self.worker.start()
@@ -184,21 +186,34 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                 self.progress("Text extracted; processing with the LLM; watching continues")
         if waiting:
             return
-        reply, error = self.outcome
+        reply, error, kind = self.outcome
         self.check()
         if isinstance(error, IncomingAnalysisError):
             delay = self.jobs.retry(self.job["job_id"])
+            if delay is None:
+                self.queue.event("auto_analysis_review", self.job["job_id"] + ": " + error.category)
             self.job = self.outcome = None
-            self.progress(f"Message analysis needs another check in {delay}s; collection continues")
+            if delay is None:
+                self.progress(
+                    f"Capture set aside after {self.jobs.max_analysis_attempts} failed analysis attempts "
+                    f"({error.category}); later captures will continue; no reply sent for this capture"
+                )
+            else:
+                self.progress(
+                    f"Message analysis needs another check in {delay}s "
+                    f"({error.category}); collection continues"
+                )
             return
         if error is not None:
             if isinstance(error, AgentError):
                 raise error
             raise AgentError("LLM processing failed; queued work retained") from None
         if reply is None:
+            self.queue.event("auto_analysis_ignored", self.job["job_id"] + ": " + str(kind))
             self.jobs.finish(self.job["job_id"], "ignored")
             self.job = self.outcome = None
-            self.progress("UI activity or outgoing/AI text ignored; watching for incoming text")
+            classification = "outgoing/AI text" if kind == "outgoing" else "UI/no new incoming text"
+            self.progress(f"Capture classified as {classification}; ignored; watching continues")
             return
         self.ensure_foreground()
         suffix = self.config.auto_reply_suffix.strip()

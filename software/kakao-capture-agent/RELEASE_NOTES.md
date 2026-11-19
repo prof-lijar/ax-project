@@ -1,5 +1,11 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.29
+
+**Fixed: one successful reply followed by an endlessly stalled queue.** A capture with ambiguous or malformed text extraction could retry forever at the front of the queue, blocking every later message. Each capture now gets at most three analysis attempts; an unresolved capture is retained for review and later queued captures proceed. Attempts survive restart, and existing entries with three or more failures are set aside immediately after updating, without another model call.
+
+Analysis logs now identify ambiguous message boundaries or invalid-output categories. Ignored captures are labeled separately as outgoing/AI or UI/no new incoming text. Reply content and raw model output are not included in these diagnostics. The change does not retry uncertain sends or discard the unresolved screenshots.
+
 ## v0.1.0-rc.28
 
 **Old review items no longer stop Run Agent (auto).** Existing uncertain attempts remain saved for review and are never automatically resent, while pending and new captures continue through extraction, LLM processing, and replies in order. No queue deletion or manual Review Replies step is needed to start watching again after updating.
