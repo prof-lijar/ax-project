@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage
+from app.api.incoming_llm import RUN_AGENT_GREETING, IncomingAnalysisError, IncomingMessage
 from app.api.workflow_llm import check_cancel
 from app.automation.monitoring_service import MonitoringService
 from app.capture.screen_capture import encode_png
@@ -25,7 +25,7 @@ def watching(config, queue, region):
     config.selection = None
     frame = np.zeros((100, 80, 3), dtype=np.uint8)
     capture = Capture(desktop, frame)
-    sent, comparisons, logs, extracted, stages = [], [], [], [], []
+    sent, comparisons, logs, extracted, stages, greetings = [], [], [], [], [], []
     now = [0]
     service = MonitoringService(
         desktop, capture, queue, config, lambda *a: None, lambda png: None, logs.append
@@ -59,6 +59,10 @@ def watching(config, queue, region):
     workflow.llm_factory = lambda _: llm
 
     def send(text, **kwargs):
+        if text == RUN_AGENT_GREETING:
+            assert kwargs == {"require_empty": True}
+            greetings.append(text)
+            return "composer cleared"
         stages.append(("reply", text))
         sent.append(text)
         return "composer cleared"
@@ -78,6 +82,9 @@ def watching(config, queue, region):
         logs=logs,
         extracted=extracted,
         stages=stages,
+        greetings=greetings,
+        sender=workflow.sender,
+        send=send,
     )
     service.command("stop")
     workflow.reset()
@@ -95,6 +102,94 @@ def finish(w):
         w.workflow.worker.join(2)
         assert not w.workflow.worker.is_alive()
     w.service.poll_auto_catch()
+
+
+def test_greeting_once_per_explicit_start_then_continuous_replies(watching):
+    w = watching
+    assert w.greetings == ["[AI 테스트 보내보시지요!"]
+    assert not w.sent and not w.comparisons
+    for _ in range(3):
+        w.service.poll_auto_catch()
+    w.service.dispatch("auto_catch")  # Already running: do not send another greeting.
+    changed(w, 30)
+    finish(w)
+    w.now[0] += 4
+    changed(w, 60)
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)", "[AI] Question 60 (자동 응답)"]
+    assert w.greetings == [RUN_AGENT_GREETING]
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    w.service.dispatch("auto_catch")
+    assert w.greetings == [RUN_AGENT_GREETING, RUN_AGENT_GREETING]
+    assert w.workflow.reply_count == 0 and w.service.state == State.AUTO_CATCHING
+
+
+def test_message_arriving_during_greeting_is_not_lost(watching):
+    w = watching
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+
+    def send(text, **kwargs):
+        if text == RUN_AGENT_GREETING:
+            w.capture.frame[:] = 30  # Participant responds during submission observation.
+        return w.send(text, **kwargs)
+
+    w.workflow.sender.send = send
+    w.service.dispatch("auto_catch")
+    changed(w, 30)
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)"]
+    assert len(w.comparisons) == 1
+    before = cv2.imdecode(np.frombuffer(w.comparisons[0][0], np.uint8), cv2.IMREAD_COLOR)
+    assert not before.any()  # Baseline predates the greeting.
+
+
+def test_greeting_is_ignored_even_if_extraction_misclassifies_it(watching):
+    w = watching
+    original = w.llm.classify
+    w.llm.classify = lambda *a, **kw: IncomingMessage("incoming", RUN_AGENT_GREETING)
+    changed(w, 220)
+    finish(w)
+    assert not w.sent and w.workflow.jobs.count(w.workflow.chat_key) == 0
+    w.llm.classify = original
+    changed(w, 30)
+    finish(w)
+    assert w.sent == ["[AI] Question 30 (자동 응답)"]
+
+
+@pytest.mark.parametrize("failure", ["draft", "partial", "cancel"])
+def test_greeting_failure_does_not_arm_or_automatically_retry(watching, failure):
+    from app.automation.reply_service import TestReplySender as ReplySender
+    from app.models import Cancelled
+    from tests.test_replies import Composer
+
+    w = watching
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    composer = Composer("Operator draft" if failure == "draft" else "")
+
+    def submit(handle):
+        composer.submits.append(handle)
+        if failure == "cancel":
+            w.service.stop_input.set()
+            raise Cancelled("Stopped during greeting")
+        raise ForegroundLost("Greeting submission uncertain")
+
+    composer.submit = submit
+    w.workflow.sender = ReplySender(composer, w.queue.event, w.service.stop_input)
+    with pytest.raises(AgentError) as error:
+        w.service.dispatch("auto_catch")
+    w.service.pause(error.value)
+    w.service.try_recover_auto_focus()
+    assert not w.workflow.active and not w.service.auto_focus_recovery
+    assert w.service.stop_input.is_set()
+    assert w.workflow.jobs.count(w.workflow.chat_key) == 0
+    if failure == "draft":
+        assert composer.text == "Operator draft" and not composer.writes and not composer.submits
+    else:
+        assert composer.writes == [(10, RUN_AGENT_GREETING)]
+        assert composer.submits == [10]
 
 
 def test_continues_after_first_reply_and_ignores_typing_and_own_reply(watching):
@@ -277,6 +372,8 @@ def test_uncertain_send_never_replays_and_later_captures_remain(watching):
     w.workflow.collect()
 
     def partial_send(text, **kwargs):
+        if text == RUN_AGENT_GREETING:
+            return w.send(text, **kwargs)
         w.sent.append(text)
         raise AgentError("Input insertion uncertain")
 
@@ -295,7 +392,7 @@ def test_uncertain_send_never_replays_and_later_captures_remain(watching):
     w.service.pause(blocked.value)
     assert w.service.state == State.PAUSED and len(w.sent) == 1
     jobs.resolve_review(w.workflow.chat_key)
-    w.workflow.sender.send = lambda text, **kw: w.sent.append(text) or "composer cleared"
+    w.workflow.sender.send = w.send
     w.service.dispatch("stop")
     w.service.dispatch("auto_catch")
     w.service.poll_auto_catch()
@@ -476,12 +573,20 @@ def test_unobserved_submission_continues_but_next_send_requires_empty_composer(w
         # Clearing the draft and explicitly restarting must process the untouched
         # job without forcing review or replaying the previous submission.
         composer.text = ""
+
+        # The restarted greeting clears normally; the pending reply can follow.
+        def clear_on_submit(handle):
+            composer.submits.append(handle)
+            composer.text = ""
+
+        composer.submit = clear_on_submit
         w.service.dispatch("stop")
         w.service.dispatch("auto_catch")
         w.service.poll_auto_catch()
         finish(w)
         assert w.service.state == State.AUTO_CATCHING
-        assert len(composer.submits) == 2
+        assert len(composer.submits) == 3  # First reply, restarted greeting, pending reply.
+        assert composer.writes[-2][1] == RUN_AGENT_GREETING
         assert composer.writes[-1][1] == "[AI] Question 60 (자동 응답)"
 
 

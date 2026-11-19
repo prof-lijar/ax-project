@@ -18,6 +18,8 @@ from app.api.workflow_llm import (
 )
 from app.models import AgentError
 
+RUN_AGENT_GREETING = "[AI 테스트 보내보시지요!"
+
 
 @dataclass(frozen=True)
 class IncomingMessage:
@@ -27,7 +29,9 @@ class IncomingMessage:
 
 
 def automated_text(text):
-    return bool(re.search(r"(?im)^\s*\[(?:ai|test|AI가 답장드렸습니다)\]", text))
+    return bool(re.search(r"(?im)^\s*\[(?:ai|test|AI가 답장드렸습니다)\]", text)) or any(
+        line.strip() == RUN_AGENT_GREETING for line in text.splitlines()
+    )
 
 
 class IncomingAnalysisError(AgentError):
@@ -96,7 +100,9 @@ class IncomingLLM(WorkflowLLM):
                     "in order, preserving their language, within 1200 characters (prefer newest complete "
                     "messages if necessary). Ignore UI labels, dates, unread counts, typing indicators, "
                     "and automated messages starting [AI], [test], or [AI가 답장드렸습니다], including "
-                    "their continuation lines. Do not answer the agent's own messages. When a batch "
+                    "their continuation lines. "
+                    f"Also exclude the agent's startup message {RUN_AGENT_GREETING!r}. "
+                    "Do not answer the agent's own messages. When a batch "
                     "contains both an AI reply and a participant message, extract only the participant "
                     "message. Never invent unreadable or missing text. Set kind to incoming for readable "
                     "participant text, outgoing for only AI/local outgoing text, none for only UI updates, "
@@ -178,7 +184,10 @@ class IncomingLLM(WorkflowLLM):
                     "notifications, and app controls. Scrolling to older messages is NOT an incoming "
                     "message. Ordinary upward movement caused by a new bottom message is allowed. "
                     "Never choose incoming for outgoing messages or messages prefixed [AI], [test], "
-                    "or [AI가 답장드렸습니다]. If direction, chronology, or readability is unclear, "
+                    "or [AI가 답장드렸습니다]. "
+                    f"Exclude the agent's startup message {RUN_AGENT_GREETING!r}; when it appears "
+                    "alongside new participant messages, extract only the participant messages. "
+                    "If direction, chronology, or readability is unclear, "
                     "choose uncertain. "
                     + message_rule
                     + "Return a single JSON object with all four keys: kind (exactly one of incoming, "

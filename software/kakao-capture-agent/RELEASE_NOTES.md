@@ -1,5 +1,11 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.26
+
+**Run Agent (auto) now initiates the conversation.** Each explicit start sends the exact message `[AI 테스트 보내보시지요!` once, then continuously watches incoming messages and runs capture → extraction → LLM processing → queued replies as before. The startup message has no response suffix, is excluded from incoming-message analysis, and is not repeated by polling or focus recovery. The composer must be empty. Failed/interrupted startup sends are not automatically retried.
+
+The baseline is captured before sending the greeting so a participant response during submission observation is still detected. Pending captures remain queued across Stop/restart; each explicit restart sends a fresh greeting before resuming them.
+
 ## v0.1.0-rc.25
 
 - **Run Agent (auto)** continuously watches chat display changes, captures them, extracts incoming text, processes it with the LLM, and replies in capture order until Stop.

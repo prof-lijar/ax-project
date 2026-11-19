@@ -4,7 +4,7 @@ import time
 from dataclasses import replace
 from uuid import uuid4
 
-from app.api.incoming_llm import create_incoming_llm
+from app.api.incoming_llm import RUN_AGENT_GREETING, create_incoming_llm
 from app.api.workflow_llm import check_cancel
 from app.automation.text_auto_catch import TextAutoCatchWorkflow, chat_queue_key
 from app.capture.change_detector import ChangeDetector
@@ -73,6 +73,14 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.accept(frame, encode_png(frame))
         self.preview(self.baseline)
         self.text_preview("")
+        # Keep the pre-send baseline: a participant may respond while the sender
+        # observes the composer. The first poll must still see that new message.
+        self.progress("Sending the Run Agent (auto) startup message once")
+        self.check()
+        observation = self.sender.send(RUN_AGENT_GREETING, require_empty=True)
+        self.check()
+        self.queue.event("auto_agent_greeting", observation)
+        self.progress("Startup message submitted once; " + observation)
         self.queue.event(
             "auto_visual_armed", "Initial screen ignored; existing queued screenshot pairs retained"
         )

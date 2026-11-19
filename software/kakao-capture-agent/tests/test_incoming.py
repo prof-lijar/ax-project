@@ -7,7 +7,13 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.api.incoming_llm import IncomingAnalysisError, IncomingLLM, IncomingMessage, parse_incoming
+from app.api.incoming_llm import (
+    RUN_AGENT_GREETING,
+    IncomingAnalysisError,
+    IncomingLLM,
+    IncomingMessage,
+    parse_incoming,
+)
 from app.api.workflow_llm import LLMSettings
 from app.automation.monitoring_service import MonitoringService
 from app.capture.screen_capture import encode_png
@@ -67,7 +73,8 @@ def test_two_images_then_one_prefixed_answer(frame, batch):
 
 
 @pytest.mark.parametrize(
-    "text", ["[AI] answer", "[test]\nsummary", "[AI가 답장드렸습니다]", "  [ai] reply"]
+    "text",
+    ["[AI] answer", "[test]\nsummary", "[AI가 답장드렸습니다]", "  [ai] reply", RUN_AGENT_GREETING],
 )
 def test_generated_messages_are_ignored_even_if_model_misclassifies(text):
     assert (

@@ -104,10 +104,12 @@ Previously named **Auto Catch**, this button runs a repeating pipeline: **watch 
 
 1. Open the intended KakaoTalk group at its latest messages.
 2. Configure the LLM URL/model/key in **Settings** and enable vision support. The model must accept two images in one request.
-3. Click **Select Window**, select that conversation, then click **Run Agent (auto)**. The agent refreshes the message area above the composer automatically, just like all other chat features.
+3. Click **Select Window**, select that conversation, then click **Run Agent (auto)**. The agent refreshes the message area above the composer and sends the exact startup message `[AI 테스트 보내보시지요!` once, then begins watching. Each explicit restart sends this greeting once again; ordinary polling, focus recovery, and queued replies do not. Leave the composer empty before starting.
 4. The agent captures the detected conversation area, saves meaningful changes, and queues before/after image pairs. The vision LLM extracts newly visible incoming text, generates an answer, and the agent submits `[AI] response (자동 응답)` to the same chat.
 5. **Capture continues while the previous LLM request processes and during the reply cooldown.** Jobs process one at a time in capture order. Several messages appearing between captures can form one batch. Queue counts and submitted-reply counts appear in the status/log.
-6. After a reply, Run Agent (auto) keeps watching automatically. **Stop** or **Ctrl+Shift+F12** cancels processing and retains unsent queued captures. Click Run Agent (auto) again to resume the selected chat's pending queue. Application restart never starts sending automatically.
+6. After a reply, Run Agent (auto) keeps watching automatically. **Stop** or **Ctrl+Shift+F12** cancels processing and retains unsent queued captures. Click Run Agent (auto) again to send the startup greeting and resume the selected chat's pending queue. Application restart never starts sending automatically.
+
+The startup greeting is excluded from incoming-message extraction and never generates an answer to itself. The initial screenshot is taken before sending it, so a participant response arriving during the greeting remains eligible for capture. A failed or interrupted greeting stops startup without automatically resending it.
 
 Polling defaults to 0.5 seconds with a short debounce. Existing messages at startup become the baseline and are ignored unless already captured in pending work. Typing indicators, cosmetic changes, and the agent's own `[AI]` messages are classified and ignored. Configure the response suffix and timing in Settings. The agent does not scroll in this mode: keep the latest messages visible and leave the composer empty. Run Agent (auto) checks for an empty composer before every reply and will not overwrite a leftover reply or your draft.
 

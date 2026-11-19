@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.api.incoming_llm import RUN_AGENT_GREETING
 from app.config import save
 from app.gui.settings_dialog import SettingsDialog
 from app.models import AgentError, State
@@ -184,6 +185,7 @@ class MainWindow(QMainWindow):
         self.auto_catch_button.clicked.connect(lambda: self.action("auto_catch"))
         layout.addWidget(self.auto_catch_button)
         auto_hint = QLabel(
+            f"Start by sending {RUN_AGENT_GREETING} once. "
             "Watch display changes → capture → extract text → process with the LLM → reply. "
             "New captures queue while earlier work is processing; replies are sent in capture order. "
             "Keep the selected chat open at the latest messages. "

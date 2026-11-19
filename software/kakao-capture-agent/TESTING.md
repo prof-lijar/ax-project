@@ -16,6 +16,12 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Startup greeting — 2026-11-19
+
+Portable validation: **350 passed, 20 Windows-only tests skipped in 11.72 seconds**. Ruff lint/format and diff checks passed. Each explicit Run Agent (auto) start sends the exact greeting `[AI 테스트 보내보시지요!` once without a suffix. Tests cover repeated polling, ignored duplicate starts while running, explicit restart, continued queued replies, greeting suppression even after incorrect incoming classification, and an incoming message arriving during greeting submission. Draft refusal, partial submission, and cancellation prevent startup and automatic retry.
+
+Windows acceptance: leave the selected chat's composer empty and click Run Agent (auto). Verify the exact startup greeting appears once, then send several participant messages while processing continues and confirm ordered replies. Stop and start again to verify one new greeting for that explicit start.
+
 ### Run Agent (auto) pipeline — 2026-11-19
 
 Portable validation: **343 passed, 20 Windows-only tests skipped in 12.22 seconds**. Ruff lint/format and diff checks passed.
