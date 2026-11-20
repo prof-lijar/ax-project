@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.branding import APP_NAME, application_icon
 from app.gui.theme import apply_theme, card
 from app.gui.theme import label as ui_label
 from app.models import AgentError
@@ -23,7 +24,8 @@ from app.models import AgentError
 class SettingsDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings · KakaoTalk Capture Agent")
+        self.setWindowTitle(f"Settings · {APP_NAME}")
+        self.setWindowIcon(application_icon())
         self.result_config = deepcopy(config)
         self.token = ""
         self.llm_token = ""
@@ -100,7 +102,7 @@ class SettingsDialog(QDialog):
         )
         self.add_control("llm_token", "LLM API key", self.llm_secret)
         for name, label, placeholder in [
-            ("operations_url", "운영시트에이젠트 Nexgent URL", "https://your-nexgent-server"),
+            ("operations_url", "AX768 server or workbench URL", "http://192.168.0.18:5173/agents/ax768"),
             ("operations_username", "Nexgent administrator username", ""),
         ]:
             control = QLineEdit(getattr(config, name))

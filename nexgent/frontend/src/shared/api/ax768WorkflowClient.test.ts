@@ -14,7 +14,7 @@ describe("Unified AX768 workflow API", () => {
   it("submits text and a selected name without requesting a region", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(fixture))); vi.stubGlobal("fetch", fetch);
     expect(await runAx768Workflow("device_adjustment_power", " input ", "김영호")).toEqual(fixture);
-    expect(fetch.mock.calls[0][0].toString()).toContain("/api/ax768/workflow/runs");
+    expect(fetch.mock.calls[0][0].toString()).toContain("/api/ax768/runs");
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({workflow_id: "device_adjustment_power", message: "input", confirmed_name: "김영호"});
   });
   it.each([409, 422, 502, 504])("shows failure %i without retry", async status => {

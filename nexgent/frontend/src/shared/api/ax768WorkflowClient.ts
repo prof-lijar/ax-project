@@ -119,7 +119,7 @@ export async function runAx768Workflow(workflowId: Ax768WorkflowId | "", message
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 435_000);
   try {
-    const response = await authenticatedFetch("/api/ax768/workflow/runs", {
+    const response = await authenticatedFetch("/api/ax768/runs", {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({workflow_id: workflowId, message: message.trim(), confirmed_name: confirmedName ?? null}), signal: controller.signal
     });

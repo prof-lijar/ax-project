@@ -21,7 +21,7 @@ if ($SourceExitCode -ne 0) { throw 'Source application startup check failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
 $Report = Join-Path $PSScriptRoot 'dist\self-test.json'
 Remove-Item $Report -ErrorAction SilentlyContinue
-$Executable = Join-Path $PSScriptRoot 'dist\KakaoCaptureAgent.exe'
+$Executable = Join-Path $PSScriptRoot 'dist\VoyagerI.exe'
 $Process = [System.Diagnostics.Process]::new()
 $Process.StartInfo.FileName = $Executable
 $Process.StartInfo.UseShellExecute = $false
@@ -37,4 +37,4 @@ if (Test-Path $Report) { Get-Content $Report -Raw | Write-Host }
 if ($Process.ExitCode -ne 0 -or !(Test-Path $Report)) { throw 'Packaged application startup check failed.' }
 $Result = Get-Content $Report -Raw | ConvertFrom-Json
 if ($Result.status -ne 'passed') { throw 'Packaged application reported a startup failure.' }
-Write-Host 'Ready: dist\KakaoCaptureAgent.exe. Users can download and double-click this file without Python or uv.'
+Write-Host 'Ready: dist\VoyagerI.exe. Users can download and double-click this file without Python or uv.'

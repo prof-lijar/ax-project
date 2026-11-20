@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   const target = env.NEXGENT_BACKEND_TARGET || "http://127.0.0.1:8000";
   const proxy = Object.fromEntries(
     ["/api", "/auth", "/agent-server", "/weekly-report-bulk-api", "/scout-api", "/scout-scheduler-api", "/rag-api"]
-      .map(prefix => [prefix, { target, proxyTimeout: 300_000 }])
+      .map(prefix => [prefix, { target, proxyTimeout: 570_000 }])
   );
   return {
     plugins: [react()], clearScreen: false,

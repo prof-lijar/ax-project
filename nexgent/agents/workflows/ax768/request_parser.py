@@ -3,7 +3,7 @@
 import re
 import unicodedata
 
-ROAD = re.compile(r"[가-힣0-9·.]+(?:로|길)\s*\d+(?:\s*-\s*\d+)?")
+ROAD = re.compile(r"[가-힣A-Za-z0-9·.]+(?:로|길)\s*\d+(?:\s*-\s*\d+)?")
 
 
 def compact_name(value):

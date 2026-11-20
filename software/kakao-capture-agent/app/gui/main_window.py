@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.api.incoming_llm import RUN_AGENT_GREETING
+from app.branding import APP_NAME, WINDOW_TITLE, application_icon
 from app.config import save
 from app.gui.settings_dialog import SettingsDialog
 from app.gui.theme import CapturePreview, apply_theme, card, label
@@ -73,7 +74,8 @@ class MainWindow(QMainWindow):
         self.pending_action = None
         self.control_threads = []
         self.action_generation = 0
-        self.setWindowTitle("KakaoTalk Capture Agent")
+        self.setWindowTitle(WINDOW_TITLE)
+        self.setWindowIcon(application_icon())
         self.resize(1080, 860)
         self.setMinimumSize(820, 640)
         apply_theme(self)
@@ -85,15 +87,17 @@ class MainWindow(QMainWindow):
         layout.setSpacing(16)
 
         header = QHBoxLayout()
-        brand = QLabel("K")
+        brand = QLabel()
         brand.setObjectName("brand")
         brand.setAlignment(Qt.AlignCenter)
         brand.setFixedSize(48, 48)
+        brand.setPixmap(self.windowIcon().pixmap(48, 48))
+        brand.setAccessibleName(f"{APP_NAME} logo")
         header.addWidget(brand)
         titles = QVBoxLayout()
         titles.setSpacing(2)
-        titles.addWidget(label("KakaoTalk Capture Agent", "title"))
-        titles.addWidget(label("Capture conversations. Keep work moving."))
+        titles.addWidget(label(WINDOW_TITLE, "title"))
+        titles.addWidget(label("Chat requests. Completed workflows."))
         header.addLayout(titles, 1)
         self.setup_buttons = []
         settings = QPushButton("Settings")
@@ -648,6 +652,14 @@ class MainWindow(QMainWindow):
             except AgentError as error:
                 QMessageBox.warning(self, "LLM settings required", str(error))
                 return
+        if command == "auto_catch":
+            from app.api.unified_operations import create_unified_operations
+
+            try:
+                create_unified_operations(self.config)
+            except AgentError as error:
+                QMessageBox.warning(self, "AX768 settings required", str(error))
+                return
         if command == "device_workflow":
             from app.api.bizgo_client import create_bizgo
             from app.api.operations_client import create_operations
@@ -713,7 +725,7 @@ class MainWindow(QMainWindow):
             if command == "bizgo_test"
             else "Starting 기기위치조정/전원연결: incoming request → 운영시트에이젠트 → Bizgo test notification → KakaoTalk reply. Ctrl+Shift+F12 cancels"
             if command == "device_workflow"
-            else "Starting Run Agent (auto): watch display changes, capture, extract text, process with the LLM, and reply in queue order. Ctrl+Shift+F12 cancels"
+            else "Starting Run Agent (auto): watch display changes, capture, extract requests, run AX768 workflows, and send API replies in queue order. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
             if command == "incoming_test"

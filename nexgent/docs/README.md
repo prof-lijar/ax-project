@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [AX768 unified KakaoTalk API](../agents/docs/ax768-unified-kakaotalk-api.md): action dispatch, server-owned replies, auto-run capture integration, validation and activation.
+
 - [Device workflow first-line notes and address matching](../agents/docs/device-workflow-first-line-notes-and-address-matching.md): 일반 사항 newest-first history, known region-prefix equivalence, receipt validation, tests and activation.
 
 - [Device workflow appended general notes](../agents/docs/device-workflow-append-general-notes.md): Name/address matching, preserved history, duplicate prevention, desktop compatibility gate, tests and activation.

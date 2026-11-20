@@ -22,6 +22,7 @@ def run(report_path):
         from app.automation import windows_chat_text
         from app.automation.monitoring_service import MonitoringService
         from app.automation.window_manager import WindowsDesktop
+        from app.branding import APP_NAME, WINDOW_TITLE, configure_application
         from app.capture.screen_capture import ScreenCapture, encode_png
         from app.config import Config, load, save
         from app.gui.main_window import MainWindow, Signals
@@ -34,6 +35,9 @@ def run(report_path):
             encoding="utf-8"
         )
         application = QApplication([])
+        configure_application(application)
+        assert application.applicationName() == APP_NAME
+        assert not application.windowIcon().pixmap(32, 32).isNull()
         with tempfile.TemporaryDirectory(prefix="kakao-self-test-") as temporary:
             root = Path(temporary)
             secure_directory(root)
@@ -62,6 +66,8 @@ def run(report_path):
             window = MainWindow(
                 config, root / "config.json", desktop, monitor, uploader, queue, signals
             )
+            assert window.windowTitle() == WINDOW_TITLE
+            assert not window.windowIcon().pixmap(32, 32).isNull()
             window.show()
             signals.preview.emit(png)
             application.processEvents()
@@ -84,6 +90,7 @@ def run(report_path):
                 "synthetic PNG",
                 "retention",
                 "Qt window and preview",
+                "VoyagerI bundled icon and application identity",
             ],
             "screen_capture_performed": False,
             "input_sent": False,

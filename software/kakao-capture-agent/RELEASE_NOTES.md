@@ -1,4 +1,10 @@
-Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
+Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
+
+## v0.1.0-rc.34 — 2026-11-20
+
+**New name: VoyagerI.** A custom chat/relay/checkmark logo replaces the letter badge and default window/taskbar icon. Windows builds produce `VoyagerI.exe` with embedded multi-resolution icons and product metadata. Existing settings, captures and credentials remain available. Restart with the updated build; old pinned shortcuts may need to be replaced.
+
+**Run Agent (auto) now runs AX768 workflows.** New captured requests go to one authenticated `/api/ax768/runs` endpoint. 위치조정/name/address fields can appear in any slash-separated order. The server owns dispatch, verified success/disconnected templates, and the exact chat response. No Bizgo settings are required for auto mode. Existing case APIs and the separate device/Bizgo button remain supported. Update the Windows app and activate the [server changes](https://github.com/prof-lijar/ax-project/blob/kakao-capture-agent-v0.1.0-rc.34/nexgent/agents/docs/ax768-unified-kakaotalk-api.md) before using auto mode.
 
 ## v0.1.0-rc.33
 

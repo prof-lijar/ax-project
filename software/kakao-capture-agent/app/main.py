@@ -14,7 +14,9 @@ def main():
         )
         return 1
     from app.automation.window_manager import WindowsDesktop, enable_dpi_awareness
+    from app.branding import set_windows_app_id
 
+    set_windows_app_id()
     enable_dpi_awareness()
     if "--self-test" in sys.argv:
         from app.self_test import run
@@ -28,6 +30,7 @@ def main():
 
     from app.api.upload_worker import UploadWorker
     from app.automation.monitoring_service import MonitoringService
+    from app.branding import configure_application
     from app.capture.screen_capture import ScreenCapture
     from app.config import data_directory, load, save
     from app.gui.main_window import MainWindow, Signals
@@ -37,6 +40,7 @@ def main():
 
     application = QApplication(sys.argv)
     try:
+        configure_application(application)
         mutex = single_instance()
         root = data_directory()
         secure_directory(root)

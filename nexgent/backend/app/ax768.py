@@ -122,7 +122,6 @@ def normalize_result(payload, case_id):
             "imei": imei, "imei_column": text(result.get("imei_column"), 2), "ping": ping}
 
 
-@router.post("/runs")
 async def run(body: RunInput):
     if not body.message.strip():
         raise HTTPException(422, detail="Enter a message for the selected case.")

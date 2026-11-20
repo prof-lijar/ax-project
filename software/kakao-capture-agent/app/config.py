@@ -43,7 +43,7 @@ class Config:
     operations_url: str = ""
     operations_username: str = ""
     operations_allow_http: bool = False
-    operations_timeout_seconds: int = 435
+    operations_timeout_seconds: int = 555
     bizgo_enabled: bool = False
     bizgo_sandbox: bool = True
     bizgo_sender: str = ""
@@ -91,8 +91,8 @@ class Config:
             raise ValueError("Nexgent URL and username must be text")
         if self.operations_url:
             validate_llm_url(self.operations_url, self.operations_allow_http)
-            if urlsplit(self.operations_url).path not in ("", "/"):
-                raise ValueError("Use the Nexgent origin URL without an API path")
+            if urlsplit(self.operations_url).path not in ("", "/", "/agents/ax768", "/api/ax768/runs"):
+                raise ValueError("Use the Nexgent origin, /agents/ax768 page, or /api/ax768/runs URL")
         if not isinstance(self.llm_model, str):
             raise ValueError("LLM model must be text")
         if (

@@ -26,7 +26,7 @@ export async function runInformationUpdate(message: string): Promise<Information
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 555_000);
   try {
-    const response = await authenticatedFetch("/api/ax768/workflow/information-runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({workflow_id: "information_update", message}), signal: controller.signal });
+    const response = await authenticatedFetch("/api/ax768/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({workflow_id: "information_update", message}), signal: controller.signal });
     if ([401, 403].includes(response.status)) throw new Error("관리자 권한이 필요합니다.");
     if (response.status === 409) throw new Error("정보확인&수정을 활성화하려면 Agent Server를 재시작해 주세요.");
     if (!response.ok) throw new Error(uncertain);

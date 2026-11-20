@@ -41,5 +41,9 @@
   "auto_catch_interval_seconds": 0.5,
   "auto_reply_cooldown_seconds": 3,
   "auto_reply_suffix": "(자동 응답)",
-  "test_reply_text": "[AI가 답장드렸습니다]"
+  "test_reply_text": "[AI가 답장드렸습니다]",
+  "operations_url": "http://192.168.0.18:5173",
+  "operations_username": "",
+  "operations_allow_http": true,
+  "operations_timeout_seconds": 555
 }

@@ -52,6 +52,8 @@ def test_full_window_preview_and_settings(
     window = MainWindow(
         config, tmp_path / "config.json", desktop, monitor, Uploader(), queue, signals
     )
+    assert window.windowTitle() == "VoyagerI"
+    assert not window.windowIcon().pixmap(32, 32).isNull()
     window.show()
     assert all(button.text() != "Select Region" for button in window.setup_buttons)
     assert window.auto_catch_button.text() == "Run Agent (auto)"
@@ -156,9 +158,8 @@ def test_full_window_preview_and_settings(
         assert not window.auto_catch_button.isEnabled()
         window.action("auto_catch")
         assert len(timers) == 2
-        from app.automation.text_auto_catch import chat_queue_key
 
-        key = chat_queue_key(config)
+        key = monitor.auto_catch.queue_key()
         jobs = monitor.auto_catch.jobs
         uncertain = jobs.enqueue(key, "uncertain capture")
         pending = jobs.enqueue(key, "pending capture")

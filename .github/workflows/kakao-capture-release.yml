@@ -1,4 +1,4 @@
-name: Kakao Capture Windows Release
+name: VoyagerI Windows Release
 
 on:
   push:
@@ -45,14 +45,14 @@ jobs:
             $Version = $Matches[1]
           }
           New-Item -ItemType Directory -Path release -Force | Out-Null
-          $Name = "KakaoCaptureAgent-v$Version-windows-x64.exe"
-          Copy-Item dist/KakaoCaptureAgent.exe "release/$Name"
+          $Name = "VoyagerI-v$Version-windows-x64.exe"
+          Copy-Item dist/VoyagerI.exe "release/$Name"
           $Hash = (Get-FileHash "release/$Name" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$Hash  $Name" | Set-Content "release/$Name.sha256" -Encoding ascii
       - name: Save build outputs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: kakao-capture-windows-x64
+          name: voyageri-windows-x64
           path: |
             software/kakao-capture-agent/release/*
             software/kakao-capture-agent/dist/self-test.json
@@ -65,5 +65,5 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $Assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
-          gh release create $env:RELEASE_TAG @Assets --verify-tag --prerelease --title "Kakao Capture Agent $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
+          gh release create $env:RELEASE_TAG @Assets --verify-tag --prerelease --title "VoyagerI $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }

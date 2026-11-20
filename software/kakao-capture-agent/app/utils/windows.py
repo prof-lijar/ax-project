@@ -97,5 +97,5 @@ def single_instance():
     handle = win32event.CreateMutex(None, False, r"Local\KakaoCaptureAgent")
     if win32api.GetLastError() == 183:
         handle.Close()
-        raise RuntimeError("KakaoTalk Capture Agent is already running in this session")
+        raise RuntimeError("VoyagerI is already running in this session")
     return handle

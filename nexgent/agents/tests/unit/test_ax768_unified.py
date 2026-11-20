@@ -620,3 +620,9 @@ async def test_no_as_match_still_replaces_member_notes_for_explicit_action(monke
     assert result["as_update"]["status"] == "skipped"
     assert result["member_note"]["verified"] is True
     assert result["member_note"]["note"].endswith("[현지관리자 방문] 전원연결")
+
+
+def test_dispatcher_canonical_message_with_latin_road_name():
+    assert parse_request("광명시 OO동 OO로 56 이영희님 기기위치조정 신호확인요.") == {
+        "name": "이영희", "address": "OO로 56", "mode": "name_address"
+    }

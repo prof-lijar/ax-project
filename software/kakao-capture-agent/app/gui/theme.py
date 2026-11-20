@@ -11,8 +11,7 @@ QLabel { background: transparent; }
 QLabel[role="title"] { font-size: 25px; font-weight: 700; color: #182230; }
 QLabel[role="heading"] { font-size: 16px; font-weight: 600; color: #182230; }
 QLabel[role="muted"] { color: #606b7a; }
-QLabel#brand { background: #fee500; color: #302b20; border-radius: 14px;
-    font-size: 22px; font-weight: 700; }
+QLabel#brand { background: transparent; }
 QLabel#state { background: #e7ebf0; border-radius: 10px; padding: 7px 13px;
     font-weight: 600; }
 QLabel#state[tone="active"] { background: #def3e7; color: #17623b; }

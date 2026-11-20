@@ -1,5 +1,16 @@
 # AX Agents Architecture
 
+## AX768 unified capture/workbench entrypoint (2026-11-20)
+
+`POST /api/ax768/runs` now composes the existing test-case, device and information
+handlers. An application-owned alias registry resolves explicit automatic action
+fields; workflows retain their execution, capability and verification contracts.
+The API renders customer replies only after result normalization. The desktop's
+Run Agent (auto) forwards complete captured source messages and sends API text
+unchanged, using its durable per-capture attempt journal and destination-scoped
+queue. No Bizgo dependency, extra process or model authority is added to auto mode.
+See [contract and activation](ax768-unified-kakaotalk-api.md).
+
 ## Device general notes: newest first and region prefixes (2026-11-19)
 
 The user's final placement is first-line 일반 사항. The workflow uses the

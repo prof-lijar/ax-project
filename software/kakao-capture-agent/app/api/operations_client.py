@@ -17,7 +17,9 @@ ASSISTANT_ID = str(uuid5(UUID("6ba7b821-9dad-11d1-80b4-00c04fd430c8"), "ax768_wo
 
 
 def credential_destination(url, username):
-    return "operations:" + url.rstrip("/") + ":" + username.strip()
+    parts = urlsplit(url.strip())
+    origin = f"{parts.scheme}://{parts.netloc}"
+    return "operations:" + origin + ":" + username.strip()
 
 
 @dataclass(frozen=True)
@@ -35,11 +37,16 @@ class OperationsSettings:
             raise AgentError(
                 "Set a valid Nexgent URL; enable trusted LAN HTTP only if needed"
             ) from None
-        if urlsplit(url).path not in ("", "/"):
-            raise AgentError("Use the Nexgent origin URL without an API path")
+        if urlsplit(url).path not in ("", "/", "/agents/ax768", "/api/ax768/runs"):
+            raise AgentError("Use the Nexgent origin, /agents/ax768 page, or /api/ax768/runs URL")
         if not config.operations_username.strip():
             raise AgentError("Set the Nexgent administrator username in Settings")
-        return cls(url, config.operations_username.strip(), config.operations_timeout_seconds)
+        parts = urlsplit(url)
+        return cls(
+            f"{parts.scheme}://{parts.netloc}",
+            config.operations_username.strip(),
+            config.operations_timeout_seconds,
+        )
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,10 @@ def parse_result(body):
 
 
 class OperationsClient:
+    endpoint = "/api/ax768/workflow/runs"
+    workflow_id = WORKFLOW_ID
+    parse_response = staticmethod(parse_result)
+
     def __init__(self, settings, password, transport=None):
         if not password:
             raise AgentError("Save the Nexgent password in Settings or set OPERATIONS_PASSWORD")
@@ -139,26 +150,29 @@ class OperationsClient:
             ):
                 raise AgentError("Nexgent administrator access and CSRF token are required")
             check_cancel(cancel)
-            schema = await self.request(
-                client, "GET", f"/agent-server/assistants/{ASSISTANT_ID}/schemas"
-            )
-            try:
-                mode = schema["input_schema"]["properties"]["member_note_mode"]["const"]
-            except (KeyError, TypeError):
-                mode = None
-            if mode != "prepend":
-                raise AgentError(
-                    "Update/rebuild Nexgent Agent Server to enable adding general notes at the first line; no workflow executed"
-                )
+            await self.preflight(client)
             check_cancel(cancel)
             body = await self.request(
                 client,
                 "POST",
-                "/api/ax768/workflow/runs",
+                self.endpoint,
                 headers={**origin, "X-CSRF-Token": account["csrf_token"]},
-                json={"workflow_id": WORKFLOW_ID, "message": message, "confirmed_name": None},
+                json={"workflow_id": self.workflow_id, "message": message, "confirmed_name": None},
             )
-            return parse_result(body)
+            return self.parse_response(body)
+
+    async def preflight(self, client):
+        schema = await self.request(
+            client, "GET", f"/agent-server/assistants/{ASSISTANT_ID}/schemas"
+        )
+        try:
+            mode = schema["input_schema"]["properties"]["member_note_mode"]["const"]
+        except (KeyError, TypeError):
+            mode = None
+        if mode != "prepend":
+            raise AgentError(
+                "Update/rebuild Nexgent Agent Server to enable adding general notes at the first line; no workflow executed"
+            )
 
     async def run_async(self, message, cancel):
         check_cancel(cancel)

@@ -35,6 +35,13 @@ def watching(config, queue, region):
     service = MonitoringService(
         desktop, capture, queue, config, lambda *a: None, lambda png: None, logs.append
     )
+    from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
+
+    service.auto_catch = QueuedVisualCatchWorkflow(
+        desktop, capture, queue, config, service.reply_sender, service.stop_input,
+        lambda png: None, lambda message: service.transition(State.INITIALIZING, message),
+    )
+    service.general_auto_catch = service.auto_catch
     workflow = service.auto_catch
     workflow.text_preview = extracted.append
     workflow.clock = lambda: now[0]
