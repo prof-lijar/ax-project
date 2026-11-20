@@ -156,6 +156,9 @@ def test_full_window_preview_and_settings(
         monitor.state = State.AUTO_CATCHING
         window.update_status(State.AUTO_CATCHING.value, "watching")
         assert not window.auto_catch_button.isEnabled()
+        assert window.auto_catch_button.text() == "Watching…"
+        assert window.state_label.text() == "Watching"
+        assert "Watching for new messages" in window.auto_status.text()
         window.action("auto_catch")
         assert len(timers) == 2
 
@@ -168,6 +171,8 @@ def test_full_window_preview_and_settings(
         jobs.finish(other, "review")
         monitor.state = State.PAUSED
         window.update_status(State.PAUSED.value, "Review Replies")
+        assert window.auto_catch_button.text() == "Run Agent (auto)"
+        assert "Paused" in window.auto_status.text()
         assert window.review_text_button.isEnabled()
         monkeypatch.setattr(
             main_window.QMessageBox, "question", lambda *a: main_window.QMessageBox.No

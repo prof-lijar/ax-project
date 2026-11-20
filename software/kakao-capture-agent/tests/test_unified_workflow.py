@@ -181,19 +181,25 @@ def test_screenshot_to_api_reply_keeps_watching(watching):  # noqa: F811
     w.llm.request = request
     w.llm.run_operation = run_operation
     unified.llm_factory = lambda _: w.llm
-    original_send = w.sender.send
     unified.sender = SimpleNamespace(
-        send=lambda text, **kw: (
-            "composer cleared" if text == unified.greeting else original_send(text, **kw)
-        ),
+        send=Mock(side_effect=w.sender.send),
         composer_cleared=True,
     )
     w.service.auto_catch = w.service.general_auto_catch = unified
     w.workflow = unified
     w.service.dispatch("auto_catch")
+    unified.sender.send.assert_not_called()
+    operations.run.assert_not_called()
+    assert unified.active
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    w.service.dispatch("auto_catch")
+    unified.sender.send.assert_not_called()
+    operations.run.assert_not_called()
     changed(w, 30)
     finish(w)
     assert w.sent == [REPLY]
+    unified.sender.send.assert_called_once_with(REPLY, require_empty=False)
     assert unified.active
     assert unified.jobs.count(unified.chat_key) == 0
     operations.run.assert_called_once()

@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.api.incoming_llm import RUN_AGENT_GREETING
 from app.branding import APP_NAME, WINDOW_TITLE, application_icon
 from app.config import save
 from app.gui.settings_dialog import SettingsDialog
@@ -160,11 +159,16 @@ class MainWindow(QMainWindow):
         auto_layout.addWidget(self.auto_catch_button)
         auto_layout.addWidget(
             label(
-                "Sends a startup greeting, then replies until stopped. "
-                "Each send replaces the chat’s draft. Keep the latest messages visible."
+                "Start watching, then reply to incoming requests until stopped. "
+                "Keep the latest messages visible."
             )
         )
-        self.auto_catch_button.setToolTip(f"Startup greeting: {RUN_AGENT_GREETING}")
+        self.auto_catch_button.setToolTip(
+            "Watch incoming requests without sending a startup message"
+        )
+        self.auto_status = label("Ready to watch.")
+        self.auto_status.setAccessibleName("Run Agent status")
+        auto_layout.addWidget(self.auto_status)
         actions.addWidget(auto_card)
         device_card, device_layout = card("Device operations")
         self.device_workflow_button = self.command_button(
@@ -376,7 +380,27 @@ class MainWindow(QMainWindow):
         logging.getLogger("kakao").info(message)
 
     def update_status(self, state, reason):
-        self.state_label.setText(state.replace("_", " ").capitalize())
+        self.state_label.setText(
+            "Watching"
+            if state == State.AUTO_CATCHING.value
+            else state.replace("_", " ").capitalize()
+        )
+        auto_running = (
+            state == State.AUTO_CATCHING.value
+            and self.monitor.auto_catch is self.monitor.general_auto_catch
+        )
+        self.auto_catch_button.setText("Watching…" if auto_running else "Run Agent (auto)")
+        self.auto_status.setText(
+            "Watching for new messages. Stop ends monitoring."
+            if auto_running
+            else "Paused. Check the status above."
+            if state == State.PAUSED.value
+            else "Ready to watch."
+            if state == State.STOPPED.value
+            else "Starting…"
+            if self.pending_action == "auto_catch"
+            else "Ready to watch."
+        )
         self.state_label.setProperty(
             "tone",
             "paused"

@@ -92,14 +92,14 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         self.accept(frame, encode_png(frame))
         self.preview(self.baseline)
         self.text_preview("")
-        # Keep the pre-send baseline: a participant may respond while the sender
-        # observes the composer. The first poll must still see that new message.
-        self.progress("Sending the startup message once; replacing message-box contents")
-        self.check()
-        observation = self.sender.send(self.greeting, require_empty=False)
-        self.check()
-        self.queue.event("auto_agent_greeting", observation)
-        self.progress("Startup message submitted once; " + observation)
+        if self.greeting:
+            # Preserve the baseline if a participant responds during a greeting.
+            self.progress("Sending the startup message once; replacing message-box contents")
+            self.check()
+            observation = self.sender.send(self.greeting, require_empty=False)
+            self.check()
+            self.queue.event("auto_agent_greeting", observation)
+            self.progress("Startup message submitted once; " + observation)
         self.queue.event(
             "auto_visual_armed", "Initial screen ignored; existing queued screenshot pairs retained"
         )

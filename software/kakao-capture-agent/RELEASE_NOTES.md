@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.35 — 2026-11-20
+
+**Silent Run Agent startup.** Clicking Run Agent (auto), including after Stop, begins watching without sending an introductory chat message or clearing the draft. The app shows Watching and Watching for new messages. Normal workflow replies continue after processing incoming requests.
+
+**New VoyagerI logo.** An ivory spacecraft/V and mint navigation star on midnight navy replace the previous yellow logo in the app, taskbar and executable. This is a desktop-only update; no additional Agent Server change is required beyond rc.34 setup.
+
 ## v0.1.0-rc.34 — 2026-11-20
 
 **New name: VoyagerI.** A custom chat/relay/checkmark logo replaces the letter badge and default window/taskbar icon. Windows builds produce `VoyagerI.exe` with embedded multi-resolution icons and product metadata. Existing settings, captures and credentials remain available. Restart with the updated build; old pinned shortcuts may need to be replaced.

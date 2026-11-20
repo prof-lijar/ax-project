@@ -2,9 +2,9 @@
 
 Date: 2026-11-20 (Asia/Seoul)
 
-The app's new display name is **VoyagerI**. A speech bubble, relay
-arrow and checkmark represent chat → workflow → reply. Yellow and charcoal
-continue the desktop workspace palette.
+The app's display name is **VoyagerI**. The refreshed icon uses an ivory
+V-shaped spacecraft and a mint navigation star on midnight navy. It replaces
+the original yellow chat/relay/checkmark logo in the app and Windows resources.
 
 ## Integration
 
@@ -90,3 +90,31 @@ Final prompt (opaque square to avoid generated transparent-edge artifacts):
   were checked without invoking a Windows compiler.
 - Local Linux checks do not build a Windows executable; the Windows release
   workflow runs native tests, builds the EXE and verifies its packaged startup.
+
+
+## Refreshed VoyagerI artwork — 2026-11-20
+
+Generated with the built-in `image_gen` tool. The final PNG replaces the earlier
+logo at `app/assets/voyageri.png`; `tools/build_icon.py` regenerates the ten ICO
+resolutions at `app/assets/voyageri.ico`. The app, taskbar and executable all
+reuse these resource paths. Earlier prompts above are historical provenance.
+
+Prompt:
+
+> Use case: logo-brand. Design a completely new polished desktop application icon for VoyagerI, an assistant that watches chat messages and carries requests through workflows. A minimal bold ivory V-shaped spacecraft / forward chevron, with one small vivid mint four-point navigation star beside its upper-right tip. The lower V subtly forms the tail of a chat bubble; balance the mark as one distinctive compact symbol, not a collection of icons. Full-bleed perfectly square deep midnight-navy background, solid color all the way to every edge and corner, no transparency and no outer rounded tile. Ivory and mint accents only. Strong clean silhouette, generous padding, thick shapes legible at 16 and 32 pixels. Flat vector-like graphic, smooth sharp geometry. No text, letters spelling the name, gradients, texture, shadows, 3D effects, mockup or extra decorations. One final centered square app icon, not multiple variants.
+
+
+## Silent auto-run startup — 2026-11-20
+
+Run Agent (auto) suppresses the optional queued worker greeting. Arming records
+its baseline and resumes queued work without submitting or changing chat text.
+The dedicated legacy device/Bizgo button retains its separate greeting policy.
+The overview shows Watching for new messages, with a Watching button and status
+badge while auto-run is active; paused/stopped states restore the action label.
+Existing pending requests still resume and normal API replies remain unchanged.
+
+Validation: 96 workflow/queue/GUI tests and 3 icon/identity tests passed. The
+integration test asserts zero sender/API calls during first start and restart,
+then exactly one unchanged API reply after a new message. The updated Watching
+screen and logo were also rendered with synthetic data and visually inspected.
+Windows packaging is checked by the release workflow before publication.

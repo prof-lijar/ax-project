@@ -61,9 +61,7 @@ class UnifiedProcessor:
 
 
 class UnifiedWorkflow(QueuedVisualCatchWorkflow):
-    greeting = (
-        "[AI] 작업 / 대상자 이름 / 주소를 보내주세요. 예: 위치조정/이영희/광명시 OO동 OO로 56"
-    )
+    greeting = None
 
     def __init__(self, *args, activity=lambda _: None, **kwargs):
         super().__init__(*args, **kwargs)
