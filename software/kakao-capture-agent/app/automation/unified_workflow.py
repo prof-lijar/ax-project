@@ -5,18 +5,13 @@ import json
 from dataclasses import asdict
 
 from app.api.incoming_llm import IncomingMessage, automated_text
-from app.api.unified_operations import ACTION_KEYWORDS, create_unified_operations, message_action
+from app.api.unified_operations import create_unified_operations
 from app.api.workflow_llm import check_cancel
-from app.api.workflow_requests import extract_sources
+from app.api.workflow_requests import analyze_request, extract_sources
 from app.automation.device_workflow import UNCERTAIN
 from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
 from app.models import AgentError, Cancelled
 from app.storage.operation_journal import OperationJournal
-
-
-def actionable_message(text):
-    """Only currently enabled incoming actions may reach AX768."""
-    return any(keyword in text for keyword in ACTION_KEYWORDS) and not automated_text(text)
 
 
 class UnifiedProcessor:
@@ -25,7 +20,7 @@ class UnifiedProcessor:
 
     def answer(self, llm, incoming, job_id, cancel):
         check_cancel(cancel)
-        if incoming.kind != "incoming" or not actionable_message(incoming.text):
+        if incoming.kind != "incoming" or automated_text(incoming.text):
             return None
         plan_key = job_id + ":plan"
         plan = self.journal.get(plan_key)
@@ -37,10 +32,22 @@ class UnifiedProcessor:
         replies = []
         for index, message in enumerate(plan):
             check_cancel(cancel)
-            action = message_action(message)
-            if not actionable_message(message) or action is None:
+            if automated_text(message):
                 continue
             key = f"{job_id}-{index}:api"
+            # Analyze before claiming an external action. Malformed model output
+            # can be retried without implying that the API was already called.
+            analysis_key = f"{job_id}-{index}:analysis"
+            cached = self.journal.get(analysis_key)
+            if cached is None:
+                request = analyze_request(llm, message, cancel)
+                check_cancel(cancel)
+                self.journal.claim(analysis_key, job_id, {"request": request})
+                cached = self.journal.get(analysis_key)
+            request = cached["request"]
+            if request is None:
+                continue
+            action = request["action"]
             uncertain = {
                 "status": "uncertain",
                 "response": "[자동 확인]\n" + UNCERTAIN,
@@ -49,7 +56,7 @@ class UnifiedProcessor:
             if self.journal.claim(key, job_id, uncertain):
                 self.activity(f"AX768: processing {action} with the 기기위치조정/전원연결 workflow")
                 try:
-                    result = asdict(self.operations.run(message, cancel))
+                    result = asdict(self.operations.run(request, cancel))
                 except Cancelled:
                     raise
                 except AgentError as error:

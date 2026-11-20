@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.37 — 2026-11-20
+
+**Agent-interpreted structured requests.** Run Agent uses the model to decide whether received text requests device repositioning or power connection, including equivalent wording without exact keywords/slash format. It extracts and sends `action`, full `name`, `address`, `action_text` evidence and original `message` to the unified API. Unrelated, cancelled, incomplete and ambiguous model decisions do not call the workflow. Outgoing messages remain ignored; startup is silent and neither device action sends SMS.
+
+**Full registered-name fix.** Both server parsers now preserve names such as `넥스터_이은경` instead of rejecting the underscore or stripping the prefix. Rebuild **agent-server** and update/restart **backend** before using this version. Model extraction is validated against the source text; successful replies still require verified workflow receipts.
+
 ## v0.1.0-rc.36 — 2026-11-20
 
 **No device-workflow SMS.** 위치조정 and 전원연결 reply only in KakaoTalk. Removed the older device button's Bizgo notification step and credential requirement as well. Existing SMS receipts are not replayed. The separate Bizgo sample and optional generic Test Workflow SMS tools keep their own behavior.

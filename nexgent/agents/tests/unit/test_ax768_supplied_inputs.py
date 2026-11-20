@@ -64,6 +64,7 @@ def synthetic_services(
     missing_as=False,
     missing_member=False,
     missing_signal=False,
+    expected_action="기기위치조정",
 ):
     """Use real lookup, IMEI, ping validation and AS write/readback code."""
     target = workflow.USER_SHEETS[city]
@@ -141,7 +142,7 @@ def synthetic_services(
                 assert (
                     body["general_notes"]
                     .splitlines()[0]
-                    .endswith(" [현지관리자 방문] 기기위치조정")
+                    .endswith(" [현지관리자 방문] " + expected_action)
                 )
                 assert body["general_notes"].endswith("\n기존 메모\n보존하지 않을 줄")
                 member.update(body)
@@ -403,3 +404,29 @@ async def test_signal_device_not_found_skips_all_writers(monkeypatch, tmp_path):
     assert result["member_note"] is None
     assert "test-as" not in events and "member access" not in events and not writes
     assert any("일반 사항 저장을 건너뛰었습니다" in n for n in result["notices"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', ['기기위치조정', '전원연결'])
+@pytest.mark.parametrize('connected', [True, False])
+async def test_registered_underscore_name_through_real_graph(monkeypatch, tmp_path, action, connected):
+    name, address = '넥스터_이은경', '헌릉로8길 58'
+    events, writes, _ = synthetic_services(monkeypatch, tmp_path, name, address, 1, connected, expected_action=action)
+    result = await workflow.graph.ainvoke({
+        'message': f'헌릉로8길58 {name}님 {action} 신호확인요.',
+    })
+    assert result['parsed']['name'] == result['parsed']['lookup_name'] == name
+    assert result['roster']['name'] == name
+    assert result['parsed']['address'].replace(' ', '') == address.replace(' ', '')
+    assert events.count('signal') == 1
+    if connected:
+        assert result['status'] == 'completed'
+        assert result['as_lookup']['name'] == name
+        assert result['member_note']['name'] == name
+        assert result['member_note']['note'].endswith(' ' + action)
+        assert result['member_note']['verified'] is True
+        assert len(writes) == 1
+    else:
+        assert result['status'] == 'disconnected'
+        assert result['member_note'] is None
+        assert not writes

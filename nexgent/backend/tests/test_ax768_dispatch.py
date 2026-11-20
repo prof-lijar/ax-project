@@ -200,3 +200,89 @@ def test_completed_receipt_must_match_explicit_action(monkeypatch):
     }, headers=authenticated_headers())
     assert response.status_code == 502
     assert len(requests) == 1
+
+
+@pytest.mark.parametrize('keyword,action', [('위치조정', '기기위치조정'), ('전원연결', '전원연결')])
+@pytest.mark.parametrize('order', list(permutations(range(3))))
+@pytest.mark.parametrize('selection', ['auto', 'device_adjustment_power'])
+@pytest.mark.parametrize('structured', [False, True])
+def test_registered_underscore_name_reaches_device_workflow(monkeypatch, keyword, action, order, selection, structured):
+    fields = [keyword, '넥스터_이은경', '헌릉로8길58']
+    message = '/'.join(fields[index] for index in order)
+    result = payload()
+    for key in ('roster', 'parsed', 'member_note', 'as_lookup'):
+        result[key].update(name='넥스터_이은경', address='헌릉로8길58')
+    result['parsed']['lookup_name'] = '넥스터_이은경'
+    result['member_note']['note'] = '2026-11-04 [현지관리자 방문] ' + action
+    client, requests = setup(monkeypatch, result=result)
+    response = client.post(PATH, json={
+        'workflow_id': selection, 'action': action, 'message': message,
+        **({'name': '넥스터_이은경', 'address': '헌릉로8길58', 'action_text': keyword} if structured else {}),
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['status'] == 'completed'
+    assert response.json()['verified'] is True
+    assert response.json()['response'].startswith('[자동 확인]\n넥스터_이은경님 ')
+    assert len(requests) == 1
+    assert json.loads(requests[0].content)['input']['message'] == f'헌릉로8길58 넥스터_이은경님 {action} 신호확인요.'
+
+
+@pytest.mark.parametrize('name', ['_이은경', '넥스터_', '넥스터__이은경', '넥스터_이은경;취소', '넥스터_이은경/김영희'])
+def test_malformed_underscore_name_still_does_not_dispatch(name):
+    assert route_message(f'위치조정/{name}/헌릉로8길58') is None
+
+
+@pytest.mark.parametrize('change', [
+    {'name': '이은경'},
+    {'name': '김영희'},
+    {'address': '헌릉로8길59'},
+    {'action': '전원연결'},
+    {'message': '위치조정/넥스터_이은경/헌릉로8길58 취소'},
+    {'message': '위치조정 취소/넥스터_이은경/헌릉로8길58'},
+])
+def test_structured_fields_cannot_change_source_identity_or_omit_cancellation(monkeypatch, change):
+    client, requests = setup(monkeypatch)
+    body = {
+        'workflow_id': 'device_adjustment_power', 'action': '기기위치조정',
+        'name': '넥스터_이은경', 'address': '헌릉로8길58', 'action_text': '위치조정',
+        'message': '위치조정/넥스터_이은경/헌릉로8길58',
+    }
+    response = client.post(PATH, json={**body, **change}, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['status'] == 'needs_confirmation'
+    assert not requests
+
+
+@pytest.mark.parametrize('change', [
+    {'name': None}, {'address': None}, {'action': None}, {'workflow_id': 'information_update'},
+])
+def test_partial_or_wrong_structured_contract_is_rejected(monkeypatch, change):
+    client, requests = setup(monkeypatch)
+    body = {
+        'workflow_id': 'device_adjustment_power', 'action': '기기위치조정',
+        'name': '넥스터_이은경', 'address': '헌릉로8길58', 'action_text': '위치조정',
+        'message': '위치조정/넥스터_이은경/헌릉로8길58',
+    }
+    assert client.post(PATH, json={**body, **change}, headers=authenticated_headers()).status_code == 422
+    assert not requests
+
+
+@pytest.mark.parametrize('message,evidence,action', [
+    ('헌릉로8길58 넥스터_이은경님 기기를 다른 곳으로 옮겼습니다', '기기를 다른 곳으로 옮겼습니다', '기기위치조정'),
+    ('넥스터_이은경님 / 헌릉로8길58 / 전기를 다시 꽂았습니다', '전기를 다시 꽂았습니다', '전원연결'),
+])
+def test_semantic_structured_request_needs_no_exact_keyword_or_field_order(monkeypatch, message, evidence, action):
+    result = payload()
+    for key in ('roster', 'parsed', 'member_note', 'as_lookup'):
+        result[key].update(name='넥스터_이은경', address='헌릉로8길58')
+    result['parsed']['lookup_name'] = '넥스터_이은경'
+    result['member_note']['note'] = '2026-11-04 [현지관리자 방문] ' + action
+    client, requests = setup(monkeypatch, result=result)
+    response = client.post(PATH, json={
+        'workflow_id': 'device_adjustment_power', 'action': action, 'action_text': evidence,
+        'name': '넥스터_이은경', 'address': '헌릉로8길58', 'message': message,
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['status'] == 'completed'
+    assert len(requests) == 1
+    assert json.loads(requests[0].content)['input']['message'] == f'헌릉로8길58 넥스터_이은경님 {action} 신호확인요.'

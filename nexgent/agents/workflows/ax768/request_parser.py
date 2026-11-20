@@ -48,7 +48,8 @@ def parse_request(message):
             )
         name = match.group(1)
     name = compact_name(name.strip(" ,&"))
-    if not re.fullmatch(r"[가-힣]{2,10}", name):
+    # Keep registered prefixes such as 넥스터_ intact for exact name/address lookup.
+    if not re.fullmatch(r"[가-힣]{2,10}(?:_[가-힣]{2,10})?", name):
         raise ValueError("이름을 확인할 수 없습니다. 주소 뒤에 이름을 입력해 주세요.")
     if not address and "사진" in text:
         raise ValueError("사진에 있는 주소를 텍스트로 함께 입력해 주세요.")

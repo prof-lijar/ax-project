@@ -153,18 +153,18 @@ class MainWindow(QMainWindow):
         columns.addLayout(actions, 4)
         auto_card, auto_layout = card(
             "Run your agent",
-            "Act only on incoming messages containing 위치조정 or 전원연결.",
+            "Interpret incoming device-position or power-connection requests.",
         )
         self.auto_catch_button = self.command_button("Run Agent (auto)", "auto_catch", "primary")
         auto_layout.addWidget(self.auto_catch_button)
         auto_layout.addWidget(
             label(
-                "Watch for incoming 위치조정 or 전원연결 requests until stopped. "
+                "Understand incoming 위치조정 or 전원연결 requests, including equivalent wording. "
                 "Keep the latest messages visible."
             )
         )
         self.auto_catch_button.setToolTip(
-            "Watch incoming 위치조정 or 전원연결 requests without sending a startup message"
+            "Analyze incoming device-action requests without sending a startup message"
         )
         self.auto_status = label("Ready to watch.")
         self.auto_status.setAccessibleName("Run Agent status")
@@ -391,7 +391,7 @@ class MainWindow(QMainWindow):
         )
         self.auto_catch_button.setText("Watching…" if auto_running else "Run Agent (auto)")
         self.auto_status.setText(
-            "Watching for new messages containing 위치조정 or 전원연결 (incoming only). Stop ends monitoring."
+            "Watching for new messages about device position or power connection (incoming only). Stop ends monitoring."
             if auto_running
             else "Paused. Check the status above."
             if state == State.PAUSED.value

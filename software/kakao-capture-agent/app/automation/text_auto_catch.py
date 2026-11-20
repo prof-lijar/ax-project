@@ -218,7 +218,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             self.job = self.outcome = None
             classification = {
                 "outgoing": "outgoing/AI text",
-                "incoming": "incoming text without an enabled action keyword",
+                "incoming": "incoming text without a clear supported action",
             }.get(kind, "UI/no new incoming text")
             self.progress(f"Capture classified as {classification}; ignored; watching continues")
             return

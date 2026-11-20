@@ -1,5 +1,6 @@
 """Workflow-neutral desktop transport; AX768 owns dispatch and reply templates."""
 
+import json
 import re
 
 from app.api.operations_client import (
@@ -10,15 +11,9 @@ from app.api.operations_client import (
     credential_destination,
     parse_result,
 )
+from app.api.workflow_requests import parse_analysis
 from app.models import AgentError
 from app.utils.windows import get_token
-
-ACTION_KEYWORDS = {"위치조정": "기기위치조정", "전원연결": "전원연결"}
-
-
-def message_action(text):
-    actions = {action for keyword, action in ACTION_KEYWORDS.items() if keyword in text}
-    return next(iter(actions)) if len(actions) == 1 else None
 
 
 def parse_unified_result(body):
@@ -86,16 +81,20 @@ def parse_unified_result(body):
 
 class UnifiedOperationsClient(OperationsClient):
     endpoint = "/api/ax768/runs"
-    # Only 위치조정 and 전원연결 are enabled in the desktop watcher. Do not let a keyword
-    # mentioned inside another workflow's request select that other handler.
+    # The model may choose only the two actions within this device workflow.
     workflow_id = WORKFLOW_ID
     parse_response = staticmethod(parse_unified_result)
 
-    def request_payload(self, message):
-        action = message_action(message)
-        if action is None:
-            raise AgentError("A single enabled action keyword is required; no workflow executed")
-        return {**super().request_payload(message), "action": action}
+    def request_payload(self, request):
+        if not isinstance(request, dict) or set(request) != {"message", "action", "action_text", "name", "address"}:
+            raise AgentError("A grounded structured action is required; no workflow executed")
+        source = request["message"]
+        if not isinstance(source, str) or not source.strip():
+            raise AgentError("Original request text is required; no workflow executed")
+        analysis = parse_analysis(json.dumps({k: v for k, v in request.items() if k != "message"}), source)
+        if analysis is None:
+            raise AgentError("An actionable request is required; no workflow executed")
+        return {"workflow_id": self.workflow_id, "confirmed_name": None, **analysis}
 
     async def preflight(self, client):
         # The dispatcher checks the selected graph's version and write capabilities.

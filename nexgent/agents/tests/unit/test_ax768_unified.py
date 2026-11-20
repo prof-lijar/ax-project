@@ -626,3 +626,20 @@ def test_dispatcher_canonical_message_with_latin_road_name():
     assert parse_request("광명시 OO동 OO로 56 이영희님 기기위치조정 신호확인요.") == {
         "name": "이영희", "address": "OO로 56", "mode": "name_address"
     }
+
+
+@pytest.mark.parametrize('message', [
+    '헌릉로8길58 넥스터_이은경님 기기위치조정 신호확인요.',
+    '헌릉로8길58 넥스터_이은경님 전원연결 신호확인요.',
+    '헌릉로8길58,넥스터_이은경,기기위치조정 수신확인요~',
+])
+def test_registered_underscore_name_is_preserved(message):
+    assert parse_request(message) == {
+        'name': '넥스터_이은경', 'address': '헌릉로 8길 58', 'mode': 'name_address',
+    }
+
+
+@pytest.mark.parametrize('name', ['_이은경', '넥스터_', '넥스터__이은경', '넥스터_이은경;취소'])
+def test_malformed_underscore_names_remain_invalid(name):
+    with pytest.raises(ValueError):
+        parse_request(f'헌릉로8길58 {name}님 기기위치조정 신호확인요.')

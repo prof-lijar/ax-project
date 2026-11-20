@@ -29,6 +29,9 @@ class DispatchInput(BaseModel):
     workflow_id: Literal["auto", "device_adjustment_power", "information_update"] = "auto"
     confirmed_name: str | None = Field(default=None, min_length=2, max_length=100)
     action: Literal["기기위치조정", "전원연결"] | None = None
+    name: str | None = Field(default=None, min_length=2, max_length=100)
+    address: str | None = Field(default=None, min_length=1, max_length=500)
+    action_text: str | None = Field(default=None, min_length=1, max_length=500)
 
 
 def compact(value):
@@ -50,7 +53,9 @@ def route_message(message):
     if len(fields) != 3:
         return None
     remaining = [field for i, field in enumerate(fields) if i != index]
-    names = [field for field in remaining if re.fullmatch(r"[가-힣]{2,10}(?:님)?", compact(field))]
+    # Registered names may include an underscore-separated label. Preserve it
+    # through lookup; stripping it would silently select a different identity.
+    names = [field for field in remaining if re.fullmatch(r"[가-힣]{2,10}(?:_[가-힣]{2,10})?(?:님)?", compact(field))]
     if len(names) != 1:
         return None
     name = compact(names[0]).removesuffix("님")
@@ -100,6 +105,32 @@ async def run(body: ax768.RunInput | DispatchInput):
         return await ax768.run(body)
     if not body.message.strip():
         raise HTTPException(422, detail="Enter a request.")
+    if body.name is not None or body.address is not None:
+        if (body.name is None or body.address is None or body.action is None
+                or body.workflow_id not in {"auto", "device_adjustment_power"}):
+            raise HTTPException(422, detail="Provide the device action, full name and address together.")
+        # The capture agent supplies analyzed fields. Validate those fields as a
+        # complete request, and ground them in the unchanged source message.
+        selected = route_message(f"{body.action}/{body.name}/{body.address}")
+        def is_grounded(value):
+            token = compact(value)
+            pattern = (r"(?<![가-힣A-Za-z0-9_])" + r"\s*".join(map(re.escape, token))
+                       + r"(?:님)?(?:은|는|이|가|을|를|의|에서|에)?(?=$|[^가-힣A-Za-z0-9_])")
+            return bool(token and re.search(pattern, unicodedata.normalize("NFKC", body.message)))
+
+        # Intent was selected by the capture agent. Validate literal identity and
+        # action evidence, without requiring exact keywords or slash field order.
+        known_action = ACTIONS["device_adjustment_power"].get(compact(body.action_text or ""))
+        grounded = (is_grounded(body.name) and is_grounded(body.address)
+                    and body.action_text is not None
+                    and body.action_text in body.message
+                    and known_action in {None, body.action}
+                    and not re.search(r"취소|하지\s*마|아닙니다|하지\s*않", body.message))
+        if selected is None or not grounded:
+            return {"api_version": "1", "verified": False, "workflow_id": None, "status": "needs_confirmation", "response": CLARIFY}
+        if body.workflow_id == "auto" and body.confirmed_name is not None:
+            raise HTTPException(422, detail="Select a workflow before confirming a name.")
+        body = body.model_copy(update={"workflow_id": selected[0], "message": selected[1]})
     if body.workflow_id == "auto":
         if body.confirmed_name is not None:
             raise HTTPException(422, detail="Select a workflow before confirming a name.")

@@ -1,5 +1,7 @@
 # AX Project Documentation
 
+- [AX768 agent-interpreted structured requests](../agents/docs/ax768-structured-capture-requests.md): semantic action decisions, full registered names, grounded API fields, tests and activation.
+
 - [VoyagerI incoming action keyword filter](08-implementation/voyageri-incoming-action-keywords.md): incoming-only 위치조정/전원연결 dispatch, explicit actions, server reply templates, saved queue filtering, explicit device workflow routing, tests and rollout.
 
 - [AX768 unified KakaoTalk API](../agents/docs/ax768-unified-kakaotalk-api.md): action dispatch, server-owned replies, auto-run capture integration, validation and activation.

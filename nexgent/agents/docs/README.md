@@ -1,5 +1,7 @@
 # Documentation map
 
+- [AX768 agent-interpreted structured requests](ax768-structured-capture-requests.md): semantic action decisions, full registered names, grounded API fields, tests and activation.
+
 - [AX768 unified KakaoTalk API](ax768-unified-kakaotalk-api.md): action dispatch, server-owned replies, auto-run capture integration, validation and activation.
 
 - [Device workflow first-line notes and address matching](device-workflow-first-line-notes-and-address-matching.md): 일반 사항 newest-first history, known region-prefix equivalence, receipt validation, tests and activation.

@@ -9,8 +9,11 @@ import pytest
 
 from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage
 from app.api.operations_client import OperationsResult, OperationsSettings, credential_destination
-from app.api.unified_operations import UnifiedOperationsClient, parse_unified_result
-from app.api.workflow_requests import parse_sources
+from app.api.unified_operations import (
+    UnifiedOperationsClient,
+    parse_unified_result,
+)
+from app.api.workflow_requests import analyze_request, parse_analysis, parse_sources
 from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
 from app.models import AgentError, Cancelled
 from app.storage.image_reply_queue import ImageReplyQueue
@@ -22,14 +25,39 @@ MESSAGE = "위치조정/이영희/광명시 OO동 OO로 56"
 REPLY = "[자동 확인]\n이영희님 기기 위치변경 후 기기신호 확인 완료입니다.\n내용 기재해두었습니다.\n감사합니다. :)"
 POWER_MESSAGE = "전원연결/박철수/울진군 OO면 OO길 78 "
 POWER_REPLY = "[자동 확인]\n박철수님 기기 전원연결 후 기기신호 확인 완료입니다.\n내용 기재해두었습니다.\n감사합니다. :)"
+NATURAL_MESSAGE = "헌릉로8길58 넥스터_이은경님 기기를 다른 곳으로 옮겼습니다"
 
 
-@pytest.mark.parametrize("message,action,reply", [
-    (MESSAGE, "기기위치조정", REPLY),
-    (POWER_MESSAGE, "전원연결", POWER_REPLY),
+def model_request(message):
+    # Canned model decisions for processor/queue tests; no live model is invoked.
+    if message == NATURAL_MESSAGE:
+        return {"message": message, "action": "기기위치조정",
+                "action_text": "기기를 다른 곳으로 옮겼습니다", "name": "넥스터_이은경",
+                "address": "헌릉로8길58"}
+    if ("위치조정" in message) == ("전원연결" in message):
+        return None
+    if "전원연결" in message:
+        return {"message": message, "action": "전원연결", "action_text": "전원연결",
+                "name": "박철수" if "박철수" in message else "이영희",
+                "address": "울진군 OO면 OO길 78" if "박철수" in message else "광명시 OO동 OO로 56"}
+    return {"message": message, "action": "기기위치조정", "action_text": "위치조정",
+            "name": "이영희", "address": "광명시 OO동 OO로 56"}
+
+
+@pytest.fixture(autouse=True)
+def mock_model_decisions(monkeypatch):
+    monkeypatch.setattr("app.automation.unified_workflow.analyze_request", lambda llm, source, cancel: model_request(source))
+
+
+@pytest.mark.parametrize("message,action,name,address,reply", [
+    (MESSAGE, "기기위치조정", "이영희", "광명시 OO동 OO로 56", REPLY),
+    (POWER_MESSAGE, "전원연결", "박철수", "울진군 OO면 OO길 78", POWER_REPLY),
+    ("위치조정/넥스터_이은경/헌릉로8길58", "기기위치조정", "넥스터_이은경", "헌릉로8길58", REPLY),
 ])
-def test_unified_transport(message, action, reply):
+def test_unified_transport(message, action, name, address, reply):
     calls = []
+    decision = {"message": message, "action": action, "name": name, "address": address,
+                "action_text": "전원연결" if action == "전원연결" else "위치조정"}
 
     def server(request):
         calls.append(request.url.path)
@@ -47,6 +75,9 @@ def test_unified_transport(message, action, reply):
             "message": message,
             "confirmed_name": None,
             "action": action,
+            "name": name,
+            "address": address,
+            "action_text": decision["action_text"],
         }
         return httpx.Response(
             200, json={**receipt(), "api_version": "1", "verified": True, "response": reply}
@@ -55,8 +86,56 @@ def test_unified_transport(message, action, reply):
     client = UnifiedOperationsClient(
         OperationsSettings("https://nexgent.test", "admin"), "secret", httpx.MockTransport(server)
     )
-    assert client.run(message, threading.Event()).response == reply
+    assert client.run(decision, threading.Event()).response == reply
     assert calls == ["/auth/login", "/api/me", "/api/ax768/runs"]
+
+
+@pytest.mark.parametrize("source,evidence,action", [
+    ("헌릉로8길58 넥스터_이은경님 기기를 다른 곳으로 옮겼습니다", "기기를 다른 곳으로 옮겼습니다", "기기위치조정"),
+    ("넥스터_이은경님 / 헌릉로8길58 / 전기를 다시 꽂았습니다", "전기를 다시 꽂았습니다", "전원연결"),
+])
+def test_model_semantic_decision_becomes_grounded_args(source, evidence, action):
+    fields = {"action": action, "action_text": evidence, "name": "넥스터_이은경", "address": "헌릉로8길58"}
+    assert parse_analysis(json.dumps(fields), source) == {"message": source, **fields}
+    for change in ({"name": "이은경"}, {"name": "넥스터_이은"}, {"address": "헌릉로8길5"},
+                   {"action_text": "없는 말"}, {"action": "information_update"}):
+        with pytest.raises(IncomingAnalysisError):
+            parse_analysis(json.dumps({**fields, **change}), source)
+    assert parse_analysis(json.dumps(dict.fromkeys(fields)), source) is None
+
+
+def test_analyze_request_calls_model_for_natural_wording():
+    fields = {k: v for k, v in model_request(NATURAL_MESSAGE).items() if k != "message"}
+    calls = []
+
+    async def request(messages, **kwargs):
+        calls.append(messages)
+        assert kwargs["structured"] is True
+        assert json.loads(messages[1]["content"]) == {"message": NATURAL_MESSAGE}
+        return json.dumps(fields)
+
+    async def run_operation(operation, cancel):
+        return await operation()
+
+    llm = SimpleNamespace(request=request, run_operation=run_operation)
+    assert analyze_request(llm, NATURAL_MESSAGE, threading.Event()) == {
+        "message": NATURAL_MESSAGE, **fields,
+    }
+    assert len(calls) == 1
+
+
+def test_invalid_model_analysis_never_claims_or_calls_workflow(queue, monkeypatch):
+    ImageReplyQueue(queue)
+    journal = OperationJournal(queue)
+    operations = SimpleNamespace(run=Mock())
+    monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [MESSAGE])
+    invalid = Mock(side_effect=IncomingAnalysisError("invalid fields"))
+    monkeypatch.setattr("app.automation.unified_workflow.analyze_request", invalid)
+    processor = UnifiedProcessor(journal, operations)
+    with pytest.raises(IncomingAnalysisError):
+        processor.answer(None, IncomingMessage("incoming", MESSAGE), "job", threading.Event())
+    operations.run.assert_not_called()
+    assert journal.get("job-0:api") is None
 
 
 @pytest.mark.parametrize("path", ["", "/agents/ax768", "/api/ax768/runs"])
@@ -100,7 +179,7 @@ def test_exact_reply_once(queue, monkeypatch, status):
             == REPLY
         )
     operations.run.assert_called_once()
-    assert operations.run.call_args.args[0] == MESSAGE
+    assert operations.run.call_args.args[0]["message"] == MESSAGE
     assert UnifiedWorkflow.format_reply(None, REPLY) == REPLY
 
 
@@ -108,7 +187,7 @@ def test_exact_reply_once(queue, monkeypatch, status):
     ("incoming", "안녕하세요"),
     ("incoming", "이영희/광명시 OO동 OO로 56"),
     ("incoming", "정보수정/이영희/전화번호 변경"),
-    ("incoming", "위치변경/이영희/광명시 OO동 OO로 56"),
+    ("incoming", "사진첨부/이영희/광명시 OO동 OO로 56"),
     ("incoming", "[자동 확인]\n위치조정 완료"),
     ("outgoing", MESSAGE),
     ("outgoing", POWER_MESSAGE),
@@ -116,14 +195,17 @@ def test_exact_reply_once(queue, monkeypatch, status):
     ("none", MESSAGE),
     ("uncertain", MESSAGE),
 ])
-def test_unmatched_or_nonincoming_never_extracts_or_calls_api(queue, monkeypatch, kind, text):
+def test_unmatched_or_nonincoming_never_calls_api(queue, monkeypatch, kind, text):
     ImageReplyQueue(queue)
     operations = SimpleNamespace(run=Mock())
-    extract = Mock(side_effect=AssertionError("Ignored messages must not be split"))
+    extract = Mock(return_value=[text])
     monkeypatch.setattr("app.automation.unified_workflow.extract_sources", extract)
     processor = UnifiedProcessor(OperationJournal(queue), operations)
     assert processor.answer(None, IncomingMessage(kind, text), "ignored", threading.Event()) is None
-    extract.assert_not_called()
+    if kind == "incoming" and not text.startswith("[자동 확인]"):
+        extract.assert_called_once()
+    else:
+        extract.assert_not_called()
     operations.run.assert_not_called()
 
 
@@ -138,7 +220,7 @@ def test_keyword_in_any_field_order(queue, monkeypatch, fields):
     monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [message])
     processor = UnifiedProcessor(OperationJournal(queue), operations)
     assert processor.answer(None, IncomingMessage("incoming", message), "job", threading.Event()) == REPLY
-    assert operations.run.call_args.args[0] == message
+    assert operations.run.call_args.args[0]["message"] == message
 
 
 @pytest.mark.parametrize("resume", [False, True])
@@ -165,7 +247,7 @@ def test_mixed_batch_filters_each_message_and_saved_replies(queue, monkeypatch, 
         operations.run.assert_not_called()
     else:
         operations.run.assert_called_once()
-        assert operations.run.call_args.args[0] == MESSAGE
+        assert operations.run.call_args.args[0]["message"] == MESSAGE
     assert journal.get("job-0:api") is None
     assert journal.get("job-2:api") is None
 
@@ -198,7 +280,7 @@ def test_mixed_location_power_and_chatter_preserves_action_and_reply_order(queue
         assert processor.answer(
             None, IncomingMessage("incoming", "\n".join(sources)), "job", threading.Event()
         ) == REPLY + "\n\n" + POWER_REPLY
-    assert [call.args[0] for call in operations.run.call_args_list] == [MESSAGE, POWER_MESSAGE]
+    assert [call.args[0]["message"] for call in operations.run.call_args_list] == [MESSAGE, POWER_MESSAGE]
 
 
 def test_two_actions_in_one_message_never_guesses(queue, monkeypatch):
@@ -212,13 +294,13 @@ def test_two_actions_in_one_message_never_guesses(queue, monkeypatch):
 
 
 @pytest.mark.parametrize("message", ["안녕하세요", "위치조정 및 전원연결/박철수/OO길78"])
-def test_transport_rejects_missing_or_ambiguous_action_before_network(message):
+def test_transport_rejects_unstructured_requests_before_network(message):
     calls = []
     client = UnifiedOperationsClient(
         OperationsSettings("https://nexgent.test", "admin"), "secret",
         httpx.MockTransport(lambda request: calls.append(request)),
     )
-    with pytest.raises(AgentError, match="single enabled action"):
+    with pytest.raises(AgentError, match="structured action"):
         client.run(message, threading.Event())
     assert not calls
 
@@ -281,15 +363,17 @@ def test_default_worker(config, queue, region):
     ("incoming", MESSAGE, True),
     ("incoming", "기기" + MESSAGE, True),
     ("incoming", POWER_MESSAGE, True),
+    ("incoming", NATURAL_MESSAGE, True),
     ("incoming", "안녕하세요", False),
     ("incoming", "정보수정/이영희/전화번호 변경", False),
     ("outgoing", MESSAGE, False),
     ("outgoing", POWER_MESSAGE, False),
     ("incoming", "[자동 확인]\n" + MESSAGE, False),
 ])
-def test_screenshot_to_api_reply_keeps_watching(watching, kind, text, should_act):  # noqa: F811
+def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, text, should_act):  # noqa: F811
     from tests.test_queued_visual_catch import changed, finish
 
+    monkeypatch.setattr("app.automation.unified_workflow.analyze_request", analyze_request)
     w = watching
     w.service.command("stop")
     w.service.dispatch(w.service.commands.get_nowait())
@@ -310,9 +394,13 @@ def test_screenshot_to_api_reply_keeps_watching(watching, kind, text, should_act
     w.llm.classify = lambda *a, **kw: IncomingMessage(kind, text)
 
     async def request(messages, **kwargs):
-        assert should_act
-        assert json.loads(messages[1]["content"])["text"] == text
-        return json.dumps({"requests": [text]})
+        data = json.loads(messages[1]["content"])
+        if "text" in data:
+            assert data["text"] == text
+            return json.dumps({"requests": [text]})
+        assert data["message"] == text
+        result = model_request(text) if should_act else None
+        return json.dumps({k: result[k] if result else None for k in ("action", "action_text", "name", "address")})
 
     async def run_operation(operation, cancel):
         return await operation()
@@ -343,7 +431,7 @@ def test_screenshot_to_api_reply_keeps_watching(watching, kind, text, should_act
         assert w.sent == [reply]
         unified.sender.send.assert_called_once_with(reply, require_empty=False)
         operations.run.assert_called_once()
-        assert operations.run.call_args.args[0] == text
+        assert operations.run.call_args.args[0]["message"] == text
     else:
         assert w.sent == []
         unified.sender.send.assert_not_called()

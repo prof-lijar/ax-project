@@ -1,5 +1,17 @@
 # AX Agents Architecture
 
+## Structured capture decisions and registered names (2026-11-20)
+
+VoyagerI now asks its configured model to interpret incoming device-action intent,
+then sends grounded action/name/address/evidence fields through the unified API.
+The dispatcher validates source identity and creates canonical graph input; it does
+not require exact source action words or slash order for structured calls. Both
+parser boundaries preserve underscore-bearing registered names. Model decisions
+are journaled separately from API receipts; writes and success still require the
+existing graph/receipt checks. No new process, model selection, SMS step or graph
+version is introduced. See [contract, validation and activation](ax768-structured-capture-requests.md).
+
+
 ## AX768 unified capture/workbench entrypoint (2026-11-20)
 
 `POST /api/ax768/runs` now composes the existing test-case, device and information
