@@ -30,6 +30,9 @@ NATURAL_MESSAGE = "헌릉로8길58 넥스터_이은경님 기기를 다른 곳�
 
 def model_request(message):
     # Canned model decisions for processor/queue tests; no live model is invoked.
+    if message.strip() == "위치조정/이은경/헌릉로8길58":
+        return {"message": message, "action": "기기위치조정", "action_text": "위치조정",
+                "name": "이은경", "address": "헌릉로8길58"}
     if message == NATURAL_MESSAGE:
         return {"message": message, "action": "기기위치조정",
                 "action_text": "기기를 다른 곳으로 옮겼습니다", "name": "넥스터_이은경",
@@ -360,6 +363,7 @@ def test_default_worker(config, queue, region):
 
 
 @pytest.mark.parametrize("kind,text,should_act", [
+    ("incoming", " 위치조정/이은경/헌릉로8길58", True),
     ("incoming", MESSAGE, True),
     ("incoming", "기기" + MESSAGE, True),
     ("incoming", POWER_MESSAGE, True),
@@ -370,7 +374,8 @@ def test_default_worker(config, queue, region):
     ("outgoing", POWER_MESSAGE, False),
     ("incoming", "[자동 확인]\n" + MESSAGE, False),
 ])
-def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, text, should_act):  # noqa: F811
+@pytest.mark.parametrize("startup", [False, True])
+def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, text, should_act, startup):  # noqa: F811
     from tests.test_queued_visual_catch import changed, finish
 
     monkeypatch.setattr("app.automation.unified_workflow.analyze_request", analyze_request)
@@ -392,6 +397,7 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
     operations = SimpleNamespace(run=Mock(return_value=OperationsResult("completed", reply, True)))
     unified.processor_factory = lambda: UnifiedProcessor(unified.journal, operations)
     w.llm.classify = lambda *a, **kw: IncomingMessage(kind, text)
+    w.llm.classify_latest = Mock(return_value=IncomingMessage(kind, text) if startup else IncomingMessage("none"))
 
     async def request(messages, **kwargs):
         data = json.loads(messages[1]["content"])
@@ -423,8 +429,12 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
     w.service.dispatch("auto_catch")
     unified.sender.send.assert_not_called()
     operations.run.assert_not_called()
-    changed(w, 30)
+    # Startup analysis requires no screen change. Later captures still use pairs.
+    w.service.poll_auto_catch()
     finish(w)
+    if not startup:
+        changed(w, 30)
+        finish(w)
     assert unified.active
     assert unified.jobs.count(unified.chat_key) == 0
     if should_act:
@@ -436,6 +446,50 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
         assert w.sent == []
         unified.sender.send.assert_not_called()
         operations.run.assert_not_called()
+    w.llm.classify_latest.assert_called_once()
+
+    # Rearming the identical screen does not analyze or reply again.
+    w.service.command("stop")
+    w.service.dispatch(w.service.commands.get_nowait())
+    w.service.dispatch("auto_catch")
+    w.service.poll_auto_catch()
+    finish(w)
+    assert len(w.sent) == int(should_act)
+
+
+@pytest.mark.parametrize("prior_status", ["sent", "submitted", "review", "pending"])
+def test_startup_skips_existing_api_attempt_even_after_cosmetic_changes(queue, monkeypatch, prior_status):
+    jobs = ImageReplyQueue(queue)
+    journal = OperationJournal(queue)
+    old, _ = jobs.enqueue_pair("chat", b"before", b"after")
+    journal.claim(old + "-0:analysis", old, {"request": model_request(MESSAGE)})
+    journal.claim(old + "-0:api", old, {"status": "uncertain", "response": REPLY})
+    jobs.finish(old, prior_status)
+    new, _ = jobs.enqueue_pair("chat", b"cosmetic change", b"cosmetic change", mode="latest")
+    operations = SimpleNamespace(run=Mock(return_value=OperationsResult("completed", REPLY, True)))
+    logs = []
+    processor = UnifiedProcessor(journal, operations, logs.append)
+    monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [MESSAGE])
+    incoming = IncomingMessage("incoming", MESSAGE)
+    assert processor.answer(None, incoming, new, threading.Event(), startup_chat_key="chat") is None
+    operations.run.assert_not_called()
+    assert "already attempted" in logs[-1]
+    assert not journal.previously_attempted("different-chat", model_request(MESSAGE), new)
+    # A separately received NEW message can intentionally repeat the same request.
+    assert processor.answer(None, incoming, "new-event", threading.Event()) == REPLY
+    operations.run.assert_called_once()
+
+
+def test_startup_snapshot_mode_and_pending_identity_survive_restart(queue):
+    jobs = ImageReplyQueue(queue)
+    job_id, _ = jobs.enqueue_pair("chat", b"snapshot", b"snapshot", mode="latest")
+    jobs.claim("chat")
+    reopened = ImageReplyQueue(queue)
+    assert reopened.enqueue_pair("chat", b"snapshot", b"snapshot", mode="latest")[0] == job_id
+    job = reopened.claim("chat")
+    assert job["job_id"] == job_id
+    assert json.loads(job["text"])["mode"] == "latest"
+    assert reopened.load_images(job) == [b"snapshot", b"snapshot"]
 
 
 def test_future_workflow_uses_common_verified_envelope():

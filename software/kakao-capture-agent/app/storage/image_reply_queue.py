@@ -38,10 +38,23 @@ class ImageReplyQueue(TextQueue):
         except (ValueError, KeyError, TypeError):
             raise AgentError("Queued screenshot metadata is invalid; review required") from None
 
-    def enqueue_pair(self, chat_key, before, after):
+    def enqueue_pair(self, chat_key, before, after, *, mode="changes"):
+        if mode not in ("changes", "latest"):
+            raise ValueError("Unsupported screenshot analysis mode")
         hashes = [hashlib.sha256(png).hexdigest() for png in (before, after)]
+        payload = dict(zip(("before", "after"), hashes))
+        if mode == "latest":
+            payload["mode"] = mode
+        text = json.dumps(payload)
         with self.storage.lock:
             with self.storage.connect() as db:
+                if mode == "latest":
+                    previous = db.execute(
+                        f"SELECT job_id FROM {self.table} WHERE chat_key=? AND text=? ORDER BY id DESC LIMIT 1",
+                        (chat_key, text),
+                    ).fetchone()
+                    if previous:
+                        return previous["job_id"], self.images / (hashes[1] + ".png")
                 count = db.execute(
                     f"SELECT count(*) FROM {self.table} WHERE status IN ({self.status_placeholders})",
                     self.active_statuses,
@@ -78,7 +91,7 @@ class ImageReplyQueue(TextQueue):
                     temporary.unlink(missing_ok=True)
             # Commit the pair before advancing the capture baseline. Unknown commit
             # outcomes leave PNGs available for review rather than deleting them.
-            job_id = super().enqueue(chat_key, json.dumps(dict(zip(("before", "after"), hashes))))
+            job_id = super().enqueue(chat_key, text)
             return job_id, self.images / (hashes[1] + ".png")
 
     def load_images(self, job):

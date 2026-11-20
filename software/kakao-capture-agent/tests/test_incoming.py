@@ -35,6 +35,25 @@ def completion(body):
     )
 
 
+@pytest.mark.parametrize("kind,is_ai,expected", [
+    ("incoming", False, "incoming"), ("outgoing", False, "outgoing"),
+    ("incoming", True, "outgoing"), ("uncertain", False, "uncertain"),
+])
+def test_startup_uses_one_snapshot_and_validates_direction(frame, kind, is_ai, expected):
+    png = encode_png(frame)
+
+    def api(request):
+        data = json.loads(request.content)
+        images = [part["image_url"]["url"] for part in data["messages"][1]["content"]
+                  if part["type"] == "image_url"]
+        assert [base64.b64decode(url.split(",")[1]) for url in images] == [png]
+        assert data["response_format"] == {"type": "json_object"}
+        return completion(dict(kind=kind, text="위치조정/이은경/헌릉로8길58", sender="", is_ai=is_ai))
+
+    llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
+    assert llm.classify_latest(png, threading.Event()).kind == expected
+
+
 @pytest.mark.parametrize("batch", [False, True])
 def test_two_images_then_one_prefixed_answer(frame, batch):
     before, after = encode_png(frame), encode_png(255 - frame)

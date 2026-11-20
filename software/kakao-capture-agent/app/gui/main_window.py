@@ -391,7 +391,7 @@ class MainWindow(QMainWindow):
         )
         self.auto_catch_button.setText("Watching…" if auto_running else "Run Agent (auto)")
         self.auto_status.setText(
-            "Watching for new messages about device position or power connection (incoming only). Stop ends monitoring."
+            "Checking the latest visible message, then watching for new device position or power requests (incoming only). Stop ends monitoring."
             if auto_running
             else "Paused. Check the status above."
             if state == State.PAUSED.value
@@ -747,7 +747,7 @@ class MainWindow(QMainWindow):
             if command == "bizgo_test"
             else "Starting 기기위치조정/전원연결: incoming request → 운영시트에이젠트 → KakaoTalk reply. No SMS. Ctrl+Shift+F12 cancels"
             if command == "device_workflow"
-            else "Starting Run Agent (auto): watch display changes, capture, extract requests, run AX768 workflows, and send API replies in queue order. Ctrl+Shift+F12 cancels"
+            else "Starting Run Agent (auto): check the latest visible message now, then watch display changes, extract requests, run AX768 workflows, and send API replies in queue order. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"
             else "Arming Workflow 2: wait for a new incoming message, reply once with [AI], then stop. Ctrl+Shift+F12 cancels"
             if command == "incoming_test"

@@ -16,6 +16,12 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Latest visible startup request — 2026-11-20
+
+Run Agent queues a single startup snapshot using a persisted `latest` analysis mode, then continues collecting before/after pairs. Regression tests cover immediate processing without a screen change (including ` 위치조정/이은경/헌릉로8길58` and power requests), outgoing/automated/unrelated exclusion, one-image model transport, Stop/restart recovery, and duplicate suppression against retained API claims in the same chat. New incoming events may repeat the same text. The structured workflow/API and SMS exclusion tests remain in place.
+
+These tests use mocked model responses and synthetic images. For on-device acceptance, keep a designated test request as the latest incoming bubble before clicking Run Agent: expect a startup-capture log, extracted text, AX768 processing, and the exact API response. Also check a latest outgoing bubble with an older incoming action above it, a latest non-action message, restarting on an already handled request, and receiving a new request during startup analysis. Those cases must respectively ignore the old action, ignore non-action text, suppress a duplicate attempt, and process the new request in queue order. No introductory message or Bizgo SMS should be sent. Keep the chat at the bottom; this mode does not scroll automatically.
+
 ### Desktop refresh and device confirmation template — 2026-11-20
 
 Portable suite: **408 passed, 24 Windows-only tests skipped in 13.54 seconds**. Ruff lint, changed-file formatting, and diff checks passed. Offscreen visual inspection covered the desktop at 1080 × 860 and 820 × 640 and Settings at 780 × 740 and 660 × 520; all tabs fit without horizontal scrolling and Stop remains visible across workspace tabs.

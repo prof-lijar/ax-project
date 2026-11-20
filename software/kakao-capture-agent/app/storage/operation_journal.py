@@ -1,6 +1,7 @@
 """Durable per-capture plan and external-action receipts, independent of reply delivery."""
 
 import json
+import unicodedata
 
 
 class OperationJournal:
@@ -36,3 +37,29 @@ class OperationJournal:
                 "UPDATE operation_journal SET payload=? WHERE key=?",
                 (json.dumps(payload, ensure_ascii=False), key),
             )
+
+    def previously_attempted(self, chat_key, request, job_id):
+        """Startup must not rerun a visible request with an existing API claim.
+
+        Scope to the same chat/destination and retained captures. Ordinary new
+        message events remain eligible, even when their text repeats.
+        """
+        def signature(value):
+            return tuple(
+                "".join(unicodedata.normalize("NFKC", value[key]).split())
+                for key in ("message", "action", "name", "address")
+            )
+
+        with self.storage.connect() as db:
+            rows = db.execute(
+                "SELECT a.payload FROM operation_journal a "
+                "JOIN operation_journal r ON r.key=substr(a.key,1,length(a.key)-9)||':api' "
+                "JOIN image_reply_queue q ON q.job_id=a.job_id "
+                "WHERE a.key LIKE '%:analysis' AND q.chat_key=? AND a.job_id<>?",
+                (chat_key, job_id),
+            ).fetchall()
+        for row in rows:
+            previous = json.loads(row["payload"]).get("request")
+            if previous and signature(previous) == signature(request):
+                return True
+        return False

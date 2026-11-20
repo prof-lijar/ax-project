@@ -1,5 +1,15 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.38 — 2026-11-20
+
+**Process the latest message immediately on Run Agent.** Startup now saves one snapshot and checks only the latest visible message. An incoming action request already on screen, such as `위치조정/이은경/헌릉로8길58`, can run through structured analysis → unified API → exact API reply without waiting for a screen change. An outgoing/automated latest message, unrelated text, or unclear direction does not trigger an older request. Startup still sends no introduction; the UI reports its progress. Continuous before/after watching continues while startup analysis runs.
+
+**Restart protection.** Startup snapshots retain their analysis mode across Stop/restart and are not enqueued twice for an identical screen. A startup request with a retained API attempt in the same chat/destination is skipped even if cosmetic screen changes produce another image. A genuinely new incoming message during monitoring can repeat the same request. This startup protection lasts for the configured capture-metadata retention period.
+
+**Shorthand requests and diagnostics.** The semantic action prompt explicitly accepts bare action/name/address requests, leading whitespace and compact road addresses without requiring a verb or province/city. An ignored action decision now logs the extraction length and points to the extracted-text panel. This client update needs no additional server change beyond the rc.37 server updates. No Bizgo SMS is sent for these workflows.
+
+Validation uses synthetic captures and mocked model/API responses; classification on the user's configured vision model and actual KakaoTalk layout still needs an on-device check.
+
 ## v0.1.0-rc.37 — 2026-11-20
 
 **Agent-interpreted structured requests.** Run Agent uses the model to decide whether received text requests device repositioning or power connection, including equivalent wording without exact keywords/slash format. It extracts and sends `action`, full `name`, `address`, `action_text` evidence and original `message` to the unified API. Unrelated, cancelled, incomplete and ambiguous model decisions do not call the workflow. Outgoing messages remain ignored; startup is silent and neither device action sends SMS.

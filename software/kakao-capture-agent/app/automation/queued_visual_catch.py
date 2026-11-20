@@ -100,12 +100,15 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
             self.check()
             self.queue.event("auto_agent_greeting", observation)
             self.progress("Startup message submitted once; " + observation)
-        self.queue.event(
-            "auto_visual_armed", "Initial screen ignored; existing queued screenshot pairs retained"
-        )
+        self.queue_initial_capture()
         self.report_review()
         self.progress(f"Watching display changes continuously; local captures: {self.jobs.images}")
         self.active = True
+
+    def queue_initial_capture(self):
+        self.queue.event(
+            "auto_visual_armed", "Initial screen ignored; existing queued screenshot pairs retained"
+        )
 
     def collect(self):
         frame, _ = self.capture.grab()

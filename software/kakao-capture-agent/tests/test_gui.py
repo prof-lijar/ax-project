@@ -164,7 +164,7 @@ def test_full_window_preview_and_settings(
         assert not window.auto_catch_button.isEnabled()
         assert window.auto_catch_button.text() == "Watching…"
         assert window.state_label.text() == "Watching"
-        assert "Watching for new messages" in window.auto_status.text()
+        assert "Checking the latest visible message" in window.auto_status.text()
         window.action("auto_catch")
         assert len(timers) == 2
 
