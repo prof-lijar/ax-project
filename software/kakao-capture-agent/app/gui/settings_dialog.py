@@ -10,30 +10,66 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QScrollArea,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from app.gui.theme import apply_theme, card
+from app.gui.theme import label as ui_label
 from app.models import AgentError
 
 
 class SettingsDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Capture and API settings")
+        self.setWindowTitle("Settings · KakaoTalk Capture Agent")
         self.result_config = deepcopy(config)
         self.token = ""
         self.llm_token = ""
         self.bizgo_token = ""
         self.operations_password = ""
-        self.resize(650, 700)
+        self.resize(780, 740)
+        self.setMinimumSize(660, 520)
+        apply_theme(self)
         layout = QVBoxLayout(self)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        body = QWidget()
-        scroll.setWidget(body)
-        layout.addWidget(scroll)
-        form = QFormLayout(body)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+        layout.addWidget(ui_label("Settings", "title"))
+        layout.addWidget(ui_label("Configure capture, connected services, and startup behavior."))
+        self.tabs = QTabWidget()
+        self.tabs.setAccessibleName("Settings categories")
+        layout.addWidget(self.tabs, 1)
+        self.forms = {}
+        for title, description in [
+            ("Capture", "Capture sensitivity, history navigation, and local storage."),
+            ("AI replies", "Vision model connection and automatic reply timing."),
+            ("Nexgent", "Connect the operations workflow to your Nexgent administrator account."),
+            (
+                "Bizgo",
+                "Configure phone notifications. Sandbox requests do not deliver real messages.",
+            ),
+            ("Uploads", "Optional API destination for captured images."),
+            ("Startup", "Choose what happens at sign-in and after interruptions."),
+        ]:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            body = QWidget()
+            body.setObjectName("workspace")
+            page = QVBoxLayout(body)
+            page.setContentsMargins(0, 14, 8, 0)
+            section, section_layout = card(title, description)
+            form = QFormLayout()
+            form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+            form.setHorizontalSpacing(18)
+            form.setVerticalSpacing(16)
+            section_layout.addLayout(form)
+            page.addWidget(section)
+            page.addStretch()
+            scroll.setWidget(body)
+            self.tabs.addTab(scroll, title)
+            self.forms[title] = form
         self.controls = {}
         for name, label in [("chat_id", "Chat identifier"), ("api_url", "Upload URL")]:
             control = QLineEdit(getattr(config, name))
@@ -42,12 +78,12 @@ class SettingsDialog(QDialog):
                 control.setToolTip(
                     "A label attached to captures; generated automatically if blank, not a KakaoTalk ID."
                 )
-            form.addRow(label, control)
+            self.add_control(name, label, control)
             self.controls[name] = control
         self.secret = QLineEdit()
         self.secret.setEchoMode(QLineEdit.Password)
         self.secret.setPlaceholderText("Leave blank to keep the saved token")
-        form.addRow("Bearer token", self.secret)
+        self.add_control("api_token", "Bearer token", self.secret)
         for name, label, placeholder in [
             ("auto_reply_suffix", "Run Agent (auto) reply suffix", "(자동 응답)"),
             ("llm_url", "LLM base URL", "http://192.168.0.17:8000/v1"),
@@ -55,42 +91,42 @@ class SettingsDialog(QDialog):
         ]:
             control = QLineEdit(getattr(config, name))
             control.setPlaceholderText(placeholder)
-            form.addRow(label, control)
+            self.add_control(name, label, control)
             self.controls[name] = control
         self.llm_secret = QLineEdit()
         self.llm_secret.setEchoMode(QLineEdit.Password)
         self.llm_secret.setPlaceholderText(
             "Leave blank to keep saved key; OPENAI_API_KEY also supported"
         )
-        form.addRow("LLM API key", self.llm_secret)
+        self.add_control("llm_token", "LLM API key", self.llm_secret)
         for name, label, placeholder in [
             ("operations_url", "운영시트에이젠트 Nexgent URL", "https://your-nexgent-server"),
             ("operations_username", "Nexgent administrator username", ""),
         ]:
             control = QLineEdit(getattr(config, name))
             control.setPlaceholderText(placeholder)
-            form.addRow(label, control)
+            self.add_control(name, label, control)
             self.controls[name] = control
         self.operations_secret = QLineEdit()
         self.operations_secret.setEchoMode(QLineEdit.Password)
         self.operations_secret.setPlaceholderText(
             "Leave blank to keep saved password; OPERATIONS_PASSWORD also supported"
         )
-        form.addRow("Nexgent password", self.operations_secret)
+        self.add_control("operations_password", "Nexgent password", self.operations_secret)
         for name, label in [
             ("bizgo_sender", "Bizgo registered sender number"),
             ("bizgo_recipient", "Bizgo recipient phone number"),
         ]:
             control = QLineEdit(getattr(config, name))
             control.setPlaceholderText("e.g. 01012345678")
-            form.addRow(label, control)
+            self.add_control(name, label, control)
             self.controls[name] = control
         self.bizgo_secret = QLineEdit()
         self.bizgo_secret.setEchoMode(QLineEdit.Password)
         self.bizgo_secret.setPlaceholderText(
             "Leave blank to keep saved key; BIZGO_API_KEY also supported"
         )
-        form.addRow("Bizgo API key", self.bizgo_secret)
+        self.add_control("bizgo_token", "Bizgo API key", self.bizgo_secret)
         for name, label, low, high, decimals in [
             ("operations_timeout_seconds", "Operations workflow timeout (seconds)", 30, 900, 0),
             ("bizgo_timeout_seconds", "Bizgo request timeout (seconds)", 5, 120, 0),
@@ -131,12 +167,12 @@ class SettingsDialog(QDialog):
                 control.setDecimals(decimals)
             control.setRange(low, high)
             control.setValue(getattr(config, name))
-            form.addRow(label, control)
+            self.add_control(name, label, control)
             self.controls[name] = control
         self.storage = QDoubleSpinBox()
         self.storage.setRange(0.01, 1024)
         self.storage.setValue(config.storage_limit_bytes / 1024**3)
-        form.addRow("Storage budget (GiB)", self.storage)
+        self.add_control("storage_limit_bytes", "Storage budget (GiB)", self.storage)
         for name, label in [
             ("operations_allow_http", "Allow Nexgent HTTP on trusted LAN/localhost"),
             ("bizgo_enabled", "Enable Bizgo SMS/LMS after the KakaoTalk workflow reply"),
@@ -151,12 +187,38 @@ class SettingsDialog(QDialog):
         ]:
             control = QCheckBox()
             control.setChecked(getattr(config, name))
-            form.addRow(label, control)
+            self.add_control(name, label, control)
             self.controls[name] = control
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Save).setProperty("role", "primary")
+        buttons.button(QDialogButtonBox.Save).setText("Save settings")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def add_control(self, name, title, control):
+        if name.startswith("operations_"):
+            category = "Nexgent"
+        elif name.startswith("bizgo_"):
+            category = "Bizgo"
+        elif name.startswith(("llm_", "auto_reply_", "auto_catch_", "incoming_")):
+            category = "AI replies"
+        elif name in ("api_url", "api_token", "allow_local_http", "local_only"):
+            category = "Uploads"
+        elif name in ("auto_resume", "launch_at_signin", "auto_start_monitoring"):
+            category = "Startup"
+        else:
+            category = "Capture"
+        control.setAccessibleName(title)
+        if isinstance(control, (QSpinBox, QDoubleSpinBox)):
+            control.setMinimumWidth(100)
+        if isinstance(control, QCheckBox):
+            # Wrapping labels keep long service descriptions within the dialog.
+            caption = ui_label(title, "body")
+            caption.setBuddy(control)
+            self.forms[category].addRow(caption, control)
+        else:
+            self.forms[category].addRow(title, control)
 
     def accept(self):
         for name, control in self.controls.items():

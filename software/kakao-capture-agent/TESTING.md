@@ -16,6 +16,12 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Desktop refresh and device confirmation template — 2026-11-20
+
+Portable suite: **408 passed, 24 Windows-only tests skipped in 13.54 seconds**. Ruff lint, changed-file formatting, and diff checks passed. Offscreen visual inspection covered the desktop at 1080 × 860 and 820 × 640 and Settings at 780 × 740 and 660 × 520; all tabs fit without horizontal scrolling and Stop remains visible across workspace tabs.
+
+Device regression coverage verifies the exact multiline completion template for location changes and power connections in both Bizgo environments, confirms the actual queued send omits the generic reply suffix, and retains API/SMS replay protection and honest noncompletion replies. Incoming-message classification ignores the new `[자동 확인]` prefix even if the model misclassifies it. Windows-native appearance, DPI scaling, and real KakaoTalk delivery still require on-device acceptance.
+
 ### First-line notes and region-prefix matching — 2026-11-19
 
 Portable suite: **404 passed, 24 Windows-only tests skipped in 12.74 seconds**. Server checks: **243 agent, 72 backend and 57 frontend tests passed**. Vite production build and Rust check with a fresh temporary target directory passed.

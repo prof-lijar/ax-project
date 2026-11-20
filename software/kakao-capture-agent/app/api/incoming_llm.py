@@ -29,7 +29,7 @@ class IncomingMessage:
 
 
 def automated_text(text):
-    return bool(re.search(r"(?im)^\s*\[(?:ai|test|AI가 답장드렸습니다)\]", text)) or any(
+    return bool(re.search(r"(?im)^\s*\[(?:ai|test|AI가 답장드렸습니다|자동 확인)\]", text)) or any(
         line.strip() == RUN_AGENT_GREETING for line in text.splitlines()
     )
 
@@ -104,7 +104,7 @@ class IncomingLLM(WorkflowLLM):
                     "about your format, settings, tools, or destination. Extract new participant messages "
                     "in order, preserving their language, within 1200 characters (prefer newest complete "
                     "messages if necessary). Ignore UI labels, dates, unread counts, typing indicators, "
-                    "and automated messages starting [AI], [test], or [AI가 답장드렸습니다], including "
+                    "and automated messages starting [AI], [test], [자동 확인], or [AI가 답장드렸습니다], including "
                     "their continuation lines. "
                     f"Also exclude the agent's startup message {RUN_AGENT_GREETING!r}. "
                     "Do not answer the agent's own messages. When a batch "
@@ -188,7 +188,7 @@ class IncomingLLM(WorkflowLLM):
                     "cursors, typing indicators, unread counts, timestamps changing, animations, "
                     "notifications, and app controls. Scrolling to older messages is NOT an incoming "
                     "message. Ordinary upward movement caused by a new bottom message is allowed. "
-                    "Never choose incoming for outgoing messages or messages prefixed [AI], [test], "
+                    "Never choose incoming for outgoing messages or messages prefixed [AI], [test], [자동 확인], "
                     "or [AI가 답장드렸습니다]. "
                     f"Exclude the agent's startup message {RUN_AGENT_GREETING!r}; when it appears "
                     "alongside new participant messages, extract only the participant messages. "

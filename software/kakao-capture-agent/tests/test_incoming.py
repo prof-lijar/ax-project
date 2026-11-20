@@ -74,7 +74,14 @@ def test_two_images_then_one_prefixed_answer(frame, batch):
 
 @pytest.mark.parametrize(
     "text",
-    ["[AI] answer", "[test]\nsummary", "[AI가 답장드렸습니다]", "  [ai] reply", RUN_AGENT_GREETING],
+    [
+        "[AI] answer",
+        "[test]\nsummary",
+        "[AI가 답장드렸습니다]",
+        "  [ai] reply",
+        "[자동 확인]\n이은경님 기기 위치변경 후 기기신호 확인 완료입니다.\n내용 기재해두었습니다.\n감사합니다. :)",
+        RUN_AGENT_GREETING,
+    ],
 )
 def test_generated_messages_are_ignored_even_if_model_misclassifies(text):
     assert (

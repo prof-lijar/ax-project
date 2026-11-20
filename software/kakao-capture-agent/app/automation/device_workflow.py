@@ -75,7 +75,13 @@ class DeviceProcessor:
                     + str(error)
                 )
             self.journal.complete(sms_key, sms)
-        return result["response"] + "\n" + self.journal.get(sms_key)
+        self.activity(self.journal.get(sms_key))
+        action = "기기 위치변경" if request["action"] == "기기위치조정" else "전원연결"
+        return (
+            f"{request['name']}님 {action} 후 기기신호 확인 완료입니다.\n"
+            "내용 기재해두었습니다.\n"
+            "감사합니다. :)"
+        )
 
     def answer(self, llm, incoming, job_id, cancel):
         check_cancel(cancel)
@@ -93,7 +99,7 @@ class DeviceProcessor:
         check_cancel(cancel)
         # Bound the composer payload without hiding the last request entirely.
         budget = 1600 // len(parts)
-        reply = "[AI] " + "\n\n".join(
+        reply = "[자동 확인]\n" + "\n\n".join(
             (f"{i + 1}. " if len(parts) > 1 else "")
             + (part if len(part) <= budget else part[: budget - 18] + "… (상세 결과 확인 필요)")
             for i, part in enumerate(parts)
@@ -145,3 +151,7 @@ class DeviceWorkflow(QueuedVisualCatchWorkflow):
 
     def answer_job(self, llm, incoming, job, cancel):
         return job["processor"].answer(llm, incoming, job["job_id"], cancel)
+
+    def format_reply(self, reply):
+        # Device confirmations use their complete template, without the generic suffix.
+        return reply

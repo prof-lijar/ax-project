@@ -22,7 +22,16 @@ In **Settings**, enter the **운영시트에이젠트 Nexgent URL** (the origin 
 
 The LLM extracts a target name, address, and one action. Missing names/addresses/actions, ambiguous choices, and unrelated text get a Korean request to resend the name/address/action together; fields are not carried across participants. Both target name and address are required. The member update matches both and places the new dated entry before existing 일반 사항 text, preserving history and skipping an identical existing line. Several requests in one visible batch are handled in order, with one numbered KakaoTalk reply; screenshot extraction is limited to 1,200 characters and at most ten requests per batch.
 
-The app authenticates through Nexgent `/auth/login`, reads `/api/me` for the administrator and CSRF checks, and posts `workflow_id: device_adjustment_power` to `/api/ax768/workflow/runs`. Before execution it checks that the deployed graph advertises prepend mode; an older replacing server is refused. It sends the parser-compatible form `주소 이름님 작업 신호확인요.` and leaves `confirmed_name` unset. This invokes the existing **real** signal/sheet/member-note workflow. The default timeout is 435 seconds. Needs-confirmation, disconnected, not-found, and failed results are returned to KakaoTalk without a success SMS. A verified completed result triggers the fixed Bizgo text `[test] 기기위치조정/전원연결 처리 성공` to the configured number, followed by the API result and Bizgo acceptance status in KakaoTalk. Acceptance is not proof of handset delivery.
+The app authenticates through Nexgent `/auth/login`, reads `/api/me` for the administrator and CSRF checks, and posts `workflow_id: device_adjustment_power` to `/api/ax768/workflow/runs`. Before execution it checks that the deployed graph advertises prepend mode; an older replacing server is refused. It sends the parser-compatible form `주소 이름님 작업 신호확인요.` and leaves `confirmed_name` unset. This invokes the existing **real** signal/sheet/member-note workflow. The default timeout is 435 seconds. Needs-confirmation, disconnected, not-found, and failed results are returned to KakaoTalk without a success SMS. A verified completed result triggers the fixed Bizgo text `[test] 기기위치조정/전원연결 처리 성공` to the configured number, followed by the completion template below in KakaoTalk. Bizgo acceptance or uncertainty stays in the activity log and durable receipt; acceptance is not proof of handset delivery.
+
+Verified completion replies use the target name in place of `OOO`. Power-connection requests use `전원연결` in place of `기기 위치변경`. Incomplete or uncertain operations keep their explanatory result instead of this success text.
+
+```text
+[자동 확인]
+OOO님 기기 위치변경 후 기기신호 확인 완료입니다.
+내용 기재해두었습니다.
+감사합니다. :)
+```
 
 This mode has a separate queue identity from general Run Agent (auto), scoped to the note-placement policy, operations URL/account and Bizgo destination/environment. Durable plans and receipts prevent automatic repetition of API/SMS attempts after Stop/restart or uncertain outcomes. An interrupted API request may still finish on the server: check the operations sheet/member notes before manually resubmitting. Bizgo failure does not suppress the completed operations result in KakaoTalk. Stop / Ctrl+Shift+F12 cancels further local actions; already submitted external actions cannot be recalled. The ordinary upload API is unrelated to this workflow.
 
@@ -71,6 +80,10 @@ The GUI does not run on Linux. Linux can run the portable tests and mock API. No
 Keep the selected chat in the foreground, unobscured, and the Windows session unlocked. The GUI intentionally minimizes before capture-related actions. Capture/navigation does not activate or click windows. An explicit **Send Test Reply** request activates only the verified selected chat and focuses its verified message box automatically.
 
 ## Controls and recovery
+
+The desktop workspace groups controls into five tabs. **Overview** contains the screenshot/incoming-text preview, **Run Agent (auto)**, and device operations; **Review Replies** is under **Incoming text**. **Capture** contains live capture, history, navigation, and local PNG controls. **Test tools** contains the reply, workflow, and Bizgo tests. **Storage / uploads** shows queue usage and upload recovery actions. **Activity** contains the event log. The selected conversation, current status, **Settings**, and **Stop** remain above the tabs.
+
+Settings are grouped into **Capture**, **AI replies**, **Nexgent**, **Bizgo**, **Uploads**, and **Startup**. Scroll within a category to reach all its options; **Save settings** and **Cancel** remain visible. The screenshot preview keeps its aspect ratio when the window is resized.
 
 ### Check capture by saving a local PNG
 

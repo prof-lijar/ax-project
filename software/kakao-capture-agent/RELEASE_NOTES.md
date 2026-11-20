@@ -1,5 +1,22 @@
 Download `KakaoCaptureAgent-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.33
+
+**Cleaner desktop workspace.** A light theme with yellow accents, consistent typography, and grouped cards replaces the long control column. Overview, Capture, Test tools, Storage / uploads, and Activity tabs organize the controls. Conversation selection, status, Settings, and Stop stay visible above the tabs. Screenshot and incoming-text previews share a panel; screenshots retain their aspect ratio when resized. Settings are grouped by service and purpose, with Save and Cancel always visible.
+
+**Updated device completion replies.** Verified location-change completion sends this exact template, with the target person's name replacing `OOO`:
+
+```text
+[자동 확인]
+OOO님 기기 위치변경 후 기기신호 확인 완료입니다.
+내용 기재해두었습니다.
+감사합니다. :)
+```
+
+Power-connection requests use `전원연결` instead of `기기 위치변경`. The generic auto-reply suffix is not appended to device replies. Incomplete or uncertain operations retain their explanatory result instead of claiming success. Bizgo acceptance and uncertainty remain in the activity log and durable receipts. The new `[자동 확인]` prefix is excluded from incoming-message processing to prevent reply loops. Existing stored replies retain their journaled content on resume.
+
+Capture, workflow execution, queue persistence, credential storage, and Stop behavior remain compatible with existing configuration. The Nexgent `prepend` runtime capability required by rc.32 is still required. This remains a prerelease pending real Windows/KakaoTalk acceptance checks.
+
 ## v0.1.0-rc.32
 
 **일반 사항: new entry first, existing text preserved.** The device workflow now matches name and address while accepting the verified region's administrative prefix (for example, `금강송면 왕피길 83-15` and `울진군 금강송면 왕피길 83-15`). Different towns, counties or house numbers remain rejected. The dated entry is inserted on the first line of 일반 사항; identical existing lines are not duplicated. 설치 정보 is not modified.

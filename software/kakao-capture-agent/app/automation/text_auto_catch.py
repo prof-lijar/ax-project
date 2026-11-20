@@ -220,9 +220,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             self.progress(f"Capture classified as {classification}; ignored; watching continues")
             return
         self.ensure_foreground()
-        suffix = self.config.auto_reply_suffix.strip()
-        if suffix:
-            reply += " " + suffix
+        reply = self.format_reply(reply)
         self.progress("LLM reply ready; submitting the next queued reply")
         self.jobs.finish(self.job["job_id"], "sending")  # Durable BEFORE touching the composer.
         self.sending, self.active = True, False
@@ -253,6 +251,10 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         self.reply_count += 1
         self.next_reply_at = self.clock() + self.config.auto_reply_cooldown_seconds
         self.progress(f"Reply submitted; {self.jobs.count(self.chat_key)} job(s) remain queued")
+
+    def format_reply(self, reply):
+        suffix = self.config.auto_reply_suffix.strip()
+        return reply + " " + suffix if suffix else reply
 
     def tick(self):
         self.check()

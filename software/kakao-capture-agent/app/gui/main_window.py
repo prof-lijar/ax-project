@@ -5,7 +5,7 @@ import time
 from ctypes import wintypes
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QPixmap
+from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,8 +17,10 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
 from app.api.incoming_llm import RUN_AGENT_GREETING
 from app.config import save
 from app.gui.settings_dialog import SettingsDialog
+from app.gui.theme import CapturePreview, apply_theme, card, label
 from app.models import AgentError, State
 from app.utils.windows import configure_startup, set_token
 
@@ -71,171 +74,231 @@ class MainWindow(QMainWindow):
         self.control_threads = []
         self.action_generation = 0
         self.setWindowTitle("KakaoTalk Capture Agent")
-        self.resize(680, 800)
+        self.resize(1080, 860)
+        self.setMinimumSize(820, 640)
+        apply_theme(self)
         body = QWidget()
+        body.setObjectName("workspace")
+        self.setCentralWidget(body)
         layout = QVBoxLayout(body)
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(body)
-        self.setCentralWidget(scroll_area)
-        self.state_label = QLabel("STOPPED")
-        self.state_label.setWordWrap(True)
-        layout.addWidget(self.state_label)
-        self.target_label = QLabel(
-            f"Target: {config.target.title}" if config.target else "Target: not selected"
-        )
-        self.target_label.setTextFormat(Qt.PlainText)
-        self.target_label.setWordWrap(True)
-        layout.addWidget(self.target_label)
+        layout.setContentsMargins(24, 20, 24, 16)
+        layout.setSpacing(16)
+
+        header = QHBoxLayout()
+        brand = QLabel("K")
+        brand.setObjectName("brand")
+        brand.setAlignment(Qt.AlignCenter)
+        brand.setFixedSize(48, 48)
+        header.addWidget(brand)
+        titles = QVBoxLayout()
+        titles.setSpacing(2)
+        titles.addWidget(label("KakaoTalk Capture Agent", "title"))
+        titles.addWidget(label("Capture conversations. Keep work moving."))
+        header.addLayout(titles, 1)
         self.setup_buttons = []
-        row = QHBoxLayout()
-        for title, action in [
-            ("Select Window", self.select_window),
-            ("Settings", self.settings),
-        ]:
-            button = QPushButton(title)
-            button.clicked.connect(action)
-            self.setup_buttons.append(button)
-            row.addWidget(button)
-        layout.addLayout(row)
-        self.preview_label = QLabel(
-            "Select a chat window; the conversation area is detected automatically"
+        settings = QPushButton("Settings")
+        settings.clicked.connect(self.settings)
+        self.setup_buttons.append(settings)
+        header.addWidget(settings)
+        self.stop_button = self.command_button("Stop", "stop", "stop")
+        self.stop_button.setToolTip("Stop capture and replies · Ctrl+Shift+F12")
+        header.addWidget(self.stop_button)
+        layout.addLayout(header)
+
+        status_row = QHBoxLayout()
+        self.state_label = label("Stopped")
+        self.state_label.setObjectName("state")
+        status_row.addWidget(self.state_label)
+        self.status_detail = label("Select a conversation to get started.")
+        status_row.addWidget(self.status_detail, 1)
+        layout.addLayout(status_row)
+
+        target, target_layout = card("Conversation")
+        target_row = QHBoxLayout()
+        self.target_label = label(
+            f"Target: {config.target.title}" if config.target else "No conversation selected",
+            "heading",
         )
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setMinimumHeight(220)
-        layout.addWidget(self.preview_label)
+        target_row.addWidget(self.target_label, 1)
+        select = QPushButton("Select Window")
+        select.clicked.connect(self.select_window)
+        self.setup_buttons.append(select)
+        target_row.addWidget(select)
+        target_layout.addLayout(target_row)
+        layout.addWidget(target)
+
+        self.tabs = QTabWidget()
+        self.tabs.setAccessibleName("Workspace sections")
+        layout.addWidget(self.tabs, 1)
+        overview = self.add_tab("Overview")
+        columns = QHBoxLayout()
+        columns.setSpacing(16)
+        overview.addLayout(columns, 1)
+        preview_card, preview_layout = card(
+            "Conversation preview", "The latest captured message area."
+        )
+        self.preview_tabs = QTabWidget()
+        self.preview_tabs.setAccessibleName("Capture preview format")
+        self.preview_label = CapturePreview()
+        self.preview_tabs.addTab(self.preview_label, "Screenshot")
+        preview_layout.addWidget(self.preview_tabs, 1)
+        preview_layout.addWidget(self.command_button("Preview", "preview"))
+        columns.addWidget(preview_card, 5)
+
+        actions = QVBoxLayout()
+        actions.setSpacing(14)
+        columns.addLayout(actions, 4)
+        auto_card, auto_layout = card(
+            "Run your agent",
+            "Watch new messages, extract text, and reply automatically in capture order.",
+        )
+        self.auto_catch_button = self.command_button("Run Agent (auto)", "auto_catch", "primary")
+        auto_layout.addWidget(self.auto_catch_button)
+        auto_layout.addWidget(
+            label(
+                "Sends a startup greeting, then replies until stopped. "
+                "Each send replaces the chat’s draft. Keep the latest messages visible."
+            )
+        )
+        self.auto_catch_button.setToolTip(f"Startup greeting: {RUN_AGENT_GREETING}")
+        actions.addWidget(auto_card)
+        device_card, device_layout = card("Device operations")
+        self.device_workflow_button = self.command_button(
+            "기기위치조정/전원연결", "device_workflow"
+        )
+        device_layout.addWidget(self.device_workflow_button)
+        device_layout.addWidget(
+            label(
+                "이름 / 주소 / 작업을 보내주세요. 운영시트 처리 후 Bizgo 알림과 "
+                "카카오톡 답장을 보냅니다. Stop을 누를 때까지 대기합니다."
+            )
+        )
+        actions.addWidget(device_card)
+        text_page = QWidget()
+        text_layout = QVBoxLayout(text_page)
+        text_layout.setContentsMargins(0, 8, 0, 0)
+        self.text_preview = QTextEdit()
+        self.text_preview.setReadOnly(True)
+        self.text_preview.setAccessibleName("Latest extracted incoming text")
+        self.text_preview.setPlaceholderText(
+            "Text extracted from incoming captures will appear here."
+        )
+        self.text_preview.setMinimumHeight(80)
+        text_layout.addWidget(self.text_preview, 1)
+        self.review_text_button = QPushButton("Review Replies")
+        self.review_text_button.clicked.connect(self.review_text_replies)
+        text_layout.addWidget(self.review_text_button)
+        self.preview_tabs.addTab(text_page, "Incoming text")
+        actions.addStretch()
+        signals.text_preview.connect(self.text_preview.setPlainText)
+        signals.setup_ready.connect(self.persist)
+
+        capture = self.add_tab("Capture")
+        live_card, live = card("Live capture", "Collect screenshots at a regular interval.")
         row = QHBoxLayout()
-        row.addWidget(QLabel("Capture interval (seconds)"))
+        interval_label = label("Capture interval")
+        row.addWidget(interval_label)
         self.interval = QDoubleSpinBox()
         self.interval.setRange(1, 60)
+        self.interval.setSuffix(" sec")
         self.interval.setValue(config.capture_interval_seconds)
         self.interval.valueChanged.connect(self.interval_changed)
+        interval_label.setBuddy(self.interval)
         row.addWidget(self.interval)
         self.change = QCheckBox("Detect visual changes")
         self.change.setChecked(config.change_detection)
         self.change.toggled.connect(self.change_changed)
         row.addWidget(self.change)
-        layout.addLayout(row)
-        row = QHBoxLayout()
-        for title, command in [
-            ("Start / Resume", "start"),
-            ("Stop", "stop"),
-            ("Capture History", "history"),
-            ("Cancel History", "cancel_history"),
+        row.addStretch()
+        live.addLayout(row)
+        live.addWidget(self.command_button("Start / Resume", "start", "primary"))
+        live.addWidget(
+            label(
+                "The app minimizes before capture. Bring the selected chat forward within 3 seconds."
+            )
+        )
+        capture.addWidget(live_card)
+        history_card, history = card(
+            "History & navigation", "Collect earlier messages or verify the latest position."
+        )
+        for commands in [
+            [("Capture History", "history"), ("Cancel History", "cancel_history")],
+            [
+                ("Scroll Up", "up"),
+                ("Scroll Down", "down"),
+                ("Confirm Latest Position", "confirm_bottom"),
+            ],
         ]:
-            button = QPushButton(title)
-            button.clicked.connect(lambda checked=False, c=command: self.action(c))
-            row.addWidget(button)
-        layout.addLayout(row)
-        row = QHBoxLayout()
-        for title, command in [
-            ("Preview", "preview"),
-            ("Scroll Up", "up"),
-            ("Scroll Down", "down"),
-            ("Confirm Latest Position", "confirm_bottom"),
-        ]:
-            button = QPushButton(title)
-            button.clicked.connect(lambda checked=False, c=command: self.action(c))
-            row.addWidget(button)
-        layout.addLayout(row)
-        row = QHBoxLayout()
-        self.save_local_button = QPushButton("Save Capture Locally")
-        self.save_local_button.clicked.connect(lambda: self.action("save_local"))
-        row.addWidget(self.save_local_button)
+            row = QHBoxLayout()
+            for title, command in commands:
+                row.addWidget(self.command_button(title, command))
+            history.addLayout(row)
+        capture.addWidget(history_card)
+        local_card, local = card(
+            "Local screenshots", "Save one PNG without assigning it to the upload API."
+        )
+        self.save_local_button = self.command_button("Save Capture Locally", "save_local")
+        local.addWidget(self.save_local_button)
         open_folder = QPushButton("Open Captures Folder")
         open_folder.clicked.connect(self.open_captures_folder)
-        row.addWidget(open_folder)
-        layout.addLayout(row)
-        self.capture_folder_label = QLabel(f"PNG folder: {self.queue.images}")
-        self.capture_folder_label.setWordWrap(True)
+        local.addWidget(open_folder)
+        self.capture_folder_label = label(f"PNG folder: {self.queue.images}")
         self.capture_folder_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(self.capture_folder_label)
-        row = QHBoxLayout()
-        layout.addWidget(QLabel("Test reply message"))
+        local.addWidget(self.capture_folder_label)
+        capture.addWidget(local_card)
+        capture.addStretch()
+
+        tests = self.add_tab("Test tools")
+        reply_card, reply = card(
+            "Send a test reply", "Replaces the selected chat’s draft and sends your message once."
+        )
         self.test_reply_edit = QPlainTextEdit(config.test_reply_text)
-        self.test_reply_edit.setMaximumHeight(80)
-        self.test_reply_edit.setPlaceholderText(
-            "Enter the message to send (up to 2,000 characters)"
+        self.test_reply_edit.setAccessibleName("Test reply message")
+        self.test_reply_edit.setMaximumHeight(90)
+        self.test_reply_edit.setPlaceholderText("Enter a message (up to 2,000 characters)")
+        reply.addWidget(self.test_reply_edit)
+        self.send_test_button = self.command_button("Send Test Reply", "send_test")
+        reply.addWidget(self.send_test_button)
+        tests.addWidget(reply_card)
+        workflow_card, workflow = card(
+            "Workflow checks",
+            "These actions use configured services, including in local-only capture mode.",
         )
-        layout.addWidget(self.test_reply_edit)
-        self.send_test_button = QPushButton("Send Test Reply")
-        self.send_test_button.clicked.connect(lambda: self.action("send_test"))
-        row.addWidget(self.send_test_button)
-        self.test_workflow_button = QPushButton("Test Workflow")
-        self.test_workflow_button.clicked.connect(lambda: self.action("test_workflow"))
-        row.addWidget(self.test_workflow_button)
-        self.bizgo_test_button = QPushButton("Send Bizgo Sample")
-        self.bizgo_test_button.clicked.connect(lambda: self.action("bizgo_test"))
-        row.addWidget(self.bizgo_test_button)
-        layout.addLayout(row)
-        hint = QLabel(
-            "Send Test Reply stops capture, focuses the selected chat, replaces its message-box contents with your entered message, and sends once."
+        self.test_workflow_button = self.command_button("Test Workflow", "test_workflow")
+        workflow.addWidget(self.test_workflow_button)
+        workflow.addWidget(
+            label(
+                "Capture → vision LLM → one [test] simulation reply. Includes Bizgo when enabled."
+            )
         )
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        workflow_hint = QLabel(
-            "Test Workflow saves the current region, sends it to your configured vision LLM, "
-            "then automatically sends one [test] simulation summary and extracted text to this chat. "
-            "When enabled, Bizgo sends a phone-message copy afterward. "
-            "This explicit action uses configured services even in local-only capture mode."
+        self.incoming_test_button = self.command_button(
+            "Test Workflow 2: Reply to Next Message", "incoming_test"
         )
-        workflow_hint.setWordWrap(True)
-        layout.addWidget(workflow_hint)
-        self.auto_catch_button = QPushButton("Run Agent (auto)")
-        self.auto_catch_button.clicked.connect(lambda: self.action("auto_catch"))
-        layout.addWidget(self.auto_catch_button)
-        auto_hint = QLabel(
-            f"Start by sending {RUN_AGENT_GREETING} once. "
-            "The startup message and each reply replace existing message-box contents. "
-            "Watch display changes → capture → extract text → process with the LLM → reply. "
-            "New captures queue while earlier work is processing; replies are sent in capture order. "
-            "Keep the selected chat open at the latest messages. "
-            "Stop / Ctrl+Shift+F12 ends Run Agent (auto)."
+        workflow.addWidget(self.incoming_test_button)
+        workflow.addWidget(
+            label("Wait for a new visible message, reply once with [AI], then stop. No Bizgo step.")
         )
-        auto_hint.setWordWrap(True)
-        layout.addWidget(auto_hint)
-        self.device_workflow_button = QPushButton("기기위치조정/전원연결")
-        self.device_workflow_button.clicked.connect(lambda: self.action("device_workflow"))
-        layout.addWidget(self.device_workflow_button)
-        device_hint = QLabel(
-            "대상자 이름 / 주소 / 작업을 보내주세요. 운영시트에이젠트 처리 후 설정된 Bizgo 번호로 "
-            "테스트 결과를 보내고 카카오톡에 답장합니다. Stop을 누를 때까지 계속 대기합니다."
-        )
-        device_hint.setWordWrap(True)
-        layout.addWidget(device_hint)
-        self.text_preview = QTextEdit()
-        self.text_preview.setReadOnly(True)
-        self.text_preview.setPlaceholderText(
-            "Latest incoming text extracted from a queued capture appears here"
-        )
-        self.text_preview.setMaximumHeight(130)
-        self.text_preview.hide()
-        signals.text_preview.connect(self.text_preview.setPlainText)
-        signals.setup_ready.connect(self.persist)
-        layout.addWidget(self.text_preview)
-        self.review_text_button = QPushButton("Review Replies")
-        self.review_text_button.clicked.connect(self.review_text_replies)
-        layout.addWidget(self.review_text_button)
-        self.incoming_test_button = QPushButton("Test Workflow 2: Reply to Next Message")
-        self.incoming_test_button.clicked.connect(lambda: self.action("incoming_test"))
-        layout.addWidget(self.incoming_test_button)
-        incoming_hint = QLabel(
-            "Open the latest messages first. Workflow 2 watches the visible region, sends changed "
-            "frames to the vision LLM, replies once with [AI], then stops. Keep this chat visible. "
-            "No Bizgo step. Stop or Ctrl+Shift+F12 cancels."
-        )
-        incoming_hint.setWordWrap(True)
-        layout.addWidget(incoming_hint)
-        self.bizgo_status = QLabel()
-        self.bizgo_status.setWordWrap(True)
-        layout.addWidget(self.bizgo_status)
-        self.api_status = QLabel("API: idle")
-        self.refresh_storage_mode()
-        self.api_status.setWordWrap(True)
-        self.queue_label = QLabel("Queue: loading")
-        self.queue_label.setWordWrap(True)
-        layout.addWidget(self.api_status)
-        layout.addWidget(self.queue_label)
+        tests.addWidget(workflow_card)
+        bizgo_card, bizgo = card("Phone notification")
+        self.bizgo_test_button = self.command_button("Send Bizgo Sample", "bizgo_test")
+        bizgo.addWidget(self.bizgo_test_button)
+        self.bizgo_status = label("")
+        bizgo.addWidget(self.bizgo_status)
+        tests.addWidget(bizgo_card)
+        tests.addStretch()
+
+        uploads = self.add_tab("Storage / uploads")
+        queue_card, queue_layout = card("Capture queue", "Saved captures and their upload status.")
+        self.api_status = label("API: idle")
+        queue_layout.addWidget(self.api_status)
+        self.queue_label = label("Queue: loading", "heading")
+        queue_layout.addWidget(self.queue_label)
+        self.storage_bar = QProgressBar()
+        self.storage_bar.setRange(0, 100)
+        self.storage_bar.setValue(0)
+        self.storage_bar.setTextVisible(False)
+        self.storage_bar.setAccessibleName("Storage budget used")
+        queue_layout.addWidget(self.storage_bar)
         row = QHBoxLayout()
         retry = QPushButton("Retry Failed Uploads")
         retry.clicked.connect(self.retry)
@@ -243,14 +306,30 @@ class MainWindow(QMainWindow):
         bind = QPushButton("Assign Local Captures to API")
         bind.clicked.connect(self.bind_local)
         row.addWidget(bind)
-        layout.addLayout(row)
-        layout.addWidget(
-            QLabel("Emergency stop: Ctrl+Shift+F12 or move the pointer to a primary-screen corner")
+        queue_layout.addLayout(row)
+        queue_layout.addWidget(
+            label(
+                "Local captures stay on this computer until you explicitly assign them to an API."
+            )
+        )
+        uploads.addWidget(queue_card)
+        uploads.addStretch()
+        self.refresh_storage_mode()
+
+        activity = self.add_tab("Activity")
+        activity_card, activity_layout = card(
+            "Activity log", "Recent capture, reply, and upload events. Times use your local clock."
         )
         self.logs = QTextEdit()
         self.logs.setReadOnly(True)
+        self.logs.setAccessibleName("Activity log")
+        self.logs.setPlaceholderText("Activity will appear here as you use the agent.")
         self.logs.document().setMaximumBlockCount(300)
-        layout.addWidget(self.logs)
+        activity_layout.addWidget(self.logs, 1)
+        activity.addWidget(activity_card, 1)
+        layout.addWidget(
+            label("Emergency stop  ·  Ctrl+Shift+F12  ·  Mouse corner fail-safe for input")
+        )
         signals.status.connect(self.update_status)
         signals.preview.connect(self.update_preview)
         signals.activity.connect(self.log)
@@ -260,13 +339,58 @@ class MainWindow(QMainWindow):
         QApplication.instance().installNativeEventFilter(self.hotkey)
         if not self.hotkey.registered:
             self.log("Emergency hotkey unavailable; Stop and mouse fail-safe remain available")
+        self.update_status(self.monitor.state.value, "")
+
+    def command_button(self, title, command, role=None):
+        button = QPushButton(title)
+        if role:
+            button.setProperty("role", role)
+        button.clicked.connect(lambda checked=False: self.action(command))
+        return button
+
+    def add_tab(self, title):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        body.setObjectName("workspace")
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(0, 16, 10, 0)
+        layout.setSpacing(14)
+        scroll.setWidget(body)
+        self.tabs.addTab(scroll, title)
+        return layout
 
     def log(self, message):
-        self.logs.append(time.strftime("[%H:%M:%S] ") + message)
+        # Treat log messages as text even when services include angle brackets.
+        cursor = QTextCursor(self.logs.document())
+        cursor.movePosition(QTextCursor.End)
+        if not self.logs.document().isEmpty():
+            cursor.insertBlock()
+        cursor.insertText(time.strftime("[%H:%M:%S] ") + message)
+        self.logs.setTextCursor(cursor)
+        self.logs.ensureCursorVisible()
         logging.getLogger("kakao").info(message)
 
     def update_status(self, state, reason):
-        self.state_label.setText(state + (": " + reason if reason else ""))
+        self.state_label.setText(state.replace("_", " ").capitalize())
+        self.state_label.setProperty(
+            "tone",
+            "paused"
+            if state == State.PAUSED.value
+            else "idle"
+            if state == State.STOPPED.value
+            else "active",
+        )
+        self.state_label.style().unpolish(self.state_label)
+        self.state_label.style().polish(self.state_label)
+        self.status_detail.setText(
+            reason
+            or (
+                "Choose an action when you’re ready."
+                if self.config.target
+                else "Select a conversation to get started."
+            )
+        )
         stopped = state == State.STOPPED.value
         for button in self.setup_buttons:
             button.setEnabled(stopped)
@@ -318,11 +442,7 @@ class MainWindow(QMainWindow):
         )
 
     def update_preview(self, png):
-        image = QPixmap()
-        image.loadFromData(png, "PNG")
-        self.preview_label.setPixmap(
-            image.scaled(self.preview_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        )
+        self.preview_label.show_png(png)
 
     def upload_status(self, message):
         if self.config.local_only:
@@ -333,9 +453,16 @@ class MainWindow(QMainWindow):
 
     def show_stats(self, stats):
         if "error" in stats:
+            self.storage_bar.setEnabled(False)
             self.queue_label.setText("Queue storage unavailable")
             return
         used = stats["bytes"] / self.config.storage_limit_bytes
+        self.storage_bar.setEnabled(True)
+        self.storage_bar.setValue(min(100, round(used * 100)))
+        self.storage_bar.setToolTip(f"{used:.0%} of storage budget used")
+        self.storage_bar.setProperty("warning", used >= 0.8)
+        self.storage_bar.style().unpolish(self.storage_bar)
+        self.storage_bar.style().polish(self.storage_bar)
         last = (
             time.strftime("%H:%M:%S", time.localtime(stats["last_upload"]))
             if stats["last_upload"]
@@ -558,10 +685,15 @@ class MainWindow(QMainWindow):
         if command != "history":
             self.monitor.suspend_recovery()
         if command in ("auto_catch", "device_workflow"):
+            self.tabs.setCurrentIndex(0)
+            self.preview_tabs.setCurrentIndex(0)
             self.preview_label.clear()
             self.preview_label.setText("Preparing Run Agent (auto) screenshot preview")
             self.text_preview.clear()
             self.text_preview.show()
+        if command == "preview":
+            self.tabs.setCurrentIndex(0)
+            self.preview_tabs.setCurrentIndex(0)
         self.pending_action = command
         self.action_generation += 1
         generation = self.action_generation
