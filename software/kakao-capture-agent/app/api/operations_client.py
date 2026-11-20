@@ -125,6 +125,7 @@ class OperationsClient:
             ) from None
 
     async def execute(self, message, cancel):
+        payload = self.request_payload(message)
         async with httpx.AsyncClient(
             timeout=self.settings.timeout,
             transport=self.transport,
@@ -157,9 +158,12 @@ class OperationsClient:
                 "POST",
                 self.endpoint,
                 headers={**origin, "X-CSRF-Token": account["csrf_token"]},
-                json={"workflow_id": self.workflow_id, "message": message, "confirmed_name": None},
+                json=payload,
             )
             return self.parse_response(body)
+
+    def request_payload(self, message):
+        return {"workflow_id": self.workflow_id, "message": message, "confirmed_name": None}
 
     async def preflight(self, client):
         schema = await self.request(

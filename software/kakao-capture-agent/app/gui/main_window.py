@@ -153,18 +153,18 @@ class MainWindow(QMainWindow):
         columns.addLayout(actions, 4)
         auto_card, auto_layout = card(
             "Run your agent",
-            "Watch new messages, extract text, and reply automatically in capture order.",
+            "Act only on incoming messages containing 위치조정 or 전원연결.",
         )
         self.auto_catch_button = self.command_button("Run Agent (auto)", "auto_catch", "primary")
         auto_layout.addWidget(self.auto_catch_button)
         auto_layout.addWidget(
             label(
-                "Start watching, then reply to incoming requests until stopped. "
+                "Watch for incoming 위치조정 or 전원연결 requests until stopped. "
                 "Keep the latest messages visible."
             )
         )
         self.auto_catch_button.setToolTip(
-            "Watch incoming requests without sending a startup message"
+            "Watch incoming 위치조정 or 전원연결 requests without sending a startup message"
         )
         self.auto_status = label("Ready to watch.")
         self.auto_status.setAccessibleName("Run Agent status")
@@ -177,8 +177,8 @@ class MainWindow(QMainWindow):
         device_layout.addWidget(self.device_workflow_button)
         device_layout.addWidget(
             label(
-                "이름 / 주소 / 작업을 보내주세요. 운영시트 처리 후 Bizgo 알림과 "
-                "카카오톡 답장을 보냅니다. Stop을 누를 때까지 대기합니다."
+                "이름 / 주소 / 작업을 보내주세요. 운영시트 처리 후 카카오톡으로 답장합니다. "
+                "SMS는 보내지 않습니다. Stop을 누를 때까지 대기합니다."
             )
         )
         actions.addWidget(device_card)
@@ -391,7 +391,7 @@ class MainWindow(QMainWindow):
         )
         self.auto_catch_button.setText("Watching…" if auto_running else "Run Agent (auto)")
         self.auto_status.setText(
-            "Watching for new messages. Stop ends monitoring."
+            "Watching for new messages containing 위치조정 or 전원연결 (incoming only). Stop ends monitoring."
             if auto_running
             else "Paused. Check the status above."
             if state == State.PAUSED.value
@@ -685,14 +685,12 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "AX768 settings required", str(error))
                 return
         if command == "device_workflow":
-            from app.api.bizgo_client import create_bizgo
             from app.api.operations_client import create_operations
 
             try:
                 create_operations(self.config)
-                create_bizgo(self.config, self.queue.event, force=True)
             except AgentError as error:
-                QMessageBox.warning(self, "운영시트 / Bizgo settings required", str(error))
+                QMessageBox.warning(self, "운영시트 settings required", str(error))
                 return
         if (
             command == "confirm_bottom"
@@ -747,7 +745,7 @@ class MainWindow(QMainWindow):
                 else "Sending one Bizgo production sample to the configured recipient"
             )
             if command == "bizgo_test"
-            else "Starting 기기위치조정/전원연결: incoming request → 운영시트에이젠트 → Bizgo test notification → KakaoTalk reply. Ctrl+Shift+F12 cancels"
+            else "Starting 기기위치조정/전원연결: incoming request → 운영시트에이젠트 → KakaoTalk reply. No SMS. Ctrl+Shift+F12 cancels"
             if command == "device_workflow"
             else "Starting Run Agent (auto): watch display changes, capture, extract requests, run AX768 workflows, and send API replies in queue order. Ctrl+Shift+F12 cancels"
             if command == "auto_catch"

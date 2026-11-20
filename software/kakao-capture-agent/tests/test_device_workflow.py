@@ -14,11 +14,20 @@ from app.api.operations_client import (
     OperationsSettings,
     parse_result,
 )
-from app.automation.device_workflow import SMS_UNCERTAIN, UNCERTAIN, DeviceProcessor
+from app.automation.device_workflow import UNCERTAIN, DeviceProcessor
 from app.models import AgentError, Cancelled
 from app.storage.image_reply_queue import ImageReplyQueue
 from app.storage.operation_journal import OperationJournal
 from tests.test_queued_visual_catch import changed, finish, watching  # noqa: F401
+
+
+@pytest.fixture(autouse=True)
+def forbid_device_sms(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Device location/power workflows must never create or send Bizgo SMS")
+
+    monkeypatch.setattr("app.api.bizgo_client.create_bizgo", forbidden)
+    monkeypatch.setattr("app.api.bizgo_client.BizgoClient.send", forbidden)
 
 
 def receipt():
@@ -187,12 +196,7 @@ def processor(queue, monkeypatch):
             stages.append(("api", message)) or OperationsResult("completed", "처리 완료", True)
         )
     )
-    bizgo = SimpleNamespace(
-        settings=SimpleNamespace(sandbox=False),
-        prepare=lambda text, reference: (text, reference),
-        send=lambda message, cancel: stages.append(("sms", message)) or "accepted",
-    )
-    engine = DeviceProcessor(OperationJournal(queue), api, bizgo)
+    engine = DeviceProcessor(OperationJournal(queue), api)
     plan = [{"name": "이은경", "address": "헌릉로8길58", "action": "기기위치조정"}]
     monkeypatch.setattr("app.automation.device_workflow.extract_requests", lambda *a: plan)
     return SimpleNamespace(
@@ -202,7 +206,6 @@ def processor(queue, monkeypatch):
         jobs=jobs,
         queue=queue,
         api=api,
-        bizgo=bizgo,
         plan=plan,
         incoming=IncomingMessage("incoming", "이은경/위치변경/헌릉로8길58"),
         cancel=threading.Event(),
@@ -212,21 +215,19 @@ def processor(queue, monkeypatch):
 @pytest.mark.parametrize(
     "action, wording", [("기기위치조정", "기기 위치변경"), ("전원연결", "전원연결")]
 )
-@pytest.mark.parametrize("sandbox", [False, True])
-def test_pipeline_order_and_resume_does_not_repeat_api_or_sms(processor, action, wording, sandbox):
+def test_pipeline_and_resume_only_call_api_without_sms(processor, action, wording):
     p = processor
     p.plan[0]["action"] = action
-    p.bizgo.settings.sandbox = sandbox
     reply = p.engine.answer(None, p.incoming, p.job_id, p.cancel)
     assert reply == (
         f"[자동 확인]\n이은경님 {wording} 후 기기신호 확인 완료입니다.\n"
         "내용 기재해두었습니다.\n감사합니다. :)"
     )
-    assert [kind for kind, _ in p.stages] == ["api", "sms"]
-    assert p.stages[1][1][0] == "[test] 기기위치조정/전원연결 처리 성공"
-    restarted = DeviceProcessor(OperationJournal(p.queue), p.api, p.bizgo)
+    assert [kind for kind, _ in p.stages] == ["api"]
+    assert p.engine.journal.get(p.job_id + "-0:sms") is None
+    restarted = DeviceProcessor(OperationJournal(p.queue), p.api)
     assert restarted.answer(None, p.incoming, p.job_id, p.cancel) == reply
-    assert len(p.stages) == 2
+    assert len(p.stages) == 1
 
 
 @pytest.mark.parametrize("missing", ["action", "name", "address"])
@@ -262,49 +263,37 @@ def test_uncertain_api_never_retries_and_later_job_runs(processor):
     p.api.run = api
     next_job = p.jobs.enqueue("device-chat", "next")
     assert "기기신호 확인 완료" in p.engine.answer(None, p.incoming, next_job, p.cancel)
-    assert [kind for kind, _ in p.stages] == ["api", "api", "sms"]
+    assert [kind for kind, _ in p.stages] == ["api", "api"]
 
 
-def test_sms_failure_keeps_api_result_and_does_not_resend(processor):
+def test_old_sms_receipt_is_not_retried_or_changed(processor):
     p = processor
-
-    def failing(*a):
-        p.stages.append(("sms", "attempt"))
-        raise AgentError("timeout")
-
-    p.bizgo.send = failing
+    sms_key = p.job_id + "-0:sms"
+    p.engine.journal.claim(sms_key, p.job_id, "Old uncertain SMS receipt")
     reply = p.engine.answer(None, p.incoming, p.job_id, p.cancel)
     assert "기기신호 확인 완료" in reply and "Bizgo" not in reply
-    assert p.engine.journal.get(p.job_id + "-0:sms") == SMS_UNCERTAIN
+    assert p.engine.journal.get(sms_key) == "Old uncertain SMS receipt"
     assert p.engine.answer(None, p.incoming, p.job_id, p.cancel) == reply
-    assert len(p.stages) == 2
+    assert len(p.stages) == 1
 
 
-@pytest.mark.parametrize("stage", ["api", "sms"])
-def test_stop_during_external_action_resumes_without_duplicate(processor, stage):
+def test_stop_during_external_action_resumes_without_duplicate(processor):
     p = processor
 
     def stop(*a):
-        p.stages.append((stage, "attempt"))
+        p.stages.append(("api", "attempt"))
         p.cancel.set()
         raise Cancelled("stopped")
 
-    if stage == "api":
-        p.api.run = stop
-    else:
-        p.bizgo.send = stop
+    p.api.run = stop
     with pytest.raises(Cancelled):
         p.engine.answer(None, p.incoming, p.job_id, p.cancel)
     p.cancel.clear()
-    restarted = DeviceProcessor(OperationJournal(p.queue), p.api, p.bizgo)
+    restarted = DeviceProcessor(OperationJournal(p.queue), p.api)
     reply = restarted.answer(None, p.incoming, p.job_id, p.cancel)
-    if stage == "api":
-        assert UNCERTAIN in reply
-        assert "기기신호 확인 완료" not in reply
-    else:
-        assert "기기신호 확인 완료" in reply
-        assert restarted.journal.get(p.job_id + "-0:sms") == SMS_UNCERTAIN
-    assert [kind for kind, _ in p.stages].count(stage) == 1
+    assert UNCERTAIN in reply
+    assert "기기신호 확인 완료" not in reply
+    assert [kind for kind, _ in p.stages] == ["api"]
 
 
 def test_multiple_requests_in_one_capture_are_processed_in_order(processor):
@@ -314,9 +303,8 @@ def test_multiple_requests_in_one_capture_are_processed_in_order(processor):
     assert "1. " in reply and "2. " in reply
     assert "1. 이은경님 기기 위치변경 후 기기신호 확인 완료입니다." in reply
     assert "2. 김순옥님 전원연결 후 기기신호 확인 완료입니다." in reply
-    assert [kind for kind, _ in p.stages] == ["api", "sms", "api", "sms"]
-    assert p.stages[2][1] == "울진북로164 김순옥님 전원연결 신호확인요."
-    assert p.stages[1][1][1] != p.stages[3][1][1]
+    assert [kind for kind, _ in p.stages] == ["api", "api"]
+    assert p.stages[1][1] == "울진북로164 김순옥님 전원연결 신호확인요."
 
 
 def test_device_mode_queues_while_api_runs_then_replies_and_continues(watching, monkeypatch):  # noqa: F811
@@ -341,13 +329,8 @@ def test_device_mode_queues_while_api_runs_then_replies_and_continues(watching, 
         assert release.wait(2)
         return OperationsResult("completed", message + " 처리 완료", True)
 
-    bizgo = SimpleNamespace(
-        settings=SimpleNamespace(sandbox=False),
-        prepare=lambda text, ref: ref,
-        send=lambda message, cancel: stages.append(("sms", message)),
-    )
     device.processor_factory = lambda: DeviceProcessor(
-        device.journal, SimpleNamespace(run=api), bizgo
+        device.journal, SimpleNamespace(run=api)
     )
     w.service.dispatch("device_workflow")
     assert w.service.auto_catch is device
@@ -366,7 +349,7 @@ def test_device_mode_queues_while_api_runs_then_replies_and_continues(watching, 
     w.now[0] += 4
     finish(w)
     finish(w)
-    assert [kind for kind, _ in stages] == ["api", "sms", "api", "sms", "api", "sms"]
+    assert [kind for kind, _ in stages] == ["api", "api", "api"]
     assert device.reply_count == 3
     assert all(any(f"Question {n}" in reply for reply in w.sent) for n in (30, 60, 90))
     for n in (30, 60, 90):
@@ -432,6 +415,16 @@ def test_device_destination_settings_isolate_retained_jobs(watching):  # noqa: F
         assert device.queue_key() != original
         setattr(device.config, field, before)
     assert device.queue_key() == original
+
+
+def test_device_processor_starts_without_bizgo_settings(watching, monkeypatch):  # noqa: F811
+    device = watching.service.device_workflow
+    device.config.bizgo_enabled = True
+    device.config.bizgo_sandbox = False
+    device.config.bizgo_sender = device.config.bizgo_recipient = ""
+    operations = SimpleNamespace(run=lambda *a: None)
+    monkeypatch.setattr("app.automation.device_workflow.create_operations", lambda _: operations)
+    assert device.processor_factory().operations is operations
 
 
 @pytest.mark.parametrize("mode", [None, "replace", "append"])

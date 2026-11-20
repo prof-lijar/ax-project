@@ -28,6 +28,7 @@ class DispatchInput(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     workflow_id: Literal["auto", "device_adjustment_power", "information_update"] = "auto"
     confirmed_name: str | None = Field(default=None, min_length=2, max_length=100)
+    action: Literal["기기위치조정", "전원연결"] | None = None
 
 
 def compact(value):
@@ -66,7 +67,7 @@ def device_reply(result):
     """Build customer text only after the existing handler validates all receipts."""
     name = result["roster"]["name"]
     if result["status"] == "completed":
-        action = "전원연결" if result["member_note"]["note"].endswith("전원연결") else "기기 위치변경"
+        action = "기기 전원연결" if result["member_note"]["note"].endswith("전원연결") else "기기 위치변경"
         return f"[자동 확인]\n{name}님 {action} 후 기기신호 확인 완료입니다.\n내용 기재해두었습니다.\n감사합니다. :)"
     if result["status"] == "disconnected":
         return f"[자동 확인]\n{name}님 신규설치 기기신호가 아직 확인되지 않습니다.\n기기 전원 및 설치 위치 확인 부탁드립니다. "
@@ -76,6 +77,9 @@ def device_reply(result):
 async def device_handler(body):
     result = await ax768_workflow.run(ax768_workflow.WorkflowInput(
         workflow_id="device_adjustment_power", message=body.message, confirmed_name=body.confirmed_name))
+    if (body.action is not None and result["status"] == "completed"
+            and not result["member_note"]["note"].endswith(" " + body.action)):
+        raise HTTPException(502, detail="Completed device action differs from the request.")
     return {**result, "response": device_reply(result)}
 
 
@@ -104,5 +108,19 @@ async def run(body: ax768.RunInput | DispatchInput):
             return {"api_version": "1", "verified": False, "workflow_id": None, "status": "needs_confirmation", "response": CLARIFY}
         workflow, message = selection
         body = body.model_copy(update={"workflow_id": workflow, "message": message})
+    elif body.workflow_id == "device_adjustment_power" and "/" in body.message:
+        # A selected workflow still accepts the capture agent's verbatim slash
+        # fields in any order, without letting text choose another handler.
+        selection = route_message(body.message)
+        if selection is None or selection[0] != body.workflow_id:
+            return {"api_version": "1", "verified": False, "workflow_id": None, "status": "needs_confirmation", "response": CLARIFY}
+        body = body.model_copy(update={"message": selection[1]})
+    if body.action is not None:
+        if body.workflow_id != "device_adjustment_power":
+            raise HTTPException(422, detail="The action argument requires the device workflow.")
+        actions = {action for alias, action in ACTIONS["device_adjustment_power"].items()
+                   if alias in compact(body.message)}
+        if actions != {body.action}:
+            return {"api_version": "1", "verified": False, "workflow_id": None, "status": "needs_confirmation", "response": CLARIFY}
     result = await HANDLERS[body.workflow_id](body)
     return {**result, "api_version": "1", "verified": result["status"] == "completed"}

@@ -216,7 +216,10 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             self.queue.event("auto_analysis_ignored", self.job["job_id"] + ": " + str(kind))
             self.jobs.finish(self.job["job_id"], "ignored")
             self.job = self.outcome = None
-            classification = "outgoing/AI text" if kind == "outgoing" else "UI/no new incoming text"
+            classification = {
+                "outgoing": "outgoing/AI text",
+                "incoming": "incoming text without an enabled action keyword",
+            }.get(kind, "UI/no new incoming text")
             self.progress(f"Capture classified as {classification}; ignored; watching continues")
             return
         self.ensure_foreground()

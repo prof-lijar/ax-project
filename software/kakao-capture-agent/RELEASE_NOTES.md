@@ -1,5 +1,13 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.36 — 2026-11-20
+
+**No device-workflow SMS.** 위치조정 and 전원연결 reply only in KakaoTalk. Removed the older device button's Bizgo notification step and credential requirement as well. Existing SMS receipts are not replayed. The separate Bizgo sample and optional generic Test Workflow SMS tools keep their own behavior.
+
+**Incoming action keywords only.** Run Agent acts only on received messages containing `위치조정` or `전원연결`, including their `기기` prefixes. Outgoing messages, ordinary conversation, and other actions are ignored without an API call or reply. Mixed batches and resumed saved plans use the same filter; saved per-request receipts prevent repeating actions. A single message containing both actions is ignored rather than guessing. Startup remains silent and the UI explains the active keywords.
+
+The unified API payload explicitly selects `device_adjustment_power` (기기위치조정/전원연결) and an `action` of `기기위치조정` or `전원연결`. The backend normalizes slash-separated name/address/action fields in any order and refuses mismatched actions. Power success now uses the exact `OOO님 기기 전원연결 후 기기신호 확인 완료입니다.` server template. Update/restart the backend before using the updated client; no new agent-server graph build is required beyond the previous unified API setup.
+
 ## v0.1.0-rc.35 — 2026-11-20
 
 **Silent Run Agent startup.** Clicking Run Agent (auto), including after Stop, begins watching without sending an introductory chat message or clearing the draft. The app shows Watching and Watching for new messages. Normal workflow replies continue after processing incoming requests.

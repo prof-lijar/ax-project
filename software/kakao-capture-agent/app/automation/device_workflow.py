@@ -1,10 +1,9 @@
-"""Continuous device requests → operations API → Bizgo test receipt → KakaoTalk."""
+"""Continuous device requests → operations API → KakaoTalk, without SMS."""
 
 import hashlib
 import json
 from dataclasses import asdict
 
-from app.api.bizgo_client import create_bizgo
 from app.api.device_request import CLARIFY, extract_requests
 from app.api.incoming_llm import IncomingMessage
 from app.api.operations_client import create_operations
@@ -14,15 +13,13 @@ from app.models import AgentError, Cancelled
 from app.storage.operation_journal import OperationJournal
 
 UNCERTAIN = "운영시트 처리 결과를 확인하지 못했습니다. 중복 처리를 막기 위해 재실행하지 않았습니다. 운영시트와 회원 메모를 확인해주세요."
-SMS_UNCERTAIN = "Bizgo 접수 결과 미확인(자동 재전송 없음)."
 
 
 class DeviceProcessor:
-    def __init__(self, journal, operations, bizgo, activity=lambda _: None):
-        self.journal, self.operations, self.bizgo, self.activity = (
+    def __init__(self, journal, operations, activity=lambda _: None):
+        self.journal, self.operations, self.activity = (
             journal,
             operations,
-            bizgo,
             activity,
         )
 
@@ -55,27 +52,6 @@ class DeviceProcessor:
         # successful or automatically set confirmed_name on behalf of the user.
         if not result["completed"]:
             return result["response"]
-        sms_key = reference + ":sms"
-        if self.journal.claim(sms_key, job_id, SMS_UNCERTAIN):
-            self.activity("Operations workflow completed; submitting Bizgo test notification")
-            try:
-                message = self.bizgo.prepare("[test] 기기위치조정/전원연결 처리 성공", reference)
-                self.bizgo.send(message, cancel)
-                sms = (
-                    "Bizgo 샌드박스 접수 완료(실제 문자 발송 없음)."
-                    if self.bizgo.settings.sandbox
-                    else "Bizgo 문자 접수 완료(최종 수신 여부는 Bizgo에서 확인)."
-                )
-            except Cancelled:
-                raise
-            except AgentError as error:
-                sms = SMS_UNCERTAIN
-                self.activity(
-                    "Bizgo notification not confirmed; operations result will still be replied in KakaoTalk: "
-                    + str(error)
-                )
-            self.journal.complete(sms_key, sms)
-        self.activity(self.journal.get(sms_key))
         action = "기기 위치변경" if request["action"] == "기기위치조정" else "전원연결"
         return (
             f"{request['name']}님 {action} 후 기기신호 확인 완료입니다.\n"
@@ -118,12 +94,12 @@ class DeviceWorkflow(QueuedVisualCatchWorkflow):
         self.processor_factory = lambda: DeviceProcessor(
             self.journal,
             create_operations(self.config),
-            create_bizgo(self.config, self.queue.event, force=True),
             self.activity,
         )
 
     def queue_key(self):
         # Old captures cannot change purpose or destination after a settings edit.
+        # Retain the legacy key fields so pending captures survive the SMS removal.
         destination = [
             "prepend-name-address-v2",
             self.config.operations_url.rstrip("/"),
@@ -136,7 +112,7 @@ class DeviceWorkflow(QueuedVisualCatchWorkflow):
         return super().queue_key() + ":device:" + digest
 
     def arm(self):
-        # Validate API and SMS credentials before sending a greeting or collecting.
+        # Validate operations API credentials before collecting.
         self.processor = self.processor_factory()
         super().arm()
 

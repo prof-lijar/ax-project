@@ -89,6 +89,12 @@ def test_full_window_preview_and_settings(
     config.operations_username = "admin"
     monkeypatch.setenv("OPERATIONS_PASSWORD", "synthetic-password")
     monkeypatch.setenv("BIZGO_API_KEY", "synthetic-key")
+    if reply_command in ("auto_catch", "device_workflow"):
+        # Neither business-workflow entry point needs phone credentials, even
+        # when the separate Test Workflow's Bizgo option is enabled.
+        config.bizgo_enabled = True
+        config.bizgo_sender = config.bizgo_recipient = ""
+        monkeypatch.delenv("BIZGO_API_KEY")
     if reply_command == "bizgo_test":
         config.target = config.selection = None
         config.chat_id = ""  # A standalone phone test does not require chat setup.
@@ -202,6 +208,7 @@ def test_full_window_preview_and_settings(
     dialog.controls["llm_model"].setText("changed-model")
     dialog.controls["auto_reply_suffix"].setText("(Auto reply)")
     dialog.controls["auto_catch_interval_seconds"].setValue(0.25)
+    dialog.controls["bizgo_sender"].setText("01000000001")
     dialog.controls["bizgo_recipient"].setText("01000000003")
     dialog.controls["bizgo_enabled"].setChecked(True)
     dialog.controls["bizgo_sandbox"].setChecked(False)

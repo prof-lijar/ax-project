@@ -89,3 +89,114 @@ def test_information_dispatch(monkeypatch, selection):
     assert response.json()['workflow_id'] == 'information_update'
     assert response.json()['response'].startswith('[자동 확인]\n')
     assert len(requests) == 2
+
+
+@pytest.mark.parametrize('fields', list(permutations(['위치조정', '김순옥', '울진북로 164'])))
+def test_selected_device_workflow_accepts_capture_field_order(monkeypatch, fields):
+    client, requests = setup(monkeypatch)
+    response = client.post(PATH, json={
+        'workflow_id': 'device_adjustment_power', 'message': '/'.join(fields),
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['workflow_id'] == 'device_adjustment_power'
+    assert response.json()['verified'] is True
+    assert len(requests) == 1
+    assert json.loads(requests[0].content)['input']['message'] == '울진북로 164 김순옥님 기기위치조정 신호확인요.'
+
+
+@pytest.mark.parametrize('message', [
+    '정보수정/김순옥/위치조정 관련 전화번호 변경',
+    '위치조정/김순옥',
+    '위치조정 취소/김순옥/울진북로 164',
+    '위치조정/김순옥/울진북로 164 취소',
+    '위치조정/정보수정/김순옥/울진북로 164',
+])
+def test_selected_device_never_dispatches_other_or_ambiguous_slash_workflow(monkeypatch, message):
+    client, requests = setup(monkeypatch)
+    response = client.post(PATH, json={
+        'workflow_id': 'device_adjustment_power', 'message': message,
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['status'] == 'needs_confirmation'
+    assert not requests
+
+
+@pytest.mark.parametrize('fields', list(permutations(['전원연결', '박철수', '울진군 OO면 OO길 78'])))
+@pytest.mark.parametrize('connected', [True, False])
+def test_explicit_power_action_routes_and_returns_exact_template(monkeypatch, fields, connected):
+    result = payload()
+    for key in ('roster', 'parsed', 'member_note', 'as_lookup'):
+        result[key].update(name='박철수', address='OO길 78')
+    result['parsed']['lookup_name'] = '박철수'
+    result['member_note']['note'] = '2026-11-04 [현지관리자 방문] 전원연결'
+    if not connected:
+        result.update(member_note=None, status='disconnected', as_lookup={'status':'skipped'}, as_update={'status':'skipped','verified':False})
+        result['signal'].update(status='disconnected', connected=False, fresh=False)
+    client, requests = setup(monkeypatch, result=result)
+    response = client.post(PATH, json={
+        'workflow_id': 'device_adjustment_power', 'action': '전원연결',
+        'message': '/'.join(fields) + ' ', 'confirmed_name': None,
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['verified'] is connected
+    assert response.json()['workflow_id'] == 'device_adjustment_power'
+    expected = ('[자동 확인]\n박철수님 기기 전원연결 후 기기신호 확인 완료입니다.\n내용 기재해두었습니다.\n감사합니다. :)'
+                if connected else '[자동 확인]\n박철수님 신규설치 기기신호가 아직 확인되지 않습니다.\n기기 전원 및 설치 위치 확인 부탁드립니다. ')
+    assert response.json()['response'] == expected
+    assert len(requests) == 1
+    assert json.loads(requests[0].content)['input']['message'] == '울진군 OO면 OO길 78 박철수님 전원연결 신호확인요.'
+
+
+@pytest.mark.parametrize('action,message', [
+    ('기기위치조정', '위치조정/김순옥/울진북로 164'),
+    ('전원연결', '울진북로 164 김순옥님 전원연결 신호확인요.'),
+])
+def test_specific_action_matches_source(monkeypatch, action, message):
+    result = payload()
+    result['member_note']['note'] = '2026-11-04 [현지관리자 방문] ' + action
+    client, requests = setup(monkeypatch, result=result)
+    response = client.post(PATH, json={
+        'workflow_id': 'device_adjustment_power', 'action': action, 'message': message,
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['status'] == 'completed'
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize('action,message', [
+    ('전원연결', '위치조정/김순옥/울진북로 164'),
+    ('기기위치조정', '전원연결/김순옥/울진북로 164'),
+    ('전원연결', '울진북로 164 김순옥님 신호확인요.'),
+    ('전원연결', '울진북로 164 김순옥님 기기위치조정 및 전원연결 신호확인요.'),
+    ('전원연결', '전원연결 취소/김순옥/울진북로 164'),
+])
+def test_specific_action_never_overrides_source(monkeypatch, action, message):
+    client, requests = setup(monkeypatch)
+    response = client.post(PATH, json={
+        'workflow_id': 'device_adjustment_power', 'action': action, 'message': message,
+    }, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['status'] == 'needs_confirmation'
+    assert not requests
+
+
+def test_invalid_action_or_wrong_workflow_rejected(monkeypatch):
+    client, requests = setup(monkeypatch)
+    for body in [
+        {'workflow_id':'device_adjustment_power', 'action':'신규설치', 'message':'전원연결/김순옥/울진북로 164'},
+        {'workflow_id':'information_update', 'action':'전원연결', 'message':'정보수정/김순옥/전화번호 변경'},
+    ]:
+        assert client.post(PATH, json=body, headers=authenticated_headers()).status_code == 422
+    assert not requests
+
+
+
+def test_completed_receipt_must_match_explicit_action(monkeypatch):
+    # The default fixture proves location adjustment, not power connection.
+    client, requests = setup(monkeypatch)
+    response = client.post(PATH, json={
+        'workflow_id':'device_adjustment_power', 'action':'전원연결',
+        'message':'전원연결/김순옥/울진북로 164',
+    }, headers=authenticated_headers())
+    assert response.status_code == 502
+    assert len(requests) == 1
