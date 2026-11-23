@@ -393,7 +393,7 @@ git tag kakao-capture-agent-v0.1.0-rc.1
 git push origin kakao-capture-agent-v0.1.0-rc.1
 ```
 
-Use a new tag for each build; do not move published release tags. Review the Actions run and its `self-test.json` artifact before distributing the build. Update `RELEASE_NOTES.md` for subsequent releases. The workflow uses GitHub's repository-scoped token with release permission; no personal access token needs to be stored as a workflow secret. Manual workflow dispatch builds an artifact without publishing when run from a branch; its availability in the Actions UI depends on the workflow being present on the repository's default branch.
+Use a new tag for each build; do not move published release tags. Review the Actions run and the release's `self-test.json` asset before distributing the build. Tag builds publish the EXE, checksum and startup report directly as release assets without a duplicate Actions artifact upload, so Actions artifact-storage quotas do not block publication. Update `RELEASE_NOTES.md` for subsequent releases. The workflow uses GitHub's repository-scoped token with release permission; no personal access token needs to be stored as a workflow secret. Manual workflow dispatch builds an Actions artifact without publishing when run from a branch; its availability in the Actions UI depends on the workflow being present on the repository's default branch.
 
 Implementation modules follow the PRD: GUI on the Qt thread; capture and scrolling on one automation thread; asynchronous HTTP in an independent worker; SQLite operations under a shared lock with separate connections. Business logic can be tested with injected desktop/capture/HTTP adapters.
 

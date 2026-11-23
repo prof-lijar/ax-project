@@ -1,6 +1,10 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
-## v0.1.0-rc.39 — 2026-11-23
+## v0.1.0-rc.40 — 2026-11-23
+
+Includes the rc.39 application changes below. Tag builds now publish the EXE, SHA-256 checksum and `self-test.json` directly as GitHub release assets, without a duplicate Actions artifact upload. This avoids the Actions artifact-storage quota that blocked rc.39 publication after all 587 Windows tests, EXE packaging and startup checks had passed. Manual branch builds continue to produce Actions artifacts.
+
+## v0.1.0-rc.39 — 2026-11-23 (build passed; publication blocked)
 
 **Monitor up to three chats.** Select one to three KakaoTalk windows and run the same device workflow for each. Each chat has its own queue and inference worker; desktop capture and reply input rotate through verified windows. Activity entries identify the chat, and replies return to their originating conversation. Stop cancels all chats; a window failure pauses the group. Activity remains one shared log with chat labels.
 

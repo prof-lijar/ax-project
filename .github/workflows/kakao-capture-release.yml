@@ -50,6 +50,7 @@ jobs:
           $Hash = (Get-FileHash "release/$Name" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$Hash  $Name" | Set-Content "release/$Name.sha256" -Encoding ascii
       - name: Save build outputs
+        if: github.ref_type != 'tag'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: voyageri-windows-x64
@@ -64,6 +65,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          Copy-Item dist/self-test.json release/self-test.json
           $Assets = @(Get-ChildItem release -File | ForEach-Object { $_.FullName })
           gh release create $env:RELEASE_TAG @Assets --verify-tag --prerelease --title "VoyagerI $env:RELEASE_TAG" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
