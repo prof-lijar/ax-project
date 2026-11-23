@@ -109,7 +109,8 @@ def image_test(config, queue, frame, monkeypatch):
             service.command("stop")
         return httpx.Response(
             200,
-            json=state.api_result or {
+            json=state.api_result
+            or {
                 **receipt(),
                 "api_version": "1",
                 "verified": True,
@@ -357,10 +358,25 @@ def test_worker_error_is_shown_without_leaking_exception_details(image_test):
     assert not t.api_calls and t.service.stop_input.is_set()
 
 
+def drop_file(widget, urls):
+    from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt
+    from PySide6.QtGui import QDragEnterEvent, QDropEvent
+    from PySide6.QtWidgets import QApplication
+
+    mime = QMimeData()
+    mime.setUrls(urls)
+    enter = QDragEnterEvent(QPoint(10, 10), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
+    QApplication.sendEvent(widget, enter)
+    drop = QDropEvent(QPointF(10, 10), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
+    QApplication.sendEvent(widget, drop)
+    return enter.isAccepted(), drop.isAccepted()
+
+
+@pytest.mark.parametrize("selection", ["chooser", "drop"])
 def test_test_tools_image_selection_and_output_without_chat(
-    image_test, tmp_path, monkeypatch, qt_app
+    image_test, tmp_path, monkeypatch, qt_app, selection
 ):
-    from PySide6.QtCore import QAbstractNativeEventFilter
+    from PySide6.QtCore import QAbstractNativeEventFilter, QUrl
 
     from app.gui import main_window
 
@@ -393,15 +409,36 @@ def test_test_tools_image_selection_and_output_without_chat(
     path = tmp_path / "capture.png"
     path.write_bytes(t.png)
     monkeypatch.setattr(main_window.QFileDialog, "getOpenFileName", lambda *a: (str(path), "PNG"))
+    warnings = []
+    monkeypatch.setattr(main_window.QMessageBox, "warning", lambda *a: warnings.append(a[-1]))
     try:
+        for index in range(window.tabs.count()):
+            if window.tabs.tabText(index) == "Test tools":
+                window.tabs.setCurrentIndex(index)
         window.show()
         assert not window.image_test_run_button.isEnabled()
-        window.choose_test_image()
+        if selection == "drop":
+            assert drop_file(window.image_test_preview, [QUrl.fromLocalFile(str(path))]) == (
+                True,
+                True,
+            )
+        else:
+            window.choose_test_image()
         assert window.image_test_preview.pixmap() is not None
         assert window.image_test_run_button.isEnabled()
+        assert not t.api_calls and not t.llm_calls and t.service.commands.empty()
+        selected_png = window.image_test_png
+        bad = tmp_path / "broken.png"
+        bad.write_bytes(b"invalid image")
+        drop_file(window.image_test_preview, [QUrl.fromLocalFile(str(bad))])
+        assert len(warnings) == 1 and window.image_test_png == selected_png
+        assert window.image_test_file.text() == path.name
         # The run uses the exact previewed bytes even if the original file changes.
         path.write_bytes(b"changed after choosing")
         window.start_image_test()
+        assert not window.image_test_preview.isEnabled()
+        drop_file(window.image_test_preview, [QUrl.fromLocalFile(str(bad))])
+        assert len(warnings) == 1 and window.image_test_png == selected_png
         window.start_image_test()  # A double click must not queue another test.
         assert not window.isMinimized()
         assert not window.image_test_run_button.isEnabled()
@@ -415,7 +452,33 @@ def test_test_tools_image_selection_and_output_without_chat(
         assert window.image_test_text.toPlainText() == MESSAGE
         assert window.image_test_output.isReadOnly()
         assert window.pending_action is None and window.image_test_run_button.isEnabled()
+        assert window.image_test_preview.isEnabled()
     finally:
         window.closing = True
         window.close()
         window.deleteLater()
+
+
+@pytest.mark.parametrize("kind", ["remote", "multiple", "unsupported", "disabled"])
+def test_image_drop_ignores_ineligible_input(qt_app, tmp_path, kind):
+    from PySide6.QtCore import QUrl
+
+    from app.gui.image_drop_preview import ImageDropPreview
+
+    preview = ImageDropPreview()
+    received = []
+    preview.file_dropped.connect(received.append)
+    urls = [QUrl.fromLocalFile(str(tmp_path / "capture.png"))]
+    if kind == "remote":
+        urls = [QUrl("https://example.test/capture.png")]
+    elif kind == "multiple":
+        urls *= 2
+    elif kind == "unsupported":
+        urls = [QUrl.fromLocalFile(str(tmp_path / "document.txt"))]
+    else:
+        preview.setEnabled(False)
+    try:
+        assert drop_file(preview, urls) == (False, False)
+        assert received == []
+    finally:
+        preview.deleteLater()

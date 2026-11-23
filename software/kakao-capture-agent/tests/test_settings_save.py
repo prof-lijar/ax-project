@@ -84,6 +84,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
         config_path=tmp_path / "config.json",
         log=logs.append,
         refresh_storage_mode=lambda: None,
+        refresh_target_label=lambda: None,
     )
     monkeypatch.setattr(main_window, "SettingsDialog", lambda *a: dialog)
     monkeypatch.setattr(

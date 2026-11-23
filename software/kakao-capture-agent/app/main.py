@@ -59,6 +59,7 @@ def main():
             signals.status.emit,
             signals.preview.emit,
             signals.activity.emit,
+            chat_activity=signals.chat_activity.emit,
             text_preview=signals.text_preview.emit,
             setup_ready=signals.setup_ready.emit,
             preview_chat=signals.preview_chat.emit,

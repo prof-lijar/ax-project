@@ -26,6 +26,7 @@ from app.models import (
     State,
     TargetUnavailable,
 )
+from app.storage.chat_paths import chat_queue_key
 
 
 class MonitoringService(threading.Thread):
@@ -43,10 +44,13 @@ class MonitoringService(threading.Thread):
         preview_chat=lambda _: None,
         image_test_output=lambda _: None,
         image_test_text=lambda _: None,
+        chat_activity=lambda key, message: None,
     ):
         super().__init__(name="capture", daemon=False)
         self.desktop, self.capture, self.queue, self.config = desktop, capture, queue, config
         self.status, self.preview, self.activity = status, preview, activity
+        self.chat_activity = chat_activity
+        self.chat_run_keys = []
         self.setup_ready = setup_ready
         self.text_preview, self.preview_chat = text_preview, preview_chat
         self.image_test_output = image_test_output
@@ -68,7 +72,7 @@ class MonitoringService(threading.Thread):
         self.operator_bottom = False
         self.want_live = False
         self.reply_sender = TestReplySender(
-            WindowsComposer(desktop, activity), queue.event, self.stop_input
+            WindowsComposer(desktop, self.primary_activity), queue.event, self.stop_input
         )
         self.test_workflow = OneCycleWorkflow(
             desktop,
@@ -99,9 +103,9 @@ class MonitoringService(threading.Thread):
             self.reply_sender,
             self.stop_input,
             preview,
-            lambda message: self.transition(State.INITIALIZING, message),
+            self.primary_progress,
             text_preview=text_preview,
-            activity=activity,
+            activity=self.primary_activity,
         )
         self.general_auto_catch = self.auto_catch
         self.saved_image_workflow = SavedImageWorkflow(
@@ -121,10 +125,20 @@ class MonitoringService(threading.Thread):
             self.reply_sender,
             self.stop_input,
             preview,
-            lambda message: self.transition(State.INITIALIZING, message),
+            self.primary_progress,
             text_preview=text_preview,
-            activity=activity,
+            activity=self.primary_activity,
         )
+
+    def primary_activity(self, message):
+        if self.config.target is not None:
+            self.chat_activity(chat_queue_key(self.config), message)
+        self.activity(message)
+
+    def primary_progress(self, message):
+        if self.config.target is not None:
+            self.chat_activity(chat_queue_key(self.config), message)
+        self.transition(State.INITIALIZING, message)
 
     def transition(self, state, reason=""):
         if state != self.state and state not in TRANSITIONS[self.state]:
@@ -132,6 +146,11 @@ class MonitoringService(threading.Thread):
         self.state, self.reason = state, reason
         self.status(state.value, reason)
         self.activity(state.value + (": " + reason if reason else ""))
+        if state in {State.STOPPED, State.PAUSED}:
+            for key in self.chat_run_keys:
+                self.chat_activity(key, state.value + (": " + reason if reason else ""))
+            if state == State.STOPPED:
+                self.chat_run_keys = []
         try:
             self.queue.event("state", state.value + ": " + reason)
         except Exception:
@@ -332,6 +351,11 @@ class MonitoringService(threading.Thread):
                 self.auto_catch = self.general_auto_catch
             self.want_live = self.recoverable = False
             self.stop_input.clear()
+            self.chat_run_keys = [
+                chat_queue_key(chat)
+                for chat in self.config.agent_configs()
+                if chat.target is not None
+            ]
             self.transition(
                 State.INITIALIZING,
                 "Starting 기기위치조정/전원연결"
@@ -444,6 +468,7 @@ class MonitoringService(threading.Thread):
             self.activity,
             mode,
             preview_chat=self.preview_chat,
+            chat_activity=self.chat_activity,
         )
 
     def review_scopes(self):

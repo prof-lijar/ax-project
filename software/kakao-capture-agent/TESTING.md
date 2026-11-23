@@ -16,6 +16,45 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Drag-and-drop image selection — 2026-11-23
+
+The saved-image and GUI suites passed **33 tests** with simulated Qt drag/drop
+events. Both chooser and drop paths execute the same image-test workflow and
+display the same API result. Tests verify that selecting an image does not call
+the API, malformed files preserve the last valid selection, dropping is blocked
+during a run, and remote URLs, multiple files and unsupported extensions are
+ignored. Lint and whitespace checks passed. The drop prompt was visually checked
+in the Test tools layout. Native Windows Explorer dragging remains a manual
+check for the next Windows build; rc.40 does not include this source change.
+
+Reproduce with `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest
+tests/test_saved_image_workflow.py tests/test_gui.py -q`. On Windows, drag one
+PNG/JPEG/BMP from Explorer onto the preview, verify it appears without starting
+processing, then click **Run Image Test** and check Output. Repeat with an invalid
+file and while a test is running; neither may replace the selected valid image.
+
+### Live activity tabs per chat — 2026-11-23
+
+The Linux regression suite passed **568 tests, with 24 Windows-only cases skipped**.
+Ruff lint and whitespace checks passed. Activity was visually inspected offscreen
+at 1080 × 860 and 820 × 640 with three Korean chat names; the smaller window uses
+the existing outer scroll area.
+
+Coverage includes queued Qt signals from a background thread while chat tabs are
+hidden, duplicate chat titles, literal service text, stable identity routing,
+retained history across selection changes, late events from removed chats,
+independent 300-line bounds and preserving the reader's scroll position. The
+production workflow callbacks are exercised for single-chat and three-chat
+progress/API activity, plus Stop and Pause in every affected chat. Settings saves
+refresh the selection labels and log identities.
+
+Reproduce with `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q` from this
+directory. On Windows, select three authorized chats and open **Activity**. Check
+each named tab while all three receive messages, verify processing and reply
+events appear only in the originating tab, and check **All activity** for the
+combined stream. Pause/Stop must appear in all affected tabs. This source change
+is newer than rc.40 and requires a new Windows build for on-device validation.
+
 ### Saved-image unified API test — 2026-11-23
 
 The full Linux regression suite passed **542 tests, with 24 Windows-only cases skipped**. Ruff lint passed. The Test tools panel was visually inspected offscreen at 1080 × 860 and 820 × 640; smaller windows use the existing tab scroll area to reach the preview, Run button and Output field.

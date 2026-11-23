@@ -12,9 +12,10 @@ from app.api.operations_client import OperationsResult
 from app.api.workflow_llm import check_cancel
 from app.automation.monitoring_service import MonitoringService
 from app.automation.multi_chat import MultiChatWorkflow
-from app.automation.unified_workflow import UnifiedProcessor
+from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
 from app.config import Config, WatchedChat, load, save
 from app.models import AgentError, Cancelled, ForegroundLost, Selection, State, Target
+from app.storage.chat_paths import chat_queue_key
 from tests.test_automation import Capture, Desktop
 
 
@@ -63,13 +64,14 @@ def test_legacy_config_and_selection_limits(tmp_path):
 
 
 @pytest.fixture
-def fleet(config, queue, region):
+def fleet(config, queue, region, monkeypatch):
     config.select_agent_chats(targets())
     config.auto_reply_cooldown_seconds = 1
     config.operations_url = "https://operations.test"
     config.operations_username = "tester"
     environment = SimpleNamespace(foreground=None, invalid=set())
     captures, sends, operations, comparisons, logs, names = [], [], [], [], [], []
+    chat_logs = []
     gates = {}
     now = [0.0]
 
@@ -167,6 +169,10 @@ def fleet(config, queue, region):
             return OperationsResult("completed", f"Response for {request['name']}", True)
 
     desktop = Desktop(region)
+    monkeypatch.setattr(
+        "app.automation.unified_workflow.create_unified_operations",
+        lambda config: Operations(config.target.hwnd),
+    )
     service = MonitoringService(
         desktop,
         Capture(desktop, np.zeros((100, 80, 3), dtype=np.uint8)),
@@ -175,6 +181,7 @@ def fleet(config, queue, region):
         lambda *a: None,
         lambda _: None,
         logs.append,
+        chat_activity=lambda key, message: chat_logs.append((key, message)),
     )
 
     def create(mode):
@@ -192,13 +199,15 @@ def fleet(config, queue, region):
             capture_factory=ChatCapture,
             sender_factory=Sender,
             preview_chat=names.append,
+            chat_activity=service.chat_activity,
         )
         for workflow in group.workflows:
             workflow.llm_factory = lambda _: LLM()
             workflow.clock = lambda: now[0]
-            workflow.processor_factory = lambda w=workflow: UnifiedProcessor(
-                w.journal, Operations(w.config.target.hwnd)
-            )
+            if not isinstance(workflow, UnifiedWorkflow):
+                workflow.processor_factory = lambda w=workflow: UnifiedProcessor(
+                    w.journal, Operations(w.config.target.hwnd)
+                )
         return group
 
     service.create_multi_chat = create
@@ -213,6 +222,7 @@ def fleet(config, queue, region):
         operations=operations,
         comparisons=comparisons,
         logs=logs,
+        chat_logs=chat_logs,
         now=now,
         names=names,
     )
@@ -232,6 +242,40 @@ def complete_round(fleet):
 def stop(fleet):
     fleet.service.command("stop")
     fleet.service.dispatch(fleet.service.commands.get_nowait())
+
+
+def test_chat_log_routes_progress_and_activity_by_identity_and_stop_to_all(fleet):
+    f = fleet
+    f.service.dispatch("auto_catch")
+    group = f.service.auto_catch
+    keys = [chat_queue_key(w.config) for w in group.workflows]
+    assert set(key for key, _ in f.chat_logs) == set(keys)  # Startup progress for every chat.
+    f.chat_logs.clear()
+    for index, workflow in enumerate(group.workflows):
+        workflow.progress(f"capture-{index}")
+        workflow.processor.activity(f"processing-{index}")
+    assert f.chat_logs == [
+        (key, message)
+        for index, key in enumerate(keys)
+        for message in (f"capture-{index}", f"processing-{index}")
+    ]
+    assert any("Chat 2: Room 2 — processing-1" in line for line in f.logs)
+    f.chat_logs.clear()
+    f.service.transition(State.PAUSED, "Chat 2 unavailable; all chats paused")
+    assert {key for key, text in f.chat_logs if text.startswith("PAUSED")} == set(keys)
+    f.chat_logs.clear()
+    stop(f)
+    assert {key for key, text in f.chat_logs if text.startswith("STOPPED")} == set(keys)
+
+
+def test_single_chat_logs_progress_and_processor_activity(fleet):
+    f = fleet
+    f.config.agent_chats = []
+    key = chat_queue_key(f.config)
+    f.service.general_auto_catch.progress("Single capture")
+    f.service.general_auto_catch.processor_factory().activity("Single API request")
+    assert f.chat_logs == [(key, "Single capture"), (key, "Single API request")]
+    assert "Single API request" in f.logs
 
 
 def test_three_chats_keep_pipeline_and_replies_isolated(fleet):
@@ -489,6 +533,11 @@ def test_gui_selects_persists_and_returns_to_single_chat(fleet, tmp_path, monkey
     try:
         window.select_agent_chats()
         assert len(load(window.config_path).agent_chats) == 3
+        assert window.activity_views.count() == 4
+        key = chat_queue_key(f.config.agent_configs()[1])
+        signals.chat_activity.emit(key, "Live second-chat event")
+        qt_app.processEvents()
+        assert "Live second-chat event" in window.activity_views.chat_logs[key].toPlainText()
         assert "3. Room 3" in window.target_label.text()
         second_id = f.config.agent_chats[1].chat_id
         f.service.state = State.AUTO_CATCHING
@@ -507,6 +556,8 @@ def test_gui_selects_persists_and_returns_to_single_chat(fleet, tmp_path, monkey
         assert f.config.target == targets()[1]
         assert f.config.chat_id == second_id and f.config.agent_chats == []
         assert load(window.config_path).agent_chats == []
+        assert window.activity_views.count() == 2
+        assert "Live second-chat event" in window.activity_views.chat_logs[key].toPlainText()
     finally:
         window.closing = True
         window.close()

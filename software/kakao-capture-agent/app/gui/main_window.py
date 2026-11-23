@@ -6,7 +6,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QTextCursor
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -31,7 +31,9 @@ from PySide6.QtWidgets import (
 from app.branding import APP_NAME, WINDOW_TITLE, application_icon
 from app.capture.saved_image import load_capture_image
 from app.config import save
+from app.gui.activity_log import ActivityLog
 from app.gui.agent_chats_dialog import AgentChatsDialog
+from app.gui.image_drop_preview import ImageDropPreview
 from app.gui.settings_dialog import SettingsDialog
 from app.gui.theme import CapturePreview, apply_theme, card, label
 from app.models import AgentError, State
@@ -42,6 +44,7 @@ class Signals(QObject):
     status = Signal(str, str)
     preview = Signal(bytes)
     activity = Signal(str)
+    chat_activity = Signal(str, str)
     upload = Signal(str)
     stats = Signal(object)
     text_preview = Signal(str)
@@ -275,7 +278,7 @@ class MainWindow(QMainWindow):
         tests = self.add_tab("Test tools")
         image_card, image_test = card(
             "Test unified workflow with an image",
-            "Choose a saved KakaoTalk capture. Analyze its latest visible message, run the "
+            "Choose or drop a saved KakaoTalk capture. Analyze its latest visible message, run the "
             "same unified API workflow, and display the response here. No chat window is needed.",
         )
         image_test.addWidget(
@@ -295,8 +298,8 @@ class MainWindow(QMainWindow):
         self.image_test_file = label("No image selected · PNG, JPEG or BMP · up to 20 MiB")
         self.image_test_file.setTextInteractionFlags(Qt.TextSelectableByMouse)
         image_input.addWidget(self.image_test_file)
-        self.image_test_preview = CapturePreview()
-        self.image_test_preview.setText("Choose a saved capture to preview it here.")
+        self.image_test_preview = ImageDropPreview()
+        self.image_test_preview.file_dropped.connect(self.load_test_image)
         self.image_test_preview.setAccessibleName("Selected test capture")
         self.image_test_preview.setMinimumHeight(160)
         self.image_test_preview.setMaximumHeight(240)
@@ -397,14 +400,12 @@ class MainWindow(QMainWindow):
 
         activity = self.add_tab("Activity")
         activity_card, activity_layout = card(
-            "Activity log", "Recent capture, reply, and upload events. Times use your local clock."
+            "Activity log", "Select a chat to follow its live activity. Times use your local clock."
         )
-        self.logs = QTextEdit()
-        self.logs.setReadOnly(True)
-        self.logs.setAccessibleName("Activity log")
+        self.activity_views = ActivityLog(self.config)
+        self.logs = self.activity_views.all_log
         self.logs.setPlaceholderText("Activity will appear here as you use the agent.")
-        self.logs.document().setMaximumBlockCount(300)
-        activity_layout.addWidget(self.logs, 1)
+        activity_layout.addWidget(self.activity_views, 1)
         activity.addWidget(activity_card, 1)
         layout.addWidget(
             label("Emergency stop  ·  Ctrl+Shift+F12  ·  Mouse corner fail-safe for input")
@@ -412,6 +413,7 @@ class MainWindow(QMainWindow):
         signals.status.connect(self.update_status)
         signals.preview.connect(self.update_preview)
         signals.activity.connect(self.log)
+        signals.chat_activity.connect(self.activity_views.log_chat)
         signals.upload.connect(self.upload_status)
         signals.stats.connect(self.show_stats)
         self.hotkey = EmergencyHotkey(lambda: self.action("stop"))
@@ -440,14 +442,7 @@ class MainWindow(QMainWindow):
         return layout
 
     def log(self, message):
-        # Treat log messages as text even when services include angle brackets.
-        cursor = QTextCursor(self.logs.document())
-        cursor.movePosition(QTextCursor.End)
-        if not self.logs.document().isEmpty():
-            cursor.insertBlock()
-        cursor.insertText(time.strftime("[%H:%M:%S] ") + message)
-        self.logs.setTextCursor(cursor)
-        self.logs.ensureCursorVisible()
+        self.activity_views.append(self.logs, message)
         logging.getLogger("kakao").info(message)
 
     def update_status(self, state, reason):
@@ -519,6 +514,7 @@ class MainWindow(QMainWindow):
             and not self.closing
         )
         self.image_test_choose_button.setEnabled(image_test_ready)
+        self.image_test_preview.setEnabled(image_test_ready)
         self.image_test_run_button.setEnabled(image_test_ready and self.image_test_png is not None)
 
     def choose_test_image(self):
@@ -532,6 +528,15 @@ class MainWindow(QMainWindow):
             self, "Choose a captured chat image", "", "Capture images (*.png *.jpg *.jpeg *.bmp)"
         )
         if not path:
+            return
+        self.load_test_image(path)
+
+    def load_test_image(self, path):
+        if (
+            self.pending_action
+            or self.closing
+            or self.monitor.state not in (State.STOPPED, State.PAUSED)
+        ):
             return
         try:
             png = load_capture_image(path)
@@ -696,6 +701,8 @@ class MainWindow(QMainWindow):
         self.persist()
 
     def refresh_target_label(self):
+        if hasattr(self, "activity_views"):
+            self.activity_views.refresh_chats(self.config)
         if len(self.config.agent_chats) > 1:
             self.target_label.setText(
                 "Agent chats: "
@@ -772,6 +779,7 @@ class MainWindow(QMainWindow):
             save(self.config_path, new)
             # Workers share this object; settings are only editable while capture is stopped.
             self.config.__dict__.update(new.__dict__)
+            self.refresh_target_label()
             self.refresh_storage_mode()
             self.log("Settings saved; queued captures keep their original destinations")
         except Exception as error:

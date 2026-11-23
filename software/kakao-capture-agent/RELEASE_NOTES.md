@@ -1,5 +1,13 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.41 — 2026-11-23
+
+**Live logs for each chat.** Activity now has a named tab for each selected KakaoTalk chat, plus All activity for the combined stream. Hidden tabs continue updating. Capture, processing and reply events follow each chat's stable identity, even when titles are identical. Stop/Pause appears in every affected chat's log. Each view keeps the latest 300 lines and preserves your position when reading earlier events.
+
+**Drag-and-drop image tests.** Drop one PNG, JPEG or BMP onto the Test tools preview, or use Choose Capture Image. Both methods use the same validation and unified API workflow. Dropping selects and previews the image; click Run Image Test to process it. Invalid files preserve the previous selection, and replacement is disabled during an active run. Test output stays in the app; no KakaoTalk reply or SMS is sent.
+
+The full Linux suite passed 573 tests, with 24 Windows-only checks skipped. Windows tests and source/packaged startup checks must pass before publication. Real KakaoTalk operation and native Explorer dragging still require an on-device check. No additional backend change is needed for these UI features; the rc.39 server update remains necessary for the revised missing-roster response.
+
 ## v0.1.0-rc.40 — 2026-11-23
 
 Includes the rc.39 application changes below. Tag builds now publish the EXE, SHA-256 checksum and `self-test.json` directly as GitHub release assets, without a duplicate Actions artifact upload. This avoids the Actions artifact-storage quota that blocked rc.39 publication after all 587 Windows tests, EXE packaging and startup checks had passed. Manual branch builds continue to produce Actions artifacts.

@@ -6,6 +6,7 @@ from app.automation.window_manager import WindowsDesktop
 from app.automation.windows_composer import WindowsComposer
 from app.capture.screen_capture import ScreenCapture
 from app.models import AgentError, Cancelled
+from app.storage.chat_paths import chat_queue_key
 
 
 class MultiChatWorkflow:
@@ -24,6 +25,7 @@ class MultiChatWorkflow:
         capture_factory=ScreenCapture,
         sender_factory=None,
         preview_chat=lambda _: None,
+        chat_activity=lambda key, message: None,
     ):
         self.base_workflow, self.cancel, self.mode = base_workflow, cancel, mode
         self.workflows = []
@@ -31,11 +33,14 @@ class MultiChatWorkflow:
         self.waiting_reason = ""
         for index, config in enumerate(configs):
             name = f"Chat {index + 1}: {config.target.title}"
+            key = chat_queue_key(config)
 
-            def report(message, name=name):
+            def report(message, name=name, key=key):
+                chat_activity(key, message)
                 progress(f"{name} — {message}")
 
-            def log(message, name=name):
+            def log(message, name=name, key=key):
+                chat_activity(key, message)
                 activity(f"{name} — {message}")
 
             def show(png, name=name):
