@@ -16,6 +16,33 @@ Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/1
 
 ## Automated validation
 
+### Saved-image unified API test — 2026-11-23
+
+The full Linux regression suite passed **542 tests, with 24 Windows-only cases skipped**. Ruff lint passed. The Test tools panel was visually inspected offscreen at 1080 × 860 and 820 × 640; smaller windows use the existing tab scroll area to reach the preview, Run button and Output field.
+
+The Test tools image test uses the production latest-message classifier, grounded request analysis, and unified API client with deterministic mocked HTTP responses. Regression coverage verifies the actual `/api/ax768/runs` request contract and exact displayed response, independent of any selected chat. Desktop capture, activation, reply sending and SMS functions are forbidden in these tests. Additional cases cover PNG/JPEG/BMP decoding, stable image normalization, original-file preservation, invalid/oversized images, outgoing/unclear/unsupported messages, stored-result reuse after restart, cancellation during extraction/API work, no API replay after interruption, processing only the chosen image, sanitized worker errors, and the file picker/preview/output flow.
+
+On Windows, manually open **Test tools**, choose an authorized saved capture, and run it with configured vision/Nexgent credentials. Verify the preview and extracted latest message, compare Output with the server's response, and confirm no KakaoTalk input or SMS occurs. Repeat with no chat window open, an outgoing latest bubble, a malformed file, a cancelled test, and a previously completed image. Real model interpretation, record updates and Windows file-dialog behavior remain pending until exercised on the target PC.
+
+### Three-chat monitoring — 2026-11-23
+
+The full Linux suite, including group-folder storage and routing checks, passed **521 tests, with 24 Windows-only cases skipped**. Ruff lint passed, and the main window and selector were visually inspected offscreen at 820 × 640 and 700 × 440 respectively. The suite's loopback integration tests were run outside the restricted sandbox after the sandboxed run stalled.
+
+Portable regression tests exercise three independent instances of the existing screenshot/AX768 workflow against synthetic desktops and deterministic model/API responses. Coverage includes correct reply routing, independent frame comparisons and queue keys, continued progress while one chat's API is blocked, Stop cancellation across all workers, queue retention and duplicate suppression after restart, invalid-window pause, preflight failure, selection persistence, switching continuous modes, returning to single-chat selection, and the 1–3 chat dialog limit. These tests do not establish real KakaoTalk capture or delivery.
+
+Manual Windows acceptance for this change remains pending:
+
+- Select three distinct chats and send a different supported request to each. Confirm that each API result appears only in its originating chat, including when two results finish together.
+- Delay one API response while receiving new messages in the other chats. Confirm capture continues and each chat preserves its own request order.
+- Test both Run Agent and 기기위치조정/전원연결, including their existing startup behavior in every chat.
+- Stop during inference, between window switches, and during a send. Confirm no later input occurs, pending captures survive restart, and uncertain sends are not replayed.
+- Close/resize one selected window, deny foreground activation, obscure it with a dialog, and lock the desktop. Confirm the whole group pauses with the affected chat identified; it must never redirect a reply to another chat.
+- Restart VoyagerI, explicitly start the saved selection, then restart KakaoTalk and explicitly reselect its windows. Verify pending work stays associated with its original chat.
+- Verify three-chat selection and Stop remain usable at 820 × 640 and at mixed monitor DPI settings.
+- Check `captures/auto_catch/<group name>--<chat ID>` for three distinct group folders, including Korean and duplicate group names. Send identical requests in different chats: images and queues must remain separate, and each reply must go only to its originating group. Manual/history captures use `captures/<group name>--<chat ID>`.
+
+Group-folder regression tests cover Windows-safe readable names, duplicate names, independent files for identical screenshots, stored paths after switching chats/restarting, legacy flat-file compatibility and startup deduplication, rejection of another chat's queued capture, invalid paths, and cleanup that preserves other groups' pending files. Capture recovery scans group folders without treating the separate automatic-reply queue as orphaned uploads.
+
 ### Latest visible startup request — 2026-11-20
 
 Run Agent queues a single startup snapshot using a persisted `latest` analysis mode, then continues collecting before/after pairs. Regression tests cover immediate processing without a screen change (including ` 위치조정/이은경/헌릉로8길58` and power requests), outgoing/automated/unrelated exclusion, one-image model transport, Stop/restart recovery, and duplicate suppression against retained API claims in the same chat. New incoming events may repeat the same text. The structured workflow/API and SMS exclusion tests remain in place.

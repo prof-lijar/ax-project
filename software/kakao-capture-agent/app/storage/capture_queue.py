@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from app.models import StorageFull
+from app.models import AgentError, StorageFull
+from app.storage.chat_paths import capture_directories, chat_directory, chat_folder_name
 
 
 class CaptureQueue:
@@ -92,7 +93,9 @@ class CaptureQueue:
                 "region": asdict(region),
                 "sequence_number": self.sequence,
             }
-            path = self.images / f"{capture_id}.png"
+            directory = chat_directory(self.images, chat_folder_name(self.config))
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / f"{capture_id}.png"
             temporary = path.with_suffix(".tmp")
             try:
                 with temporary.open("wb") as file:
@@ -138,6 +141,16 @@ class CaptureQueue:
                 raise
             return capture_id
 
+    def image_path(self, capture_id):
+        """Read the persisted destination, independent of the currently selected chat."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT image_path FROM capture_queue WHERE capture_id=?", (capture_id,)
+            ).fetchone()
+        if row is None:
+            raise AgentError("Capture metadata is unavailable")
+        return Path(row["image_path"])
+
     def recover(self):
         with self.lock, self.connect() as db:
             db.execute(
@@ -146,7 +159,7 @@ class CaptureQueue:
             rows = db.execute(
                 "SELECT capture_id,image_path,upload_status FROM capture_queue"
             ).fetchall()
-            known = {Path(r["image_path"]).name for r in rows}
+            known = {Path(r["image_path"]) for r in rows}
             for row in rows:
                 if row["upload_status"] != "uploaded" and not Path(row["image_path"]).exists():
                     self.recovery_messages.append(
@@ -157,9 +170,11 @@ class CaptureQueue:
                         "UPDATE capture_queue SET upload_status='failed',last_error=? WHERE capture_id=?",
                         ("Image file missing; operator review required", row["capture_id"]),
                     )
-            for path in self.images.glob("*.tmp"):
-                path.unlink()
-            orphans = [p for p in self.images.glob("*.png") if p.name not in known]
+            orphans = []
+            for directory in capture_directories(self.images):
+                for path in directory.glob("*.tmp"):
+                    path.unlink()
+                orphans.extend(p for p in directory.glob("*.png") if p not in known)
             if orphans:
                 self.recovery_messages.append(
                     f"{len(orphans)} orphan PNGs retained for operator review"

@@ -177,6 +177,7 @@ def test_duplicate_cache_expires_and_is_bounded(watching):
         w.workflow.next_reply_at = 0
         w.workflow.detector.ready = lambda *a: True
         w.queue.enqueue = lambda *a, **kw: "synthetic"
+        w.queue.image_path = lambda _: w.queue.images / "synthetic.png"
         w.service.poll_auto_catch()
     assert len(w.workflow.recent) == 256
     w.now[0] += 61

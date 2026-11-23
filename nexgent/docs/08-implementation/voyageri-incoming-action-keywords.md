@@ -141,3 +141,38 @@ After deployment, verify in a controlled chat: ordinary incoming text and outgoi
 keyword messages must not invoke workflows or reply; an incoming keyword request
 for a test record must return the server's signal-result template. No live chat
 acceptance check has been performed in this session.
+
+
+## Missing-roster reply update — 2026-11-23
+
+Date: 2026-11-23 (Asia/Seoul)
+
+The unified API now uses the existing signal-unconfirmed customer template when
+roster lookup returns `not_found` and the signal check was skipped. The name comes
+from `parsed.lookup_name` (including confirmed names), falling back to
+`parsed.name`; if neither exists, the API asks for clarification. The API retains
+`status=not_found`, `verified=false`, lookup attempts and skipped write receipts.
+An AS-only lookup failure after a connected signal retains its existing response.
+The internal graph diagnostic is unchanged; customer wording belongs to the API.
+
+Both Run Agent (auto) and Run Image Test use this same unified API response.
+Auto sends it unchanged to the originating chat; the image test displays it in
+Output without desktop input or SMS. Existing cached results remain historical
+receipts and are not rerun automatically; use a new capture to test the updated
+server. This correction requires deploying/restarting the backend using the
+commands above; no agent graph or desktop runtime change is required.
+
+Validation: 188 backend dispatcher/device tests and 115 desktop unified/image-test
+tests passed. Desktop lint and repository whitespace checks passed. These checks
+use mocked upstreams and desktop input; no live chat or record mutations occurred.
+
+Reproduce:
+
+```sh
+# From nexgent/backend
+.venv/bin/python -m pytest tests/test_ax768_dispatch.py tests/test_ax768_workflow.py -q
+# From software/kakao-capture-agent
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest tests/test_unified_workflow.py tests/test_saved_image_workflow.py -q
+```
+
+Deployment and a controlled Windows chat/image test remain to be performed.

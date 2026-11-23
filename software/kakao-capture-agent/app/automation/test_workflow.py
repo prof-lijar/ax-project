@@ -50,7 +50,7 @@ class OneCycleWorkflow:
             capture_id = self.queue.enqueue(png, region, "live", local_only=True)
             self.preview(png)
             self.progress(
-                f"Workflow capture saved locally: {self.queue.images / (capture_id + '.png')}"
+                f"Workflow capture saved locally: {self.queue.image_path(capture_id)}"
             )
             self.queue.event("workflow_capture", capture_id)
             check_cancel(self.cancel)

@@ -1,7 +1,7 @@
 import json
 import math
 import os
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -24,6 +24,12 @@ def validate_endpoint(url, allow_local_http=False):
     if allow_local_http and parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "::1"}:
         return
     raise ValueError("Use HTTPS, or enable test HTTP for a literal loopback address")
+
+
+@dataclass(frozen=True)
+class WatchedChat:
+    target: Target
+    chat_id: str
 
 
 @dataclass
@@ -75,8 +81,73 @@ class Config:
     auto_start_monitoring: bool = False
     target: Target | None = None
     selection: Selection | None = None
+    agent_chats: list[WatchedChat] = field(default_factory=list)
+
+    def agent_configs(self):
+        """Snapshot each chat without sharing mutable target/geometry state."""
+        if not self.agent_chats:
+            return [self]
+        return [
+            replace(
+                self,
+                target=chat.target,
+                chat_id=self.chat_id if index == 0 else chat.chat_id,
+                selection=None,
+                agent_chats=[],
+            )
+            for index, chat in enumerate(self.agent_chats)
+        ]
+
+    def select_agent_chats(self, targets):
+        if not 1 <= len(targets) <= 3 or len({t.hwnd for t in targets}) != len(targets):
+            raise ValueError("Select one to three different conversation windows")
+        previous = list(self.agent_chats)
+        if self.target and self.chat_id:
+            previous = [c for c in previous if c.target != self.target]
+            previous.append(WatchedChat(self.target, self.chat_id))
+        chats = []
+        for target in targets:
+            matches = [c for c in previous if c.target == target]
+            if not matches:
+                # Explicit reselection after KakaoTalk restarts may restore this
+                # chat's queue. Never guess between same-titled conversations.
+                matches = [
+                    c
+                    for c in previous
+                    if (c.target.title, c.target.executable, c.target.window_class)
+                    == (target.title, target.executable, target.window_class)
+                ]
+            chat_id = matches[0].chat_id if len(matches) == 1 else "chat-" + uuid4().hex[:12]
+            chats.append(WatchedChat(target, chat_id))
+        if len({c.chat_id for c in chats}) != len(chats):
+            raise ValueError("Conversation identities are ambiguous; select distinct chats")
+        self.agent_chats = chats
+        self.target, self.chat_id = chats[0].target, chats[0].chat_id
+        self.selection = None
 
     def validate(self):
+        if not isinstance(self.agent_chats, list) or len(self.agent_chats) > 3:
+            raise ValueError("Select at most three agent chats")
+        if self.agent_chats:
+            if any(
+                not isinstance(c, WatchedChat)
+                or not isinstance(c.target, Target)
+                or not isinstance(c.chat_id, str)
+                or not c.chat_id.strip()
+                for c in self.agent_chats
+            ):
+                raise ValueError("Invalid agent chat configuration")
+            if (
+                self.target != self.agent_chats[0].target
+                or not isinstance(self.chat_id, str)
+                or not self.chat_id.strip()
+            ):
+                raise ValueError("The primary conversation must be the first agent chat")
+            configs = self.agent_configs()
+            if len({c.target.hwnd for c in configs}) != len(configs) or len(
+                {c.chat_id for c in configs}
+            ) != len(configs):
+                raise ValueError("Select different agent chats with unique chat identifiers")
         validate_endpoint(self.api_url, self.allow_local_http)
         from app.api.bizgo_client import validate_bizgo_config
         from app.api.workflow_llm import validate_llm_url
@@ -200,6 +271,10 @@ def load(path):
         raise ValueError("Unsupported configuration version")
     if data.get("target"):
         data["target"] = Target(**data["target"])
+    if "agent_chats" in data:
+        data["agent_chats"] = [
+            WatchedChat(Target(**chat["target"]), chat["chat_id"]) for chat in data["agent_chats"]
+        ]
     if data.get("selection"):
         s = data["selection"]
         data["selection"] = Selection(

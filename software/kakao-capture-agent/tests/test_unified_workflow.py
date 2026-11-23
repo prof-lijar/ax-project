@@ -375,7 +375,8 @@ def test_default_worker(config, queue, region):
     ("incoming", "[자동 확인]\n" + MESSAGE, False),
 ])
 @pytest.mark.parametrize("startup", [False, True])
-def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, text, should_act, startup):  # noqa: F811
+@pytest.mark.parametrize("status", ["completed", "not_found"])
+def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, text, should_act, startup, status):  # noqa: F811
     from tests.test_queued_visual_catch import changed, finish
 
     monkeypatch.setattr("app.automation.unified_workflow.analyze_request", analyze_request)
@@ -394,7 +395,13 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
     )
     unified.clock = lambda: w.now[0]
     reply = POWER_REPLY if "전원연결" in text else REPLY
-    operations = SimpleNamespace(run=Mock(return_value=OperationsResult("completed", reply, True)))
+    if status == "not_found":
+        name = (model_request(text) or {}).get("name", "이영희")
+        reply = (
+            f"[자동 확인]\n{name}님 신규설치 기기신호가 아직 확인되지 않습니다.\n"
+            "기기 전원 및 설치 위치 확인 부탁드립니다. "
+        )
+    operations = SimpleNamespace(run=Mock(return_value=OperationsResult(status, reply, status == "completed")))
     unified.processor_factory = lambda: UnifiedProcessor(unified.journal, operations)
     w.llm.classify = lambda *a, **kw: IncomingMessage(kind, text)
     w.llm.classify_latest = Mock(return_value=IncomingMessage(kind, text) if startup else IncomingMessage("none"))

@@ -8,6 +8,7 @@ import shutil
 import time
 
 from app.models import AgentError, StorageFull
+from app.storage.chat_paths import capture_directories, chat_directory
 from app.storage.text_queue import TextQueue
 
 
@@ -34,27 +35,32 @@ class ImageReplyQueue(TextQueue):
             hashes = [body["before"], body["after"]]
             if not all(isinstance(h, str) and re.fullmatch("[0-9a-f]{64}", h) for h in hashes):
                 raise ValueError()
-            return [self.images / (h + ".png") for h in hashes]
+            directory = chat_directory(self.images, body.get("folder"))
+            return [directory / (h + ".png") for h in hashes]
         except (ValueError, KeyError, TypeError):
             raise AgentError("Queued screenshot metadata is invalid; review required") from None
 
-    def enqueue_pair(self, chat_key, before, after, *, mode="changes"):
+    def enqueue_pair(self, chat_key, before, after, *, mode="changes", folder=None):
         if mode not in ("changes", "latest"):
             raise ValueError("Unsupported screenshot analysis mode")
         hashes = [hashlib.sha256(png).hexdigest() for png in (before, after)]
         payload = dict(zip(("before", "after"), hashes))
         if mode == "latest":
             payload["mode"] = mode
+        legacy_text = json.dumps(payload)
+        directory = chat_directory(self.images, folder)
+        if folder is not None:
+            payload["folder"] = folder
         text = json.dumps(payload)
         with self.storage.lock:
             with self.storage.connect() as db:
                 if mode == "latest":
                     previous = db.execute(
-                        f"SELECT job_id FROM {self.table} WHERE chat_key=? AND text=? ORDER BY id DESC LIMIT 1",
-                        (chat_key, text),
+                        f"SELECT job_id,text FROM {self.table} WHERE chat_key=? AND text IN (?,?) ORDER BY id DESC LIMIT 1",
+                        (chat_key, text, legacy_text),
                     ).fetchone()
                     if previous:
-                        return previous["job_id"], self.images / (hashes[1] + ".png")
+                        return previous["job_id"], self.paths(previous["text"])[1]
                 count = db.execute(
                     f"SELECT count(*) FROM {self.table} WHERE status IN ({self.status_placeholders})",
                     self.active_statuses,
@@ -63,7 +69,7 @@ class ImageReplyQueue(TextQueue):
                 raise StorageFull(
                     "Run Agent (auto) has 1000 unfinished captures; collection stopped; queue retained"
                 )
-            files = {self.images / (h + ".png"): png for h, png in zip(hashes, (before, after))}
+            files = {directory / (h + ".png"): png for h, png in zip(hashes, (before, after))}
             needed = sum(len(png) for path, png in files.items() if not path.exists()) + 1024**2
             if self.storage.usage() + needed > self.storage.config.storage_limit_bytes:
                 raise StorageFull(
@@ -73,6 +79,7 @@ class ImageReplyQueue(TextQueue):
                 raise StorageFull(
                     "Disk space is low; Run Agent (auto) paused with queued captures retained"
                 )
+            directory.mkdir(parents=True, exist_ok=True)
             for path, png in files.items():
                 if path.exists():
                     if hashlib.sha256(path.read_bytes()).hexdigest() != path.stem:
@@ -92,7 +99,7 @@ class ImageReplyQueue(TextQueue):
             # Commit the pair before advancing the capture baseline. Unknown commit
             # outcomes leave PNGs available for review rather than deleting them.
             job_id = super().enqueue(chat_key, text)
-            return job_id, self.images / (hashes[1] + ".png")
+            return job_id, directory / (hashes[1] + ".png")
 
     def load_images(self, job):
         try:
@@ -126,8 +133,9 @@ class ImageReplyQueue(TextQueue):
                     # Preserve every file if metadata cannot safely establish references.
                     return
             cutoff = time.time() - self.storage.config.metadata_retention_days * 86400
-            for path in self.images.glob("*.png"):
-                if path not in referenced and path.stat().st_mtime < cutoff:
-                    path.unlink()
-            for path in self.images.glob("*.tmp"):
-                path.unlink(missing_ok=True)
+            for directory in capture_directories(self.images):
+                for path in directory.glob("*.png"):
+                    if path not in referenced and path.stat().st_mtime < cutoff:
+                        path.unlink()
+                for path in directory.glob("*.tmp"):
+                    path.unlink(missing_ok=True)

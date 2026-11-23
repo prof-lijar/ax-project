@@ -1,8 +1,10 @@
 # VoyagerI
 
-VoyagerI (formerly KakaoTalk Capture Agent) is a Windows desktop application for capturing the automatically detected message area of a selected KakaoTalk conversation window, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
+VoyagerI (formerly KakaoTalk Capture Agent) is a Windows desktop application for capturing automatically detected KakaoTalk message areas, running the same continuous workflow in up to three selected conversations, collecting bounded history, and uploading PNGs through a durable local queue. It implements the four phases in [PRD.md](PRD.md), with operator-triggered reply tests added afterward. It uses no private KakaoTalk APIs.
 
 **Send Test Reply** sends the editable **Test reply message**, initially `[AI가 답장드렸습니다]`. **Test Workflow** performs one capture → LLM text extraction → simulated completion summary → KakaoTalk reply → optional Bizgo SMS/LMS cycle. **Send Bizgo Sample** tests only the configured phone-message connection. **Test Workflow 2: Reply to Next Message** explicitly arms a one-shot watcher: a newly observed incoming message triggers one `[AI]` reply, then it stops. **Run Agent (auto)** continuously watches and replies until stopped. Incoming messages trigger replies only while one of these modes is explicitly armed.
+
+**Run Image Test**, under **Test tools**, accepts a saved capture, runs the existing unified API workflow, and shows its response in **Output** without sending a KakaoTalk reply. It requires no selected chat window.
 
 **Validation status:** the release workflow runs automated tests and a synthetic startup check of the packaged executable on Windows. Real KakaoTalk behavior, mixed-DPI window detection, sign-in startup, and unattended operation require the manual checks in [TESTING.md](TESTING.md). Releases remain prereleases until those checks are completed.
 
@@ -15,6 +17,22 @@ Open [GitHub Releases](https://github.com/prof-lijar/ax-project/releases) and do
 The executable includes its runtime and libraries; the first launch may take a moment while they unpack. It is unsigned, so Windows may show an unrecognized-app prompt. Windows 11 Smart App Control may block it without offering a per-app override; this requires a trusted signed distribution to resolve reliably, and the current release remains unsigned. See [Microsoft's Smart App Control FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions). Each release includes a `.sha256` checksum file. Configuration and captures stay in `%LOCALAPPDATA%\KakaoCaptureAgent`, separate from the executable.
 
 Open the intended KakaoTalk conversation, choose **Select Window**. All chat features detect the message area automatically; a blank chat identifier is generated automatically. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
+
+## Watch up to three chats
+
+1. Open up to three KakaoTalk conversations in separate windows, with the latest messages visible in each.
+2. Click **Select Agent Chats (1–3)**, check the intended windows, and choose **Use selected chats**.
+3. Click **Run Agent (auto)** (or **기기위치조정/전원연결**). The same chosen workflow runs independently for each chat, using the shared LLM and operations settings.
+
+VoyagerI rotates foreground focus through the selected windows. Each chat has its own screenshot baseline, persistent queue, startup check, and reply cooldown. Model/API processing can run concurrently for different chats; capture and keyboard input run in sequence on one desktop worker. A reply always goes back to its originating chat. FIFO ordering is maintained within each chat; completion order across chats can differ.
+
+Captured images are separated by group name. Continuous-workflow images are saved in `%LOCALAPPDATA%\KakaoCaptureAgent\captures\auto_catch\<group name>--<chat ID>\`. The short ID distinguishes different chats with identical or similar names; Korean names are preserved and characters Windows cannot use in a folder name are replaced. Identical screenshots from different groups still have separate files. Each queued job keeps its original chat key and image path across Stop/restart. Replies are submitted only through that chat's verified window; the folder name is a label, not a routing rule. Older flat-folder captures remain readable, and upgrading does not duplicate their queued startup jobs.
+
+This is repeated monitoring of all selected chats, not simultaneous screen capture. A full rotation includes activation, capture, and any ready replies, then waits for the configured polling interval. Keep all selected windows open, unminimized, and at their latest messages, with the desktop unlocked. Do not type or move focus while it is running. Messages that scroll out of view between visits can still be missed.
+
+**Stop / Ctrl+Shift+F12 stops all chats.** If any selected window becomes unavailable, changes identity/layout, or cannot be activated, the group pauses with pending work retained. Correct the problem and explicitly restart; reselect windows if they were closed/reopened. Existing receipts and uncertain-send review rules apply separately to each chat. Startup greetings, where part of the chosen workflow, are sent once per selected chat on each explicit start; ordinary Run Agent stays silent at startup.
+
+The conversation list, screenshot label, extracted-text label, and activity log identify the chats. **Review Replies** applies to all currently selected agent chats. Preview, history, local capture, and one-shot test tools use the first listed chat only. **Select Window** returns to single-chat selection. Saved selections do not automatically start replying after an app restart. This feature requires a build containing these changes; an already downloaded executable does not update itself.
 
 ## 기기위치조정/전원연결
 
@@ -93,7 +111,7 @@ Settings are grouped into **Capture**, **AI replies**, **Nexgent**, **Bizgo**, *
 2. While stopped, click **Save Capture Locally** and bring the selected conversation to the foreground within three seconds. This takes one screenshot without scrolling, even if the image is unchanged.
 3. Restore the agent and click **Open Captures Folder**. Open the newest PNG (sort by Date modified) to inspect it at full resolution. The activity log shows its exact filename.
 
-Images are saved in `%LOCALAPPDATA%\KakaoCaptureAgent\captures`. No API or token is required. **Save Capture Locally** always leaves its image unassigned to an API, even if an upload URL is configured.
+Manual, test, live-capture, and history images are saved in `%LOCALAPPDATA%\KakaoCaptureAgent\captures\<group name>--<chat ID>\`. No API or token is required. **Save Capture Locally** always leaves its image unassigned to an API, even if an upload URL is configured. Existing images saved directly in `captures` remain available.
 
 For continuous local collection, enable **Local-only mode: save PNGs and pause uploads** in Settings, then use **Start / Resume** or **Confirm Latest Position** as described above. Changed frames are saved at the configured interval; turn off **Detect visual changes** while stopped to save every interval. History captures also remain local. Existing uploads pause, although a request already in progress may finish.
 
@@ -142,7 +160,7 @@ Polling defaults to 0.5 seconds with a short debounce. Only the latest visible m
 
 Run Agent (auto) uses screenshots again; Windows accessibility and notification access are not required. The exact selected target is checked before capture and input. If it loses foreground focus, the agent attempts to reactivate that same chat. A locked desktop, invalid target, unavailable capture, or failed/partial input stops collection. An accepted Enter with unconfirmed composer clearing does not stop watching. Capture and inference can miss or misclassify messages; this is not a guaranteed incoming-message event feed. Brief sending operations also occupy the desktop worker.
 
-Screenshots are saved under `%LOCALAPPDATA%\KakaoCaptureAgent\captures\auto_catch`. Their full paths appear in the activity log; **Open Captures Folder** opens the parent directory. Adjacent pairs share identical image files. The persistent FIFO is the `image_reply_queue` table in `queue.db`. These images do not enter the ordinary upload queue or Bizgo workflow, but clicking Run Agent (auto) authorizes their transmission to the configured LLM even in local-only mode. Old native-text and generic-answer jobs remain separate and are not replayed as business requests. Unified jobs are scoped to the operations URL and account.
+Screenshots are saved under `%LOCALAPPDATA%\KakaoCaptureAgent\captures\auto_catch\<group name>--<chat ID>`. Their full paths appear in the activity log; **Open Captures Folder** opens the parent `captures` directory. Adjacent pairs in the same group share identical image files; different groups have separate copies. The persistent FIFO is the `image_reply_queue` table in `queue.db`, partitioned by chat and workflow destination. These images do not enter the ordinary upload queue or Bizgo workflow, but clicking Run Agent (auto) authorizes their transmission to the configured LLM even in local-only mode. Old native-text and generic-answer jobs remain separate and are not replayed as business requests. Unified jobs are scoped to the operations URL and account.
 
 Pending and review jobs retain their images. Review items are set aside: they are never automatically resent and do not block later pending captures. The log reports their count separately from the active queue. A pending capture whose saved image is missing, changed, or invalid is moved to review, and watching and other jobs continue. Completed image jobs and unreferenced PNGs are cleaned at startup according to the metadata retention period (default 30 days). Storage capacity and a 1,000 active-capture limit stop collection visibly instead of discarding queued work. Review items do not use that active-job limit, but retained images still use disk space. Messages arriving after collection stops are not guaranteed to be captured.
 
@@ -163,6 +181,19 @@ API attempts and results are journaled separately from reply delivery. A timeout
 See the [server contract, exact reply templates and activation steps](../../nexgent/agents/docs/ax768-unified-kakaotalk-api.md).
 
 **Test Workflow** and **Test Workflow 2** remain separate one-cycle tests.
+
+## Test the unified workflow with a saved image
+
+1. Stop any active monitoring and open **Test tools → Test unified workflow with an image**.
+2. Click **Choose Capture Image**, select a PNG, JPEG or BMP, and review the preview. Images must be at least 32 × 32 pixels, at most 16 megapixels, and at most 20 MiB before and after PNG conversion. The original file is not modified.
+3. Click **Run Image Test**. The same vision classifier used by Run Agent's startup reads **only the latest visible message**. Its extracted text appears beside the preview.
+4. A supported incoming request goes through the same grounded action analysis and `POST /api/ax768/runs` workflow. The API response appears unchanged in the read-only **Output** field, where it can be selected and copied. Outgoing, automated or unsupported messages show a no-action result; ambiguous images and failures show an explanation.
+
+Choosing an image only previews it locally. Running the test sends it to the configured vision model and invokes the real unified API, which can update operational records. This is not the older simulated Test Workflow. It never activates KakaoTalk, captures the desktop, types into a composer, sends a chat reply, or sends SMS. The app stays visible while processing; no chat selection is required.
+
+Repeated tests of the same image and operations URL/account reuse retained results and API receipts, including after restart. An interrupted API attempt is not automatically repeated. Choosing a different image processes that image rather than earlier pending test files. Saved-image jobs are separate from live-chat queues and can never be picked up for automatic chat replies. Imported PNG copies are stored in `captures/auto_catch/Image tests--<ID>`; completed results follow the existing metadata retention period (default 30 days).
+
+**Stop / Ctrl+Shift+F12** cancels further processing. An API operation already submitted may still finish on the server; cancellation cannot undo its record updates. The result or cancellation message stays in **Output**.
 
 ## Test one capture → LLM → reply workflow
 
@@ -371,7 +402,7 @@ Implementation modules follow the PRD: GUI on the Qt thread; capture and scrolli
 - Screen pixels cannot establish message identities or exhaustive history. Fast arrivals, dynamic loading, animations, blank regions, and interruptions can leave gaps. Audit events and history outcomes record uncertainty.
 - Visibility and input checks are conservative and happen before and after actions. Windows does not make these checks atomic with desktop capture/input; extremely brief overlays or focus changes can race them. In-window custom content cannot be classified without message/UI interpretation. Use the dedicated PC and an explicitly selected message area.
 - Window titles are matched exactly to avoid switching chats. If KakaoTalk changes the title for unread counts or other reasons, reselect the window. Cross-process/window recreation is never automatically rebound.
-- Settings and target changes require Stop. Normal GUI interaction takes focus away from KakaoTalk and pauses capture. There is no tray interface in this release.
+- Settings and target changes require Stop. GUI interaction takes focus away from KakaoTalk: ordinary capture pauses, while continuous workflows attempt to reactivate their selected chats. There is no tray interface in this release.
 - Only standard scrollbar position is read; custom KakaoTalk controls use the measured visual fallback. Bottom position and overlap must be calibrated against the installed client. Uncertain checks remain paused.
 - Native Win32 `SendInput` emits one 120-unit wheel notch and verifies success. PyAutoGUI supplies the mouse fail-safe. This deliberately replaces its wheel helper because [the Windows implementation passes raw wheel data and suppresses some OS input errors](https://github.com/asweigart/pyautogui/blob/master/pyautogui/_pyautogui_win.py).
 - Automatic geometry uses native physical client/control coordinates and Windows DPI. Resizing or a DPI change during an active workflow pauses it; Stop and restart the action to detect the new area. Real mixed-DPI behavior remains a manual acceptance check.

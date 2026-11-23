@@ -74,7 +74,16 @@ def device_reply(result):
     if result["status"] == "completed":
         action = "기기 전원연결" if result["member_note"]["note"].endswith("전원연결") else "기기 위치변경"
         return f"[자동 확인]\n{name}님 {action} 후 기기신호 확인 완료입니다.\n내용 기재해두었습니다.\n감사합니다. :)"
-    if result["status"] == "disconnected":
+    roster_missing = (result["status"] == "not_found"
+                      and result["roster"]["status"] == "not_found"
+                      and result["signal"]["status"] == "skipped")
+    if roster_missing:
+        # No matched row exists: address the requested person, keeping the
+        # not_found status and skipped write receipts intact for diagnostics.
+        name = result["parsed"]["lookup_name"] or result["parsed"]["name"]
+        if not name:
+            return CLARIFY
+    if result["status"] == "disconnected" or roster_missing:
         return f"[자동 확인]\n{name}님 신규설치 기기신호가 아직 확인되지 않습니다.\n기기 전원 및 설치 위치 확인 부탁드립니다. "
     return "[자동 확인]\n" + result["response"]
 

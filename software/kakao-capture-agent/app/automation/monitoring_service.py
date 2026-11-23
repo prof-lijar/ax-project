@@ -1,13 +1,16 @@
 import queue as commands
 import threading
 import time
+from copy import copy
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
 from app.automation.device_workflow import DeviceWorkflow
 from app.automation.incoming_workflow import IncomingReplyWorkflow
+from app.automation.multi_chat import MultiChatWorkflow
 from app.automation.reply_service import TestReplySender
+from app.automation.saved_image_workflow import SavedImageWorkflow
 from app.automation.scroll_controller import ScrollController
 from app.automation.test_workflow import OneCycleWorkflow
 from app.automation.unified_workflow import UnifiedWorkflow
@@ -37,11 +40,16 @@ class MonitoringService(threading.Thread):
         activity,
         text_preview=lambda _: None,
         setup_ready=lambda: None,
+        preview_chat=lambda _: None,
+        image_test_output=lambda _: None,
+        image_test_text=lambda _: None,
     ):
         super().__init__(name="capture", daemon=False)
         self.desktop, self.capture, self.queue, self.config = desktop, capture, queue, config
         self.status, self.preview, self.activity = status, preview, activity
         self.setup_ready = setup_ready
+        self.text_preview, self.preview_chat = text_preview, preview_chat
+        self.image_test_output = image_test_output
         self.state = State.STOPPED
         self.reason = ""
         self.stop_input = threading.Event()
@@ -96,6 +104,15 @@ class MonitoringService(threading.Thread):
             activity=activity,
         )
         self.general_auto_catch = self.auto_catch
+        self.saved_image_workflow = SavedImageWorkflow(
+            config,
+            queue,
+            self.general_auto_catch.jobs,
+            self.general_auto_catch.journal,
+            self.stop_input,
+            lambda message: self.transition(State.INITIALIZING, message),
+            image_test_text,
+        )
         self.device_workflow = DeviceWorkflow(
             desktop,
             capture,
@@ -121,7 +138,7 @@ class MonitoringService(threading.Thread):
             # The activity log still records the transition when SQLite is unavailable.
             self.activity("Could not persist state audit event; check local storage")
 
-    def command(self, name):
+    def command(self, name, payload=None):
         if name == "stop":
             self.auto_focus_recovery = False
             self.want_live = False
@@ -136,7 +153,7 @@ class MonitoringService(threading.Thread):
         elif name == "cancel_history":
             self.history_cancel.set()
             return
-        self.commands.put(name)
+        self.commands.put(name if payload is None else (name, payload))
 
     def suspend_recovery(self):
         """Reserve a manual action while the GUI yields foreground to the chat."""
@@ -177,6 +194,7 @@ class MonitoringService(threading.Thread):
         self.config.selection = selection
         if not self.config.chat_id.strip():
             self.config.chat_id = "chat-" + uuid4().hex[:12]
+        self.preview_chat(self.config.target.title if self.config.target else "")
         self.activity("Conversation area detected automatically from the selected window")
         self.setup_ready()
 
@@ -260,6 +278,9 @@ class MonitoringService(threading.Thread):
         self.next_recovery = time.monotonic() + self.config.recovery_seconds
 
     def dispatch(self, command):
+        payload = None
+        if isinstance(command, tuple):
+            command, payload = command
         if command == "stop":
             self.auto_focus_recovery = False
             self.incoming_workflow.reset()
@@ -267,6 +288,33 @@ class MonitoringService(threading.Thread):
             self.recoverable = False
             self.operator_bottom = False
             self.transition(State.STOPPED)
+        elif command == "image_test" and self.state == State.STOPPED:
+            self.want_live = self.recoverable = self.auto_focus_recovery = False
+            self.stop_input.clear()
+            self.transition(State.INITIALIZING, "Preparing saved image test")
+            try:
+                result = self.saved_image_workflow.run(payload)
+                if self.stop_input.is_set():
+                    raise Cancelled("Image test cancelled")
+                self.image_test_output(result)
+                self.transition(State.STOPPED, "Image test complete; see Output")
+            except Cancelled:
+                self.image_test_output(
+                    "Image test cancelled. An API request already submitted may still finish."
+                )
+                raise
+            except Exception as error:
+                reason = (
+                    str(error)
+                    if isinstance(error, AgentError)
+                    else (
+                        f"Image test failed ({type(error).__name__}); check settings and local storage"
+                    )
+                )
+                self.image_test_output(reason)
+                raise
+            finally:
+                self.stop_input.set()
         elif command in ("start", "confirm_bottom") and self.state in (State.STOPPED, State.PAUSED):
             self.want_live = True
             self.stop_input.clear()
@@ -274,6 +322,8 @@ class MonitoringService(threading.Thread):
         elif command == "history" and self.state == State.LIVE_MONITORING:
             self.history()
         elif command in ("auto_catch", "device_workflow") and self.state == State.STOPPED:
+            if isinstance(self.auto_catch, MultiChatWorkflow):
+                self.auto_catch = self.auto_catch.base_workflow
             if command == "device_workflow":
                 if self.auto_catch is not self.device_workflow:
                     self.general_auto_catch = self.auto_catch
@@ -289,12 +339,18 @@ class MonitoringService(threading.Thread):
                 else "Starting Run Agent (auto)",
             )
             try:
-                self.prepare_chat()
+                if len(self.config.agent_chats) > 1:
+                    self.config.validate()
+                    self.auto_catch = self.create_multi_chat(command)
+                else:
+                    self.prepare_chat()
                 self.auto_catch.arm()
                 self.next_capture = time.monotonic() + self.config.auto_catch_interval_seconds
                 self.transition(
                     State.AUTO_CATCHING,
-                    "Watching display changes; captures queue for text extraction, LLM processing, and reply; Stop ends Run Agent (auto)",
+                    f"Watching {len(self.config.agent_chats)} chats in rotation; Stop ends all chats"
+                    if isinstance(self.auto_catch, MultiChatWorkflow)
+                    else "Watching display changes; captures queue for text extraction, LLM processing, and reply; Stop ends Run Agent (auto)",
                 )
             except Exception:
                 self.stop_input.set()
@@ -359,9 +415,7 @@ class MonitoringService(threading.Thread):
                         # A requested test capture always saves, even if pixels are unchanged.
                         # It never inherits an API destination or alters the live baseline.
                         capture_id = self.queue.enqueue(png, region, "live", local_only=True)
-                        self.activity(
-                            f"Capture saved locally: {self.queue.images / (capture_id + '.png')}"
-                        )
+                        self.activity(f"Capture saved locally: {self.queue.image_path(capture_id)}")
                     self.preview(png)
                 else:
                     self.scroller.operator_confirmed = False
@@ -377,6 +431,32 @@ class MonitoringService(threading.Thread):
                 )
             finally:
                 self.stop_input.set()
+
+    def create_multi_chat(self, mode):
+        return MultiChatWorkflow(
+            self.auto_catch,
+            self.config.agent_configs(),
+            self.queue,
+            self.stop_input,
+            self.preview,
+            lambda message: self.transition(State.INITIALIZING, message),
+            self.text_preview,
+            self.activity,
+            mode,
+            preview_chat=self.preview_chat,
+        )
+
+    def review_scopes(self):
+        """Resolve only the currently selected chats, including before a run starts."""
+        base = self.auto_catch
+        if isinstance(base, MultiChatWorkflow):
+            base = base.base_workflow
+        scopes = []
+        for config in self.config.agent_configs():
+            view = copy(base)
+            view.config = config
+            scopes.append((base.jobs, view.queue_key()))
+        return scopes
 
     def pause(self, error):
         if (

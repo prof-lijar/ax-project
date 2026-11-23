@@ -6,10 +6,11 @@ from uuid import uuid4
 
 from app.api.incoming_llm import RUN_AGENT_GREETING, create_incoming_llm
 from app.api.workflow_llm import check_cancel
-from app.automation.text_auto_catch import TextAutoCatchWorkflow, chat_queue_key
+from app.automation.text_auto_catch import TextAutoCatchWorkflow
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
 from app.models import AgentError
+from app.storage.chat_paths import chat_directory, chat_folder_name, chat_queue_key
 from app.storage.image_reply_queue import CaptureReviewRequired, ImageReplyQueue
 
 
@@ -31,6 +32,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         llm_factory=create_incoming_llm,
         clock=time.monotonic,
         text_preview=lambda _: None,
+        jobs_factory=ImageReplyQueue,
     ):
         super().__init__(
             desktop,
@@ -44,7 +46,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
             llm_factory=llm_factory,
             clock=clock,
             text_preview=text_preview,
-            jobs_factory=ImageReplyQueue,
+            jobs_factory=jobs_factory,
         )
 
     def reset(self):
@@ -102,8 +104,14 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
             self.progress("Startup message submitted once; " + observation)
         self.queue_initial_capture()
         self.report_review()
-        self.progress(f"Watching display changes continuously; local captures: {self.jobs.images}")
+        directory = chat_directory(self.jobs.images, chat_folder_name(self.config))
+        self.progress(f"Watching display changes continuously; local captures: {directory}")
         self.active = True
+
+    def enqueue_capture(self, before, after, *, mode="changes"):
+        return self.jobs.enqueue_pair(
+            self.chat_key, before, after, mode=mode, folder=chat_folder_name(self.config)
+        )
 
     def queue_initial_capture(self):
         self.queue.event(
@@ -116,7 +124,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         if not self.detector.ready(frame, self.clock()):
             return
         png = encode_png(frame)
-        job_id, path = self.jobs.enqueue_pair(self.chat_key, self.baseline, png)
+        job_id, path = self.enqueue_capture(self.baseline, png)
         self.check()
         self.accept(frame, png)
         self.preview(png)
@@ -127,6 +135,8 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         )
 
     def begin_job(self, job):
+        if job["chat_key"] != self.chat_key:
+            raise AgentError("Queued capture belongs to another chat; stopped without replying")
         # Read/verify files before assigning the active job, so a missing image stays
         # marked for review rather than being reset to pending by Stop.
         try:

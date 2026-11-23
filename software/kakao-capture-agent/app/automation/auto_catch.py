@@ -150,7 +150,7 @@ class AutoCatchWorkflow(IncomingReplyWorkflow):
             self.recent.popitem(last=False)
         capture_id = self.queue.enqueue(png, region, "live", local_only=True)
         self.progress(
-            f"Run Agent (auto) saved locally: {self.queue.images / (capture_id + '.png')}"
+            f"Run Agent (auto) saved locally: {self.queue.image_path(capture_id)}"
         )
         self.progress("Run Agent (auto): generating an [AI] reply")
         reply = self.llm.answer(incoming, self.cancel)

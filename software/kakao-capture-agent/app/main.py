@@ -61,6 +61,9 @@ def main():
             signals.activity.emit,
             text_preview=signals.text_preview.emit,
             setup_ready=signals.setup_ready.emit,
+            preview_chat=signals.preview_chat.emit,
+            image_test_output=signals.image_test_output.emit,
+            image_test_text=signals.image_test_text.emit,
         )
         uploader = UploadWorker(queue, config, get_token, signals.upload.emit)
         window = MainWindow(config, config_path, desktop, monitor, uploader, queue, signals)

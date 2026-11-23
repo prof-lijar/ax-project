@@ -101,7 +101,7 @@ class IncomingReplyWorkflow:
         self.active = False
         capture_id = self.queue.enqueue(png, region, "live", local_only=True)
         self.progress(
-            f"Incoming capture saved locally: {self.queue.images / (capture_id + '.png')}"
+            f"Incoming capture saved locally: {self.queue.image_path(capture_id)}"
         )
         self.queue.event("incoming_capture", capture_id)
         self.progress("Workflow 2: generating one [AI] reply")

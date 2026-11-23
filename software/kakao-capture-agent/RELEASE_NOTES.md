@@ -1,5 +1,17 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.39 — 2026-11-23
+
+**Monitor up to three chats.** Select one to three KakaoTalk windows and run the same device workflow for each. Each chat has its own queue and inference worker; desktop capture and reply input rotate through verified windows. Activity entries identify the chat, and replies return to their originating conversation. Stop cancels all chats; a window failure pauses the group. Activity remains one shared log with chat labels.
+
+**Capture folders by chat name.** Automatic and manual captures now use separate folders named after the conversation, with a short stable ID to distinguish duplicate names. Korean names are preserved. Existing flat-folder captures and retained queues remain readable after upgrading.
+
+**Test a saved image.** In Test tools, choose a PNG, JPEG or BMP and click Run Image Test. VoyagerI runs the same extraction, structured action analysis and unified API workflow, then displays the exact response in Output without sending a KakaoTalk reply or SMS. The API can still update operational records. Repeating the same image reuses its saved result to avoid repeating actions.
+
+**Missing-roster reply.** The accompanying backend change returns the named signal-unconfirmed message when no roster row matches, while preserving the internal not_found status and skipped-write receipts. Both automatic replies and image tests use the server response unchanged. Update/restart the Nexgent backend from this revision to enable this wording; the EXE alone cannot change server responses. Previously cached test outputs retain their original text; use a new capture to verify the updated backend.
+
+The supported business actions remain 기기위치조정 and 전원연결. This prerelease uses automated tests and synthetic Windows startup checks; real three-window KakaoTalk operation still needs validation on the target PC.
+
 ## v0.1.0-rc.38 — 2026-11-20
 
 **Process the latest message immediately on Run Agent.** Startup now saves one snapshot and checks only the latest visible message. An incoming action request already on screen, such as `위치조정/이은경/헌릉로8길58`, can run through structured analysis → unified API → exact API reply without waiting for a screen change. An outgoing/automated latest message, unrelated text, or unclear direction does not trigger an older request. Startup still sends no introduction; the UI reports its progress. Continuous before/after watching continues while startup analysis runs.

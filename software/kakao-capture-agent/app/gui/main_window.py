@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 from ctypes import wintypes
+from pathlib import Path
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QTextCursor
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -27,7 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from app.branding import APP_NAME, WINDOW_TITLE, application_icon
+from app.capture.saved_image import load_capture_image
 from app.config import save
+from app.gui.agent_chats_dialog import AgentChatsDialog
 from app.gui.settings_dialog import SettingsDialog
 from app.gui.theme import CapturePreview, apply_theme, card, label
 from app.models import AgentError, State
@@ -42,6 +46,9 @@ class Signals(QObject):
     stats = Signal(object)
     text_preview = Signal(str)
     setup_ready = Signal()
+    preview_chat = Signal(str)
+    image_test_output = Signal(str)
+    image_test_text = Signal(str)
 
 
 class EmergencyHotkey(QAbstractNativeEventFilter):
@@ -73,6 +80,7 @@ class MainWindow(QMainWindow):
         self.pending_action = None
         self.control_threads = []
         self.action_generation = 0
+        self.image_test_png = None
         self.setWindowTitle(WINDOW_TITLE)
         self.setWindowIcon(application_icon())
         self.resize(1080, 860)
@@ -127,7 +135,12 @@ class MainWindow(QMainWindow):
         select.clicked.connect(self.select_window)
         self.setup_buttons.append(select)
         target_row.addWidget(select)
+        select_chats = QPushButton("Select Agent Chats (1–3)")
+        select_chats.clicked.connect(self.select_agent_chats)
+        self.setup_buttons.append(select_chats)
+        target_row.addWidget(select_chats)
         target_layout.addLayout(target_row)
+        self.refresh_target_label()
         layout.addWidget(target)
 
         self.tabs = QTabWidget()
@@ -144,6 +157,9 @@ class MainWindow(QMainWindow):
         self.preview_tabs.setAccessibleName("Capture preview format")
         self.preview_label = CapturePreview()
         self.preview_tabs.addTab(self.preview_label, "Screenshot")
+        self.preview_chat_label = label("")
+        preview_layout.addWidget(self.preview_chat_label)
+        signals.preview_chat.connect(self.preview_chat_label.setText)
         preview_layout.addWidget(self.preview_tabs, 1)
         preview_layout.addWidget(self.command_button("Preview", "preview"))
         columns.addWidget(preview_card, 5)
@@ -257,6 +273,61 @@ class MainWindow(QMainWindow):
         capture.addStretch()
 
         tests = self.add_tab("Test tools")
+        image_card, image_test = card(
+            "Test unified workflow with an image",
+            "Choose a saved KakaoTalk capture. Analyze its latest visible message, run the "
+            "same unified API workflow, and display the response here. No chat window is needed.",
+        )
+        image_test.addWidget(
+            label(
+                "Uses your configured LLM and AX768 API, which can update records. "
+                "This test sends no KakaoTalk reply or SMS."
+            )
+        )
+        image_columns = QHBoxLayout()
+        image_input, image_results = QVBoxLayout(), QVBoxLayout()
+        image_columns.addLayout(image_input, 1)
+        image_columns.addLayout(image_results, 1)
+        image_test.addLayout(image_columns)
+        self.image_test_choose_button = QPushButton("Choose Capture Image")
+        self.image_test_choose_button.clicked.connect(self.choose_test_image)
+        image_input.addWidget(self.image_test_choose_button)
+        self.image_test_file = label("No image selected · PNG, JPEG or BMP · up to 20 MiB")
+        self.image_test_file.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        image_input.addWidget(self.image_test_file)
+        self.image_test_preview = CapturePreview()
+        self.image_test_preview.setText("Choose a saved capture to preview it here.")
+        self.image_test_preview.setAccessibleName("Selected test capture")
+        self.image_test_preview.setMinimumHeight(160)
+        self.image_test_preview.setMaximumHeight(240)
+        image_input.addWidget(self.image_test_preview)
+        self.image_test_run_button = QPushButton("Run Image Test")
+        self.image_test_run_button.setProperty("role", "primary")
+        self.image_test_run_button.clicked.connect(self.start_image_test)
+        image_input.addWidget(self.image_test_run_button)
+        image_input.addWidget(
+            label(
+                "The same image and API destination reuse their saved result to avoid repeating "
+                "record updates. Stop cancels further processing."
+            )
+        )
+        image_results.addWidget(label("Extracted message", "heading"))
+        self.image_test_text = QPlainTextEdit()
+        self.image_test_text.setReadOnly(True)
+        self.image_test_text.setAccessibleName("Image test extracted message")
+        self.image_test_text.setPlaceholderText("The latest visible message will appear here.")
+        self.image_test_text.setMaximumHeight(90)
+        image_results.addWidget(self.image_test_text)
+        image_results.addWidget(label("Output", "heading"))
+        self.image_test_output = QPlainTextEdit()
+        self.image_test_output.setReadOnly(True)
+        self.image_test_output.setAccessibleName("Image test output")
+        self.image_test_output.setPlaceholderText("The unified API response will appear here.")
+        self.image_test_output.setMinimumHeight(140)
+        image_results.addWidget(self.image_test_output, 1)
+        signals.image_test_text.connect(self.image_test_text.setPlainText)
+        signals.image_test_output.connect(self.image_test_output.setPlainText)
+        tests.addWidget(image_card)
         reply_card, reply = card(
             "Send a test reply", "Replaces the selected chat’s draft and sends your message once."
         )
@@ -380,18 +451,21 @@ class MainWindow(QMainWindow):
         logging.getLogger("kakao").info(message)
 
     def update_status(self, state, reason):
+        if self.pending_action == "image_test" and state == State.INITIALIZING.value:
+            self.pending_action = None
         self.state_label.setText(
             "Watching"
             if state == State.AUTO_CATCHING.value
             else state.replace("_", " ").capitalize()
         )
-        auto_running = (
-            state == State.AUTO_CATCHING.value
-            and self.monitor.auto_catch is self.monitor.general_auto_catch
+        auto_running = state == State.AUTO_CATCHING.value and (
+            self.monitor.auto_catch is self.monitor.general_auto_catch
+            or getattr(self.monitor.auto_catch, "mode", None) == "auto_catch"
         )
         self.auto_catch_button.setText("Watching…" if auto_running else "Run Agent (auto)")
         self.auto_status.setText(
-            "Checking the latest visible message, then watching for new device position or power requests (incoming only). Stop ends monitoring."
+            "Checking the latest visible message, then watching for new device position or power requests (incoming only). "
+            f"Monitoring {len(self.config.agent_chats) or 1} chat(s); Stop ends all selected chats."
             if auto_running
             else "Paused. Check the status above."
             if state == State.PAUSED.value
@@ -439,6 +513,68 @@ class MainWindow(QMainWindow):
         self.incoming_test_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
         )
+        image_test_ready = (
+            state in (State.STOPPED.value, State.PAUSED.value)
+            and not self.pending_action
+            and not self.closing
+        )
+        self.image_test_choose_button.setEnabled(image_test_ready)
+        self.image_test_run_button.setEnabled(image_test_ready and self.image_test_png is not None)
+
+    def choose_test_image(self):
+        if (
+            self.pending_action
+            or self.closing
+            or self.monitor.state not in (State.STOPPED, State.PAUSED)
+        ):
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose a captured chat image", "", "Capture images (*.png *.jpg *.jpeg *.bmp)"
+        )
+        if not path:
+            return
+        try:
+            png = load_capture_image(path)
+        except AgentError as error:
+            QMessageBox.warning(self, "Capture image", str(error))
+            return
+        self.image_test_png = png
+        self.image_test_file.setText(Path(path).name)
+        self.image_test_file.setToolTip(path)
+        self.image_test_preview.show_png(png)
+        self.image_test_text.clear()
+        self.image_test_output.clear()
+        self.update_status(self.monitor.state.value, "Capture image ready for testing")
+
+    def start_image_test(self):
+        if (
+            self.pending_action
+            or self.closing
+            or self.monitor.state not in (State.STOPPED, State.PAUSED)
+        ):
+            return
+        if self.image_test_png is None:
+            self.choose_test_image()
+            if self.image_test_png is None:
+                return
+        from app.api.unified_operations import create_unified_operations
+        from app.api.workflow_llm import LLMSettings
+
+        try:
+            LLMSettings.resolve(self.config)
+            create_unified_operations(self.config)
+        except AgentError as error:
+            QMessageBox.warning(self, "Image test settings", str(error))
+            return
+        self.image_test_text.clear()
+        self.image_test_output.setPlainText("Running image test…")
+        self.pending_action = "image_test"
+        self.action_generation += 1
+        # Reuse the monitor's cancellation and serialization; no foreground request,
+        # live screenshot, selected chat, or reply sender participates in this test.
+        self.monitor.command("stop")
+        self.monitor.command("image_test", self.image_test_png)
+        self.update_status(self.monitor.state.value, "Starting saved image test")
 
     def open_captures_folder(self):
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.queue.images.resolve()))):
@@ -548,11 +684,52 @@ class MainWindow(QMainWindow):
             != QMessageBox.Yes
         ):
             return
-        self.config.target = candidates[labels.index(label)]
+        selected = candidates[labels.index(label)]
+        if self.config.agent_chats:
+            self.config.select_agent_chats([selected])
+        self.config.target = selected
+        self.config.agent_chats = []
         self.config.selection = None
         self.monitor.scroller.calibrated = False
-        self.target_label.setText(f"Target: {self.config.target.title}")
+        self.refresh_target_label()
         self.queue.event("target", "Operator selected target window")
+        self.persist()
+
+    def refresh_target_label(self):
+        if len(self.config.agent_chats) > 1:
+            self.target_label.setText(
+                "Agent chats: "
+                + " · ".join(
+                    f"{index + 1}. {chat.target.title}"
+                    for index, chat in enumerate(self.config.agent_chats)
+                )
+            )
+        else:
+            self.target_label.setText(
+                f"Target: {self.config.target.title}"
+                if self.config.target
+                else "No conversation selected"
+            )
+
+    def select_agent_chats(self):
+        if self.pending_action or self.monitor.state != State.STOPPED:
+            return
+        candidates = self.desktop.candidates()
+        if not candidates:
+            QMessageBox.warning(self, "Target", "No accessible windows found")
+            return
+        selected = [c.target for c in self.config.agent_chats] or [self.config.target]
+        dialog = AgentChatsDialog(candidates, selected, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        try:
+            self.config.select_agent_chats(dialog.selected_targets())
+        except ValueError as error:
+            QMessageBox.warning(self, "Agent chats", str(error))
+            return
+        self.monitor.scroller.calibrated = False
+        self.refresh_target_label()
+        self.queue.event("target", f"Operator selected {len(self.config.agent_chats)} agent chats")
         self.persist()
 
     def settings(self):
@@ -738,6 +915,8 @@ class MainWindow(QMainWindow):
         self.incoming_test_button.setEnabled(False)
         self.auto_catch_button.setEnabled(False)
         self.device_workflow_button.setEnabled(False)
+        self.image_test_choose_button.setEnabled(False)
+        self.image_test_run_button.setEnabled(False)
         self.log(
             (
                 "Sending one Bizgo sandbox sample (no phone delivery)"
@@ -821,15 +1000,15 @@ class MainWindow(QMainWindow):
             QMessageBox.question(
                 self,
                 "Review set-aside captures",
-                "Inspect the selected KakaoTalk chat first. Mark its set-aside captures as handled "
+                "Inspect all selected agent chats first. Mark their set-aside captures as handled "
                 "without sending them again? Other queued captures will be retained. "
                 "Run Agent (auto) can process other captures without resolving these items.",
             )
             == QMessageBox.Yes
         ):
-            key = self.monitor.auto_catch.queue_key()
+            scopes = self.monitor.review_scopes()
             self.queue_action(
-                lambda: self.monitor.auto_catch.jobs.resolve_review(key),
+                lambda: [jobs.resolve_review(key) for jobs, key in scopes],
                 "Set-aside captures marked handled; pending captures retained",
                 "Could not update reply review; check local storage",
             )

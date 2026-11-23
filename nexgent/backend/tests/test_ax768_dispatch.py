@@ -286,3 +286,40 @@ def test_semantic_structured_request_needs_no_exact_keyword_or_field_order(monke
     assert response.json()['status'] == 'completed'
     assert len(requests) == 1
     assert json.loads(requests[0].content)['input']['message'] == f'헌릉로8길58 넥스터_이은경님 {action} 신호확인요.'
+
+
+@pytest.mark.parametrize('action', ['기기위치조정', '전원연결'])
+@pytest.mark.parametrize('name', ['김순옥', '넥스터_이은경'])
+@pytest.mark.parametrize('structured', [False, True])
+def test_missing_roster_returns_named_signal_reply(monkeypatch, action, name, structured):
+    result = payload()
+    result.update(status='not_found', member_note=None,
+                  response='울진 → 광명 → 영덕 명부에서 요청과 일치하는 행을 찾지 못했습니다.',
+                  roster={'status':'not_found'}, signal={'status':'skipped'},
+                  as_lookup={'status':'skipped'}, as_update={'status':'skipped','verified':False})
+    result['parsed'].update(name=name, lookup_name=name)
+    client, requests = setup(monkeypatch, result=result)
+    body = {'message':f'{action}/{name}/울진북로 164'}
+    if structured:
+        body.update(workflow_id='device_adjustment_power', action=action,
+                    action_text=action, name=name, address='울진북로 164')
+    response = client.post(PATH, json=body, headers=authenticated_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data['response'] == f'[자동 확인]\n{name}님 신규설치 기기신호가 아직 확인되지 않습니다.\n기기 전원 및 설치 위치 확인 부탁드립니다. '
+    assert data['status'] == 'not_found' and data['verified'] is False
+    assert data['roster']['status'] == 'not_found'
+    assert data['signal']['status'] == data['as_update']['status'] == 'skipped'
+    assert data['member_note'] is None and len(requests) == 1
+
+
+def test_missing_as_row_does_not_claim_signal_unconfirmed(monkeypatch):
+    result = payload()
+    result.update(status='not_found', member_note=None,
+                  response='기기신호 확인 완료. AS 명부에서 일치하는 행을 찾지 못했습니다.',
+                  as_lookup={'status':'not_found'}, as_update={'status':'skipped','verified':False})
+    client, _ = setup(monkeypatch, result=result)
+    response = client.post(PATH, json={'message':'위치조정/김순옥/울진북로 164'}, headers=authenticated_headers())
+    assert response.status_code == 200
+    assert response.json()['response'] == '[자동 확인]\n' + result['response']
+    assert response.json()['signal']['connected'] is True

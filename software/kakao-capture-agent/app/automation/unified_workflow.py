@@ -114,9 +114,7 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
         super().arm()
 
     def queue_initial_capture(self):
-        job_id, path = self.jobs.enqueue_pair(
-            self.chat_key, self.baseline, self.baseline, mode="latest"
-        )
+        job_id, path = self.enqueue_capture(self.baseline, self.baseline, mode="latest")
         self.queue.event("auto_visual_startup", job_id)
         self.progress(f"Startup capture: checking the latest visible message once: {path}")
 

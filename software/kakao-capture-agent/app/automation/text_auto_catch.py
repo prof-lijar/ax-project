@@ -1,7 +1,5 @@
 """Continuous native-text collection with a durable FIFO and one background LLM job."""
 
-import hashlib
-import json
 import queue as queues
 import threading
 import time
@@ -13,18 +11,8 @@ from app.automation.auto_catch import AutoCatchWorkflow
 from app.automation.text_changes import appended_text
 from app.automation.windows_chat_text import WindowsChatText
 from app.models import AgentError
+from app.storage.chat_paths import chat_queue_key
 from app.storage.text_queue import TextQueue
-
-
-def chat_queue_key(config):
-    target = config.target
-    identity = {
-        "chat_id": config.chat_id,
-        "title": getattr(target, "title", ""),
-        "executable": getattr(target, "executable", ""),
-        "class_name": getattr(target, "window_class", ""),
-    }
-    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
 class TextAutoCatchWorkflow(AutoCatchWorkflow):
