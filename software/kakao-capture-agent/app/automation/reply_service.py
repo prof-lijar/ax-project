@@ -42,9 +42,8 @@ class TestReplySender:
         try:
             if self.cancel.is_set():
                 raise Cancelled("Test reply cancelled")
-            self.composer.prepare(self.cancel)
-            handle = self.check()
-            self.check(handle)
+            selected = self.composer.prepare(self.cancel)
+            handle = self.check(selected)
             if require_empty and not composer_is_empty(self.composer.read(handle)):
                 raise AgentError(
                     "Message box is not empty; no text replaced or Enter sent. Clear the draft before restarting Run Agent (auto)"

@@ -145,16 +145,19 @@ class WindowsDesktop:
         x, y = self.gui.ClientToScreen(target.hwnd, (0, 0))
         return Region(x, y, right - left, bottom - top), self.user.GetDpiForWindow(target.hwnd)
 
-    def validate(self):
+    def validate(self, *, require_capture=True):
         if not self.session_available():
             raise TargetUnavailable("Interactive desktop is locked or unavailable")
         client, dpi = self.geometry()
-        if self.config.selection is None:
-            raise ReselectionRequired("Restart the action to detect the conversation area")
-        region = self.config.selection.resolve(client, dpi, self.monitors())
         hwnd = self.config.target.hwnd
         if self.gui.GetForegroundWindow() != hwnd:
             raise ForegroundLost("Bring the selected conversation to the foreground")
+        if not require_capture:
+            # The reply sender checks the editor's bounds and obstructions separately.
+            return client
+        if self.config.selection is None:
+            raise ReselectionRequired("Restart the action to detect the conversation area")
+        region = self.config.selection.resolve(client, dpi, self.monitors())
         # Walk every window ABOVE the target, including same-process dialogs.
         other = self.gui.GetWindow(hwnd, self.con.GW_HWNDPREV)
         while other:
@@ -246,7 +249,7 @@ class WindowsDesktop:
             for thread in reversed(attached):
                 attach(current, thread, False)
 
-    def activate_target(self, cancel=None):
+    def activate_target(self, cancel=None, *, require_capture=True):
         """Bounded focus recovery for the exact target, including after an LLM wait."""
         cancel = cancel if cancel is not None else threading.Event()
         target = self.config.target
@@ -267,7 +270,7 @@ class WindowsDesktop:
                     raise TargetUnavailable("Interactive desktop is locked or unavailable")
                 self.geometry()
             if self.gui.GetForegroundWindow() == target.hwnd:
-                self.validate()
+                self.validate(require_capture=require_capture)
                 return
             if not attached_attempt and time.monotonic() >= fallback_at:
                 attached_attempt = True
@@ -283,7 +286,7 @@ class WindowsDesktop:
                 )
             cancel.wait(0.05)
 
-    def focus_reply_control(self, handle, cancel):
+    def focus_reply_control(self, handle, cancel, *, require_capture=True):
         """Click the verified edit control once; never guess message-box coordinates."""
         import pyautogui
 
@@ -296,7 +299,7 @@ class WindowsDesktop:
                 pyautogui.failSafeCheck()
             except pyautogui.FailSafeException:
                 raise Cancelled("Mouse fail-safe activated; test reply stopped") from None
-            self.validate()
+            self.validate(require_capture=require_capture)
             if not self.gui.IsChild(self.config.target.hwnd, handle):
                 raise AgentError("Message box no longer belongs to the selected chat")
 

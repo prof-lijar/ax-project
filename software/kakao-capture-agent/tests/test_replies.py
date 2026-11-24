@@ -126,9 +126,9 @@ def test_prepare_automatically_activates_and_focuses_unique_composer(monkeypatch
     actions = []
     desktop = SimpleNamespace(
         config=SimpleNamespace(target=SimpleNamespace(hwnd=42)),
-        activate_target=lambda cancel=None: actions.append("activate"),
-        validate=lambda: Region(0, 0, 100, 100),
-        focus_reply_control=lambda handle, cancel: actions.append(("focus", handle)),
+        activate_target=lambda cancel=None, **kw: actions.append("activate"),
+        validate=lambda **kw: Region(0, 0, 100, 100),
+        focus_reply_control=lambda handle, cancel, **kw: actions.append(("focus", handle)),
         gui=SimpleNamespace(
             EnumChildWindows=lambda root, visit, data: [visit(43, data), visit(44, data)]
         ),
@@ -150,8 +150,8 @@ def test_prepare_refuses_missing_or_ambiguous_composer(count, monkeypatch):
     clicks = []
     desktop = SimpleNamespace(
         config=SimpleNamespace(target=SimpleNamespace(hwnd=42)),
-        activate_target=lambda cancel=None: None,
-        validate=lambda: Region(0, 0, 100, 100),
+        activate_target=lambda cancel=None, **kw: None,
+        validate=lambda **kw: Region(0, 0, 100, 100),
         focus_reply_control=lambda *a: clicks.append(a),
         gui=SimpleNamespace(
             EnumChildWindows=lambda root, visit, data: [visit(i, data) for i in range(count)]
@@ -192,7 +192,9 @@ def test_send_is_manual_stopped_only_and_failure_cannot_auto_resume(config, fram
         lambda *a: None,
     )
     calls = []
-    service.reply_sender = SimpleNamespace(send=lambda text: calls.append(text) or "requested")
+    service.manual_reply_sender = SimpleNamespace(
+        send=lambda text: calls.append(text) or "requested"
+    )
     service.state = State.LIVE_MONITORING
     service.dispatch("send_test")
     service.state = State.PAUSED
@@ -206,7 +208,7 @@ def test_send_is_manual_stopped_only_and_failure_cannot_auto_resume(config, fram
     def lost(*args):
         raise TargetUnavailable("Focus lost")
 
-    service.reply_sender.send = lost
+    service.manual_reply_sender.send = lost
     with pytest.raises(TargetUnavailable) as error:
         service.dispatch("send_test")
     service.pause(error.value)
@@ -246,7 +248,7 @@ def test_zero_candidates_reports_control_reasons_without_reading_text(config):
     from tests.test_windows_adapter import adapter
 
     desktop = adapter(config)
-    desktop.activate_target = lambda cancel=None: None
+    desktop.activate_target = lambda cancel=None, **kw: None
     desktop.gui.EnumChildWindows = lambda root, visit, data: [visit(43, data), visit(44, data)]
     desktop.gui.GetClassName = lambda handle: "RichEdit50W" if handle == 43 else "CustomControl"
     desktop.gui.GetWindowLong = lambda handle, _: 0x804 if handle == 43 else 0
@@ -408,3 +410,68 @@ def test_input_tracking_resets_before_each_attempt():
         sender.send("[AI] Next reply", require_empty=True)
     assert not sender.input_started
     assert len(composer.writes) == len(composer.submits) == 1
+
+
+@pytest.mark.parametrize("mismatch", ["exe", "class", "parent", "id", "pid", "readonly"])
+def test_manual_reply_rejects_single_line_lookalikes(config, mismatch):
+    from tests.test_windows_adapter import region_adapter
+
+    desktop = region_adapter(
+        config,
+        {
+            43: {
+                "name": "Edit" if mismatch == "class" else "RichEdit50W",
+                "style": 0x800 if mismatch == "readonly" else 0,
+                "rect": (-490, 50, -210, 220),
+            }
+        },
+    )
+    from app.models import Target
+
+    config.target = Target(
+        42, 100, "start", "other.exe" if mismatch == "exe" else "KakaoTalk.exe", "chat", "Group"
+    )
+    desktop.gui.GetParent = lambda _: 99 if mismatch == "parent" else 42
+    desktop.gui.GetDlgCtrlID = lambda _: 100 if mismatch == "id" else 1006
+    desktop.process = SimpleNamespace(
+        GetWindowThreadProcessId=lambda _: (7, 15 if mismatch == "pid" else 100)
+    )
+    with pytest.raises(AgentError, match="Unsupported"):
+        WindowsComposer(desktop, require_capture=False).validate_control(43, None)
+
+
+def test_sender_stops_if_focus_moves_after_composer_selection():
+    composer = Composer()
+    composer.prepare = lambda cancel: 99
+    with pytest.raises(AgentError, match="focus changed"):
+        ReplySender(composer, lambda *a: None, threading.Event()).send()
+    assert composer.writes == composer.submits == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Requires the Windows RichEdit control")
+def test_native_kakao_field_identifier():
+    import ctypes
+    import os
+
+    import win32con
+    import win32gui
+    import win32process
+
+    from app.models import Target
+
+    rich_edit_library = ctypes.WinDLL("msftedit")
+    parent = win32gui.CreateWindowEx(0, "STATIC", "", 0, 0, 0, 200, 200, 0, 0, 0, None)
+    try:
+        child = win32gui.CreateWindowEx(
+            0, "RICHEDIT50W", "", win32con.WS_CHILD, 0, 0, 100, 30, parent, 1006, 0, None
+        )
+        target = Target(parent, os.getpid(), "synthetic", "KakaoTalk.exe", "STATIC", "")
+        composer = WindowsComposer(
+            SimpleNamespace(
+                gui=win32gui, process=win32process, config=SimpleNamespace(target=target)
+            ),
+            require_capture=False,
+        )
+        assert rich_edit_library and composer.is_kakao_message_box(child)
+    finally:
+        win32gui.DestroyWindow(parent)

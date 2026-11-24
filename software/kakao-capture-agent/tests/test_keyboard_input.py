@@ -100,7 +100,7 @@ def test_read_after_send_does_not_require_keyboard_focus_but_checks_owner(valid,
     target = SimpleNamespace(hwnd=42, pid=7)
     desktop = SimpleNamespace(
         config=SimpleNamespace(target=target),
-        validate=lambda: None,
+        validate=lambda **kw: None,
         gui=SimpleNamespace(IsChild=lambda parent, child: valid),
         process=SimpleNamespace(GetWindowThreadProcessId=lambda handle: (1, 7)),
     )

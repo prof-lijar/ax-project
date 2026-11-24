@@ -1,5 +1,9 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.42 — 2026-11-24
+
+**Send Test Reply** now finds the selected chat’s message box directly. Previously it could focus the chat and pause with “Cannot identify one message box below the conversation” before typing. The test now works with an expanded composer above the midpoint and recognizes KakaoTalk’s native RichEdit reply field when another editor is present. Activity lists control details if the editor cannot be identified. The sender verifies focus and the exact draft before pressing Enter once.
+
 ## v0.1.0-rc.41 — 2026-11-23
 
 **Live logs for each chat.** Activity now has a named tab for each selected KakaoTalk chat, plus All activity for the combined stream. Hidden tabs continue updating. Capture, processing and reply events follow each chat's stable identity, even when titles are identical. Stop/Pause appears in every affected chat's log. Each view keeps the latest 300 lines and preserves your position when reading earlier events.

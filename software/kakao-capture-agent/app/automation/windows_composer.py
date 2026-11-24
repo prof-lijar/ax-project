@@ -3,6 +3,7 @@
 import ctypes
 import time
 from ctypes import wintypes
+from pathlib import PureWindowsPath
 
 from app.automation.composer_text import composer_is_empty
 from app.automation.keyboard_input import press_enter
@@ -10,8 +11,9 @@ from app.models import AgentError, Cancelled, Region, SubmissionObservation, cov
 
 
 class WindowsComposer:
-    def __init__(self, desktop, report=lambda _: None):
+    def __init__(self, desktop, report=lambda _: None, *, require_capture=True):
         self.desktop = desktop
+        self.require_capture = require_capture
         self.report = report
         self.cancel = None
 
@@ -22,13 +24,16 @@ class WindowsComposer:
             raise Cancelled("Test reply cancelled")
         d = self.desktop
         self.report("Activating the selected conversation for the test reply")
-        d.activate_target(cancel)
-        region = d.validate()
+        d.activate_target(cancel, require_capture=self.require_capture)
+        region = d.validate(require_capture=self.require_capture)
         candidates = []
         diagnostics = []
+        kakao_fields = set()
 
         def visit(handle, _):
             description, is_edit = self.control_description(handle)
+            if not self.require_capture and is_edit and self.is_kakao_message_box(handle):
+                kakao_fields.add(handle)
             try:
                 self.validate_control(handle, region)
             except AgentError as error:
@@ -38,6 +43,9 @@ class WindowsComposer:
             diagnostics.append((is_edit, f"{description}: eligible"))
 
         d.gui.EnumChildWindows(d.config.target.hwnd, visit, None)
+        if kakao_fields:
+            # A blocked native reply field must never redirect input to a search/draft editor.
+            candidates = [handle for handle in candidates if handle in kakao_fields]
         if len(candidates) != 1:
             # Control metadata only: never query or log captions, drafts, or chat text.
             diagnostics.sort(key=lambda entry: not entry[0])
@@ -57,9 +65,9 @@ class WindowsComposer:
         handle = candidates[0]
         if cancel.is_set():
             raise Cancelled("Test reply cancelled")
-        self.validate_control(handle, d.validate())
+        self.validate_control(handle, d.validate(require_capture=self.require_capture))
         self.report("Message box identified; focusing it automatically")
-        d.focus_reply_control(handle, cancel)
+        d.focus_reply_control(handle, cancel, require_capture=self.require_capture)
         deadline = time.monotonic() + 1
         while True:
             if cancel.is_set():
@@ -67,7 +75,7 @@ class WindowsComposer:
             # Validate focus after the OS has processed the click, without sending another click.
             try:
                 if self.focused() == handle:
-                    return
+                    return handle
             except Cancelled:
                 raise
             except AgentError:
@@ -85,7 +93,7 @@ class WindowsComposer:
         except pyautogui.FailSafeException:
             raise Cancelled("Mouse fail-safe activated; test reply stopped") from None
         d = self.desktop
-        capture_region = d.validate()
+        capture_region = d.validate(require_capture=self.require_capture)
         target = d.config.target
         thread, pid = d.process.GetWindowThreadProcessId(target.hwnd)
         if pid != target.pid:
@@ -127,13 +135,25 @@ class WindowsComposer:
         except Exception:
             return "control metadata unavailable", False
 
-    def validate_control(self, handle, _capture_region):
+    def is_kakao_message_box(self, handle):
+        d = self.desktop
+        target = d.config.target
+        # KakaoTalk exposes its message editor as direct child RichEdit control 1006.
+        return (
+            PureWindowsPath(target.executable).name.lower() == "kakaotalk.exe"
+            and d.gui.GetClassName(handle).lower() == "richedit50w"
+            and d.gui.GetParent(handle) == target.hwnd
+            and d.gui.GetDlgCtrlID(handle) == 1006
+            and d.process.GetWindowThreadProcessId(handle)[1] == target.pid
+        )
+
+    def validate_control(self, handle, _region):
         d = self.desktop
         name = d.gui.GetClassName(handle).lower()
         style = d.gui.GetWindowLong(handle, -16)  # GWL_STYLE
         if not (name == "edit" or name.startswith("richedit")):
             raise AgentError("Unsupported control class")
-        if not style & 0x0004:
+        if not style & 0x0004 and (self.require_capture or not self.is_kakao_message_box(handle)):
             raise AgentError("Unsupported single-line control (not a multiline composer)")
         if style & (0x0020 | 0x0800):
             raise AgentError("Unsupported read-only or password control")
@@ -196,7 +216,7 @@ class WindowsComposer:
     def read_after_send(self, handle):
         """Read the original composer without requiring that it still owns keyboard focus."""
         d = self.desktop
-        region = d.validate()
+        region = d.validate(require_capture=self.require_capture)
         target = d.config.target
         if (
             not d.gui.IsChild(target.hwnd, handle)
@@ -205,7 +225,7 @@ class WindowsComposer:
             raise AgentError("Original message box is no longer in the selected conversation")
         self.validate_control(handle, region)
         text = self.read_text(handle)
-        d.validate()
+        d.validate(require_capture=self.require_capture)
         return text
 
     def write(self, handle, text):

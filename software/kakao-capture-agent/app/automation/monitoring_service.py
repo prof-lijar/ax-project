@@ -74,6 +74,11 @@ class MonitoringService(threading.Thread):
         self.reply_sender = TestReplySender(
             WindowsComposer(desktop, self.primary_activity), queue.event, self.stop_input
         )
+        self.manual_reply_sender = TestReplySender(
+            WindowsComposer(desktop, self.primary_activity, require_capture=False),
+            queue.event,
+            self.stop_input,
+        )
         self.test_workflow = OneCycleWorkflow(
             desktop,
             capture,
@@ -411,13 +416,11 @@ class MonitoringService(threading.Thread):
                     client = create_bizgo(self.config, self.queue.event, force=True)
                     message = client.prepare(BIZGO_SAMPLE, str(uuid4()))
                     result = client.send(message, self.stop_input)
+                elif command == "send_test":
+                    result = self.manual_reply_sender.send(self.config.test_reply_text)
                 else:
                     self.prepare_chat()
-                    result = (
-                        self.test_workflow.run()
-                        if command == "test_workflow"
-                        else self.reply_sender.send(self.config.test_reply_text)
-                    )
+                    result = self.test_workflow.run()
                 self.transition(State.STOPPED, result)
             finally:
                 self.stop_input.set()
