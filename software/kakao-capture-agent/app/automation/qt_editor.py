@@ -90,9 +90,13 @@ class QtEditor:
                 "moved": "The KakaoTalkUI editor moved during the action",
                 "length": "KakaoTalkUI editor text exceeds the readback limit",
             }
-            raise AgentError(
-                reasons.get(result.get("reason"), "Windows could not access the KakaoTalkUI editor")
-            )
+            reason = reasons.get(result.get("reason"))
+            if not reason:
+                reason = (
+                    "Windows could not access the KakaoTalkUI editor "
+                    f"(helper line {result.get('line')}, {result.get('kind')})"
+                )
+            raise AgentError(reason)
         self.process.kill()  # A late response cannot be reused by a subsequent request.
         raise AgentError("Windows accessibility timed out while checking the KakaoTalkUI editor")
 

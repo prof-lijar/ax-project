@@ -103,7 +103,8 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
         }
     } catch {
         # Never include provider exceptions, captions, or draft text in errors.
-        $result = @{ok = $false; reason = $reason}
+        $result = @{ok = $false; reason = $reason; line = [int]$_.InvocationInfo.ScriptLineNumber;
+                    kind = $_.Exception.GetType().Name}
     }
     [Console]::WriteLine(($result | ConvertTo-Json -Compress))
 }

@@ -101,7 +101,8 @@ def test_foreground_picker_checks_exact_titled_kakao_window(config):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Uses Windows UI Automation and Qt Quick")
-def test_windows_helper_locates_real_windowless_qml_editor(tmp_path):
+@pytest.mark.parametrize("verify_write", [False, True], ids=["discovery", "write-readback"])
+def test_windows_helper_with_real_windowless_qml_editor(tmp_path, verify_write):
     # A separate Qt event loop services UI Automation while the test queries it.
     (tmp_path / "TextObjectTextArea.qml").write_text(
         "import QtQuick\nTextEdit { property bool sampleEditor: true; "
@@ -117,6 +118,7 @@ def test_windows_helper_locates_real_windowless_qml_editor(tmp_path):
     )
     ready = tmp_path / "hwnd"
     host = """
+import os
 import sys
 from pathlib import Path
 from PySide6.QtCore import QTimer, QUrl
@@ -126,7 +128,16 @@ app = QGuiApplication([])
 engine = QQmlApplicationEngine()
 engine.load(QUrl.fromLocalFile(sys.argv[1]))
 window = engine.rootObjects()[0]
-QTimer.singleShot(600, lambda: Path(sys.argv[2]).write_text(str(int(window.winId()))))
+window.requestActivate()
+def ready():
+    file = Path(sys.argv[2])
+    pending = file.with_suffix(".pending")
+    pending.write_text(f"{int(window.winId())} {os.getpid()}")
+    pending.replace(file)
+QTimer.singleShot(600, ready)
+stop = QTimer()
+stop.timeout.connect(lambda: app.quit() if Path(sys.argv[2]).with_suffix(".stop").exists() else None)
+stop.start(100)
 QTimer.singleShot(30000, app.quit)
 app.exec()
 """
@@ -140,12 +151,27 @@ app.exec()
                 if ready.is_file() and ready.read_text():
                     break
                 time.sleep(0.05)
-            target = Target(
-                int(ready.read_text()), child.pid, "synthetic", "KakaoTalkUI.exe", "", ""
-            )
+            # A Windows venv launcher may have a different PID from the Qt host.
+            hwnd, pid = map(int, ready.read_text().split())
+            target = Target(hwnd, pid, "synthetic", "KakaoTalkUI.exe", "", "")
             assert uses_qt_editor(target)
             with qt_editor_session(target) as editor:
                 bounds = editor.locate()
                 assert bounds.width >= 100 and bounds.height >= 40 and editor.key
+                if not verify_write:
+                    return
+                import win32gui
+
+                if win32gui.GetForegroundWindow() != hwnd:
+                    # Locate already verified the element in a separate, real Qt window.
+                    pytest.skip("CI desktop did not grant foreground for the additional write/read test")
+                assert editor.refresh_bounds() == bounds
+                editor.action("focus")
+                editor.action("write", text="합성 테스트\nSecond line")
+                assert editor.action("read")["text"] == "합성 테스트\nSecond line"
         finally:
-            child.terminate()
+            ready.with_suffix(".stop").touch()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.terminate()

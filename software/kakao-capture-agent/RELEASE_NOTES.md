@@ -1,6 +1,6 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
-## v0.1.0-rc.43 — 2026-11-24
+## v0.1.0-rc.44 — 2026-11-24
 
 **KakaoTalkUI conversation windows.** Select Window and Select Agent Chats now include Pick chat. Click the intended conversation and review its title, program name and window handle before confirming. For KakaoTalkUI.exe, VoyagerI uses Windows accessibility to locate the Qt message box, derive the conversation area for capture and monitoring, and verify drafts before sending replies. This applies to every selected conversation, including each window in a multi-chat run.
 
