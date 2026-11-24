@@ -171,18 +171,18 @@ class MainWindow(QMainWindow):
         columns.addLayout(actions, 4)
         auto_card, auto_layout = card(
             "Run your agent",
-            "Interpret incoming device-position or power-connection requests.",
+            "Process incoming 신규설치, 기기위치조정 and 전원연결 requests.",
         )
         self.auto_catch_button = self.command_button("Run Agent (auto)", "auto_catch", "primary")
         auto_layout.addWidget(self.auto_catch_button)
         auto_layout.addWidget(
             label(
-                "Understand incoming 위치조정 or 전원연결 requests, including equivalent wording. "
+                "신규설치 forms can register subscribers and send guardian installation guides through Bizgo. "
                 "Keep the latest messages visible."
             )
         )
         self.auto_catch_button.setToolTip(
-            "Analyze incoming device-action requests without sending a startup message"
+            "Watch the selected chats and reply to supported incoming requests"
         )
         self.auto_status = label("Ready to watch.")
         self.auto_status.setAccessibleName("Run Agent status")

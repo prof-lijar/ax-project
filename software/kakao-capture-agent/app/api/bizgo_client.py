@@ -28,7 +28,15 @@ def phone_number(value):
     return number
 
 
+def installation_test_numbers(value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Enter the installation test recipient numbers in Bizgo settings")
+    return list(dict.fromkeys(phone_number(part.strip()) for part in value.split(",")))
+
+
 def validate_bizgo_config(config):
+    if config.bizgo_installation_test or config.bizgo_test_recipients:
+        installation_test_numbers(config.bizgo_test_recipients)
     for value in (config.bizgo_sender, config.bizgo_recipient):
         if value or config.bizgo_enabled:
             phone_number(value)
@@ -107,13 +115,36 @@ class BizgoClient:
         self.settings, self.token, self.audit, self.transport = settings, token, audit, transport
 
     def prepare(self, reply, capture_id):
-        if not re.fullmatch(r"[A-Za-z0-9-]{1,100}", capture_id):
-            raise AgentError("Invalid workflow reference for Bizgo")
         text, warnings = phone_text(reply)
         channel = "SMS" if len(text.encode("euc-kr")) <= 90 else "LMS"
+        return self._prepare(text, "[test] Workflow summary", capture_id, channel, warnings)
+
+    def prepare_installation(self, title, text, reference):
+        if not title.strip() or not text.strip() or any(
+            ord(c) < 32 and c not in "\n\r\t" for c in text
+        ) or any(ord(c) < 32 for c in title):
+            raise AgentError("Invalid installation guide text or title")
+        # Preserve the API guide in full, even when it spans multiple LMS messages.
+        parts, start, size = [], 0, 0
+        for index, char in enumerate(text):
+            try:
+                width = len(char.encode("euc-kr"))
+            except UnicodeEncodeError:
+                raise AgentError("Installation guide contains a character unsupported by LMS") from None
+            if size + width > 2000:
+                parts.append(text[start:index])
+                start, size = index, 0
+            size += width
+        parts.append(text[start:])
+        return [self._prepare(part, title, f"{reference}-{i}", "LMS", ())
+                for i, part in enumerate(parts)]
+
+    def _prepare(self, text, title, capture_id, channel, warnings):
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,100}", capture_id):
+            raise AgentError("Invalid workflow reference for Bizgo")
         content = {"from": self.settings.sender, "text": text}
         if channel == "LMS":
-            content["title"] = "[test] Workflow summary"
+            content["title"] = title
         payload = {
             "destinations": [{"to": self.settings.recipient}],
             "messageFlow": [{"sms" if channel == "SMS" else "mms": content}],

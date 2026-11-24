@@ -117,7 +117,8 @@ class SettingsDialog(QDialog):
         self.add_control("operations_password", "Nexgent password", self.operations_secret)
         for name, label in [
             ("bizgo_sender", "Bizgo registered sender number"),
-            ("bizgo_recipient", "Bizgo recipient phone number"),
+            ("bizgo_recipient", "Sample / Test Workflow recipient"),
+            ("bizgo_test_recipients", "Installation test numbers (comma-separated)"),
         ]:
             control = QLineEdit(getattr(config, name))
             control.setPlaceholderText("e.g. 01012345678")
@@ -177,7 +178,8 @@ class SettingsDialog(QDialog):
         self.add_control("storage_limit_bytes", "Storage budget (GiB)", self.storage)
         for name, label in [
             ("operations_allow_http", "Allow Nexgent HTTP on trusted LAN/localhost"),
-            ("bizgo_enabled", "Enable Bizgo SMS/LMS after the KakaoTalk workflow reply"),
+            ("bizgo_enabled", "Send Bizgo SMS/LMS after Test Workflow"),
+            ("bizgo_installation_test", "Test Bizgo SMS for 신규설치 (use only installation test numbers)"),
             ("bizgo_sandbox", "Bizgo sandbox: test requests only, no real phone delivery"),
             ("llm_supports_vision", "Enable image input for this vision-capable LLM"),
             ("llm_allow_http", "Allow unencrypted LLM HTTP on trusted LAN/localhost"),

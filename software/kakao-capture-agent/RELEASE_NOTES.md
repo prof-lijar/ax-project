@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.45 — 2026-11-24
+
+**Run Agent (auto)** recognizes incoming forms headed `신규설치` or `가입자신규설치` and sends the complete form to the updated AX768 unified API. For verified registrations, VoyagerI sends the API’s installation guide through Bizgo and replies in the originating KakaoTalk chat. Blocked registrations use the API’s Kakao reply and skip SMS. Existing 위치조정 and 전원연결 requests continue to use the device workflow.
+
+To redirect installation guides, open **Settings → Bizgo**, enable **Test Bizgo SMS for 신규설치**, and enter comma-separated installation test numbers. For delivery to those phones, clear **Bizgo sandbox**. Registration still runs when testing SMS routing. The chat reply identifies redirected, sandbox, or unconfirmed sends.
+
 ## v0.1.0-rc.44 — 2026-11-24
 
 **KakaoTalkUI conversation windows.** Select Window and Select Agent Chats now include Pick chat. Click the intended conversation and review its title, program name and window handle before confirming. For KakaoTalkUI.exe, VoyagerI uses Windows accessibility to locate the Qt message box, derive the conversation area for capture and monitoring, and verify drafts before sending replies. This applies to every selected conversation, including each window in a multi-chat run.

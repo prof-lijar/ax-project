@@ -51,6 +51,8 @@ class Config:
     operations_allow_http: bool = False
     operations_timeout_seconds: int = 555
     bizgo_enabled: bool = False
+    bizgo_installation_test: bool = False
+    bizgo_test_recipients: str = ""
     bizgo_sandbox: bool = True
     bizgo_sender: str = ""
     bizgo_recipient: str = ""
@@ -226,6 +228,7 @@ class Config:
         for name in (
             "operations_allow_http",
             "bizgo_enabled",
+            "bizgo_installation_test",
             "bizgo_sandbox",
             "llm_supports_vision",
             "llm_allow_http",

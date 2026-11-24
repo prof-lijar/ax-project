@@ -160,7 +160,10 @@ class OperationsClient:
                 headers={**origin, "X-CSRF-Token": account["csrf_token"]},
                 json=payload,
             )
-            return self.parse_response(body)
+            return self.parse_run_result(body, payload)
+
+    def parse_run_result(self, body, payload):
+        return self.parse_response(body)
 
     def request_payload(self, message):
         return {"workflow_id": self.workflow_id, "message": message, "confirmed_name": None}

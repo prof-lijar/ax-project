@@ -2,6 +2,7 @@
 
 import json
 import re
+from dataclasses import dataclass
 
 from app.api.operations_client import (
     WORKFLOW_ID,
@@ -11,9 +12,59 @@ from app.api.operations_client import (
     credential_destination,
     parse_result,
 )
-from app.api.workflow_requests import parse_analysis
+from app.api.workflow_requests import INSTALLATION, installation_header, parse_analysis
 from app.models import AgentError
 from app.utils.windows import get_token
+
+
+@dataclass(frozen=True, kw_only=True)
+class InstallationResult(OperationsResult):
+    kakao_reply: str
+    sms: dict
+
+
+def installation_result(body, response):
+    completed = body["status"] == "completed"
+    reply, sms = body.get("kakao-reply"), body.get("sms")
+    if (
+        body["status"] not in {"completed", "blocked", "failed"}
+        or not isinstance(reply, str)
+        or not reply.strip()
+        or len(reply) > 2000
+        or any(ord(c) < 32 and c not in "\r\n\t" for c in reply)
+        or not isinstance(sms, dict)
+        or sms.get("should_send") is not completed
+    ):
+        raise AgentError("Invalid AX768 installation reply or SMS decision")
+    if completed:
+        receipts = body.get("receipts")
+        if not isinstance(receipts, dict) or not all(
+            isinstance(receipts.get(stage), dict)
+            and receipts[stage].get("verified") is True
+            and receipts[stage].get("status") == "updated"
+            and receipts[stage].get("rows")
+            for stage in ("roster", "inventory", "member")
+        ):
+            raise AgentError("AX768 installation lacks verified registration receipts")
+        recipients = sms.get("recipients")
+        if (
+            not isinstance(recipients, list)
+            or not 1 <= len(recipients) <= 2
+            or not all(
+                isinstance(n, str) and re.fullmatch(r"01[016789][0-9]{7,8}", n) for n in recipients
+            )
+            or len(set(recipients)) != len(recipients)
+            or type(body.get("guardian_count")) is not int
+            or len(recipients) != body["guardian_count"]
+            or not all(
+                isinstance(sms.get(k), str) and sms[k].strip() and len(sms[k]) <= limit
+                for k, limit in (("title", 100), ("text", 3000))
+            )
+        ):
+            raise AgentError("Invalid AX768 guardian message or recipients")
+    elif sms != {"should_send": False, "recipients": [], "title": "", "text": ""}:
+        raise AgentError("Unexpected guardian message for incomplete registration")
+    return InstallationResult(body["status"], response, completed, kakao_reply=reply, sms=sms)
 
 
 def parse_unified_result(body):
@@ -23,6 +74,7 @@ def parse_unified_result(body):
     workflow = body.get("workflow_id")
     if (
         body.get("api_version") != "1"
+        or not isinstance(status, str)
         or status
         not in {"completed", "disconnected", "not_found", "needs_confirmation", "blocked", "failed"}
         or body.get("verified") is not (status == "completed")
@@ -42,6 +94,8 @@ def parse_unified_result(body):
         or any(ord(c) < 32 and c not in "\n\t" for c in response)
     ):
         raise AgentError("AX768 reply is invalid or too long; inspect the workflow result")
+    if workflow == INSTALLATION:
+        return installation_result(body, response)
     if body.get("workflow_id") == WORKFLOW_ID:
         checked = parse_result(body)
         return OperationsResult(checked.status, response, checked.completed)
@@ -85,13 +139,39 @@ class UnifiedOperationsClient(OperationsClient):
     workflow_id = WORKFLOW_ID
     parse_response = staticmethod(parse_unified_result)
 
+    def parse_run_result(self, body, payload):
+        result = self.parse_response(body)
+        if body.get("workflow_id") != payload["workflow_id"] and not (
+            payload["workflow_id"] == WORKFLOW_ID
+            and body.get("workflow_id") is None
+            and result.status == "needs_confirmation"
+        ):
+            raise AgentError("AX768 returned a different workflow than requested")
+        return result
+
     def request_payload(self, request):
-        if not isinstance(request, dict) or set(request) != {"message", "action", "action_text", "name", "address"}:
+        if isinstance(request, dict) and request.get("workflow_id") == INSTALLATION:
+            if (
+                set(request) != {"workflow_id", "message"}
+                or not installation_header(request["message"])
+                or len(request["message"]) > 8000
+            ):
+                raise AgentError("A complete incoming installation form is required")
+            return request
+        if not isinstance(request, dict) or set(request) != {
+            "message",
+            "action",
+            "action_text",
+            "name",
+            "address",
+        }:
             raise AgentError("A grounded structured action is required; no workflow executed")
         source = request["message"]
         if not isinstance(source, str) or not source.strip():
             raise AgentError("Original request text is required; no workflow executed")
-        analysis = parse_analysis(json.dumps({k: v for k, v in request.items() if k != "message"}), source)
+        analysis = parse_analysis(
+            json.dumps({k: v for k, v in request.items() if k != "message"}), source
+        )
         if analysis is None:
             raise AgentError("An actionable request is required; no workflow executed")
         return {"workflow_id": self.workflow_id, "confirmed_name": None, **analysis}

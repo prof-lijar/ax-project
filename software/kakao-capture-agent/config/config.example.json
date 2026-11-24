@@ -11,6 +11,8 @@
   "llm_allow_http": false,
   "llm_timeout_seconds": 120,
   "bizgo_enabled": false,
+  "bizgo_installation_test": false,
+  "bizgo_test_recipients": "",
   "bizgo_sandbox": true,
   "bizgo_sender": "",
   "bizgo_recipient": "",
