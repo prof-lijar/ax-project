@@ -4,8 +4,9 @@ import ctypes
 import threading
 import time
 from ctypes import wintypes
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
+from app.automation.qt_editor import qt_editor_session, uses_qt_editor
 from app.models import (
     AgentError,
     Cancelled,
@@ -91,6 +92,24 @@ class WindowsDesktop:
             result, key=lambda t: ("kakao" not in t.executable.lower(), t.executable.lower())
         )
 
+    def foreground_chat_target(self):
+        if not self.session_available():
+            raise TargetUnavailable("Unlock the Windows session before picking a chat")
+        hwnd = self.gui.GetForegroundWindow()
+        if not hwnd or not self.gui.IsWindowVisible(hwnd) or self.gui.IsIconic(hwnd):
+            raise AgentError("Open the conversation and click its typing area during the countdown")
+        target = self.identify(hwnd)
+        if (
+            PureWindowsPath(target.executable).name.lower()
+            not in {"kakaotalk.exe", "kakaotalkui.exe"}
+            or not target.title.strip()
+            or self.gui.GetForegroundWindow() != hwnd
+        ):
+            raise AgentError(
+                "The active window is not a titled KakaoTalk chat. Click Pick chat to try again."
+            )
+        return target
+
     def monitors(self):
         result = []
         for _, _, rectangle in self.api.EnumDisplayMonitors():
@@ -174,6 +193,21 @@ class WindowsDesktop:
             raise TargetUnavailable("Interactive desktop is locked or unavailable")
         target = self.config.target
         client, dpi = self.geometry()
+        if uses_qt_editor(target):
+            with qt_editor_session(target) as editor:
+                bounds = editor.locate()
+            if not client.contains(bounds) or bounds.width < 32 or bounds.top - client.top < 32:
+                raise AgentError("KakaoTalkUI editor leaves no visible conversation area")
+        else:
+            bounds = self.native_composer_bounds(target, client)
+        region = Region(0, 0, client.width, bounds.top - client.top)
+        selection = Selection(region, client.width, client.height, dpi)
+        selection.resolve(client, dpi, self.monitors())
+        if self.config.target != target or self.geometry() != (client, dpi):
+            raise ReselectionRequired("Chat moved or changed while detecting its message area")
+        return selection
+
+    def native_composer_bounds(self, target, client):
         composers = []
 
         def visit(handle, _):
@@ -198,12 +232,7 @@ class WindowsDesktop:
                 "Cannot identify one message box below the conversation. "
                 "Select the actual chat window and close search panels so its message box is visible."
             )
-        region = Region(0, 0, client.width, composers[0].top - client.top)
-        selection = Selection(region, client.width, client.height, dpi)
-        selection.resolve(client, dpi, self.monitors())
-        if self.config.target != target or self.geometry() != (client, dpi):
-            raise ReselectionRequired("Chat moved or changed while detecting its message area")
-        return selection
+        return composers[0]
 
     def request_target_activation(self):
         """Request activation from the Send button while the agent owns foreground."""

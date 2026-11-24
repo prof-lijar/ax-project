@@ -17,6 +17,7 @@ include = ["app*", "mock_api*"]
 
 [tool.setuptools.package-data]
 "app" = ["assets/*.png", "assets/*.ico"]
+"app.automation" = ["*.ps1"]
 "app.storage" = ["schema.sql"]
 
 [tool.pytest.ini_options]

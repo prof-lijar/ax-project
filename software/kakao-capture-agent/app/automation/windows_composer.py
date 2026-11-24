@@ -2,11 +2,14 @@
 
 import ctypes
 import time
+from contextlib import contextmanager
 from ctypes import wintypes
 from pathlib import PureWindowsPath
 
 from app.automation.composer_text import composer_is_empty
 from app.automation.keyboard_input import press_enter
+from app.automation.qt_editor import qt_editor_session, uses_qt_editor
+from app.automation.reply_service import TestReplySender
 from app.models import AgentError, Cancelled, Region, SubmissionObservation, covered_by_monitors
 
 
@@ -57,6 +60,10 @@ class WindowsComposer:
             if len(diagnostics) > 20:
                 self.report(
                     f"Composer diagnostic: {len(diagnostics) - 20} additional controls omitted"
+                )
+            if not diagnostics:
+                self.report(
+                    "If the typing area belongs to KakaoTalkUI, pick the chat by clicking it in Select Window or Select Agent Chats"
                 )
             raise AgentError(
                 f"Found {len(candidates)} supported message boxes in the selected chat. "
@@ -161,6 +168,10 @@ class WindowsComposer:
             raise AgentError("Control is hidden or disabled")
         left, top, right, bottom = d.gui.GetWindowRect(handle)
         region = Region(left, top, right - left, bottom - top)
+        self.validate_bounds(region)
+
+    def validate_bounds(self, region):
+        d = self.desktop
         client, _ = d.geometry()
         if (
             region.width <= 0
@@ -287,3 +298,60 @@ class WindowsComposer:
                     "Enter keypress sent, but text remains in the message box; send NOT confirmed, no automatic retry"
                 )
             cancel.wait(0.1)
+
+
+class QtWindowsComposer(WindowsComposer):
+    def __init__(self, native, editor):
+        super().__init__(native.desktop, native.report, require_capture=native.require_capture)
+        self.editor = editor
+
+    def prepare(self, cancel):
+        self.cancel = cancel
+        self.desktop.activate_target(cancel, require_capture=self.require_capture)
+        self.report("Locating the KakaoTalkUI editor in the selected conversation")
+        self.validate_bounds(self.editor.locate())
+        self.verify()
+        self.editor.action("focus")
+        return self.editor.key
+
+    def verify(self):
+        import pyautogui
+
+        if self.desktop.config.target != self.editor.target:
+            raise AgentError("Selected KakaoTalkUI conversation changed")
+        try:
+            pyautogui.failSafeCheck()
+        except pyautogui.FailSafeException:
+            raise Cancelled("Mouse fail-safe activated") from None
+        self.desktop.validate(require_capture=self.require_capture)
+        self.validate_bounds(self.editor.refresh_bounds())
+        if any(self.desktop.api.GetAsyncKeyState(key) & 0x8000 for key in (16, 17, 18, 91, 92)):
+            raise AgentError("Release keyboard modifiers before sending")
+
+    def focused(self):
+        self.verify()
+        self.editor.action("check")
+        return self.editor.key
+
+    def write(self, handle, text):
+        self.guard(handle)
+        self.editor.action("write", text=text.replace("\r\n", "\n"))
+
+    def read(self, handle):
+        self.guard(handle)
+        return self.editor.action("read")["text"]
+
+    def read_after_send(self, handle):
+        self.verify()
+        return self.editor.action("observe")["text"]
+
+
+class WindowsReplySender(TestReplySender):
+    @contextmanager
+    def composer_session(self):
+        target = self.composer.desktop.config.target
+        if uses_qt_editor(target):
+            with qt_editor_session(target, self.cancel) as editor:
+                yield QtWindowsComposer(self.composer, editor)
+        else:
+            yield self.composer

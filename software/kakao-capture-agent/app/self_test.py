@@ -34,6 +34,8 @@ def run(report_path):
         assert text_helper.is_file() and "UIAutomationClient" in text_helper.read_text(
             encoding="utf-8"
         )
+        qt_helper = text_helper.with_name("qt_editor.ps1")
+        assert qt_helper.is_file() and "TextObjectTextArea" in qt_helper.read_text(encoding="utf-8")
         application = QApplication([])
         configure_application(application)
         assert application.applicationName() == APP_NAME
@@ -84,6 +86,7 @@ def run(report_path):
             "checks": [
                 "native imports",
                 "packaged Windows text-reader resource",
+                "packaged KakaoTalkUI accessibility resource",
                 "restricted data directory",
                 "configuration",
                 "SQLite schema",

@@ -1,9 +1,8 @@
 """Run the unchanged workflow per chat, serializing all desktop work on one thread."""
 
 from app.api.workflow_llm import check_cancel
-from app.automation.reply_service import TestReplySender
 from app.automation.window_manager import WindowsDesktop
-from app.automation.windows_composer import WindowsComposer
+from app.automation.windows_composer import WindowsComposer, WindowsReplySender
 from app.capture.screen_capture import ScreenCapture
 from app.models import AgentError, Cancelled
 from app.storage.chat_paths import chat_queue_key
@@ -54,7 +53,7 @@ class MultiChatWorkflow:
             sender = (
                 sender_factory(desktop, cancel)
                 if sender_factory
-                else TestReplySender(WindowsComposer(desktop, log), queue.event, cancel)
+                else WindowsReplySender(WindowsComposer(desktop, log), queue.event, cancel)
             )
             workflow = type(base_workflow)(
                 desktop,

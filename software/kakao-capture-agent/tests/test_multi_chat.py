@@ -512,6 +512,7 @@ def test_gui_selects_persists_and_returns_to_single_chat(fleet, tmp_path, monkey
     monkeypatch.setattr(main_window, "EmergencyHotkey", lambda _: Hotkey())
     f = fleet
     f.config.agent_chats = []
+    f.service.desktop.foreground_chat_target = lambda: targets()[1]
     f.service.desktop.candidates = targets
     signals = main_window.Signals()
     window = main_window.MainWindow(
@@ -548,10 +549,12 @@ def test_gui_selects_persists_and_returns_to_single_chat(fleet, tmp_path, monkey
         assert len(f.config.agent_chats) == 3
         f.service.state = State.STOPPED
         window.update_status(State.STOPPED.value, "")
-        monkeypatch.setattr(main_window.QInputDialog, "getItem", lambda *a: (a[3][1], True))
-        monkeypatch.setattr(
-            main_window.QMessageBox, "question", lambda *a: main_window.QMessageBox.Yes
-        )
+        def pick_single(dialog):
+            dialog.finish_pick()
+            assert dialog.selected_targets() == [targets()[1]]
+            return main_window.QDialog.Accepted
+
+        monkeypatch.setattr(AgentChatsDialog, "exec", pick_single)
         window.select_window()
         assert f.config.target == targets()[1]
         assert f.config.chat_id == second_id and f.config.agent_chats == []

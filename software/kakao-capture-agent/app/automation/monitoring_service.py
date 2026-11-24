@@ -9,12 +9,11 @@ from app.api.bizgo_client import BIZGO_SAMPLE, create_bizgo
 from app.automation.device_workflow import DeviceWorkflow
 from app.automation.incoming_workflow import IncomingReplyWorkflow
 from app.automation.multi_chat import MultiChatWorkflow
-from app.automation.reply_service import TestReplySender
 from app.automation.saved_image_workflow import SavedImageWorkflow
 from app.automation.scroll_controller import ScrollController
 from app.automation.test_workflow import OneCycleWorkflow
 from app.automation.unified_workflow import UnifiedWorkflow
-from app.automation.windows_composer import WindowsComposer
+from app.automation.windows_composer import WindowsComposer, WindowsReplySender
 from app.capture.change_detector import ChangeDetector
 from app.capture.screen_capture import encode_png
 from app.models import (
@@ -71,10 +70,10 @@ class MonitoringService(threading.Thread):
         self.next_capture = self.next_recovery = 0
         self.operator_bottom = False
         self.want_live = False
-        self.reply_sender = TestReplySender(
+        self.reply_sender = WindowsReplySender(
             WindowsComposer(desktop, self.primary_activity), queue.event, self.stop_input
         )
-        self.manual_reply_sender = TestReplySender(
+        self.manual_reply_sender = WindowsReplySender(
             WindowsComposer(desktop, self.primary_activity, require_capture=False),
             queue.event,
             self.stop_input,

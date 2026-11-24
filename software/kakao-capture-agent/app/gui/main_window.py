@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -663,33 +662,13 @@ class MainWindow(QMainWindow):
     def select_window(self):
         if self.pending_action or self.monitor.state != State.STOPPED:
             return
-        candidates = self.desktop.candidates()
-        labels = [
-            f"{i + 1}. {t.title} — {t.executable} (PID {t.pid})" for i, t in enumerate(candidates)
-        ]
-        if not labels:
-            QMessageBox.warning(self, "Target", "No accessible windows found")
-            return
-        label, ok = QInputDialog.getItem(
-            self,
-            "Select conversation",
-            "Choose the authorized KakaoTalk conversation",
-            labels,
-            0,
-            False,
+        dialog = AgentChatsDialog(
+            self.desktop.candidates(), [self.config.target], self,
+            maximum=1, foreground_target=self.desktop.foreground_chat_target,
         )
-        if not ok:
+        if dialog.exec() != QDialog.Accepted:
             return
-        if (
-            QMessageBox.question(
-                self,
-                "Confirm target",
-                "Confirm this is the intended KakaoTalk conversation and you have authorization to collect it.",
-            )
-            != QMessageBox.Yes
-        ):
-            return
-        selected = candidates[labels.index(label)]
+        selected = dialog.selected_targets()[0]
         if self.config.agent_chats:
             self.config.select_agent_chats([selected])
         self.config.target = selected
@@ -722,11 +701,8 @@ class MainWindow(QMainWindow):
         if self.pending_action or self.monitor.state != State.STOPPED:
             return
         candidates = self.desktop.candidates()
-        if not candidates:
-            QMessageBox.warning(self, "Target", "No accessible windows found")
-            return
         selected = [c.target for c in self.config.agent_chats] or [self.config.target]
-        dialog = AgentChatsDialog(candidates, selected, self)
+        dialog = AgentChatsDialog(candidates, selected, self, foreground_target=self.desktop.foreground_chat_target)
         if dialog.exec() != QDialog.Accepted:
             return
         try:

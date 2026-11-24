@@ -4,6 +4,7 @@ from pathlib import Path
 root = Path(SPECPATH)
 a = Analysis([str(root / 'app' / 'main.py')], pathex=[str(root)],
              datas=[(str(root / 'app' / 'storage' / 'schema.sql'), 'app/storage'),
+                    (str(root / 'app' / 'automation' / 'qt_editor.ps1'), 'app/automation'),
                     (str(root / 'app' / 'automation' / 'read_chat_text.ps1'), 'app/automation'),
                     (str(root / 'app' / 'assets' / 'voyageri.png'), 'app/assets'),
                     (str(root / 'app' / 'assets' / 'voyageri.ico'), 'app/assets')],
