@@ -7,7 +7,7 @@ from dataclasses import replace
 from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage, create_incoming_llm
 from app.api.unified_operations import create_unified_operations
 from app.api.workflow_llm import check_cancel
-from app.api.workflow_requests import installation_header
+from app.api.workflow_requests import installation_header, kakao_command, plan_texts
 from app.automation.unified_workflow import UnifiedProcessor
 from app.capture.saved_image import normalize_capture_image
 from app.models import AgentError
@@ -64,12 +64,15 @@ class SavedImageWorkflow:
             saved is not None and "kind" not in saved and saved["output"] == NO_ACTION
             and installation_header(saved["incoming"])
         )
+        if (saved and saved["output"] == NO_ACTION and "chat_commands" not in saved
+                and kakao_command(saved["incoming"])):
+            legacy_skip = True
         if saved is None:
             plan = self.journal.get(job_id + ":plan")
-            legacy_skip = (
-                plan and any(installation_header(part) for part in plan)
-                and any(self.journal.get(f"{job_id}-{i}:analysis") == {"request": None}
-                        for i, part in enumerate(plan) if installation_header(part))
+            legacy_skip = plan and any(
+                isinstance(part, str) and (installation_header(part) or kakao_command(part))
+                and self.journal.get(f"{job_id}-{i}:analysis") == {"request": None}
+                for i, part in enumerate(plan)
             )
         if legacy_skip and self.journal.reopen_skipped_image(job_id, result_key, saved):
             saved = None
@@ -91,7 +94,7 @@ class SavedImageWorkflow:
             if plan and len(plan) > 1 and any(installation_header(part) for part in plan):
                 raise IncomingAnalysisError("Saved installation form has unclear message boundaries")
             if plan is not None:
-                incoming = IncomingMessage("incoming", "\n".join(plan))
+                incoming = IncomingMessage("incoming", "\n".join(plan_texts(plan)))
             else:
                 self.progress("Extracting the latest visible message from the selected image")
                 incoming = llm.classify_latest(png, self.cancel)
@@ -117,7 +120,9 @@ class SavedImageWorkflow:
             )
             # Reopening the same image must not repeat external operations. Keep
             # test jobs in a namespace that no live chat can claim or send.
-            self.journal.claim(result_key, job_id, {"output": output, "incoming": incoming.text, "kind": incoming.kind})
+            self.journal.claim(result_key, job_id, {
+                "output": output, "incoming": incoming.text, "kind": incoming.kind, "chat_commands": True,
+            })
             self.jobs.finish(job_id, "ignored")
             self.queue.event("image_test_complete", job_id)
             return output

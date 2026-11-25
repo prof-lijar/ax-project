@@ -202,7 +202,7 @@ class SettingsDialog(QDialog):
             ("bizgo_enabled", "Send Bizgo SMS/LMS after Test Workflow"),
             (
                 "bizgo_installation_test",
-                "Test Bizgo SMS for new installations (use only installation test numbers)",
+                "Send installation and guardian-addition guides to test numbers only",
             ),
             ("bizgo_sandbox", "Bizgo sandbox: test requests only, no real phone delivery"),
             ("llm_supports_vision", "Enable image input for this vision-capable LLM"),

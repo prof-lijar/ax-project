@@ -177,9 +177,7 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
     assert events.count("registration") == events.count("kakao") == 1
     (reply,) = w.sent
     if status != "completed":
-        assert "4.보호자 앱설치문자 발송 : 미발송" in reply and not sends
-        assert SUMMARY in reply and "1.가입자 명부 시트 기재 : 보류" in reply
-        assert "2.디바이스 설치 시트 기재 : 미진행" in reply
+        assert reply == "[자동 확인]\n" + SUMMARY and not sends
     else:
         expected = TEST_NUMBERS if mode == "test" else GUARDIANS
         assert {p["destinations"][0]["to"] for p in sends} == set(expected)
@@ -364,6 +362,17 @@ def test_partial_registration_shows_verified_steps_and_unknown_master(config, qu
     ImageReplyQueue(queue)
     sms = InstallationSMS(config, OperationJournal(queue), queue.event, lambda _: None)
     reply = sms.reply(asdict(parse_unified_result(body)), "job", "key", threading.Event())
-    assert "1.가입자 명부 시트 기재 : 완료" in reply and "2.디바이스 설치 시트 기재 : 완료" in reply
-    assert "3.마스터페이지 가입자 및 보호자 추가 : 저장 여부 미확인" in reply
-    assert "4.보호자 앱설치문자 발송 : 미발송" in reply and body["issue_summary"] in reply
+    assert reply == "[자동 확인]\n" + body["issue_summary"]
+
+
+def test_signal_hold_formats_all_four_rows_without_delivery(config, queue):
+    body = result("blocked")
+    body["signal_status"] = "disconnected"
+    for item in body["kakao-reply"]:
+        item["status"] = "홀딩"
+    ImageReplyQueue(queue)
+    sms = InstallationSMS(config, OperationJournal(queue), queue.event, lambda _: None)
+    reply = sms.reply(asdict(parse_unified_result(body)), "job", "key", threading.Event())
+    assert reply == ("[자동 확인]\n가상인님 신규설치된 기기신호 확인되지 않습니다. 전원 어댑터 연결을 재확인해주세요."
+                     "\n\n■ 반영 영역\n\n1.가입자 명부 시트 기재 : 홀딩\n2.디바이스 설치 시트 기재 : 홀딩"
+                     "\n3.마스터페이지 가입자 및 보호자 추가 : 홀딩\n4.보호자 앱설치문자 발송 : 홀딩")

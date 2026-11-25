@@ -12,6 +12,13 @@ from app.models import AgentError, Cancelled
 def installation_message(result, sms_status):
     name = result["subscriber_name"]
     signal = result["signal_status"]
+    if not result.get("completed") and signal == "disconnected":
+        heading = f"{name}님 신규설치된 기기신호 확인되지 않습니다. 전원 어댑터 연결을 재확인해주세요."
+        lines = [f"{i}.{item['label']} : 홀딩" for i, item in enumerate(result["kakao_reply"], 1)]
+        lines.append("4.보호자 앱설치문자 발송 : 홀딩")
+        return f"[자동 확인]\n{heading}\n\n■ 반영 영역\n\n" + "\n".join(lines)
+    if not result.get("completed") and result.get("issue_summary"):
+        return "[자동 확인]\n" + result["issue_summary"][:1990]
     if signal == "confirmed":
         heading = f"{name}님 신규설치된 기기신호 확인 완료입니다."
     elif signal == "disconnected":
@@ -31,6 +38,13 @@ def installation_message(result, sms_status):
 
 
 def notification_reply(result, notice, *, guardian_request_accepted=False):
+    if result.get("guardian_addition"):
+        # The API reply describes verified sheet/member changes. Add only the observed SMS outcome.
+        response = result["response"].rstrip()
+        available = 2000 - len(notice) - 2
+        if len(response) > available:
+            response = response[:available - 1] + "…"
+        return response + "\n\n" + notice
     draft = result["kakao_reply"]
     sent_line = "내용 기재 및 보호자님께 앱설치 문자 발송 완료했습니다."
     if isinstance(draft, list):

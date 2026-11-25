@@ -157,6 +157,31 @@ Previously named **Auto Catch**, this button runs a repeating pipeline: **watch 
 5. **Capture continues while the previous LLM request processes and during the reply cooldown.** Jobs process one at a time in capture order. Several messages appearing between captures can form one batch. Queue counts and submitted-reply counts appear in the status/log.
 6. After a reply, Run Agent (auto) keeps watching automatically. **Stop** or **Ctrl+Shift+F12** cancels processing and retains unsent queued captures. Click Run Agent (auto) again to start each selected chat with one fresh screenshot. Earlier pending captures for that chat and API destination are retired when the new screenshot is saved. Application restart never starts sending automatically.
 
+### Worksheet commands
+
+Run Agent (auto) also routes the following incoming worksheet commands through
+`POST /api/ax768/runs`. Keep each request in a single message bubble.
+
+| Command | Fields after the command |
+| --- | --- |
+| 정보수정 | 이름/주소/새 연락처, or 항목/이름/주소/새 값 for 연락처, 생년월일, 이름 or 성별. Use 주소/이름/새 주소 for an address change. |
+| 보호자 추가, 보호자 수정 | 가입자 주소/가입자 이름/보호자 이름/보호자 연락처/관계 |
+| 기기교체 | 이름/주소/새 S/N |
+| 기기회수, 기기분실, 설치확인 | 이름/주소 |
+| 고장확인 | S/N |
+
+Replacement, collection and fault reports use the visible sender of that bubble
+as the manager. Live loss and fault reports use the capture date in Korea.
+At startup and in a saved image, the date must be visible. The server returns
+a clarification when required context is missing. Installation confirmation
+reads the regional roster. Fault confirmation can take at least three minutes
+when the device stays disconnected.
+
+In a live chat, a verified guardian addition can return an app guide for the
+new guardian. VoyagerI checks the phone number against the submitted command
+and applies the same Bizgo routing and replay protection as new installation.
+Run Image Test displays the API result and skips phone and Kakao delivery.
+
 ### 가입자신규설치 and Bizgo
 
 An incoming bubble headed `신규설치` or `가입자신규설치` triggers the unified API with `workflow_id` set to `new_installation`. Keep the complete form visible in one message. VoyagerI passes its line breaks, manager, serial number (including leading zeros), subscriber details and guardian details through to the API.
@@ -173,7 +198,7 @@ the individual stage results and the agent's issue summary.
 
 Under **Settings → Bizgo**, enter the registered sender number and API key. For verified registrations, VoyagerI sends the API’s full `sms.text` and `sms.title` to each guardian in `sms.recipients`, then posts the Kakao reply to the originating chat. Once Bizgo accepts every part for every production guardian number, item 4 reads `보호자 앱설치문자 발송 : 완료`. A blocked registration shows the API’s failure summary and item 4 reads `미발송`.
 
-To test recipient routing, enter one or more comma-separated numbers in **Installation test numbers** and enable **Test Bizgo SMS for 신규설치**. The guide goes only to those numbers. A test number matching a guardian stops the send for review. **Bizgo sandbox** is enabled by default. Clear it for delivery to real phones, including test phones. These settings affect phone delivery; the installation API still performs registration. The chat reply reports test routing, sandbox acceptance or an unconfirmed SMS outcome as applicable. An interrupted or uncertain send is retained for review to prevent duplicate messages.
+To test recipient routing, enter one or more comma-separated numbers in **Installation test numbers** and enable **Send installation and guardian-addition guides to test numbers only**. The guide goes only to those numbers. A test number matching a guardian stops the send for review. **Bizgo sandbox** is enabled by default. Clear it for delivery to real phones, including test phones. These settings affect phone delivery; the installation API still performs registration. The chat reply reports test routing, sandbox acceptance or an unconfirmed SMS outcome as applicable. An interrupted or uncertain send is retained for review to prevent duplicate messages.
 
 Each explicit start checks the latest visible message before collecting further changes. Temporary focus recovery continues the current run.
 
@@ -195,7 +220,9 @@ Startup warnings about missing **upload queue** images refer to the separate cap
 
 A focus or preparation check that fails before any draft write keeps the untouched job pending. Restore the chat, then explicitly restart Run Agent (auto) to process that job; no reply review is needed for that attempt. Partial draft writes still require review.
 
-The request payload is `{"workflow_id":"auto","message":"위치조정/이영희/광명시 OO동 OO로 56","confirmed_name":null}`. The server owns workflow aliases, capability checks, result verification and reply templates. Missing/unknown/ambiguous actions return clarification without executing a workflow. Automatic device requests use three slash-separated fields with a Korean name and road-number address. Information updates use an explicit 정보수정/정보변경 action field; future workflows are registered server-side.
+Worksheet commands carry the workflow ID, original message and `source: "kakao"`.
+The server checks the requested workflow against the message, verifies the
+agent-server capability and validates operation receipts before composing the reply.
 
 API attempts and results are journaled separately from reply delivery. A timeout or Stop never triggers an automatic repeat of a potentially completed write. Inspect the operations sheet and member notes before manually submitting the same request again. Signal failure is not fabricated from an API error.
 

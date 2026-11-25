@@ -3,6 +3,7 @@
 import hashlib
 import json
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 
 from app.api.incoming_llm import IncomingMessage, analysis_error, automated_text
 from app.api.unified_operations import create_unified_operations
@@ -12,6 +13,8 @@ from app.api.workflow_requests import (
     analyze_request,
     extract_sources,
     installation_header,
+    kakao_command,
+    plan_texts,
 )
 from app.automation.device_workflow import UNCERTAIN
 from app.automation.installation_sms import InstallationSMS
@@ -26,7 +29,7 @@ class UnifiedProcessor:
         self.installation_sms = installation_sms
         self.journal, self.operations, self.activity = journal, operations, activity
 
-    def answer(self, llm, incoming, job_id, cancel, *, startup_chat_key=None):
+    def answer(self, llm, incoming, job_id, cancel, *, startup_chat_key=None, received_date=""):
         check_cancel(cancel)
         if incoming.kind != "incoming" or automated_text(incoming.text):
             return None
@@ -45,11 +48,20 @@ class UnifiedProcessor:
                 if any(installation_header(m) for m in plan):
                     if len(plan) != 1 or not installation_header(incoming.text):
                         raise analysis_error("installation bubble boundaries unclear")
+                if any(kakao_command(m) for m in plan) and plan != [incoming.text]:
+                    raise analysis_error("workflow command bubble boundaries unclear")
+            for index, message in enumerate(plan):
+                sender = incoming.sender if len(plan) == 1 else ""
+                if incoming.bubble_senders:
+                    sender = incoming.bubble_senders[index]
+                command = kakao_command(message, sender, received_date or incoming.received_date)
+                if command:
+                    plan[index] = command
             check_cancel(cancel)
             self.journal.claim(plan_key, job_id, plan)
             plan = self.journal.get(plan_key)
         replies = []
-        for index, message in enumerate(plan):
+        for index, message in enumerate(plan_texts(plan)):
             check_cancel(cancel)
             if automated_text(message):
                 continue
@@ -59,7 +71,9 @@ class UnifiedProcessor:
             analysis_key = f"{job_id}-{index}:analysis"
             cached = self.journal.get(analysis_key)
             if cached is None:
-                if installation_header(message):
+                if isinstance(plan[index], dict):
+                    request = plan[index]
+                elif installation_header(message):
                     request = {"workflow_id": INSTALLATION, "message": message}
                 else:
                     request = analyze_request(llm, message, cancel)
@@ -80,9 +94,10 @@ class UnifiedProcessor:
                     "Startup request already attempted in this chat; no duplicate API call or reply"
                 )
                 continue
-            installation = request.get("workflow_id") == INSTALLATION
+            workflow_id = request.get("workflow_id")
+            installation = workflow_id == INSTALLATION
             sms_key = f"{job_id}-{index}:sms"
-            if installation and self.installation_sms:
+            if workflow_id in (INSTALLATION, "information_update") and self.installation_sms:
                 self.installation_sms.record_routing(job_id)
             uncertain = {
                 "status": "uncertain",
@@ -90,12 +105,13 @@ class UnifiedProcessor:
                 + (
                     "신규설치 등록 결과를 확인하지 못했습니다. 재실행 전에 명부와 마스터페이지를 확인해 주세요."
                     if installation
-                    else UNCERTAIN
+                    else "처리 결과를 확인하지 못했습니다. 중복 처리를 막기 위해 재요청 전에 기록을 확인해 주세요."
+                    if workflow_id else UNCERTAIN
                 ),
                 "completed": False,
             }
             if self.journal.claim(key, job_id, uncertain):
-                workflow = "가입자신규설치" if installation else request["action"]
+                workflow = "가입자신규설치" if installation else workflow_id or request["action"]
                 self.activity(f"AX768: processing {workflow}")
                 try:
                     result = asdict(self.operations.run(request, cancel))
@@ -106,7 +122,7 @@ class UnifiedProcessor:
                     self.activity("AX768 result unavailable; no automatic retry: " + str(error))
                 self.journal.complete(key, result)
             result = self.journal.get(key)
-            if installation and self.installation_sms and result.get("sms") is not None:
+            if self.installation_sms and result.get("sms") is not None:
                 reply = self.installation_sms.reply(result, job_id, sms_key, cancel)
             else:
                 reply = result["response"]
@@ -177,7 +193,7 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
     def analyze_job(self, llm, job, cancel):
         plan = job["processor"].journal.get(job["job_id"] + ":plan")
         if plan is not None:
-            return IncomingMessage("incoming", "\n".join(plan))
+            return IncomingMessage("incoming", "\n".join(plan_texts(plan)))
         if json.loads(job["text"]).get("mode") == "latest":
             return llm.classify_latest(job["after_png"], cancel)
         return llm.classify(job["before_png"], job["after_png"], cancel, batch="bubbles")
@@ -190,6 +206,9 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
             job["job_id"],
             cancel,
             startup_chat_key=job["chat_key"] if startup else None,
+            received_date=("" if startup else datetime.fromtimestamp(
+                job["created_at"], timezone(timedelta(hours=9))
+            ).date().isoformat()),
         )
 
     def format_reply(self, reply):

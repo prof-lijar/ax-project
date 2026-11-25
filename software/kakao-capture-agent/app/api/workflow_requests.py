@@ -12,6 +12,49 @@ ACTION_KEYWORDS = {alias: action for action, aliases in ACTIONS.items() for alia
 
 
 INSTALLATION = "new_installation"
+CHAT_COMMANDS = {
+    "정보수정": ("information_update", (4, 5)),
+    "정보변경": ("information_update", (4, 5)),
+    "정보확인&수정": ("information_update", (4, 5)),
+    "보호자추가": ("information_update", (6,)),
+    "보호자수정": ("information_update", (6,)),
+    "기기교체": ("device_replacement", (4,)),
+    "기기회수": ("device_collection", (3,)),
+    "기기분실": ("device_loss", (3,)),
+    "설치확인": ("installation_confirmation", (3,)),
+    "고장확인": ("fault_confirmation", (2,)),
+}
+MANAGER_WORKFLOWS = {"device_replacement", "device_collection", "fault_confirmation"}
+
+
+def kakao_command(message, sender="", received_date=""):
+    """Keep a complete worksheet command verbatim. The server validates business fields."""
+    if not isinstance(message, str) or len(message.strip().splitlines()) != 1:
+        return None
+    fields = unicodedata.normalize("NFKC", message).strip().split("/")
+    actions = [compact(field) for field in fields if compact(field) in CHAT_COMMANDS]
+    if len(actions) != 1:
+        return None
+    action = actions[0]
+    if action != "기기교체" and compact(fields[0]) != action:
+        return None
+    command = CHAT_COMMANDS[action]
+    if len(fields) not in command[1] or not all(field.strip() for field in fields):
+        return None
+    if re.search(r"취소|하지\s*마|[?？]", message):
+        return None
+    workflow = command[0]
+    request = {"workflow_id": workflow, "message": message, "source": "kakao"}
+    if workflow in MANAGER_WORKFLOWS and sender:
+        request["manager"] = sender
+    if workflow in {"device_loss", "fault_confirmation"} and received_date:
+        request["received_date"] = received_date
+    return request
+
+
+def plan_texts(plan):
+    # Existing plans store bare strings. New commands also retain sender/date for replay.
+    return [entry["message"] if isinstance(entry, dict) else entry for entry in plan]
 
 
 def installation_header(message):
@@ -163,10 +206,10 @@ def parse_sources(content, incoming):
 
 
 def extract_sources(llm, incoming, cancel):
-    if explicit_device_request(incoming.text):
+    if explicit_device_request(incoming.text) or kakao_command(incoming.text):
         return [incoming.text]
     if not has_device_keyword(incoming.text) and not any(
-        installation_header(line) for line in incoming.text.splitlines()
+        installation_header(line) or kakao_command(line) for line in incoming.text.splitlines()
     ):
         return []
     messages = [

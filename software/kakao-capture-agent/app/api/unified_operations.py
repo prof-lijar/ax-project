@@ -4,6 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 
+from app.api.device_request import compact
 from app.api.operations_client import (
     WORKFLOW_ID,
     OperationsClient,
@@ -12,7 +13,12 @@ from app.api.operations_client import (
     credential_destination,
     parse_result,
 )
-from app.api.workflow_requests import INSTALLATION, installation_header, parse_analysis
+from app.api.workflow_requests import (
+    INSTALLATION,
+    installation_header,
+    kakao_command,
+    parse_analysis,
+)
 from app.models import AgentError
 from app.utils.windows import get_token
 
@@ -26,29 +32,40 @@ class InstallationResult(OperationsResult):
     issue_summary: str = ""
 
 
+@dataclass(frozen=True, kw_only=True)
+class GuardianAdditionResult(OperationsResult):
+    sms: dict
+    kakao_reply: str
+    guardian_addition: bool = True
+
+
 def validate_installation_items(items, body, completed):
     stages = ("roster", "inventory", "member")
     statuses = {"updated": "완료", "skipped": "미진행", "blocked": "보류", "unknown": "저장 여부 미확인"}
     receipts = body.get("receipts")
     if len(items) != len(stages) or not isinstance(receipts, dict):
         raise AgentError("Invalid installation stage list")
+    signal = body.get("signal_status")
+    signal_hold = not completed and signal == "disconnected"
     for key, item in zip(stages, items):
         receipt = receipts.get(key)
         if not isinstance(receipt, dict) or not isinstance(item, dict):
             raise AgentError("Missing installation stage")
         state = receipt.get("status")
+        if not isinstance(state, str) or state not in statuses:
+            raise AgentError("Unknown installation receipt status")
+        expected = "홀딩" if signal_hold else statuses[state]
         label = item.get("label")
-        if (not isinstance(state, str) or state not in statuses
-                or receipt.get("verified") is not (state == "updated")
-                or item.get("stage") != key or item.get("status") != statuses[state]
+        if (receipt.get("verified") is not (state == "updated")
+                or item.get("stage") != key or item.get("status") != expected
+                or (signal in ("disconnected", "unverified") and not completed and state not in {"skipped", "blocked"})
                 or not isinstance(label, str) or not 0 < len(label.strip()) <= 80
                 or not label.isprintable()):
             raise AgentError("Installation list differs from its receipt")
     name = body.get("subscriber_name")
-    signal = body.get("signal_status")
     summary = body.get("issue_summary", "")
     if (not isinstance(name, str) or not re.fullmatch(r"[가-힣]{2,10}(?:_[가-힣]{2,10})?", name)
-            or signal not in (("confirmed", "disconnected", "unverified") if completed else ("not_checked",))
+            or signal not in (("confirmed", "disconnected", "unverified") if completed else ("not_checked", "confirmed", "disconnected", "unverified"))
             or not isinstance(summary, str) or len(summary) > 2000
             or any(not (c == "\n" or c.isprintable()) for c in summary)
             or (not completed and not summary.strip())):
@@ -179,14 +196,33 @@ class UnifiedOperationsClient(OperationsClient):
     def parse_run_result(self, body, payload):
         result = self.parse_response(body)
         if body.get("workflow_id") != payload["workflow_id"] and not (
-            payload["workflow_id"] == WORKFLOW_ID
+            (payload["workflow_id"] == WORKFLOW_ID or payload.get("source") == "kakao")
             and body.get("workflow_id") is None
             and result.status == "needs_confirmation"
         ):
             raise AgentError("AX768 returned a different workflow than requested")
+        sms = body.get("sms")
+        if payload.get("source") == "kakao" and isinstance(sms, dict) and sms.get("should_send"):
+            fields = [s.strip() for s in payload["message"].split("/")]
+            if (payload["workflow_id"] != "information_update" or not result.completed
+                    or compact(fields[0]) != "보호자추가" or len(fields) != 6):
+                raise AgentError("Unexpected guardian notification for this request")
+            number = re.sub(r"\D", "", fields[4])
+            if (sms["should_send"] is not True or sms.get("recipients") != [number]
+                    or not re.fullmatch(r"[0-9() +.\-]+", fields[4])
+                    or not re.fullmatch(r"010[0-9]{8}", number)
+                    or not all(isinstance(sms.get(k), str) and sms[k].strip() and len(sms[k]) <= limit
+                               for k, limit in (("title", 100), ("text", 3000)))):
+                raise AgentError("Invalid guardian addition SMS instructions")
+            return GuardianAdditionResult(result.status, result.response, True, sms=sms, kakao_reply=result.response)
         return result
 
     def request_payload(self, request):
+        if isinstance(request, dict) and request.get("source") == "kakao":
+            expected = kakao_command(request.get("message"), request.get("manager", ""), request.get("received_date", ""))
+            if expected != request:
+                raise AgentError("AX768 workflow does not match the received Kakao command")
+            return request
         if isinstance(request, dict) and request.get("workflow_id") == INSTALLATION:
             if (
                 set(request) != {"workflow_id", "message"}

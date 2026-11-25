@@ -171,13 +171,13 @@ class MainWindow(QMainWindow):
         columns.addLayout(actions, 4)
         auto_card, auto_layout = ui.card(
             "Run your agent",
-            "Process incoming installation, device repositioning and power connection requests.",
+            "Process incoming AX768 subscriber and device requests.",
         )
         self.auto_catch_button = self.command_button("Run Agent (auto)", "auto_catch", "primary")
         auto_layout.addWidget(self.auto_catch_button)
         auto_layout.addWidget(
             ui.label(
-                "New installation forms can register subscribers and send guardian installation guides through Bizgo. "
+                "Installation and guardian addition requests can update records and send guardian guides through Bizgo. "
                 "Keep the latest messages visible."
             )
         )

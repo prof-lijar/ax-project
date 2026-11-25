@@ -307,6 +307,27 @@ def test_repeating_image_after_restart_reuses_result_and_never_claims_live_job(i
     assert jobs.claim("live-chat")["job_id"] == live_id
 
 
+def test_legacy_ignored_guardian_addition_reopens_once_without_sms(image_test):
+    from app.automation.saved_image_workflow import NO_ACTION
+    from tests.test_kakao_commands import GUARDIAN, guardian_response
+
+    test = image_test
+    test.state.actionable = False
+    test.service.dispatch(("image_test", test.png))
+    with test.queue.connect() as db:
+        job = db.execute("SELECT job_id FROM image_reply_queue").fetchone()[0]
+    test.workflow.journal.complete(job + ":image-test-result", {
+        "output": NO_ACTION, "incoming": GUARDIAN, "kind": "incoming",
+    })
+    test.state.actionable = True
+    test.state.message = GUARDIAN
+    test.state.api_result = guardian_response()
+    for _ in range(2):
+        test.service.dispatch(("image_test", test.png))
+        assert test.output[-1] == test.state.api_result["response"]
+    assert test.api_calls == [{"source": "kakao", "workflow_id": "information_update", "message": GUARDIAN}]
+
+
 @pytest.mark.parametrize("stage", ["extraction", "api"])
 def test_cancel_then_explicit_retry_does_not_repeat_submitted_api(image_test, stage):
     t = image_test

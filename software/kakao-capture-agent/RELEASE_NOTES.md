@@ -1,5 +1,13 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.50 — 2026-11-25
+
+**Run Agent (auto)** recognizes the Kakao worksheet commands for information updates, guardian additions and corrections, device replacement, collection, loss, installation lookup and fault confirmation. It sends the original message and matching workflow ID to the AX768 unified API. These commands require the matching Nexgent backend and agent-server update.
+
+Verified guardian additions use the configured Bizgo routing. The desktop checks the recipient against the incoming command and records the SMS attempt before sending. **Run Image Test** displays the API result and skips chat and phone delivery.
+
+When a new installation is held for a disconnected device, the reply asks for a power check and lists the held steps. Other incomplete installations show the recorded issue summary.
+
 ## v0.1.0-rc.49 — 2026-11-25
 
 Each click on **Run Agent (auto)** starts with a fresh screenshot of each selected chat. The latest visible incoming request is processed first. Pending captures from earlier runs leave the active queue. Existing workflow receipts still prevent a repeated registration or reply on restart.

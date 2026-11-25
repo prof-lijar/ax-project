@@ -62,8 +62,13 @@ class OperationJournal:
         message events remain eligible, even when their text repeats.
         """
         def signature(value):
-            if value.get("workflow_id") == "new_installation":
-                return ("new_installation", "".join(unicodedata.normalize("NFKC", value["message"]).split()))
+            if value.get("workflow_id"):
+                return (
+                    value["workflow_id"],
+                    "".join(unicodedata.normalize("NFKC", value["message"]).split()),
+                    value.get("manager", ""),
+                    value.get("received_date", ""),
+                )
             return tuple(
                 "".join(unicodedata.normalize("NFKC", value[key]).split())
                 for key in ("message", "action", "name", "address")
