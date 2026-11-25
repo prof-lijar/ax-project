@@ -38,7 +38,11 @@ GUARDIANS = ["01000002000", "01000002001"]
 TEST_NUMBERS = ["01000009900", "01000009901"]
 GUIDE = "《설치 안내》\n" + "가나다라마\n" * 230
 OK = "[자동 확인]\n기기신호 확인 완료입니다.\n내용 기재 및 보호자님께 앱설치 문자 발송 완료했습니다.\n\n감사합니다. :)"
-BLOCKED = "[자동 확인]\n기기 전원 및 설치 위치 확인 부탁드립니다. "
+SUMMARY = "[보류 사유 · 가입자 명부]\n입력한 주소를 확인해 주세요."
+LABELS = ("가입자 명부 시트 기재", "디바이스 설치 시트 기재", "마스터페이지 가입자 및 보호자 추가")
+SUCCESS = ("[자동 확인]\n가상인님 신규설치된 기기신호 확인 완료입니다.\n\n■ 반영 영역\n\n"
+           "1.가입자 명부 시트 기재 : 완료\n2.디바이스 설치 시트 기재 : 완료\n"
+           "3.마스터페이지 가입자 및 보호자 추가 : 완료\n4.보호자 앱설치문자 발송 : 완료\n\n감사합니다.")
 GUARDIAN_NOTICE = "보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.\n보호자 번호 끝자리: 2000, 2001"
 
 
@@ -51,11 +55,17 @@ def result(status="completed"):
         "response": "등록을 완료했습니다." if complete else "등록을 확인해 주세요.",
         "verified": complete,
         "guardian_count": 2,
-        "kakao-reply": OK if complete else BLOCKED,
+        "subscriber_name": "가상인",
+        "signal_status": "confirmed" if complete else "not_checked",
+        "issue_summary": "" if complete else SUMMARY,
+        "kakao-reply": [
+            {"stage": key, "label": label, "status": "완료" if complete else ("보류" if key == "roster" else "미진행")}
+            for key, label in zip(("roster", "inventory", "member"), LABELS)
+        ],
         "receipts": {
             k: {
                 "verified": complete,
-                "status": "updated" if complete else "blocked",
+                "status": "updated" if complete else ("blocked" if k == "roster" else "skipped"),
                 "rows": [5] if complete else [],
             }
             for k in ("roster", "inventory", "member")
@@ -167,7 +177,9 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
     assert events.count("registration") == events.count("kakao") == 1
     (reply,) = w.sent
     if status != "completed":
-        assert reply == BLOCKED and not sends
+        assert "4.보호자 앱설치문자 발송 : 미발송" in reply and not sends
+        assert SUMMARY in reply and "1.가입자 명부 시트 기재 : 보류" in reply
+        assert "2.디바이스 설치 시트 기재 : 미진행" in reply
     else:
         expected = TEST_NUMBERS if mode == "test" else GUARDIANS
         assert {p["destinations"][0]["to"] for p in sends} == set(expected)
@@ -185,8 +197,7 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
             )
             assert "".join(p["text"] for p in parts) == GUIDE
         if mode == "guardian":
-            assert GUARDIAN_NOTICE in reply and "발송 완료했습니다" not in reply
-            assert "기기신호 확인 완료입니다." in reply and reply.endswith("감사합니다. :)")
+            assert reply == SUCCESS
             assert all(number not in reply for number in GUARDIANS)
         else:
             expected_text = {
@@ -213,6 +224,11 @@ def test_guardian_notice_with_custom_server_reply():
         {"verified": False},
         {"guardian_count": 1},
         {"kakao-reply": ""},
+        {"kakao-reply": result()["kakao-reply"] + [{"stage": "sms", "label": "문자", "status": "완료"}]},
+        {"kakao-reply": list(reversed(result()["kakao-reply"]))},
+        {"kakao-reply": [{**result()["kakao-reply"][0], "status": "보류"}, *result()["kakao-reply"][1:]]},
+        {"signal_status": "not_checked"},
+        {"subscriber_name": "가상인\n추가"},
         {"receipts": {}},
         {"sms": {"should_send": False}},
         {"sms": {**result()["sms"], "recipients": GUARDIANS[:1] * 2}},
@@ -247,7 +263,7 @@ def test_explicit_heading_and_batch_boundaries(monkeypatch, queue, config):
     job, _ = jobs.enqueue_pair("chat", b"a", b"b")
     msg = incoming("예시입니다.\n" + FORM, FORM)
     for _ in range(2):
-        assert p.answer(None, msg, job, threading.Event()) == BLOCKED
+        assert SUMMARY in p.answer(None, msg, job, threading.Event())
     assert api.run.call_count == 1 and api.run.call_args.args[0]["message"] == FORM
     assert (
         p.answer(None, incoming(FORM), "startup", threading.Event(), startup_chat_key="chat")
@@ -314,5 +330,40 @@ def test_successful_notifications_are_not_repeated_after_restart(config, queue, 
         sms = InstallationSMS(config, journal, queue.event, lambda _: None)
         processor = UnifiedProcessor(journal, api, installation_sms=sms)
         replies.append(processor.answer(None, incoming(FORM), job, threading.Event()))
-    assert GUARDIAN_NOTICE in replies[0] and replies[0] == replies[1]
+    assert replies == [SUCCESS, SUCCESS]
     assert api.run.call_count == 1 and client.send.call_count == len(GUARDIANS)
+
+@pytest.mark.parametrize(("signal", "wording"), [
+    ("unverified", "신호 확인 결과를 확인할 수 없습니다."),
+    ("disconnected", "기기신호가 아직 확인되지 않았습니다."),
+])
+def test_unconfirmed_signal_does_not_override_verified_registration(signal, wording):
+    parsed = asdict(parse_unified_result({**result(), "signal_status": signal}))
+    reply = notification_reply(parsed, GUARDIAN_NOTICE, guardian_request_accepted=True)
+    assert wording in reply and "기기신호 확인 완료" not in reply
+    assert "4.보호자 앱설치문자 발송 : 완료" in reply
+
+
+def test_older_server_reply_does_not_confirm_signal_without_a_check():
+    body = result()
+    body["kakao-reply"] = OK
+    for key in ("signal_status", "issue_summary", "subscriber_name"):
+        del body[key]
+    parsed = asdict(parse_unified_result(body))
+    reply = notification_reply(parsed, GUARDIAN_NOTICE, guardian_request_accepted=True)
+    assert "기기신호 확인 완료" not in reply and GUARDIAN_NOTICE in reply
+
+
+def test_partial_registration_shows_verified_steps_and_unknown_master(config, queue):
+    body = result("failed")
+    for item in body["kakao-reply"]:
+        done = item["stage"] != "member"
+        item["status"] = "완료" if done else "저장 여부 미확인"
+        body["receipts"][item["stage"]].update(status="updated" if done else "unknown", verified=done, rows=[7])
+    body["issue_summary"] = "마스터페이지 저장 결과를 확인해 주세요."
+    ImageReplyQueue(queue)
+    sms = InstallationSMS(config, OperationJournal(queue), queue.event, lambda _: None)
+    reply = sms.reply(asdict(parse_unified_result(body)), "job", "key", threading.Event())
+    assert "1.가입자 명부 시트 기재 : 완료" in reply and "2.디바이스 설치 시트 기재 : 완료" in reply
+    assert "3.마스터페이지 가입자 및 보호자 추가 : 저장 여부 미확인" in reply
+    assert "4.보호자 앱설치문자 발송 : 미발송" in reply and body["issue_summary"] in reply

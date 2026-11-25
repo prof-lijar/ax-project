@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.47 — 2026-11-25
+
+When the AX768 API returns structured 신규설치 results, the Kakao reply lists the subscriber roster, device inventory, master-page registration, and guardian SMS status. Item 4 shows `보호자 앱설치문자 발송 : 완료` after Bizgo accepts every part for every production guardian number. Blocked or failed registrations show the individual stage results and the issue summary.
+
+The reply heading reports device signal confirmation when the API supplies that result. Older API responses still use the text reply format.
+
 ## v0.1.0-rc.46 — 2026-11-25
 
 VoyagerI opens in Korean by default. To switch to English, open **설정 → 언어**, choose **English**, and click **설정 저장**. The interface updates immediately and remembers the selection.

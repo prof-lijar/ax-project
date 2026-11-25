@@ -18,6 +18,7 @@ The executable includes its runtime and libraries; the first launch may take a m
 
 Open the intended KakaoTalk conversation, choose **Select Window**. All chat features detect the message area automatically; a blank chat identifier is generated automatically. Configure the API URL/token if uploads are desired. See the controls below for preview, calibration, and monitoring. Keep the downloaded executable at a stable path if you enable launch at sign-in.
 
+
 ## Watch up to three chats
 
 1. Open up to three KakaoTalk conversations in separate windows, with the latest messages visible in each.
@@ -160,7 +161,17 @@ Previously named **Auto Catch**, this button runs a repeating pipeline: **watch 
 
 An incoming bubble headed `신규설치` or `가입자신규설치` triggers the unified API with `workflow_id` set to `new_installation`. Keep the complete form visible in one message. VoyagerI passes its line breaks, manager, serial number (including leading zeros), subscriber details and guardian details through to the API.
 
-Under **Settings → Bizgo**, enter the registered sender number and API key. For verified registrations, VoyagerI sends the API’s full `sms.text` and `sms.title` to each guardian in `sms.recipients`, then posts the Kakao reply to the originating chat. Once Bizgo accepts every part for every production guardian number, the reply says “보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.” and lists the last four digits of each guardian number. For a blocked registration it posts the API’s Kakao reply immediately and skips Bizgo.
+### 신규설치 Kakao reply
+
+VoyagerI formats the three ordered registration items from the unified API and
+adds the guardian SMS result as item 4. The signal-confirmed heading requires
+a fresh response from the registered device. A disconnected device or an
+unverified signal gets its own heading. Only acceptance of all SMS parts for
+all production recipients marks item 4 완료. Test numbers, sandbox sends and
+uncertain sends have separate wording. Failed or blocked registrations show
+the individual stage results and the agent's issue summary.
+
+Under **Settings → Bizgo**, enter the registered sender number and API key. For verified registrations, VoyagerI sends the API’s full `sms.text` and `sms.title` to each guardian in `sms.recipients`, then posts the Kakao reply to the originating chat. Once Bizgo accepts every part for every production guardian number, item 4 reads `보호자 앱설치문자 발송 : 완료`. A blocked registration shows the API’s failure summary and item 4 reads `미발송`.
 
 To test recipient routing, enter one or more comma-separated numbers in **Installation test numbers** and enable **Test Bizgo SMS for 신규설치**. The guide goes only to those numbers. A test number matching a guardian stops the send for review. **Bizgo sandbox** is enabled by default. Clear it for delivery to real phones, including test phones. These settings affect phone delivery; the installation API still performs registration. The chat reply reports test routing, sandbox acceptance or an unconfirmed SMS outcome as applicable. An interrupted or uncertain send is retained for review to prevent duplicate messages.
 

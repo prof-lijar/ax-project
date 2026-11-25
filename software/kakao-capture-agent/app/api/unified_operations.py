@@ -19,19 +19,52 @@ from app.utils.windows import get_token
 
 @dataclass(frozen=True, kw_only=True)
 class InstallationResult(OperationsResult):
-    kakao_reply: str
+    kakao_reply: str | list[dict]
     sms: dict
+    subscriber_name: str = ""
+    signal_status: str = "not_checked"
+    issue_summary: str = ""
+
+
+def validate_installation_items(items, body, completed):
+    stages = ("roster", "inventory", "member")
+    statuses = {"updated": "완료", "skipped": "미진행", "blocked": "보류", "unknown": "저장 여부 미확인"}
+    receipts = body.get("receipts")
+    if len(items) != len(stages) or not isinstance(receipts, dict):
+        raise AgentError("Invalid installation stage list")
+    for key, item in zip(stages, items):
+        receipt = receipts.get(key)
+        if not isinstance(receipt, dict) or not isinstance(item, dict):
+            raise AgentError("Missing installation stage")
+        state = receipt.get("status")
+        label = item.get("label")
+        if (not isinstance(state, str) or state not in statuses
+                or receipt.get("verified") is not (state == "updated")
+                or item.get("stage") != key or item.get("status") != statuses[state]
+                or not isinstance(label, str) or not 0 < len(label.strip()) <= 80
+                or not label.isprintable()):
+            raise AgentError("Installation list differs from its receipt")
+    name = body.get("subscriber_name")
+    signal = body.get("signal_status")
+    summary = body.get("issue_summary", "")
+    if (not isinstance(name, str) or not re.fullmatch(r"[가-힣]{2,10}(?:_[가-힣]{2,10})?", name)
+            or signal not in (("confirmed", "disconnected", "unverified") if completed else ("not_checked",))
+            or not isinstance(summary, str) or len(summary) > 2000
+            or any(not (c == "\n" or c.isprintable()) for c in summary)
+            or (not completed and not summary.strip())):
+        raise AgentError("Invalid installation reply details")
 
 
 def installation_result(body, response):
     completed = body["status"] == "completed"
     reply, sms = body.get("kakao-reply"), body.get("sms")
+    if isinstance(reply, list):
+        validate_installation_items(reply, body, completed)
+    elif (not isinstance(reply, str) or not reply.strip() or len(reply) > 2000
+          or any(ord(c) < 32 and c not in "\r\n\t" for c in reply)):
+        raise AgentError("Invalid AX768 installation reply")
     if (
         body["status"] not in {"completed", "blocked", "failed"}
-        or not isinstance(reply, str)
-        or not reply.strip()
-        or len(reply) > 2000
-        or any(ord(c) < 32 and c not in "\r\n\t" for c in reply)
         or not isinstance(sms, dict)
         or sms.get("should_send") is not completed
     ):
@@ -64,7 +97,11 @@ def installation_result(body, response):
             raise AgentError("Invalid AX768 guardian message or recipients")
     elif sms != {"should_send": False, "recipients": [], "title": "", "text": ""}:
         raise AgentError("Unexpected guardian message for incomplete registration")
-    return InstallationResult(body["status"], response, completed, kakao_reply=reply, sms=sms)
+    return InstallationResult(
+        body["status"], response, completed, kakao_reply=reply, sms=sms,
+        subscriber_name=body.get("subscriber_name", ""), signal_status=body.get("signal_status", "not_checked"),
+        issue_summary=body.get("issue_summary", ""),
+    )
 
 
 def parse_unified_result(body):

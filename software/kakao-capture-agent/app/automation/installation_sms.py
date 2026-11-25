@@ -9,9 +9,35 @@ from app.api.workflow_llm import check_cancel
 from app.models import AgentError, Cancelled
 
 
+def installation_message(result, sms_status):
+    name = result["subscriber_name"]
+    signal = result["signal_status"]
+    if signal == "confirmed":
+        heading = f"{name}님 신규설치된 기기신호 확인 완료입니다."
+    elif signal == "disconnected":
+        heading = f"{name}님 신규설치된 기기신호가 아직 확인되지 않았습니다."
+    elif signal == "unverified":
+        heading = f"{name}님 신규설치된 기기의 신호 확인 결과를 확인할 수 없습니다."
+    else:
+        heading = f"{name}님 신규설치 처리가 완료되지 않았습니다."
+    lines = [f"{i}.{item['label']} : {item['status']}" for i, item in enumerate(result["kakao_reply"], 1)]
+    lines.append(f"4.보호자 앱설치문자 발송 : {sms_status}")
+    sections = [f"[자동 확인]\n{heading}", "■ 반영 영역", "\n".join(lines)]
+    summary = result.get("issue_summary", "")
+    if summary:
+        available = 2000 - len("\n\n".join([*sections, "", "감사합니다."]))
+        sections.append(summary if len(summary) <= available else summary[:available-1] + "…")
+    return "\n\n".join([*sections, "감사합니다."])
+
+
 def notification_reply(result, notice, *, guardian_request_accepted=False):
     draft = result["kakao_reply"]
     sent_line = "내용 기재 및 보호자님께 앱설치 문자 발송 완료했습니다."
+    if isinstance(draft, list):
+        return installation_message(result, "완료" if guardian_request_accepted else notice)
+    # A cached text draft from the old API has no independent signal evidence.
+    draft = draft.replace("신규설치 기기신호 확인 완료입니다.", "신규설치 등록 완료입니다.")
+    draft = draft.replace("기기신호 확인 완료입니다.", "등록 완료입니다.")
     if sent_line in draft:
         reply = draft.replace(sent_line, "내용 기재를 완료했습니다.\n" + notice)
         if len(reply) <= 2000:
@@ -47,9 +73,11 @@ class InstallationSMS:
     def reply(self, result, job_id, key, cancel):
         sms = result["sms"]
         if not sms["should_send"]:
+            if isinstance(result["kakao_reply"], list):
+                return installation_message(result, "미발송")
             return result["kakao_reply"]
-        # The server's success draft says guardians were messaged. Use it only
-        # after Bizgo accepts the complete guide for every production recipient.
+        # Journal a review message before the first send. Only all accepted
+        # production requests can promote the fourth item to 완료.
         review = notification_reply(result, "보호자 안내 문자 발송 결과를 확인해 주세요.")
         check_cancel(cancel)
         if not self.journal.claim(key, job_id, review):
