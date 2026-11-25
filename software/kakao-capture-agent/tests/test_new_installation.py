@@ -270,12 +270,12 @@ def test_explicit_heading_and_batch_boundaries(monkeypatch, queue, config):
         is None
     )
     assert api.run.call_count == 1
-    # The standalone saved-image processor has no installation notification handler.
+    # The standalone image test displays the AX768 result and omits guardian notification.
     assert (
         UnifiedProcessor(journal, api).answer(None, incoming(FORM), "image", threading.Event())
-        is None
+        == result("blocked")["response"]
     )
-    assert api.run.call_count == 1
+    assert api.run.call_count == 2
 
 
 @pytest.mark.parametrize("scenario", ["overlap", "empty", "changed", "interrupted"])

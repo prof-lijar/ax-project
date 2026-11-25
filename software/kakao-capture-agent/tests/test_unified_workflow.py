@@ -484,13 +484,14 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
         operations.run.assert_not_called()
     w.llm.classify_latest.assert_called_once()
 
-    # Rearming the identical screen does not analyze or reply again.
+    # Each click extracts the latest visible message again, even on the identical screen.
     w.service.command("stop")
     w.service.dispatch(w.service.commands.get_nowait())
     w.service.dispatch("auto_catch")
     w.service.poll_auto_catch()
     finish(w)
     assert len(w.sent) == int(should_act)
+    assert w.llm.classify_latest.call_count == 2
 
 
 @pytest.mark.parametrize("prior_status", ["sent", "submitted", "review", "pending"])
@@ -514,6 +515,34 @@ def test_startup_skips_existing_api_attempt_even_after_cosmetic_changes(queue, m
     # A separately received NEW message can intentionally repeat the same request.
     assert processor.answer(None, incoming, "new-event", threading.Event()) == REPLY
     operations.run.assert_called_once()
+
+
+def test_fresh_start_replaces_backlog_atomically_for_only_this_chat(queue, monkeypatch):
+    jobs = ImageReplyQueue(queue)
+    old = [jobs.enqueue_pair("chat", b"before", str(i).encode())[0] for i in range(17)]
+    other, _ = jobs.enqueue_pair("other", b"other", b"other")
+    jobs.finish(old[-1], "review")
+    # Failure to store the fresh capture leaves the preceding run recoverable.
+    with monkeypatch.context() as patch:
+        patch.setattr(queue.config, "storage_limit_bytes", 0)
+        with pytest.raises(AgentError, match="storage limit"):
+            jobs.enqueue_pair("chat", b"now", b"now", mode="latest", fresh_start=True)
+    assert jobs.count("chat") == 16
+    fresh, _ = jobs.enqueue_pair("chat", b"now", b"now", mode="latest", fresh_start=True)
+    assert jobs.count("chat") == 1 and jobs.review_count("chat") == 1
+    assert jobs.claim("chat")["job_id"] == fresh
+    assert jobs.claim("other")["job_id"] == other
+
+
+def test_identical_startup_capture_with_different_ocr_does_not_repeat_api(queue):
+    jobs = ImageReplyQueue(queue)
+    journal = OperationJournal(queue)
+    first, _ = jobs.enqueue_pair("chat", b"snapshot", b"snapshot", mode="latest")
+    journal.claim(first + "-0:analysis", first, {"request": model_request(MESSAGE)})
+    journal.claim(first + "-0:api", first, {"status": "uncertain"})
+    new, _ = jobs.enqueue_pair("chat", b"snapshot", b"snapshot", mode="latest", fresh_start=True)
+    assert first != new
+    assert journal.previously_attempted("chat", model_request(POWER_MESSAGE), new)
 
 
 def test_startup_snapshot_mode_and_pending_identity_survive_restart(queue):

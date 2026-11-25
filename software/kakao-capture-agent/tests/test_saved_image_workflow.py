@@ -35,7 +35,7 @@ def image_test(config, queue, frame, monkeypatch):
     )
     config.operations_url, config.operations_username = "https://nexgent.test", "admin"
     config.bizgo_enabled = True  # This test must never enter the SMS path.
-    state = SimpleNamespace(kind="incoming", actionable=True, cancel_at=None, api_result=None)
+    state = SimpleNamespace(kind="incoming", message=MESSAGE, actionable=True, cancel_at=None, api_result=None)
     llm_calls, api_calls, output, extracted, progress = [], [], [], [], []
 
     def forbidden(*args, **kwargs):
@@ -70,7 +70,7 @@ def image_test(config, queue, frame, monkeypatch):
             assert len([part for part in user if part["type"] == "image_url"]) == 1
             if state.cancel_at == "extraction":
                 service.command("stop")
-            text = MESSAGE if state.actionable else "안녕하세요"
+            text = state.message if state.actionable else "안녕하세요"
             content = {"kind": state.kind, "text": text, "sender": "Tester", "is_ai": False}
         else:
             source = json.loads(user)
@@ -256,6 +256,32 @@ def test_unsupported_incoming_message_displays_no_action(image_test):
     assert not t.api_calls
     assert len(t.llm_calls) == 1
     assert "No workflow executed" in t.output[-1]
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_image_registration_uses_complete_form_once_without_notifications(image_test, legacy):
+    from app.automation.saved_image_workflow import NO_ACTION
+    from tests.test_new_installation import FORM, result
+
+    t = image_test
+    t.state.message = FORM
+    t.state.api_result = result()
+    if legacy:
+        t.state.actionable = False
+        t.service.dispatch(("image_test", t.png))
+        with t.queue.connect() as db:
+            job_id = db.execute("SELECT job_id FROM image_reply_queue").fetchone()[0]
+        journal = t.workflow.journal
+        journal.complete(job_id + ":image-test-result", {"output": NO_ACTION, "incoming": FORM})
+        journal.complete(job_id + ":plan", [FORM])
+        journal.claim(job_id + "-0:analysis", job_id, {"request": None})
+        t.state.actionable = True
+        t.llm_calls.clear()
+    for _ in range(2):
+        t.service.dispatch(("image_test", t.png))
+        assert t.output[-1] == t.state.api_result["response"]
+    assert t.extracted[-1] == FORM and len(t.llm_calls) == 1
+    assert t.api_calls == [{"workflow_id": "new_installation", "message": FORM}]
 
 
 def test_repeating_image_after_restart_reuses_result_and_never_claims_live_job(image_test):

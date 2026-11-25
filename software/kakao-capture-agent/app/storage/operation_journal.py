@@ -38,6 +38,23 @@ class OperationJournal:
                 (json.dumps(payload, ensure_ascii=False), key),
             )
 
+    def reopen_skipped_image(self, job_id, result_key, saved):
+        """Reclassify a legacy negative image test only if it never claimed an API call."""
+        with self.storage.lock, self.storage.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(
+                "SELECT 1 FROM operation_journal WHERE job_id=? AND key LIKE '%:api'", (job_id,)
+            ).fetchone():
+                return False
+            row = db.execute(
+                "SELECT payload FROM operation_journal WHERE key=? AND job_id=?", (result_key, job_id)
+            ).fetchone()
+            if (json.loads(row[0]) if row else None) != saved:
+                return False
+            db.execute("DELETE FROM operation_journal WHERE job_id=?", (job_id,))
+            db.execute("UPDATE image_reply_queue SET status='pending' WHERE job_id=?", (job_id,))
+            return True
+
     def previously_attempted(self, chat_key, request, job_id):
         """Startup must not rerun a visible request with an existing API claim.
 
@@ -54,14 +71,15 @@ class OperationJournal:
 
         with self.storage.connect() as db:
             rows = db.execute(
-                "SELECT a.payload FROM operation_journal a "
+                "SELECT a.payload, q.text = current.text AS same_snapshot FROM operation_journal a "
                 "JOIN operation_journal r ON r.key=substr(a.key,1,length(a.key)-9)||':api' "
                 "JOIN image_reply_queue q ON q.job_id=a.job_id "
+                "LEFT JOIN image_reply_queue current ON current.job_id=? "
                 "WHERE a.key LIKE '%:analysis' AND q.chat_key=? AND a.job_id<>?",
-                (chat_key, job_id),
+                (job_id, chat_key, job_id),
             ).fetchall()
         for row in rows:
             previous = json.loads(row["payload"]).get("request")
-            if previous and signature(previous) == signature(request):
+            if previous and (row["same_snapshot"] or signature(previous) == signature(request)):
                 return True
         return False

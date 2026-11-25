@@ -17,6 +17,7 @@ from app.automation.device_workflow import UNCERTAIN
 from app.automation.installation_sms import InstallationSMS
 from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
 from app.models import AgentError, Cancelled
+from app.storage.chat_paths import chat_folder_name
 from app.storage.operation_journal import OperationJournal
 
 
@@ -41,7 +42,7 @@ class UnifiedProcessor:
                 plan = extract_sources(llm, incoming, cancel)
                 # A legacy flat transcript cannot establish a new installation
                 # boundary inside prose. Only an entire form may be dispatched.
-                if self.installation_sms and any(installation_header(m) for m in plan):
+                if any(installation_header(m) for m in plan):
                     if len(plan) != 1 or not installation_header(incoming.text):
                         raise analysis_error("installation bubble boundaries unclear")
             check_cancel(cancel)
@@ -59,11 +60,7 @@ class UnifiedProcessor:
             cached = self.journal.get(analysis_key)
             if cached is None:
                 if installation_header(message):
-                    request = (
-                        {"workflow_id": INSTALLATION, "message": message}
-                        if self.installation_sms
-                        else None
-                    )
+                    request = {"workflow_id": INSTALLATION, "message": message}
                 else:
                     request = analyze_request(llm, message, cancel)
                 check_cancel(cancel)
@@ -85,7 +82,7 @@ class UnifiedProcessor:
                 continue
             installation = request.get("workflow_id") == INSTALLATION
             sms_key = f"{job_id}-{index}:sms"
-            if installation:
+            if installation and self.installation_sms:
                 self.installation_sms.record_routing(job_id)
             uncertain = {
                 "status": "uncertain",
@@ -109,7 +106,7 @@ class UnifiedProcessor:
                     self.activity("AX768 result unavailable; no automatic retry: " + str(error))
                 self.journal.complete(key, result)
             result = self.journal.get(key)
-            if installation and result.get("sms") is not None:
+            if installation and self.installation_sms and result.get("sms") is not None:
                 reply = self.installation_sms.reply(result, job_id, sms_key, cancel)
             else:
                 reply = result["response"]
@@ -166,9 +163,13 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
         return job_id, path
 
     def queue_initial_capture(self):
-        job_id, path = self.enqueue_capture(self.baseline, self.baseline, mode="latest")
+        job_id, path = self.jobs.enqueue_pair(
+            self.chat_key, self.baseline, self.baseline, mode="latest",
+            folder=chat_folder_name(self.config), fresh_start=True,
+        )
+        self.installation_sms.record_routing(job_id)
         self.queue.event("auto_visual_startup", job_id)
-        self.progress(f"Startup capture: checking the latest visible message once: {path}")
+        self.progress(f"Fresh run: checking the latest visible message from this capture: {path}")
 
     def begin_job(self, job):
         super().begin_job(dict(job, processor=self.processor))

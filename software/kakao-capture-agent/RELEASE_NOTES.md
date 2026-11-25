@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.49 — 2026-11-25
+
+Each click on **Run Agent (auto)** starts with a fresh screenshot of each selected chat. The latest visible incoming request is processed first. Pending captures from earlier runs leave the active queue. Existing workflow receipts still prevent a repeated registration or reply on restart.
+
+**Run Image Test** now submits a complete incoming 신규설치 form to AX768 and displays the registration result. The test can update registration records and sends no chat reply or guardian SMS. Reopening an image previously skipped for this issue rechecks the form if no API call was attempted.
+
 ## v0.1.0-rc.48 — 2026-11-25
 
 Run Agent (auto) checks extracted incoming messages for device-action keywords. A complete command such as `위치조정/이은경/헌릉로8길58` goes directly to AX768. Ordinary chat is skipped locally. The agent checks intent for free-form messages that mention a supported action.

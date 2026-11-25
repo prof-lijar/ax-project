@@ -2,13 +2,17 @@
 
 import hashlib
 import json
+from dataclasses import replace
 
 from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage, create_incoming_llm
 from app.api.unified_operations import create_unified_operations
 from app.api.workflow_llm import check_cancel
+from app.api.workflow_requests import installation_header
 from app.automation.unified_workflow import UnifiedProcessor
 from app.capture.saved_image import normalize_capture_image
 from app.models import AgentError
+
+NO_ACTION = "No workflow executed: no complete supported incoming request was found."
 
 
 class SavedImageWorkflow:
@@ -55,6 +59,20 @@ class SavedImageWorkflow:
         self.progress(f"Saved-image test capture: {path}")
         result_key = job_id + ":image-test-result"
         saved = self.journal.get(result_key)
+        # Old builds cached a negative decision for installations in image tests.
+        legacy_skip = (
+            saved is not None and "kind" not in saved and saved["output"] == NO_ACTION
+            and installation_header(saved["incoming"])
+        )
+        if saved is None:
+            plan = self.journal.get(job_id + ":plan")
+            legacy_skip = (
+                plan and any(installation_header(part) for part in plan)
+                and any(self.journal.get(f"{job_id}-{i}:analysis") == {"request": None}
+                        for i, part in enumerate(plan) if installation_header(part))
+            )
+        if legacy_skip and self.journal.reopen_skipped_image(job_id, result_key, saved):
+            saved = None
         if saved is not None:
             check_cancel(self.cancel)
             self.text_preview(saved["incoming"])
@@ -70,11 +88,15 @@ class SavedImageWorkflow:
                 self.journal, self.operations_factory(self.config), self.progress
             )
             plan = self.journal.get(job_id + ":plan")
+            if plan and len(plan) > 1 and any(installation_header(part) for part in plan):
+                raise IncomingAnalysisError("Saved installation form has unclear message boundaries")
             if plan is not None:
                 incoming = IncomingMessage("incoming", "\n".join(plan))
             else:
                 self.progress("Extracting the latest visible message from the selected image")
                 incoming = llm.classify_latest(png, self.cancel)
+                # The latest-message classifier already selected one complete bubble.
+                incoming = replace(incoming, bubbles=(incoming.text,))
             check_cancel(self.cancel)
             self.text_preview(incoming.text)
             if incoming.kind == "uncertain":
@@ -90,12 +112,12 @@ class SavedImageWorkflow:
                 else (
                     "No workflow executed: the latest message is outgoing or automated."
                     if incoming.kind == "outgoing"
-                    else "No workflow executed: no complete supported incoming request was found."
+                    else NO_ACTION
                 )
             )
             # Reopening the same image must not repeat external operations. Keep
             # test jobs in a namespace that no live chat can claim or send.
-            self.journal.claim(result_key, job_id, {"output": output, "incoming": incoming.text})
+            self.journal.claim(result_key, job_id, {"output": output, "incoming": incoming.text, "kind": incoming.kind})
             self.jobs.finish(job_id, "ignored")
             self.queue.event("image_test_complete", job_id)
             return output
