@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.api.workflow_llm import (
+    InvalidCompletion,
     LLMSettings,
     ResponseFormatUnsupported,
     WorkflowLLM,
@@ -181,16 +182,21 @@ class IncomingLLM(WorkflowLLM):
             follow_redirects=False,
             trust_env=False,
         ) as client:
-            if structured and not getattr(self, "json_mode_unsupported", False):
-                try:
-                    return await self.completion(
-                        client, messages, response_format={"type": "json_object"}
-                    )
-                except ResponseFormatUnsupported:
-                    self.json_mode_unsupported = True
-                    if cancel is not None:
-                        check_cancel(cancel)
-            return await self.completion(client, messages)
+            try:
+                if structured and not getattr(self, "json_mode_unsupported", False):
+                    try:
+                        return await self.completion(
+                            client, messages, response_format={"type": "json_object"}
+                        )
+                    except ResponseFormatUnsupported:
+                        self.json_mode_unsupported = True
+                        if cancel is not None:
+                            check_cancel(cancel)
+                return await self.completion(client, messages)
+            except InvalidCompletion as error:
+                if structured:
+                    raise IncomingAnalysisError(str(error), category=error.category) from None
+                raise
 
     def classify(self, before, after, cancel, *, batch=False):
         if max(len(before), len(after)) > 20 * 1024**2:

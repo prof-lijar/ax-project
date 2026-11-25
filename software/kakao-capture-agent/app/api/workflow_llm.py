@@ -18,6 +18,12 @@ class ResponseFormatUnsupported(AgentError):
     """The server explicitly rejected the optional structured-output parameter."""
 
 
+class InvalidCompletion(AgentError):
+    def __init__(self, category):
+        super().__init__("LLM response is malformed or incomplete; nothing sent")
+        self.category = category
+
+
 def validate_llm_url(url, allow_http=False):
     parsed = urlsplit(url)
     try:
@@ -147,12 +153,17 @@ class WorkflowLLM:
                 )
         try:
             choice = json.loads(body)["choices"][0]
+            finish_reason = choice["finish_reason"]
+            if finish_reason == "length":
+                raise InvalidCompletion("LLM output token limit reached")
+            if finish_reason != "stop":
+                raise InvalidCompletion("incomplete LLM completion")
             text = choice["message"]["content"]
-            if choice.get("finish_reason") != "stop" or not isinstance(text, str):
+            if not isinstance(text, str):
                 raise ValueError()
             return text
         except (ValueError, KeyError, IndexError, TypeError):
-            raise AgentError("LLM response is malformed or incomplete; nothing sent") from None
+            raise InvalidCompletion("malformed LLM completion") from None
 
     async def generate(self, png, cancel, progress):
         async with httpx.AsyncClient(

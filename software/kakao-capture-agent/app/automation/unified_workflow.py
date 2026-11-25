@@ -72,7 +72,7 @@ class UnifiedProcessor:
             request = cached["request"]
             if request is None:
                 self.activity(
-                    f"AX768 analysis: model found no complete supported request ({len(message)} characters); "
+                    f"AX768 analysis: no complete supported request ({len(message)} characters); "
                     "see Latest extracted incoming text; no API call"
                 )
                 continue
@@ -98,7 +98,7 @@ class UnifiedProcessor:
                 "completed": False,
             }
             if self.journal.claim(key, job_id, uncertain):
-                workflow = "가입자신규설치" if installation else "기기위치조정/전원연결"
+                workflow = "가입자신규설치" if installation else request["action"]
                 self.activity(f"AX768: processing {workflow}")
                 try:
                     result = asdict(self.operations.run(request, cancel))

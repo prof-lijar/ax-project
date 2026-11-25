@@ -183,6 +183,32 @@ def test_structured_output_falls_back_only_once_when_explicitly_unsupported():
     assert ["response_format" in r for r in requests] == [True, False, False]
 
 
+def test_malformed_completion_after_format_fallback_is_still_an_analysis_failure():
+    def api(request):
+        if "response_format" in json.loads(request.content):
+            return httpx.Response(422, text="unsupported response_format")
+        return httpx.Response(200, json={"choices": []})
+
+    llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
+    with pytest.raises(IncomingAnalysisError) as error:
+        llm.classify_latest(b"png", threading.Event())
+    assert error.value.category == "malformed LLM completion"
+
+
+def test_incomplete_reply_generation_is_not_retried_as_analysis():
+    def api(request):
+        return httpx.Response(200, json={"choices": [{"finish_reason": None}]})
+
+    llm = IncomingLLM(
+        LLMSettings("https://llm.test", "vision", 5),
+        "key",
+        httpx.MockTransport(api),
+    )
+    with pytest.raises(AgentError, match="malformed or incomplete") as error:
+        llm.answer(IncomingMessage("incoming", "질문"), threading.Event())
+    assert not isinstance(error.value, IncomingAnalysisError)
+
+
 @pytest.mark.parametrize(
     "status,body", [(401, "response_format"), (500, "response_format"), (400, "model not found")]
 )

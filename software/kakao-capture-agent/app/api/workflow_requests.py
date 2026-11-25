@@ -5,9 +5,10 @@ import json
 import re
 import unicodedata
 
+from app.api.device_request import ACTIONS, compact
 from app.api.incoming_llm import analysis_error, unique_fields
 
-DEVICE_ACTIONS = {"기기위치조정", "전원연결"}
+ACTION_KEYWORDS = {alias: action for action, aliases in ACTIONS.items() for alias in aliases}
 
 
 INSTALLATION = "new_installation"
@@ -18,6 +19,46 @@ def installation_header(message):
         return False
     header = message.strip().splitlines()[0]
     return "".join(unicodedata.normalize("NFKC", header).split()) in {"신규설치", "가입자신규설치"}
+
+
+def has_device_keyword(message):
+    text = compact(message)
+    if any(keyword in text for keyword in ACTION_KEYWORDS):
+        return True
+    # Natural reports can separate the subject and verb, e.g. "전기를 다시 꽂았습니다".
+    return (
+        any(word in text for word in ("기기", "단말", "장치", "위치", "자리"))
+        and any(word in text for word in ("옮", "이동", "조정", "변경", "재배치"))
+    ) or (
+        any(word in text for word in ("전원", "전기", "플러그", "코드", "콘센트"))
+        and any(word in text for word in ("연결", "접속", "꽂", "꼽"))
+    )
+
+
+def explicit_device_request(message):
+    fields = [field.strip() for field in message.split("/")]
+    if len(fields) != 3 or len(message.strip().splitlines()) != 1:
+        return None
+    keywords = [field for field in fields if compact(field) in ACTION_KEYWORDS]
+    if len(keywords) != 1:
+        return None
+    keyword = keywords[0]
+    fields.remove(keyword)
+    first, second = fields
+    for name, address in ((first, second), (second, first)):
+        name = name.removesuffix("님")
+        if not re.fullmatch(r"[가-힣]{2,10}(?:_[가-힣]{2,10})?", name):
+            continue
+        # Restrict the shortcut to a road address. Qualifiers and free-form
+        # wording need the intent check before an operation can be submitted.
+        if re.fullmatch(
+            r"(?:(?:[가-힣A-Za-z0-9·.]+(?:시|도|군|구|읍|면|동|리)) +)*"
+            r"[가-힣A-Za-z0-9·.]+(?:로|길) *[0-9]+(?: *- *[0-9]+)?"
+            r"(?: +[0-9]+동)?(?: +[0-9]+호)?", address
+        ) and len(address) <= 500:
+            return {"message": message, "action": ACTION_KEYWORDS[compact(keyword)],
+                    "action_text": keyword, "name": name, "address": address}
+    return None
 
 
 def grounded_field(value, source):
@@ -38,7 +79,7 @@ def parse_analysis(content, source):
             if any(value[key] is not None for key in ("action_text", "name", "address")):
                 raise ValueError()
             return None
-        if value["action"] not in DEVICE_ACTIONS:
+        if value["action"] not in ACTIONS:
             raise ValueError()
         for key, limit in (("name", 100), ("address", 500), ("action_text", 500)):
             field = value[key]
@@ -56,6 +97,11 @@ def parse_analysis(content, source):
 
 
 def analyze_request(llm, source, cancel):
+    if not has_device_keyword(source):
+        return None
+    explicit = explicit_device_request(source)
+    if explicit is not None:
+        return explicit
     messages = [
         {"role": "system", "content": (
             "Analyze one newly RECEIVED KakaoTalk participant message. Decide its actual intent, "
@@ -117,6 +163,12 @@ def parse_sources(content, incoming):
 
 
 def extract_sources(llm, incoming, cancel):
+    if explicit_device_request(incoming.text):
+        return [incoming.text]
+    if not has_device_keyword(incoming.text) and not any(
+        installation_header(line) for line in incoming.text.splitlines()
+    ):
+        return []
     messages = [
         {
             "role": "system",

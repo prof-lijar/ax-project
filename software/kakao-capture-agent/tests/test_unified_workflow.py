@@ -127,6 +127,35 @@ def test_analyze_request_calls_model_for_natural_wording():
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("source,action,keyword", [
+    ("위치조정/넥스터_이은경/헌릉로8길58", "기기위치조정", "위치조정"),
+    ("울진군 OO면 OO길 78 / 기기 전원 연결 / 넥스터_이은경님", "전원연결", "기기 전원 연결"),
+    ("넥스터_이은경/위치변경/광명시 OO동 OO로 56", "기기위치조정", "위치변경"),
+])
+def test_extracted_keyword_commands_need_no_further_llm(source, action, keyword):
+    request = analyze_request(None, source, threading.Event())
+    assert request["message"] == source and request["action_text"] == keyword
+    assert request["name"] == "넥스터_이은경" and request["action"] == action
+
+
+@pytest.mark.parametrize("source", [
+    "위치조정/이영희/헌릉로8길58 취소합니다",
+    "예시: 위치조정/이영희/헌릉로8길58",
+    "이영희/헌릉로8길58/위치조정 했나요?",
+    "위치조정 및 전원연결/이영희/헌릉로8길58",
+])
+def test_keyword_mentions_still_require_intent_check(source):
+    async def request(messages, **kwargs):
+        assert json.loads(messages[1]["content"]) == {"message": source}
+        return json.dumps(dict.fromkeys(("action", "action_text", "name", "address")))
+
+    async def run_operation(operation, cancel):
+        return await operation()
+
+    llm = SimpleNamespace(request=request, run_operation=run_operation)
+    assert analyze_request(llm, source, threading.Event()) is None
+
+
 def test_invalid_model_analysis_never_claims_or_calls_workflow(queue, monkeypatch):
     ImageReplyQueue(queue)
     journal = OperationJournal(queue)

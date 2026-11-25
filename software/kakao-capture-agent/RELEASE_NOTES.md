@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.48 — 2026-11-25
+
+Run Agent (auto) checks extracted incoming messages for device-action keywords. A complete command such as `위치조정/이은경/헌릉로8길58` goes directly to AX768. Ordinary chat is skipped locally. The agent checks intent for free-form messages that mention a supported action.
+
+Malformed or incomplete LLM analysis responses now use the capture queue’s three-attempt limit. After the third failure, the agent retains the capture for review and processes the remaining queue in order.
+
 ## v0.1.0-rc.47 — 2026-11-25
 
 When the AX768 API returns structured 신규설치 results, the Kakao reply lists the subscriber roster, device inventory, master-page registration, and guardian SMS status. Item 4 shows `보호자 앱설치문자 발송 : 완료` after Bizgo accepts every part for every production guardian number. Blocked or failed registrations show the individual stage results and the issue summary.

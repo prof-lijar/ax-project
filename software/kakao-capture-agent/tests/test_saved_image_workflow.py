@@ -70,7 +70,8 @@ def image_test(config, queue, frame, monkeypatch):
             assert len([part for part in user if part["type"] == "image_url"]) == 1
             if state.cancel_at == "extraction":
                 service.command("stop")
-            content = {"kind": state.kind, "text": MESSAGE, "sender": "Tester", "is_ai": False}
+            text = MESSAGE if state.actionable else "안녕하세요"
+            content = {"kind": state.kind, "text": text, "sender": "Tester", "is_ai": False}
         else:
             source = json.loads(user)
             content = (
@@ -200,7 +201,7 @@ def test_image_test_uses_unified_api_and_only_displays_exact_response(image_test
             "address": "광명시 OO동 OO로 56",
         }
     ]
-    assert len(t.llm_calls) == 3  # Latest-message extraction, source split, grounded action.
+    assert len(t.llm_calls) == 1  # Only the screenshot needs a model call for a complete command.
     assert t.service.state == State.STOPPED and t.service.stop_input.is_set()
     assert t.config.target is None and t.config.selection is None
     with t.queue.connect() as db:
@@ -253,6 +254,7 @@ def test_unsupported_incoming_message_displays_no_action(image_test):
     t.state.actionable = False
     t.service.dispatch(("image_test", t.png))
     assert not t.api_calls
+    assert len(t.llm_calls) == 1
     assert "No workflow executed" in t.output[-1]
 
 
@@ -275,7 +277,7 @@ def test_repeating_image_after_restart_reuses_result_and_never_claims_live_job(i
         operations_factory=t.forbidden,
     )
     assert restarted.run(t.png) == RESPONSE
-    assert len(t.api_calls) == 1 and len(t.llm_calls) == 3
+    assert len(t.api_calls) == 1 and len(t.llm_calls) == 1
     assert jobs.claim("live-chat")["job_id"] == live_id
 
 

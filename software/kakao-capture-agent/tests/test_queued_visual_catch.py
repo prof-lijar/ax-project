@@ -4,16 +4,18 @@ import threading
 from types import SimpleNamespace
 
 import cv2
+import httpx
 import numpy as np
 import pytest
 
 from app.api.incoming_llm import (
     RUN_AGENT_GREETING,
     IncomingAnalysisError,
+    IncomingLLM,
     IncomingMessage,
     parse_incoming,
 )
-from app.api.workflow_llm import check_cancel
+from app.api.workflow_llm import LLMSettings, check_cancel
 from app.automation.monitoring_service import MonitoringService
 from app.capture.screen_capture import encode_png
 from app.models import AgentError, ForegroundLost, Selection, State, StorageFull
@@ -473,18 +475,33 @@ def test_bad_analysis_retries_same_pair_while_new_frames_queue(watching):
     assert w.sent == ["[AI] Question 30 (자동 응답)"]
 
 
-@pytest.mark.parametrize("failure", ["uncertain", "invalid_json"])
+@pytest.mark.parametrize("failure,reason", [
+    ("uncertain", "ambiguous incoming/outgoing text"),
+    ("invalid_json", "syntax"),
+    ("truncated_completion", "LLM output token limit reached"),
+])
 def test_first_reply_then_bad_capture_cannot_block_second_message_and_later_backlog(
-    watching, failure
+    watching, failure, reason
 ):
     w = watching
     original = w.llm.classify
+
+    def truncated_completion(request):
+        choice = {"finish_reason": "length", "message": {"content": "{"}}
+        return httpx.Response(200, json={"choices": [choice]})
 
     def classify(before, after, cancel, *, batch):
         incoming = original(before, after, cancel, batch=batch)
         if incoming.kind == "outgoing":
             if failure == "invalid_json":
                 return parse_incoming("not JSON")
+            if failure == "truncated_completion":
+                model = IncomingLLM(
+                    LLMSettings("https://llm.test", "vision", 5),
+                    "key",
+                    httpx.MockTransport(truncated_completion),
+                )
+                return model.classify(before, after, cancel, batch=batch)
             return IncomingMessage("uncertain")
         return incoming
 
@@ -526,7 +543,6 @@ def test_first_reply_then_bad_capture_cannot_block_second_message_and_later_back
         ).fetchone()
     assert row["attempts"] == 3 and row["text"]
     assert any("set aside after 3 failed analysis attempts" in line for line in w.logs)
-    reason = "syntax" if failure == "invalid_json" else "ambiguous incoming/outgoing text"
     assert any(reason in line for line in w.logs)
 
 
