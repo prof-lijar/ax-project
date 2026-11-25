@@ -13,7 +13,8 @@ class ImageDropPreview(CapturePreview):
     def __init__(self):
         super().__init__()
         self.setAcceptDrops(True)
-        self.setText("Drop a capture image here\nor choose a file above.")
+        self.prompt = "Drop a capture image here\nor choose a file above."
+        self.setText(self.prompt)
         self.setToolTip("Drop one PNG, JPEG or BMP file here (up to 20 MiB)")
 
     def dropped_path(self, event):

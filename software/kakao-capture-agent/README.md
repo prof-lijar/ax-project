@@ -103,6 +103,8 @@ Keep the selected chat in the foreground, unobscured, and the Windows session un
 
 The desktop workspace groups controls into five tabs. **Overview** contains the screenshot/incoming-text preview, **Run Agent (auto)**, and device operations; **Review Replies** is under **Incoming text**. **Capture** contains live capture, history, navigation, and local PNG controls. **Test tools** contains the reply, workflow, and Bizgo tests. **Storage / uploads** shows queue usage and upload recovery actions. **Activity** contains the event log. The selected conversation, current status, **Settings**, and **Stop** remain above the tabs.
 
+The interface opens in Korean by default. To switch to English, open **설정 → 언어**, choose **English**, and select **설정 저장**. The change takes effect immediately and is saved for future launches.
+
 Settings are grouped into **Capture**, **AI replies**, **Nexgent**, **Bizgo**, **Uploads**, and **Startup**. Scroll within a category to reach all its options; **Save settings** and **Cancel** remain visible. The screenshot preview keeps its aspect ratio when the window is resized.
 
 ### Check capture by saving a local PNG
@@ -158,7 +160,7 @@ Previously named **Auto Catch**, this button runs a repeating pipeline: **watch 
 
 An incoming bubble headed `신규설치` or `가입자신규설치` triggers the unified API with `workflow_id` set to `new_installation`. Keep the complete form visible in one message. VoyagerI passes its line breaks, manager, serial number (including leading zeros), subscriber details and guardian details through to the API.
 
-Under **Settings → Bizgo**, enter the registered sender number and API key. For verified registrations, VoyagerI sends the API’s full `sms.text` and `sms.title` to each guardian in `sms.recipients`, then posts `kakao-reply` to the originating chat after Bizgo accepts all requests. For a blocked registration it posts the API’s Kakao reply immediately and skips Bizgo.
+Under **Settings → Bizgo**, enter the registered sender number and API key. For verified registrations, VoyagerI sends the API’s full `sms.text` and `sms.title` to each guardian in `sms.recipients`, then posts the Kakao reply to the originating chat. Once Bizgo accepts every part for every production guardian number, the reply says “보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.” and lists the last four digits of each guardian number. For a blocked registration it posts the API’s Kakao reply immediately and skips Bizgo.
 
 To test recipient routing, enter one or more comma-separated numbers in **Installation test numbers** and enable **Test Bizgo SMS for 신규설치**. The guide goes only to those numbers. A test number matching a guardian stops the send for review. **Bizgo sandbox** is enabled by default. Clear it for delivery to real phones, including test phones. These settings affect phone delivery; the installation API still performs registration. The chat reply reports test routing, sandbox acceptance or an unconfirmed SMS outcome as applicable. An interrupted or uncertain send is retained for review to prevent duplicate messages.
 

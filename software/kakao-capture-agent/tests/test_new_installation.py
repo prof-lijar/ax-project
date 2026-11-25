@@ -11,7 +11,7 @@ from app.api.incoming_llm import IncomingMessage, parse_incoming
 from app.api.operations_client import OperationsSettings
 from app.api.unified_operations import UnifiedOperationsClient, parse_unified_result
 from app.api.workflow_requests import installation_header
-from app.automation.installation_sms import InstallationSMS
+from app.automation.installation_sms import InstallationSMS, notification_reply
 from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
 from app.config import load, save
 from app.models import AgentError, Cancelled
@@ -39,6 +39,7 @@ TEST_NUMBERS = ["01000009900", "01000009901"]
 GUIDE = "《설치 안내》\n" + "가나다라마\n" * 230
 OK = "[자동 확인]\n기기신호 확인 완료입니다.\n내용 기재 및 보호자님께 앱설치 문자 발송 완료했습니다.\n\n감사합니다. :)"
 BLOCKED = "[자동 확인]\n기기 전원 및 설치 위치 확인 부탁드립니다. "
+GUARDIAN_NOTICE = "보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.\n보호자 번호 끝자리: 2000, 2001"
 
 
 def result(status="completed"):
@@ -184,7 +185,9 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
             )
             assert "".join(p["text"] for p in parts) == GUIDE
         if mode == "guardian":
-            assert reply == OK
+            assert GUARDIAN_NOTICE in reply and "발송 완료했습니다" not in reply
+            assert "기기신호 확인 완료입니다." in reply and reply.endswith("감사합니다. :)")
+            assert all(number not in reply for number in GUARDIANS)
         else:
             expected_text = {
                 "test": "테스트 번호로만",
@@ -192,6 +195,16 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
                 "partial": "결과를 확인",
             }
             assert expected_text[mode] in reply and "발송 완료했습니다" not in reply
+            assert "성공적으로 발송했습니다" not in reply
+
+
+def test_guardian_notice_with_custom_server_reply():
+    data = {"kakao_reply": "신규설치가 등록되었습니다.", "response": "등록 완료"}
+    reply = notification_reply(data, GUARDIAN_NOTICE, guardian_request_accepted=True)
+    assert reply == data["kakao_reply"] + "\n\n" + GUARDIAN_NOTICE
+    data["kakao_reply"] = "가" * 2000
+    reply = notification_reply(data, GUARDIAN_NOTICE, guardian_request_accepted=True)
+    assert len(reply) <= 2000 and data["response"] in reply and GUARDIAN_NOTICE in reply
 
 
 @pytest.mark.parametrize(
@@ -295,9 +308,11 @@ def test_successful_notifications_are_not_repeated_after_restart(config, queue, 
     client.send.return_value = "accepted"
     config.bizgo_sandbox = False
     monkeypatch.setattr("app.automation.installation_sms.create_bizgo", lambda *a, **kw: client)
+    replies = []
     for _ in range(2):
         journal = OperationJournal(queue)
         sms = InstallationSMS(config, journal, queue.event, lambda _: None)
         processor = UnifiedProcessor(journal, api, installation_sms=sms)
-        assert processor.answer(None, incoming(FORM), job, threading.Event()) == OK
+        replies.append(processor.answer(None, incoming(FORM), job, threading.Event()))
+    assert GUARDIAN_NOTICE in replies[0] and replies[0] == replies[1]
     assert api.run.call_count == 1 and client.send.call_count == len(GUARDIANS)

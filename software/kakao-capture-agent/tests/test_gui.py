@@ -52,12 +52,51 @@ def test_full_window_preview_and_settings(
     window = MainWindow(
         config, tmp_path / "config.json", desktop, monitor, Uploader(), queue, signals
     )
+    assert window.setup_buttons[0].text() == "설정"
+    assert window.tabs.tabText(0) == "개요"
+    assert window.device_workflow_button.text() == "기기위치조정/전원연결"
+    window.test_reply_edit.setPlainText("Keep my {draft}")
+    signals.preview_chat.emit("Settings")
+    signals.preview.emit(encode_png(frame))
+
+    def choose_language(dialog):
+        assert dialog.language.currentData() == config.language
+        dialog.language.setCurrentIndex(dialog.language.findData(language))
+        if cancel:
+            dialog.reject()
+        else:
+            dialog.accept()
+        return dialog.result()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SettingsDialog, "exec", choose_language)
+        language = "en"
+        cancel = True
+        window.settings()
+        assert config.language == "ko" and window.setup_buttons[0].text() == "설정"
+        cancel = False
+        window.settings()
+        if reply_command == "auto_catch":
+            language = "ko"
+            window.settings()
+            assert window.tabs.tabText(0) == "개요"
+            assert window.activity_views.tabText(0) == "전체 활동"
+            assert load(window.config_path).language == "ko"
+            language = "en"
+            window.settings()
+    assert load(tmp_path / "config.json").language == "en"
+    assert window.setup_buttons[0].text() == "Settings"
+    assert window.tabs.tabText(0) == "Overview"
+    assert window.activity_views.tabText(0) == "All activity"
+    assert window.test_reply_edit.toPlainText() == "Keep my {draft}"
+    assert window.preview_chat_label.text() == "Settings"
+    assert not window.preview_label.pixmap().isNull()
     assert window.windowTitle() == "VoyagerI"
     assert not window.windowIcon().pixmap(32, 32).isNull()
     window.show()
     assert all(button.text() != "Select Region" for button in window.setup_buttons)
     assert window.auto_catch_button.text() == "Run Agent (auto)"
-    assert window.device_workflow_button.text() == "기기위치조정/전원연결"
+    assert window.device_workflow_button.text() == "Device repositioning / power connection"
     window.test_reply_edit.setPlainText("테스트 메시지\nDifferent reply")
     signals.preview.emit(encode_png(frame))
     signals.stats.emit(queue.stats())
@@ -203,6 +242,8 @@ def test_full_window_preview_and_settings(
         monitor.state = State.STOPPED
         window.update_status(State.STOPPED.value, "")
     dialog = SettingsDialog(config, window)
+    assert dialog.language.currentData() == "en"
+    dialog.language.setCurrentIndex(dialog.language.findData("ko"))
     dialog.controls["chat_id"].setText("changed-chat")
     dialog.controls["local_only"].setChecked(True)
     dialog.controls["llm_model"].setText("changed-model")
@@ -222,6 +263,7 @@ def test_full_window_preview_and_settings(
     assert load(tmp_path / "local-config.json").local_only is True
     assert load(tmp_path / "local-config.json").llm_model == "changed-model"
     stored = load(tmp_path / "local-config.json")
+    assert stored.language == "ko"
     assert stored.bizgo_recipient == "01000000003" and stored.bizgo_enabled
     assert not stored.bizgo_sandbox
     assert stored.auto_reply_suffix == "(Auto reply)"

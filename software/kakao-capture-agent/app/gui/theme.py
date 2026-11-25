@@ -1,8 +1,12 @@
 """Shared desktop presentation; no capture or workflow behavior lives here."""
 
-from PySide6.QtCore import Qt
+from functools import partial
+
+from PySide6.QtCore import QCoreApplication, QLibraryInfo, Qt, QTranslator
 from PySide6.QtGui import QFont, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QSizePolicy, QVBoxLayout
+
+from app.gui.i18n import translate
 
 STYLESHEET = """
 QWidget { color: #243041; font-size: 13px; }
@@ -67,26 +71,75 @@ def label(text, role="muted"):
     return item
 
 
-def card(title, description=""):
+def card(title, description="", make_label=label):
     frame = QFrame()
     frame.setObjectName("card")
     layout = QVBoxLayout(frame)
     layout.setContentsMargins(20, 18, 20, 18)
     layout.setSpacing(12)
-    layout.addWidget(label(title, "heading"))
+    layout.addWidget(make_label(title, "heading"))
     if description:
-        layout.addWidget(label(description))
+        layout.addWidget(make_label(description))
     return frame, layout
+
+
+class WindowText:
+    """Keep translatable widget properties current while leaving widget state intact."""
+
+    def __init__(self, language):
+        self.bindings = {}
+        self.qt_translator = None
+        self.set_language(language)
+
+    def set_language(self, language):
+        self.language = language
+        app = QCoreApplication.instance()
+        if self.qt_translator:
+            app.removeTranslator(self.qt_translator)
+            self.qt_translator = None
+        if language == "ko":
+            translator = QTranslator()
+            if translator.load("qtbase_ko", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+                app.installTranslator(translator)
+                self.qt_translator = translator
+        for setter, (source, values) in self.bindings.items():
+            setter(self.text(source, **values))
+
+    def text(self, source, **values):
+        return translate(self.language, source, **values)
+
+    def bind(self, setter, source, **values):
+        self.bindings[setter] = source, values
+        setter(self.text(source, **values))
+
+    def label(self, source, role="muted", **values):
+        widget = label("", role)
+        self.bind(widget.setText, source, **values)
+        return widget
+
+    def card(self, title, description=""):
+        return card(title, description, self.label)
+
+    def button(self, title):
+        widget = QPushButton()
+        self.bind(widget.setText, title)
+        return widget
+
+    def add_tab(self, tabs, widget, source):
+        index = tabs.addTab(widget, "")
+        self.bind(partial(tabs.setTabText, index), source)
 
 
 class CapturePreview(QLabel):
     """Retain the original image so resizing never stretches or crops a capture."""
 
     def __init__(self):
-        super().__init__(
+        super().__init__()
+        self.prompt = (
             "Your conversation preview\n\nSelect a chat window, then choose Preview.\n"
             "The message area is detected automatically."
         )
+        self.setText(self.prompt)
         self.source = QPixmap()
         self.setObjectName("preview")
         self.setAlignment(Qt.AlignCenter)
@@ -94,6 +147,10 @@ class CapturePreview(QLabel):
         self.setMinimumSize(200, 220)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.setAccessibleName("Conversation screenshot preview")
+
+    def set_prompt(self, text):
+        if self.source.isNull():
+            self.setText(text)
 
     def show_png(self, png):
         image = QPixmap()

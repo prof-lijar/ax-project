@@ -1,5 +1,7 @@
 """Choose exact conversation windows for single-chat and multi-chat actions."""
 
+from functools import partial
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
@@ -10,40 +12,48 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.gui.i18n import translate
 from app.gui.theme import apply_theme, label
 from app.models import AgentError
 
 
 class AgentChatsDialog(QDialog):
-    def __init__(self, candidates, selected, parent=None, *, maximum=3, foreground_target=None):
+    def __init__(
+        self, candidates, selected, parent=None, *, maximum=3, foreground_target=None, language="ko"
+    ):
         super().__init__(parent)
+        self.text_for = t = partial(translate, language)
         self.candidates = []
         self.maximum = maximum
         self.foreground_target = foreground_target
-        self.setWindowTitle("Select Window" if maximum == 1 else "Select Agent Chats")
+        self.setWindowTitle(t("Select Window" if maximum == 1 else "Select Agent Chats"))
         self.resize(700, 470)
         apply_theme(self)
         layout = QVBoxLayout(self)
         layout.addWidget(
             label(
-                "Choose the conversation window"
-                if maximum == 1
-                else "Choose 1–3 conversation windows",
+                t(
+                    "Choose the conversation window"
+                    if maximum == 1
+                    else "Choose 1–3 conversation windows"
+                ),
                 "heading",
             )
         )
         layout.addWidget(
             label(
-                "Choose a window from the list or click Pick chat. VoyagerI will minimize for five seconds. "
-                "Click inside the intended chat’s typing area during that time."
+                t(
+                    "Choose a window from the list or click Pick chat. VoyagerI will minimize for five seconds. "
+                    "Click inside the intended chat’s typing area during that time."
+                )
             )
         )
         self.windows = QListWidget()
-        self.windows.setAccessibleName("Conversations")
+        self.windows.setAccessibleName(t("Conversations"))
         for target in candidates:
             self.add_target(target, target in selected)
         layout.addWidget(self.windows)
-        self.pick = QPushButton("Pick chat")
+        self.pick = QPushButton(t("Pick chat"))
         self.pick.setEnabled(foreground_target is not None)
         self.pick.clicked.connect(self.start_pick)
         layout.addWidget(self.pick)
@@ -54,15 +64,18 @@ class AgentChatsDialog(QDialog):
         layout.addWidget(self.summary)
         layout.addWidget(
             label(
-                "Confirm the conversation you intend VoyagerI to use."
-                if maximum == 1
-                else "Confirm only conversations you intend to monitor. Preview, history and test tools use the first checked chat."
+                t(
+                    "Confirm the conversation you intend VoyagerI to use."
+                    if maximum == 1
+                    else "Confirm only conversations you intend to monitor. Preview, history and test tools use the first checked chat."
+                )
             )
         )
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Ok).setText(
-            "Use selected chat" if maximum == 1 else "Use selected chats"
+            t("Use selected chat" if maximum == 1 else "Use selected chats")
         )
+        self.buttons.button(QDialogButtonBox.Cancel).setText(t("Cancel"))
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
@@ -71,7 +84,13 @@ class AgentChatsDialog(QDialog):
 
     def add_target(self, target, checked):
         item = QListWidgetItem(
-            f"{target.title} — {target.executable} (PID {target.pid}, window {target.hwnd:#x})"
+            self.text_for(
+                "{title} — {exe} (PID {pid}, window {hwnd:#x})",
+                title=target.title,
+                exe=target.executable,
+                pid=target.pid,
+                hwnd=target.hwnd,
+            )
         )
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
@@ -99,10 +118,10 @@ class AgentChatsDialog(QDialog):
             self.windows.setCurrentItem(item)
             self.update_count(item)
         except AgentError as error:
-            self.summary.setText(str(error))
+            self.summary.setText(self.text_for(str(error)))
         except Exception:
             self.summary.setText(
-                "Could not identify the active chat. Click Pick chat and try again."
+                self.text_for("Could not identify the active chat. Click Pick chat and try again.")
             )
         finally:
             self.restore_owner()
@@ -135,7 +154,7 @@ class AgentChatsDialog(QDialog):
                 if other is not item and other.checkState() == Qt.Checked:
                     other.setCheckState(Qt.Unchecked)
         count = len(self.selected_targets())
-        self.summary.setText(f"{count} selected")
+        self.summary.setText(self.text_for("{count} selected", count=count))
         self.buttons.button(QDialogButtonBox.Ok).setEnabled(1 <= count <= self.maximum)
 
     def accept(self):

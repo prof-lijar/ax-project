@@ -33,11 +33,13 @@ def main():
     from app.branding import configure_application
     from app.capture.screen_capture import ScreenCapture
     from app.config import data_directory, load, save
+    from app.gui.i18n import translate
     from app.gui.main_window import MainWindow, Signals
     from app.storage.capture_queue import CaptureQueue
     from app.utils.logger import setup_logging
     from app.utils.windows import get_token, secure_directory, single_instance
 
+    language = "ko"
     application = QApplication(sys.argv)
     try:
         configure_application(application)
@@ -47,6 +49,7 @@ def main():
         logger = setup_logging(root)
         config_path = root / "config.json"
         config = load(config_path)
+        language = config.language
         save(config_path, config)
         queue = CaptureQueue(root, config)
         desktop = WindowsDesktop(config)
@@ -71,8 +74,12 @@ def main():
     except Exception as error:
         QMessageBox.critical(
             None,
-            "Startup failed",
-            f"Cannot start ({type(error).__name__}). Check configuration, permissions, and whether another instance is running. No capture has started.",
+            translate(language, "Startup failed"),
+            translate(
+                language,
+                "Cannot start ({error}). Check configuration, permissions, and whether another instance is running. No capture has started.",
+                error=type(error).__name__,
+            ),
         )
         return 1
     import threading

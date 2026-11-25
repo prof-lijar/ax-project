@@ -115,3 +115,14 @@ def test_invalid_test_reply_configuration(text, config):
     config.test_reply_text = text
     with pytest.raises(ValueError, match="Test reply"):
         config.validate()
+
+
+def test_legacy_config_defaults_to_korean(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text('{"version": 1, "chat_id": "existing-chat"}')
+    config = load(path)
+    assert config.language == "ko"
+    assert config.chat_id == "existing-chat"
+    config.language = "en"
+    save(path, config)
+    assert load(path).language == "en"

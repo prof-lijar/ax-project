@@ -9,11 +9,15 @@ from app.api.workflow_llm import check_cancel
 from app.models import AgentError, Cancelled
 
 
-def notification_reply(result, notice):
+def notification_reply(result, notice, *, guardian_request_accepted=False):
     draft = result["kakao_reply"]
     sent_line = "내용 기재 및 보호자님께 앱설치 문자 발송 완료했습니다."
     if sent_line in draft:
-        reply = draft.replace(sent_line, "내용 기재를 완료했습니다. " + notice)
+        reply = draft.replace(sent_line, "내용 기재를 완료했습니다.\n" + notice)
+        if len(reply) <= 2000:
+            return reply
+    elif guardian_request_accepted:
+        reply = draft.rstrip() + "\n\n" + notice
         if len(reply) <= 2000:
             return reply
     summary = "[자동 확인]\n" + result["response"] + "\n" + notice
@@ -85,6 +89,12 @@ class InstallationSMS:
                 result, "앱설치 안내 문자는 설정된 테스트 번호로만 발송 요청했습니다."
             )
         else:
-            reply = result["kakao_reply"]
+            endings = ", ".join(number[-4:] for number in recipients)
+            reply = notification_reply(
+                result,
+                "보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.\n"
+                f"보호자 번호 끝자리: {endings}",
+                guardian_request_accepted=True,
+            )
         self.journal.complete(key, reply)
         return reply

@@ -84,6 +84,7 @@ class Config:
     target: Target | None = None
     selection: Selection | None = None
     agent_chats: list[WatchedChat] = field(default_factory=list)
+    language: str = "ko"
 
     def agent_configs(self):
         """Snapshot each chat without sharing mutable target/geometry state."""
@@ -128,6 +129,8 @@ class Config:
         self.selection = None
 
     def validate(self):
+        if self.language not in ("ko", "en"):
+            raise ValueError("Unsupported interface language")
         if not isinstance(self.agent_chats, list) or len(self.agent_chats) > 3:
             raise ValueError("Select at most three agent chats")
         if self.agent_chats:

@@ -6,30 +6,35 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QTabWidget, QTextEdit
 
+from app.gui.i18n import translate
 from app.storage.chat_paths import chat_queue_key
 
 
 class ActivityLog(QTabWidget):
     def __init__(self, config):
         super().__init__()
-        self.setAccessibleName("Activity views by chat")
         self.setUsesScrollButtons(True)
         self.setElideMode(Qt.ElideRight)
-        self.all_log = self.new_log("All activity")
+        self.all_log = self.new_log()
         self.addTab(self.all_log, "All activity")
         self.chat_logs = {}
         self.refresh_chats(config)
 
     @staticmethod
-    def new_log(name):
+    def new_log():
         view = QTextEdit()
         view.setReadOnly(True)
-        view.setAccessibleName(name)
-        view.setPlaceholderText("Live activity will appear here when this chat runs.")
         view.document().setMaximumBlockCount(300)
         return view
 
     def refresh_chats(self, config):
+        def t(source, **values):
+            return translate(config.language, source, **values)
+
+        self.setAccessibleName(t("Activity views by chat"))
+        self.all_log.setAccessibleName(t("All activity"))
+        self.all_log.setPlaceholderText(t("Activity will appear here as you use the agent."))
+        self.setTabText(0, t("All activity"))
         current = self.currentWidget()
         selected = {
             chat_queue_key(chat): chat.target.title
@@ -43,11 +48,12 @@ class ActivityLog(QTabWidget):
                 self.chat_logs.pop(key).deleteLater()
         for index, (key, title) in enumerate(selected.items(), 1):
             if key not in self.chat_logs:
-                self.chat_logs[key] = self.new_log(f"Chat {index}: {title} activity")
+                self.chat_logs[key] = self.new_log()
             view = self.chat_logs[key]
-            view.setAccessibleName(f"Chat {index}: {title} activity")
+            view.setAccessibleName(t("Chat {index}: {title} activity", index=index, title=title))
+            view.setPlaceholderText(t("Live activity will appear here when this chat runs."))
             tab = self.addTab(view, f"{index}. {title}")
-            self.setTabToolTip(tab, f"Chat {index}: {title}")
+            self.setTabToolTip(tab, t("Chat {index}: {title}", index=index, title=title))
         if current is self.all_log or current in self.chat_logs.values():
             self.setCurrentWidget(current)
 

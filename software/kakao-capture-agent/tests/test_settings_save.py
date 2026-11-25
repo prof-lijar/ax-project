@@ -1,5 +1,6 @@
 import sys
 from copy import deepcopy
+from functools import partial
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ import pytest
 from app.api.workflow_llm import credential_destination
 from app.config import load
 from app.gui import main_window
+from app.gui.i18n import translate
 from app.models import State
 from app.utils.windows import credential_name, get_token, set_token
 
@@ -59,7 +61,10 @@ def test_native_credential_roundtrip_and_replacement(monkeypatch):
     "failure", [None, "upload", "llm", "bizgo", "operations", "startup", "file"]
 )
 def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch, failure):
+    config.language = "en"
     new = deepcopy(config)
+    if failure:
+        new.language = "ko"
     new.chat_id = "updated-chat"
     new.llm_url = "https://llm.test/v1"
     new.llm_model = "vision"
@@ -78,6 +83,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
     )
     logs, errors, writes, startup = [], [], [], []
     window = SimpleNamespace(
+        ui=SimpleNamespace(text=partial(translate, config.language)),
         pending_action=None,
         monitor=SimpleNamespace(state=State.STOPPED),
         config=config,
@@ -129,6 +135,7 @@ def test_settings_save_stages_and_secret_redaction(config, tmp_path, monkeypatch
             "file": "configuration file",
         }[failure]
         assert len(errors) == 1 and label in errors[0] and "OS error 13" in errors[0]
+        assert config.language == "en"
         assert config.chat_id == "test-chat" and not window.config_path.exists()
     else:
         assert not errors and not startup  # Disabled startup needs no registry access.

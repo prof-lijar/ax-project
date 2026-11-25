@@ -413,7 +413,7 @@ def test_test_tools_image_selection_and_output_without_chat(
     monkeypatch.setattr(main_window.QMessageBox, "warning", lambda *a: warnings.append(a[-1]))
     try:
         for index in range(window.tabs.count()):
-            if window.tabs.tabText(index) == "Test tools":
+            if window.tabs.tabText(index) == "테스트 도구":
                 window.tabs.setCurrentIndex(index)
         window.show()
         assert not window.image_test_run_button.isEnabled()

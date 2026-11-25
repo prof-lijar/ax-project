@@ -1,7 +1,9 @@
 from copy import deepcopy
+from functools import partial
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.branding import APP_NAME, application_icon
+from app.gui.i18n import translate
 from app.gui.theme import apply_theme, card
 from app.gui.theme import label as ui_label
 from app.models import AgentError
@@ -24,7 +27,9 @@ from app.models import AgentError
 class SettingsDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Settings · {APP_NAME}")
+        self.text_for = partial(translate, config.language)
+        t = self.text_for
+        self.setWindowTitle(f"{t('Settings')} · {APP_NAME}")
         self.setWindowIcon(application_icon())
         self.result_config = deepcopy(config)
         self.token = ""
@@ -37,10 +42,20 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(14)
-        layout.addWidget(ui_label("Settings", "title"))
-        layout.addWidget(ui_label("Configure capture, connected services, and startup behavior."))
+        layout.addWidget(ui_label(t("Settings"), "title"))
+        layout.addWidget(
+            ui_label(t("Configure capture, connected services, and startup behavior."))
+        )
+        language_row = QFormLayout()
+        self.language = QComboBox()
+        self.language.addItem("한국어", "ko")
+        self.language.addItem("English", "en")
+        self.language.setCurrentIndex(self.language.findData(config.language))
+        self.language.setAccessibleName(t("Language"))
+        language_row.addRow(t("Language"), self.language)
+        layout.addLayout(language_row)
         self.tabs = QTabWidget()
-        self.tabs.setAccessibleName("Settings categories")
+        self.tabs.setAccessibleName(t("Settings categories"))
         layout.addWidget(self.tabs, 1)
         self.forms = {}
         for title, description in [
@@ -60,7 +75,7 @@ class SettingsDialog(QDialog):
             body.setObjectName("workspace")
             page = QVBoxLayout(body)
             page.setContentsMargins(0, 14, 8, 0)
-            section, section_layout = card(title, description)
+            section, section_layout = card(t(title), t(description))
             form = QFormLayout()
             form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
             form.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -70,21 +85,23 @@ class SettingsDialog(QDialog):
             page.addWidget(section)
             page.addStretch()
             scroll.setWidget(body)
-            self.tabs.addTab(scroll, title)
+            self.tabs.addTab(scroll, t(title))
             self.forms[title] = form
         self.controls = {}
         for name, label in [("chat_id", "Chat identifier"), ("api_url", "Upload URL")]:
             control = QLineEdit(getattr(config, name))
             if name == "chat_id":
-                control.setPlaceholderText("Optional label; generated automatically when blank")
+                control.setPlaceholderText(t("Optional label; generated automatically when blank"))
                 control.setToolTip(
-                    "A label attached to captures; generated automatically if blank, not a KakaoTalk ID."
+                    t(
+                        "A label attached to captures; generated automatically if blank, not a KakaoTalk ID."
+                    )
                 )
             self.add_control(name, label, control)
             self.controls[name] = control
         self.secret = QLineEdit()
         self.secret.setEchoMode(QLineEdit.Password)
-        self.secret.setPlaceholderText("Leave blank to keep the saved token")
+        self.secret.setPlaceholderText(t("Leave blank to keep the saved token"))
         self.add_control("api_token", "Bearer token", self.secret)
         for name, label, placeholder in [
             ("auto_reply_suffix", "Run Agent (auto) reply suffix", "(자동 응답)"),
@@ -92,27 +109,31 @@ class SettingsDialog(QDialog):
             ("llm_model", "Vision LLM model", "Use your server's image-capable model name"),
         ]:
             control = QLineEdit(getattr(config, name))
-            control.setPlaceholderText(placeholder)
+            control.setPlaceholderText(t(placeholder))
             self.add_control(name, label, control)
             self.controls[name] = control
         self.llm_secret = QLineEdit()
         self.llm_secret.setEchoMode(QLineEdit.Password)
         self.llm_secret.setPlaceholderText(
-            "Leave blank to keep saved key; OPENAI_API_KEY also supported"
+            t("Leave blank to keep saved key; OPENAI_API_KEY also supported")
         )
         self.add_control("llm_token", "LLM API key", self.llm_secret)
         for name, label, placeholder in [
-            ("operations_url", "AX768 server or workbench URL", "http://192.168.0.18:5173/agents/ax768"),
+            (
+                "operations_url",
+                "AX768 server or workbench URL",
+                "http://192.168.0.18:5173/agents/ax768",
+            ),
             ("operations_username", "Nexgent administrator username", ""),
         ]:
             control = QLineEdit(getattr(config, name))
-            control.setPlaceholderText(placeholder)
+            control.setPlaceholderText(t(placeholder))
             self.add_control(name, label, control)
             self.controls[name] = control
         self.operations_secret = QLineEdit()
         self.operations_secret.setEchoMode(QLineEdit.Password)
         self.operations_secret.setPlaceholderText(
-            "Leave blank to keep saved password; OPERATIONS_PASSWORD also supported"
+            t("Leave blank to keep saved password; OPERATIONS_PASSWORD also supported")
         )
         self.add_control("operations_password", "Nexgent password", self.operations_secret)
         for name, label in [
@@ -121,13 +142,13 @@ class SettingsDialog(QDialog):
             ("bizgo_test_recipients", "Installation test numbers (comma-separated)"),
         ]:
             control = QLineEdit(getattr(config, name))
-            control.setPlaceholderText("e.g. 01012345678")
+            control.setPlaceholderText(t("e.g. 01012345678"))
             self.add_control(name, label, control)
             self.controls[name] = control
         self.bizgo_secret = QLineEdit()
         self.bizgo_secret.setEchoMode(QLineEdit.Password)
         self.bizgo_secret.setPlaceholderText(
-            "Leave blank to keep saved key; BIZGO_API_KEY also supported"
+            t("Leave blank to keep saved key; BIZGO_API_KEY also supported")
         )
         self.add_control("bizgo_token", "Bizgo API key", self.bizgo_secret)
         for name, label, low, high, decimals in [
@@ -179,7 +200,10 @@ class SettingsDialog(QDialog):
         for name, label in [
             ("operations_allow_http", "Allow Nexgent HTTP on trusted LAN/localhost"),
             ("bizgo_enabled", "Send Bizgo SMS/LMS after Test Workflow"),
-            ("bizgo_installation_test", "Test Bizgo SMS for 신규설치 (use only installation test numbers)"),
+            (
+                "bizgo_installation_test",
+                "Test Bizgo SMS for new installations (use only installation test numbers)",
+            ),
             ("bizgo_sandbox", "Bizgo sandbox: test requests only, no real phone delivery"),
             ("llm_supports_vision", "Enable image input for this vision-capable LLM"),
             ("llm_allow_http", "Allow unencrypted LLM HTTP on trusted LAN/localhost"),
@@ -195,7 +219,8 @@ class SettingsDialog(QDialog):
             self.controls[name] = control
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Save).setProperty("role", "primary")
-        buttons.button(QDialogButtonBox.Save).setText("Save settings")
+        buttons.button(QDialogButtonBox.Save).setText(t("Save settings"))
+        buttons.button(QDialogButtonBox.Cancel).setText(t("Cancel"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -213,6 +238,7 @@ class SettingsDialog(QDialog):
             category = "Startup"
         else:
             category = "Capture"
+        title = self.text_for(title)
         control.setAccessibleName(title)
         if isinstance(control, (QSpinBox, QDoubleSpinBox)):
             control.setMinimumWidth(100)
@@ -225,6 +251,7 @@ class SettingsDialog(QDialog):
             self.forms[category].addRow(title, control)
 
     def accept(self):
+        self.result_config.language = self.language.currentData()
         for name, control in self.controls.items():
             value = (
                 control.isChecked()
@@ -248,7 +275,7 @@ class SettingsDialog(QDialog):
 
                 OperationsSettings.resolve(self.result_config)
         except (ValueError, AgentError) as error:
-            QMessageBox.warning(self, "Invalid settings", str(error))
+            QMessageBox.warning(self, self.text_for("Invalid settings"), self.text_for(str(error)))
             return
         self.token = self.secret.text().strip()
         self.llm_token = self.llm_secret.text().strip()

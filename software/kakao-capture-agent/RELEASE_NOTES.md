@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.46 — 2026-11-25
+
+VoyagerI opens in Korean by default. To switch to English, open **설정 → 언어**, choose **English**, and click **설정 저장**. The interface updates immediately and remembers the selection.
+
+For 신규설치 registrations, once Bizgo accepts every part of the installation guide for every production guardian number, the Kakao reply says “보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.” and lists the last four digits of each guardian number. Sandbox runs, test-number sends, and unconfirmed sends have their own status messages.
+
 ## v0.1.0-rc.45 — 2026-11-24
 
 **Run Agent (auto)** recognizes incoming forms headed `신규설치` or `가입자신규설치` and sends the complete form to the updated AX768 unified API. For verified registrations, VoyagerI sends the API’s installation guide through Bizgo and replies in the originating KakaoTalk chat. Blocked registrations use the API’s Kakao reply and skip SMS. Existing 위치조정 and 전원연결 requests continue to use the device workflow.
