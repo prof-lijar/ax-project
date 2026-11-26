@@ -430,7 +430,7 @@ def test_identical_requests_in_three_groups_have_separate_images_and_replies(fle
     f.service.dispatch("auto_catch")
     f.service.poll_auto_catch()
     complete_round(f)
-    assert len(f.sends) == 3 and len(f.operations) == 3
+    assert len(f.sends) == 6 and len(f.operations) == 6
 
 
 def test_wrong_chat_job_is_rejected_before_analysis_or_sending(fleet):
@@ -478,7 +478,7 @@ def test_slow_first_chat_does_not_block_other_chats(fleet):
         release.set()
 
 
-def test_two_windows_queue_bursts_during_slow_operation_and_resume_in_order(fleet):
+def test_two_windows_queue_bursts_and_restart_discards_remaining_work(fleet):
     f = fleet
     f.config.select_agent_chats(targets(2))
     entered, release = threading.Event(), threading.Event()
@@ -540,13 +540,14 @@ def test_two_windows_queue_bursts_during_slow_operation_and_resume_in_order(flee
             poll()
             complete_round(f)
         assert [r["message"] for chat, r in f.operations if chat == 1] == [
-            "위치조정/Person30/Road30", first_power, first_power, second_move,
+            "위치조정/Person30/Road30", first_power, "위치조정/Person30/Road30",
         ]
         assert [text for chat, text in f.sends if chat == 1] == [
-            "Response for Person30", "Response for 가상인", "Response for 가상인", "Response for 가상림",
+            "Response for Person30", "Response for 가상인", "Response for Person30",
         ]
         assert [text for chat, text in f.sends if chat == 2] == [
             "Response for Person60", "Response for 가상림", "Response for 가상림", "Response for 가상인",
+            "Response for Person60",
         ]
         for workflow in (first, second):
             assert workflow.jobs.count(workflow.chat_key) == 0
@@ -555,7 +556,7 @@ def test_two_windows_queue_bursts_during_slow_operation_and_resume_in_order(flee
         release.set()
 
 
-def test_stop_cancels_every_chat_and_restart_retains_queue_without_duplicates(fleet):
+def test_stop_cancels_every_chat_and_each_explicit_restart_runs_current_snapshot(fleet):
     f = fleet
     f.service.dispatch("auto_catch")
     admit_screens(f)
@@ -571,7 +572,7 @@ def test_stop_cancels_every_chat_and_restart_retains_queue_without_duplicates(fl
     f.service.dispatch("auto_catch")
     f.service.poll_auto_catch()
     complete_round(f)
-    assert len(f.sends) == 3 and len(f.operations) == 3
+    assert len(f.sends) == 6 and len(f.operations) == 6
 
 
 def test_stop_during_inference_cancels_all_workers(fleet):

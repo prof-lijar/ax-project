@@ -18,6 +18,7 @@ from app.storage.text_queue import TextQueue
 class TextAutoCatchWorkflow(AutoCatchWorkflow):
     continue_after_submission = False
     extraction_progress = "Extracting incoming messages from queued text; watching continues"
+    extracted_progress = "Text extracted; processing with the LLM; watching continues"
 
     def __init__(
         self,
@@ -175,7 +176,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                 pass
             else:
                 self.text_preview(text)
-                self.progress("Text extracted; processing with the LLM; watching continues")
+                self.progress(self.extracted_progress)
         if waiting:
             return
         reply, error, kind = self.outcome
@@ -204,11 +205,11 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
             self.queue.event("auto_analysis_ignored", self.job["job_id"] + ": " + str(kind))
             self.jobs.finish(self.job["job_id"], "ignored")
             self.job = self.outcome = None
-            classification = {
-                "outgoing": "outgoing/AI text",
-                "incoming": "incoming text without a clear supported action",
-            }.get(kind, "UI/no new incoming text")
-            self.progress(f"Capture classified as {classification}; ignored; watching continues")
+            if kind == "incoming":
+                self.progress("Incoming capture finished without a reply; watching continues")
+            else:
+                classification = "outgoing/AI text" if kind == "outgoing" else "UI/no new incoming text"
+                self.progress(f"Capture classified as {classification}; ignored; watching continues")
             return
         self.ensure_foreground()
         reply = self.format_reply(reply)

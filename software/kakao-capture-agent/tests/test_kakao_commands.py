@@ -82,12 +82,6 @@ def test_capture_attributes_bubble_senders_and_freezes_request_for_replay(queue)
         "message": second,
     }
 
-    new_job, _ = jobs.enqueue_pair("chat", b"c", b"d")
-    assert journal.previously_attempted("chat", kakao_command(second, "다른이", DATE), new_job)
-    assert not journal.previously_attempted(
-        "chat", kakao_command(second, "다른이", "2026-11-25"), new_job
-    )
-
 
 @pytest.mark.parametrize(
     "second_label",

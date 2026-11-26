@@ -1,7 +1,6 @@
 """Durable per-capture plan and external-action receipts, independent of reply delivery."""
 
 import json
-import unicodedata
 from uuid import uuid4
 
 from app.models import Cancelled
@@ -87,37 +86,3 @@ class OperationJournal:
             db.execute("DELETE FROM operation_journal WHERE job_id=?", (job_id,))
             db.execute("UPDATE image_reply_queue SET status='pending' WHERE job_id=?", (job_id,))
             return True
-
-    def previously_attempted(self, chat_key, request, job_id):
-        """Startup must not rerun a visible request with an existing API claim.
-
-        Scope to the same chat/destination and retained captures. Ordinary new
-        message events remain eligible, even when their text repeats.
-        """
-        def signature(value):
-            if value.get("workflow_id"):
-                return (
-                    value["workflow_id"],
-                    "".join(unicodedata.normalize("NFKC", value["message"]).split()),
-                    value.get("manager", ""),
-                    value.get("received_date", ""),
-                )
-            return tuple(
-                "".join(unicodedata.normalize("NFKC", value[key]).split())
-                for key in ("message", "action", "name", "address")
-            )
-
-        with self.storage.connect() as db:
-            rows = db.execute(
-                "SELECT a.payload, q.text = current.text AS same_snapshot FROM operation_journal a "
-                "JOIN operation_journal r ON r.key=substr(a.key,1,length(a.key)-9)||':api' "
-                "JOIN image_reply_queue q ON q.job_id=a.job_id "
-                "LEFT JOIN image_reply_queue current ON current.job_id=? "
-                "WHERE a.key LIKE '%:analysis' AND q.chat_key=? AND a.job_id<>?",
-                (job_id, chat_key, job_id),
-            ).fetchall()
-        for row in rows:
-            previous = json.loads(row["payload"]).get("request")
-            if previous and (row["same_snapshot"] or signature(previous) == signature(request)):
-                return True
-        return False

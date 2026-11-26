@@ -496,59 +496,25 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
     w.service.dispatch("auto_catch")
     w.service.poll_auto_catch()
     finish(w)
-    assert len(w.sent) == int(should_act)
+    assert len(w.sent) == (int(should_act) * (2 if startup else 1))
     assert w.llm.classify_latest.call_count == 3
 
 
-@pytest.mark.parametrize("prior_status", ["sent", "submitted", "review", "pending"])
-def test_startup_skips_existing_api_attempt_even_after_cosmetic_changes(queue, monkeypatch, prior_status):
+def test_reset_discards_only_selected_unfinished_jobs_and_keeps_delivery_history(queue):
     jobs = ImageReplyQueue(queue)
-    journal = OperationJournal(queue)
-    old, _ = jobs.enqueue_pair("chat", b"before", b"after")
-    journal.claim(old + "-0:analysis", old, {"request": model_request(MESSAGE)})
-    journal.claim(old + "-0:api", old, {"status": "uncertain", "response": REPLY})
-    jobs.finish(old, prior_status)
-    new, _ = jobs.enqueue_pair("chat", b"cosmetic change", b"cosmetic change", mode="latest")
-    operations = SimpleNamespace(run=Mock(return_value=OperationsResult("completed", REPLY, True)))
-    logs = []
-    processor = UnifiedProcessor(journal, operations, logs.append)
-    monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [MESSAGE])
-    incoming = IncomingMessage("incoming", MESSAGE)
-    assert processor.answer(None, incoming, new, threading.Event(), startup_chat_key="chat") is None
-    operations.run.assert_not_called()
-    assert "already attempted" in logs[-1]
-    assert not journal.previously_attempted("different-chat", model_request(MESSAGE), new)
-    # A separately received NEW message can intentionally repeat the same request.
-    assert processor.answer(None, incoming, "new-event", threading.Event()) == REPLY
-    operations.run.assert_called_once()
-
-
-def test_fresh_start_replaces_backlog_atomically_for_only_this_chat(queue, monkeypatch):
-    jobs = ImageReplyQueue(queue)
-    old = [jobs.enqueue_pair("chat", b"before", str(i).encode())[0] for i in range(17)]
+    previous = [jobs.enqueue_pair("chat", b"before", bytes([i]))[0] for i in range(5)]
+    assert jobs.claim("chat")["job_id"] == previous[0]
+    for job_id, status in zip(previous[2:], ("sending", "review", "sent"), strict=True):
+        jobs.finish(job_id, status)
     other, _ = jobs.enqueue_pair("other", b"other", b"other")
-    jobs.finish(old[-1], "review")
-    # Failure to store the fresh capture leaves the preceding run recoverable.
-    with monkeypatch.context() as patch:
-        patch.setattr(queue.config, "storage_limit_bytes", 0)
-        with pytest.raises(AgentError, match="storage limit"):
-            jobs.enqueue_pair("chat", b"now", b"now", mode="latest", fresh_start=True)
-    assert jobs.count("chat") == 16
-    fresh, _ = jobs.enqueue_pair("chat", b"now", b"now", mode="latest", fresh_start=True)
-    assert jobs.count("chat") == 1 and jobs.review_count("chat") == 1
-    assert jobs.claim("chat")["job_id"] == fresh
+    assert jobs.reset_for_run("chat") == 2
+    assert jobs.count("chat") == 0 and jobs.claim("chat") is None
+    assert jobs.review_count("chat") == 2
     assert jobs.claim("other")["job_id"] == other
-
-
-def test_identical_startup_capture_with_different_ocr_does_not_repeat_api(queue):
-    jobs = ImageReplyQueue(queue)
-    journal = OperationJournal(queue)
-    first, _ = jobs.enqueue_pair("chat", b"snapshot", b"snapshot", mode="latest")
-    journal.claim(first + "-0:analysis", first, {"request": model_request(MESSAGE)})
-    journal.claim(first + "-0:api", first, {"status": "uncertain"})
-    new, _ = jobs.enqueue_pair("chat", b"snapshot", b"snapshot", mode="latest", fresh_start=True)
-    assert first != new
-    assert journal.previously_attempted("chat", model_request(POWER_MESSAGE), new)
+    with queue.connect() as db:
+        assert [row[0] for row in db.execute(
+            "SELECT status FROM image_reply_queue WHERE chat_key='chat' ORDER BY id"
+        )] == ["ignored", "ignored", "review", "review", "sent"]
 
 
 def test_startup_snapshot_mode_and_pending_identity_survive_restart(queue):

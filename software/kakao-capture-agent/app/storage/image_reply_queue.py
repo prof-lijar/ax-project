@@ -49,7 +49,7 @@ class ImageReplyQueue(TextQueue):
             raise AgentError("Queued screenshot metadata is invalid; review required") from None
 
     def enqueue_pair(self, chat_key, before, after, *, mode="changes", folder=None, fresh_start=False,
-                     preserve_pending=False, incoming=None, captured_at=None):
+                     incoming=None, captured_at=None):
         if mode not in ("changes", "latest") or (fresh_start and mode != "latest"):
             raise ValueError("Unsupported screenshot analysis mode")
         hashes = [hashlib.sha256(png).hexdigest() for png in (before, after)]
@@ -63,15 +63,7 @@ class ImageReplyQueue(TextQueue):
         text = json.dumps(payload)
         with self.storage.lock, self.storage.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            if fresh_start:
-                # Retire the old run only if the new snapshot commits successfully.
-                if not preserve_pending:
-                    self.retire_pending(db, chat_key)
-                db.execute(
-                    f"UPDATE {self.table} SET status='review' WHERE chat_key=? AND status='sending'",
-                    (chat_key,),
-                )
-            elif mode == "latest":
+            if mode == "latest" and not fresh_start:
                 previous = db.execute(
                     f"SELECT job_id,text FROM {self.table} WHERE chat_key=? AND text IN (?,?) ORDER BY id DESC LIMIT 1",
                     (chat_key, text, legacy_text),
@@ -125,21 +117,29 @@ class ImageReplyQueue(TextQueue):
             )
             return job_id, directory / (hashes[1] + ".png")
 
-    def retire_pending(self, db, chat_key):
-        db.execute(
-            f"UPDATE {self.table} SET status='ignored' "
-            "WHERE chat_key=? AND status IN ('pending','processing')", (chat_key,)
-        )
+    def reset_for_run(self, chat_key):
+        with self.storage.lock, self.storage.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            discarded = db.execute(
+                f"UPDATE {self.table} SET status='ignored' "
+                "WHERE chat_key=? AND status IN ('pending','processing')", (chat_key,)
+            ).rowcount
+            db.execute(
+                f"UPDATE {self.table} SET status='review' WHERE chat_key=? AND status='sending'",
+                (chat_key,),
+            )
+            return discarded
+
+    @staticmethod
+    def read_image(path):
+        png = path.read_bytes()
+        if hashlib.sha256(png).hexdigest() != path.stem:
+            raise ValueError("Capture checksum mismatch")
+        return png
 
     def load_images(self, job):
         try:
-            result = []
-            for path in self.paths(job["text"]):
-                png = path.read_bytes()
-                if hashlib.sha256(png).hexdigest() != path.stem:
-                    raise ValueError()
-                result.append(png)
-            return result
+            return [self.read_image(path) for path in self.paths(job["text"])]
         except (OSError, ValueError, AgentError):
             self.finish(job["job_id"], "review")
             raise CaptureReviewRequired(

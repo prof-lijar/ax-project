@@ -264,16 +264,16 @@ def test_explicit_heading_and_batch_boundaries(monkeypatch, queue, config):
         assert SUMMARY in p.answer(None, msg, job, threading.Event())
     assert api.run.call_count == 1 and api.run.call_args.args[0]["message"] == FORM
     assert (
-        p.answer(None, incoming(FORM), "startup", threading.Event(), startup_chat_key="chat")
-        is None
+        p.answer(None, incoming(FORM), "startup", threading.Event(), startup=True)
+        is not None
     )
-    assert api.run.call_count == 1
+    assert api.run.call_count == 2
     # The standalone image test displays the AX768 result and omits guardian notification.
     assert (
         UnifiedProcessor(journal, api).answer(None, incoming(FORM), "image", threading.Event())
         == result("blocked")["response"]
     )
-    assert api.run.call_count == 2
+    assert api.run.call_count == 3
 
 
 @pytest.mark.parametrize("scenario", ["overlap", "empty", "changed", "interrupted"])

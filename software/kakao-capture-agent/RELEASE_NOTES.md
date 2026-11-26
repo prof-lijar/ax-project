@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.52 — 2026-11-26
+
+Each click on **Run Agent (auto)** or **Restart Agent (auto)** clears unfinished tasks in each selected chat and reads its current screenshot. If the latest visible message is an incoming action request, VoyagerI starts its workflow even if a previous run attempted the same message. A previously submitted API call or message may still complete.
+
+The agent then watches each selected chat for new action keywords and processes matching messages in arrival order. Messages awaiting delivery review stay in the review list.
+
 ## v0.1.0-rc.51 — 2026-11-26
 
 Run Agent checks changed chat frames in memory. It saves a screenshot and queues a workflow only when a newly received participant message contains a supported action keyword. Slash commands accept the action keyword first, in the middle, or last. Keep the other worksheet fields in their expected order.

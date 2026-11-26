@@ -200,12 +200,16 @@ def test_full_window_preview_and_settings(
     if reply_command == "auto_catch":
         monitor.state = State.AUTO_CATCHING
         window.update_status(State.AUTO_CATCHING.value, "watching")
-        assert not window.auto_catch_button.isEnabled()
-        assert window.auto_catch_button.text() == "Watching…"
+        assert window.auto_catch_button.isEnabled()
+        assert window.auto_catch_button.text() == "Restart Agent (auto)"
         assert window.state_label.text() == "Watching"
         assert "Checking the latest visible message" in window.auto_status.text()
-        window.action("auto_catch")
-        assert len(timers) == 2
+        desktop.request_target_activation = lambda: True
+        window.auto_catch_button.click()
+        assert monitor.commands.get_nowait() == "stop"
+        assert len(timers) == 3
+        timers[-1]()
+        assert monitor.commands.get_nowait() == "auto_catch"
 
         key = monitor.auto_catch.queue_key()
         jobs = monitor.auto_catch.jobs

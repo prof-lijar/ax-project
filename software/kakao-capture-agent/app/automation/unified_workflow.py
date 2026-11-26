@@ -29,7 +29,7 @@ class UnifiedProcessor:
         self.installation_sms = installation_sms
         self.journal, self.operations, self.activity = journal, operations, activity
 
-    def answer(self, llm, incoming, job_id, cancel, *, startup_chat_key=None, received_date="",
+    def answer(self, llm, incoming, job_id, cancel, *, startup=False, received_date="",
                queue_each_request=False):
         check_cancel(cancel)
         if incoming.kind != "incoming" or automated_text(incoming.text):
@@ -39,7 +39,7 @@ class UnifiedProcessor:
         if plan is None:
             if incoming.bubbles:
                 plan = list(incoming.bubbles)
-            elif startup_chat_key:
+            elif startup:
                 # Startup classification already selected exactly one complete bubble.
                 plan = [incoming.text]
             else:
@@ -65,7 +65,7 @@ class UnifiedProcessor:
                 self.journal.claim(plan_key, job_id, plan)
             plan = self.journal.get(plan_key)
         replies = []
-        live_capture = queue_each_request or startup_chat_key is not None
+        live_capture = queue_each_request or startup
         for index, message in enumerate(plan_texts(plan)):
             check_cancel(cancel)
             if automated_text(message) or (live_capture and not workflow_action_keyword(message)):
@@ -92,13 +92,6 @@ class UnifiedProcessor:
                     "see Latest extracted incoming text; no API call"
                 )
                 continue
-            if startup_chat_key and self.journal.previously_attempted(
-                startup_chat_key, request, job_id
-            ):
-                self.activity(
-                    "Startup request already attempted in this chat; no duplicate API call or reply"
-                )
-                continue
             workflow_id = request.get("workflow_id")
             installation = workflow_id == INSTALLATION
             sms_key = f"{job_id}-{index}:sms"
@@ -115,6 +108,7 @@ class UnifiedProcessor:
                 ),
                 "completed": False,
             }
+            check_cancel(cancel)
             if self.journal.claim(key, job_id, uncertain):
                 workflow = "가입자신규설치" if installation else workflow_id or request["action"]
                 self.activity(f"AX768: processing {workflow}")
@@ -183,8 +177,9 @@ class UnifiedWorkflow(KeywordVisualCatchWorkflow):
         self.installation_sms.record_routing(job_id)
 
     def queue_initial_capture(self):
+        discarded = self.jobs.reset_for_run(self.chat_key)
+        self.progress(f"Fresh run: discarded {discarded} unfinished task(s); checking the latest visible message")
         self.start_screen(self.baseline, self.baseline, startup=True)
-        self.progress("Checking the latest visible message for an action keyword")
 
     def begin_job(self, job):
         super().begin_job(dict(job, processor=self.processor))
@@ -202,7 +197,7 @@ class UnifiedWorkflow(KeywordVisualCatchWorkflow):
             incoming,
             job["job_id"],
             cancel,
-            startup_chat_key=job["chat_key"] if startup else None,
+            startup=startup,
             queue_each_request=not startup,
             received_date=("" if startup else datetime.fromtimestamp(
                 job["created_at"], timezone(timedelta(hours=9))

@@ -378,7 +378,7 @@ class MonitoringService(threading.Thread):
                     State.AUTO_CATCHING,
                     f"Watching {len(self.config.agent_chats)} chats in rotation; Stop ends all chats"
                     if isinstance(self.auto_catch, MultiChatWorkflow)
-                    else "Watching display changes; captures queue for text extraction, LLM processing, and reply; Stop ends Run Agent (auto)",
+                    else "Watching for incoming action keywords; matching requests are queued for processing",
                 )
             except Exception:
                 self.stop_input.set()

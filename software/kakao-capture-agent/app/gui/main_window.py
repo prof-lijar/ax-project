@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         )
         ui.bind(
             self.auto_catch_button.setToolTip,
-            "Watch the selected chats and reply to supported incoming requests",
+            "Start fresh in each selected chat. Clear unfinished tasks and check the latest visible message.",
         )
         self.auto_status = ui.label("Ready to watch.")
         ui.bind(self.auto_status.setAccessibleName, "Run Agent status")
@@ -465,12 +465,14 @@ class MainWindow(QMainWindow):
             if state == State.AUTO_CATCHING.value
             else state.replace("_", " ").capitalize(),
         )
-        auto_running = state == State.AUTO_CATCHING.value and (
+        auto_running = (state == State.AUTO_CATCHING.value or (
+            state == State.INITIALIZING.value and self.monitor.auto_catch.active
+        )) and (
             self.monitor.auto_catch is self.monitor.general_auto_catch
             or getattr(self.monitor.auto_catch, "mode", None) == "auto_catch"
         )
         self.ui.bind(
-            self.auto_catch_button.setText, "Watching…" if auto_running else "Run Agent (auto)"
+            self.auto_catch_button.setText, "Restart Agent (auto)" if auto_running else "Run Agent (auto)"
         )
         self.ui.bind(
             self.auto_status.setText,
@@ -517,10 +519,12 @@ class MainWindow(QMainWindow):
         self.test_reply_edit.setEnabled(self.send_test_button.isEnabled())
         self.test_workflow_button.setEnabled(self.send_test_button.isEnabled())
         self.bizgo_test_button.setEnabled(self.send_test_button.isEnabled())
-        self.auto_catch_button.setEnabled(
+        self.device_workflow_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.AUTO_CATCHING.value
         )
-        self.device_workflow_button.setEnabled(self.auto_catch_button.isEnabled())
+        self.auto_catch_button.setEnabled(self.device_workflow_button.isEnabled() or (
+            auto_running and not self.pending_action and not self.closing
+        ))
         self.review_text_button.setEnabled(self.can_review_replies(state))
         self.incoming_test_button.setEnabled(
             self.send_test_button.isEnabled() and state != State.WAITING_FOR_MESSAGE.value
@@ -849,11 +853,13 @@ class MainWindow(QMainWindow):
             "device_workflow",
         )
         sending = automatic_reply or command == "bizgo_test"
-        if sending and self.monitor.state == State.INITIALIZING:
+        if sending and self.monitor.state == State.INITIALIZING and not (
+            command == "auto_catch" and self.monitor.auto_catch.active
+        ):
             return
         if command != "bizgo_test":
             if (
-                command in ("auto_catch", "device_workflow")
+                command == "device_workflow"
                 and self.monitor.state == State.AUTO_CATCHING
             ):
                 return

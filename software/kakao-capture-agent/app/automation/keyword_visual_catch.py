@@ -15,6 +15,7 @@ from app.storage.chat_paths import chat_folder_name
 
 class KeywordVisualCatchWorkflow(QueuedVisualCatchWorkflow):
     extraction_progress = "Processing a queued action message; watching continues"
+    extracted_progress = "Action text extracted"
 
     def reset(self):
         if getattr(self, "screen_cancel", None) is not None:
@@ -89,14 +90,11 @@ class KeywordVisualCatchWorkflow(QueuedVisualCatchWorkflow):
             job_id, path = self.jobs.enqueue_pair(
                 self.chat_key, after, after, mode="latest" if startup else "changes",
                 folder=chat_folder_name(self.config), fresh_start=startup,
-                preserve_pending=self.rotating_windows, incoming=asdict(incoming), captured_at=captured_at,
+                incoming=asdict(incoming), captured_at=captured_at,
             )
             self.on_action_queued(job_id)
             self.queue.event("auto_visual_queued", job_id)
             self.progress(f"Incoming action queued: {path}")
-        elif startup and not self.rotating_windows:
-            with self.queue.connect() as db:
-                self.jobs.retire_pending(db, self.chat_key)
         self.screening = self.screen_snapshot = None
 
     def on_action_queued(self, job_id):
@@ -112,8 +110,6 @@ class KeywordVisualCatchWorkflow(QueuedVisualCatchWorkflow):
 
     def process_queue(self):
         self.finish_screen()
-        if self.screening is not None and self.screen_snapshot[1] and not self.rotating_windows:
-            return
         super().process_queue()
 
     def analyze_job(self, llm, job, cancel):
