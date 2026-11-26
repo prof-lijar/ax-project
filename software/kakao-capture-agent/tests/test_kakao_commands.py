@@ -105,9 +105,8 @@ def test_identical_power_requests_with_unavailable_sender_run_once_per_bubble(qu
     assert processor.answer(None, incoming, job, threading.Event()) == "첫째\n\n둘째"
     assert processor.answer(None, incoming, job, threading.Event()) is None
     requests = [call.args[0] for call in operations.run.call_args_list]
-    assert [(request["action"], request["message"]) for request in requests] == [
-        ("전원연결", message), ("전원연결", message),
-    ]
+    assert requests == [{"workflow_id": "device_adjustment_power", "message": message,
+                         "confirmed_name": None}] * 2
 
 
 def test_legacy_transcript_of_complete_power_commands_keeps_both_occurrences():
@@ -231,3 +230,13 @@ def test_replacement_capture_preserves_each_field_order(fields):
     assert client.request_payload(request) == {
         "source": "kakao", "workflow_id": "device_replacement", "message": message, "manager": "관리인",
     }
+
+
+@pytest.mark.parametrize("identity", [("김천희", "경기 광명시 광명로927번길"), ("김천희",), ("경기 광명시 광명로927번길",), ("2208",)])
+def test_manual_collection_command_in_any_field_order(identity):
+    client = UnifiedOperationsClient(OperationsSettings("https://example.test", "admin"), "test")
+    for fields in permutations(("기기회수", "사망", *identity)):
+        message = "/".join(fields)
+        payload = client.request_payload(kakao_command(message, "관리인"))
+        assert payload["workflow_id"] == "device_collection" and payload["manager"] == "관리인"
+        assert sorted(payload["message"].split("/")) == sorted(fields)

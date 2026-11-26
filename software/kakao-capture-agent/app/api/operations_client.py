@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 from uuid import UUID, uuid5
@@ -103,28 +104,50 @@ class OperationsClient:
     workflow_id = WORKFLOW_ID
     parse_response = staticmethod(parse_result)
 
-    def __init__(self, settings, password, transport=None):
+    def __init__(self, settings, password, transport=None, *, response_observer=lambda _: None):
         if not password:
             raise AgentError("Save the Nexgent password in Settings or set OPERATIONS_PASSWORD")
         self.settings, self.password, self.transport = settings, password, transport
+        self.response_observer = response_observer
+
+    def report_response(self, event):
+        # Debug display must never change whether an operation/reply succeeds.
+        try:
+            self.response_observer(event)
+        except Exception:
+            logging.getLogger(__name__).warning("Could not display operations API response")
 
     async def request(self, client, method, path, **kwargs):
         async with client.stream(method, self.settings.url + path, **kwargs) as response:
-            if not 200 <= response.status_code < 300:
+            workflow_response = path == self.endpoint
+            if not 200 <= response.status_code < 300 and not workflow_response:
                 raise AgentError(f"Operations API HTTP {response.status_code}; no automatic retry")
             body = bytearray()
             async for chunk in response.aiter_bytes():
                 body.extend(chunk)
                 if len(body) > 1_000_000:
+                    if workflow_response:
+                        self.report_response({"endpoint": path, "http_status": response.status_code,
+                                              "error": "Response exceeds 1 MB display limit"})
                     raise AgentError(
                         "Operations API response exceeds limit; inspect the operations sheet"
                     )
         try:
-            return json.loads(body)
+            parsed = json.loads(body)
         except ValueError:
+            if workflow_response:
+                self.report_response({"endpoint": path, "http_status": response.status_code,
+                                      "error": "Invalid JSON", "body": body.decode("utf-8", errors="replace")})
+            if not 200 <= response.status_code < 300:
+                raise AgentError(f"Operations API HTTP {response.status_code}; no automatic retry") from None
             raise AgentError(
                 "Operations API returned invalid JSON; inspect the operations sheet"
             ) from None
+        if workflow_response:
+            self.report_response({"endpoint": path, "http_status": response.status_code, "body": parsed})
+        if not 200 <= response.status_code < 300:
+            raise AgentError(f"Operations API HTTP {response.status_code}; no automatic retry")
+        return parsed
 
     async def execute(self, message, cancel):
         payload = self.request_payload(message)

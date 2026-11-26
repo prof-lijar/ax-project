@@ -196,10 +196,6 @@ def test_image_test_uses_unified_api_and_only_displays_exact_response(image_test
             "workflow_id": "device_adjustment_power",
             "message": MESSAGE,
             "confirmed_name": None,
-            "action": "기기위치조정",
-            "action_text": "위치조정",
-            "name": "이영희",
-            "address": "광명시 OO동 OO로 56",
         }
     ]
     assert len(t.llm_calls) == 1  # Only the screenshot needs a model call for a complete command.

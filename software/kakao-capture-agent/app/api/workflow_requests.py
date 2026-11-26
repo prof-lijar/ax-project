@@ -19,7 +19,7 @@ CHAT_COMMANDS = {
     "보호자추가": ("information_update", (6,)),
     "보호자수정": ("information_update", (6,)),
     "기기교체": ("device_replacement", (4,)),
-    "기기회수": ("device_collection", (3,)),
+    "기기회수": ("device_collection", (3, 4)),
     "기기분실": ("device_loss", (3,)),
     "설치확인": ("installation_confirmation", (3,)),
     "고장확인": ("fault_confirmation", (2,)),
@@ -71,6 +71,17 @@ def installation_header(message):
 def device_action_keyword(message):
     text = compact(message)
     return any(keyword in text for keyword in ACTION_KEYWORDS)
+
+
+def device_command(message):
+    """Route a slash command verbatim; the AX768 server parses its business fields."""
+    if not isinstance(message, str) or len(message) > 8000 or len(message.strip().splitlines()) != 1:
+        return None
+    fields = message.split("/")
+    if (len(fields) != 3 or not all(field.strip() for field in fields)
+            or sum(compact(field) in ACTION_KEYWORDS for field in fields) != 1):
+        return None
+    return {"workflow_id": "device_adjustment_power", "message": message, "confirmed_name": None}
 
 
 def workflow_action_keyword(message):
@@ -219,12 +230,12 @@ def parse_sources(content, incoming):
 
 
 def extract_sources(llm, incoming, cancel):
-    if explicit_device_request(incoming.text) or kakao_command(incoming.text):
+    if device_command(incoming.text) or kakao_command(incoming.text):
         return [incoming.text]
     # Older vision models can return a flat transcript. A run of complete
     # slash commands has explicit boundaries; keep repetitions in arrival order.
     lines = [line for line in incoming.text.splitlines() if line.strip()]
-    if len(lines) > 1 and all(explicit_device_request(line) for line in lines):
+    if len(lines) > 1 and all(device_command(line) for line in lines):
         return lines
     if not has_device_keyword(incoming.text) and not any(
         installation_header(line) or kakao_command(line) for line in incoming.text.splitlines()

@@ -88,6 +88,11 @@ def test_full_window_preview_and_settings(
     assert window.setup_buttons[0].text() == "Settings"
     assert window.tabs.tabText(0) == "Overview"
     assert window.activity_views.tabText(0) == "All activity"
+    tab_names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+    assert tab_names[tab_names.index("Activity") + 1] == "API Responses"
+    signals.api_response.emit({"http_status": 200, "body": {"response": "원본 응답"}})
+    app.processEvents()
+    assert "원본 응답" in window.api_responses.body.toPlainText()
     assert window.test_reply_edit.toPlainText() == "Keep my {draft}"
     assert window.preview_chat_label.text() == "Settings"
     assert not window.preview_label.pixmap().isNull()

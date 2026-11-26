@@ -31,6 +31,7 @@ from app.capture.saved_image import load_capture_image
 from app.config import save
 from app.gui.activity_log import ActivityLog
 from app.gui.agent_chats_dialog import AgentChatsDialog
+from app.gui.api_response_log import ApiResponseLog
 from app.gui.image_drop_preview import ImageDropPreview
 from app.gui.settings_dialog import SettingsDialog
 from app.gui.theme import CapturePreview, WindowText, apply_theme, label
@@ -43,6 +44,7 @@ class Signals(QObject):
     preview = Signal(bytes)
     activity = Signal(str)
     chat_activity = Signal(str, str)
+    api_response = Signal(object)
     upload = Signal(str)
     stats = Signal(object)
     text_preview = Signal(str)
@@ -418,6 +420,9 @@ class MainWindow(QMainWindow):
         self.logs = self.activity_views.all_log
         activity_layout.addWidget(self.activity_views, 1)
         activity.addWidget(activity_card, 1)
+        responses = self.add_tab("API Responses")
+        self.api_responses = ApiResponseLog(ui)
+        responses.addWidget(self.api_responses, 1)
         layout.addWidget(
             ui.label("Emergency stop  ·  Ctrl+Shift+F12  ·  Mouse corner fail-safe for input")
         )
@@ -425,6 +430,7 @@ class MainWindow(QMainWindow):
         signals.preview.connect(self.update_preview)
         signals.activity.connect(self.log)
         signals.chat_activity.connect(self.activity_views.log_chat)
+        signals.api_response.connect(self.api_responses.append_response)
         signals.upload.connect(self.upload_status)
         signals.stats.connect(self.show_stats)
         self.hotkey = EmergencyHotkey(lambda: self.action("stop"))

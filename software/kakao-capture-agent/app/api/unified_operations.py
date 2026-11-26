@@ -16,6 +16,7 @@ from app.api.operations_client import (
 )
 from app.api.workflow_requests import (
     INSTALLATION,
+    device_command,
     installation_header,
     kakao_command,
     parse_analysis,
@@ -98,6 +99,14 @@ def installation_result(body, response):
 def _parse_unified_result(body):
     if not isinstance(body, dict):
         raise AgentError("Invalid AX768 result")
+    if body.get("workflow_id") == WORKFLOW_ID and body.get("ok") is True:
+        # The server owns device completion. Its reply does not depend on the
+        # desktop independently validating receipts or the duplicate Kakao field.
+        response = body.get("response")
+        if (not isinstance(response, str) or not response.strip() or len(response) > 2000
+                or any(ord(c) < 32 and c not in "\r\n\t" for c in response)):
+            raise AgentError("AX768 response must be nonempty text of at most 2000 characters; no chat reply sent")
+        return OperationsResult("completed", response, True)
     status = body.get("status")
     workflow = body.get("workflow_id")
     if (
@@ -211,6 +220,11 @@ class UnifiedOperationsClient(OperationsClient):
         return result
 
     def request_payload(self, request):
+        if (isinstance(request, dict) and request.get("workflow_id") == WORKFLOW_ID
+                and set(request) == {"workflow_id", "message", "confirmed_name"}):
+            if device_command(request.get("message")) != request:
+                raise AgentError("An incoming device action command is required; no workflow executed")
+            return request
         if isinstance(request, dict) and request.get("source") == "kakao":
             expected = kakao_command(request.get("message"), request.get("manager", ""), request.get("received_date", ""))
             if expected != request:
@@ -240,7 +254,12 @@ class UnifiedOperationsClient(OperationsClient):
         )
         if analysis is None:
             raise AgentError("An actionable request is required; no workflow executed")
-        return {"workflow_id": self.workflow_id, "confirmed_name": None, **analysis}
+        # Older stored plans may still contain extracted fields for a slash
+        # command. They use the same web payload; free-form reports keep their
+        # existing grounded intent fields.
+        return device_command(source) or {
+            "workflow_id": self.workflow_id, "confirmed_name": None, **analysis
+        }
 
     async def preflight(self, client):
         # The dispatcher checks the selected graph's version and write capabilities.

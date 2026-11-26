@@ -44,11 +44,13 @@ class MonitoringService(threading.Thread):
         image_test_output=lambda _: None,
         image_test_text=lambda _: None,
         chat_activity=lambda key, message: None,
+        api_response=lambda _: None,
     ):
         super().__init__(name="capture", daemon=False)
         self.desktop, self.capture, self.queue, self.config = desktop, capture, queue, config
         self.status, self.preview, self.activity = status, preview, activity
         self.chat_activity = chat_activity
+        self.api_response = api_response
         self.chat_run_keys = []
         self.setup_ready = setup_ready
         self.text_preview, self.preview_chat = text_preview, preview_chat
@@ -110,6 +112,7 @@ class MonitoringService(threading.Thread):
             self.primary_progress,
             text_preview=text_preview,
             activity=self.primary_activity,
+            api_response=api_response,
         )
         self.general_auto_catch = self.auto_catch
         self.saved_image_workflow = SavedImageWorkflow(
@@ -120,6 +123,7 @@ class MonitoringService(threading.Thread):
             self.stop_input,
             lambda message: self.transition(State.INITIALIZING, message),
             image_test_text,
+            api_response=api_response,
         )
         self.device_workflow = DeviceWorkflow(
             desktop,
@@ -132,6 +136,7 @@ class MonitoringService(threading.Thread):
             self.primary_progress,
             text_preview=text_preview,
             activity=self.primary_activity,
+            api_response=api_response,
         )
 
     def primary_activity(self, message):
@@ -471,6 +476,7 @@ class MonitoringService(threading.Thread):
             mode,
             preview_chat=self.preview_chat,
             chat_activity=self.chat_activity,
+            api_response=self.api_response,
         )
 
     def review_scopes(self):
@@ -543,6 +549,10 @@ class MonitoringService(threading.Thread):
                 self.auto_catch.waiting_reason
                 or f"Watching for incoming text; {self.auto_catch.reply_count} replies submitted",
             )
+        elif self.auto_catch.waiting_reason != self.reason:
+            # Refresh screening/queue progress without adding a log entry every poll.
+            self.reason = self.auto_catch.waiting_reason
+            self.status(State.AUTO_CATCHING.value, self.reason)
 
     def try_recover_auto_focus(self):
         self.next_recovery = time.monotonic() + 2

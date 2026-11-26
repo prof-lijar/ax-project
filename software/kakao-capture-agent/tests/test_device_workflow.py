@@ -214,7 +214,7 @@ def processor(queue, monkeypatch):
         queue=queue,
         api=api,
         plan=plan,
-        incoming=IncomingMessage("incoming", "이은경/위치변경/헌릉로8길58"),
+        incoming=IncomingMessage("incoming", "이은경님 헌릉로8길58 기기 위치변경했습니다"),
         cancel=threading.Event(),
     )
 

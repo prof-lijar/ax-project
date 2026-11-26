@@ -64,6 +64,7 @@ def mock_model_decisions(monkeypatch):
 ])
 def test_unified_transport(message, action, name, address, reply):
     calls = []
+    responses = []
     decision = {"message": message, "action": action, "name": name, "address": address,
                 "action_text": "전원연결" if action == "전원연결" else "위치조정"}
 
@@ -82,20 +83,20 @@ def test_unified_transport(message, action, name, address, reply):
             "workflow_id": "device_adjustment_power",
             "message": message,
             "confirmed_name": None,
-            "action": action,
-            "name": name,
-            "address": address,
-            "action_text": decision["action_text"],
         }
         return httpx.Response(
             200, json={**receipt(), "api_version": "1", "verified": True, "response": reply, "kakao-reply": reply}
         )
 
     client = UnifiedOperationsClient(
-        OperationsSettings("https://nexgent.test", "admin"), "secret", httpx.MockTransport(server)
+        OperationsSettings("https://nexgent.test", "admin"), "secret", httpx.MockTransport(server),
+        response_observer=responses.append,
     )
     assert client.run(decision, threading.Event()).response == reply
     assert calls == ["/auth/login", "/api/me", "/api/ax768/runs"]
+    assert len(responses) == 1
+    assert responses[0]["http_status"] == 200
+    assert responses[0]["body"]["kakao-reply"] == reply
 
 
 @pytest.mark.parametrize("source,evidence,action", [
@@ -170,12 +171,12 @@ def test_invalid_model_analysis_never_claims_or_calls_workflow(queue, monkeypatc
     ImageReplyQueue(queue)
     journal = OperationJournal(queue)
     operations = SimpleNamespace(run=Mock())
-    monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [MESSAGE])
+    monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [NATURAL_MESSAGE])
     invalid = Mock(side_effect=IncomingAnalysisError("invalid fields"))
     monkeypatch.setattr("app.automation.unified_workflow.analyze_request", invalid)
     processor = UnifiedProcessor(journal, operations)
     with pytest.raises(IncomingAnalysisError):
-        processor.answer(None, IncomingMessage("incoming", MESSAGE), "job", threading.Event())
+        processor.answer(None, IncomingMessage("incoming", NATURAL_MESSAGE), "job", threading.Event())
     operations.run.assert_not_called()
     assert journal.get("job-0:api") is None
 
@@ -380,15 +381,14 @@ def test_response_validation():
 
 
 @pytest.mark.parametrize("reply", [None, "", " \n\t", [], {"text": "done"}, "x" * 2001, "bad\x00text"])
-def test_invalid_kakao_reply_never_falls_back_to_response(reply):
+def test_device_success_uses_response_even_if_duplicate_kakao_field_is_invalid(reply):
     body = {**receipt(), "api_version": "1", "verified": True, "kakao-reply": reply}
-    with pytest.raises(AgentError, match="kakao-reply"):
-        parse_unified_result(body)
+    assert parse_unified_result(body).response == body["response"]
 
 
-def test_missing_kakao_reply_never_falls_back_to_response():
-    with pytest.raises(AgentError, match="kakao-reply"):
-        parse_unified_result({**receipt(), "api_version": "1", "verified": True})
+def test_device_success_needs_no_duplicate_kakao_reply():
+    body = receipt()
+    assert parse_unified_result(body).response == body["response"]
 
 
 def test_power_success_with_missing_as_row_uses_exact_kakao_reply(queue):
@@ -479,8 +479,7 @@ def test_identical_new_requests_use_each_current_http_response(queue, monkeypatc
         assert restarted.answer(None, incoming, job, threading.Event()) is None
         assert journal.get(job + "-0:api") == audit
     assert len(requests) == 2 and requests[0] == requests[1]
-    assert requests[0]["name"] == "이은경"
-    assert requests[0]["address"] == "헌릉로8길58"
+    assert requests[0] == {"workflow_id": "device_adjustment_power", "message": message, "confirmed_name": None}
 
 
 def test_default_worker(config, queue, region):
@@ -616,12 +615,20 @@ def test_reset_discards_only_selected_unfinished_jobs_and_keeps_delivery_history
     other, _ = jobs.enqueue_pair("other", b"other", b"other")
     assert jobs.reset_for_run("chat") == 2
     assert jobs.count("chat") == 0 and jobs.claim("chat") is None
-    assert jobs.review_count("chat") == 2
+    assert jobs.review_count("chat") == 0
     assert jobs.claim("other")["job_id"] == other
     with queue.connect() as db:
         assert [row[0] for row in db.execute(
             "SELECT status FROM image_reply_queue WHERE chat_key='chat' ORDER BY id"
-        )] == ["ignored", "ignored", "review", "review", "sent"]
+        )] == ["ignored", "ignored", "archived_review", "archived_review", "sent"]
+    # Reopening storage must not reactivate archived attempts or lose evidence.
+    reopened = ImageReplyQueue(queue)
+    assert reopened.review_count("chat") == 0
+    with queue.connect() as db:
+        archived = dict(db.execute(
+            "SELECT * FROM image_reply_queue WHERE job_id=?", (previous[2],)
+        ).fetchone())
+    assert reopened.load_images(archived) == [b"before", bytes([2])]
 
 
 def test_startup_snapshot_mode_and_pending_identity_survive_restart(queue):

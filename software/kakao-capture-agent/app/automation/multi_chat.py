@@ -4,7 +4,7 @@ from app.api.workflow_llm import check_cancel
 from app.automation.window_manager import WindowsDesktop
 from app.automation.windows_composer import WindowsComposer, WindowsReplySender
 from app.capture.screen_capture import ScreenCapture
-from app.models import AgentError, Cancelled
+from app.models import AgentError, Cancelled, ForegroundLost
 from app.storage.chat_paths import chat_queue_key
 
 
@@ -25,11 +25,13 @@ class MultiChatWorkflow:
         sender_factory=None,
         preview_chat=lambda _: None,
         chat_activity=lambda key, message: None,
+        api_response=lambda _: None,
     ):
         self.base_workflow, self.cancel, self.mode = base_workflow, cancel, mode
         self.workflows = []
         self.active = False
         self.waiting_reason = ""
+        self.focus_waiting = set()
         for index, config in enumerate(configs):
             name = f"Chat {index + 1}: {config.target.title}"
             key = chat_queue_key(config)
@@ -66,6 +68,7 @@ class MultiChatWorkflow:
                 report,
                 text_preview=show_text,
                 activity=log,
+                api_response=api_response,
                 # Share storage without re-running crash recovery while another
                 # chat has an in-flight job. Keys still isolate every chat's FIFO.
                 jobs_factory=lambda _: base_workflow.jobs,
@@ -79,6 +82,7 @@ class MultiChatWorkflow:
 
     def reset(self):
         self.active = False
+        self.focus_waiting.clear()
         # Signal every inference worker before waiting for any one of them.
         for workflow in self.workflows:
             if workflow.work_cancel is not None:
@@ -124,19 +128,33 @@ class MultiChatWorkflow:
             raise AgentError("Multi-chat monitoring is not armed")
         # Capture every window before a slow composer can occupy the desktop.
         # finish_job independently activates the originating window before typing.
-        self.run_round(workflow.capture_changes for workflow in self.workflows)
-        self.run_round(workflow.process_queue for workflow in self.workflows)
+        self.run_round((workflow.capture_changes for workflow in self.workflows), "capture")
+        self.run_round((workflow.process_queue for workflow in self.workflows), "reply")
         self.waiting_reason = (
             f"Watching {len(self.workflows)} chats in rotation; "
             f"{self.reply_count} replies submitted"
         )
+        if self.focus_waiting:
+            self.waiting_reason += f"; {len({index for index, _ in self.focus_waiting})} chat(s) retrying focus"
 
-    def run_round(self, actions):
+    def run_round(self, actions, phase):
         for index, action in enumerate(actions, 1):
             check_cancel(self.cancel)
             try:
                 action()
             except Cancelled:
                 raise
+            except ForegroundLost as error:
+                workflow = self.workflows[index - 1]
+                if not workflow.active:
+                    # Focus loss after input began still requires review.
+                    raise AgentError(f"Chat {index}: {error}; all chats paused") from error
+                if (index, phase) not in self.focus_waiting:
+                    workflow.progress("Waiting for chat focus; retrying automatically while other chats continue")
+                self.focus_waiting.add((index, phase))
             except AgentError as error:
                 raise AgentError(f"Chat {index}: {error}; all chats paused") from error
+            else:
+                if (index, phase) in self.focus_waiting:
+                    self.focus_waiting.remove((index, phase))
+                    self.workflows[index - 1].progress("Chat focus recovered; continuing queued work")

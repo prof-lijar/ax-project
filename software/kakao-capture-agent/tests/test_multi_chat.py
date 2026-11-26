@@ -10,6 +10,7 @@ import pytest
 from app.api.incoming_llm import IncomingMessage, parse_incoming
 from app.api.operations_client import OperationsResult
 from app.api.workflow_llm import check_cancel
+from app.api.workflow_requests import explicit_device_request
 from app.automation.monitoring_service import MonitoringService
 from app.automation.multi_chat import MultiChatWorkflow
 from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
@@ -166,7 +167,9 @@ def fleet(config, queue, region, monkeypatch):
                     check_cancel(cancel)
             check_cancel(cancel)
             operations.append((self.chat, request))
-            return OperationsResult("completed", f"Response for {request['name']}", True)
+            parsed = explicit_device_request(request["message"])
+            name = request.get("name") or (parsed["name"] if parsed else request["message"].split("/")[1])
+            return OperationsResult("completed", f"Response for {name}", True)
 
     desktop = Desktop(region)
     monkeypatch.setattr(
@@ -606,6 +609,32 @@ def test_invalid_second_chat_pauses_all_without_misrouting(fleet):
     assert not f.service.auto_catch.active
     assert not f.sends
     assert all(w.jobs.count(w.chat_key) == 1 for w in f.service.auto_catch.workflows)
+
+
+def test_temporary_focus_loss_in_one_chat_does_not_stop_others_or_replay_api(fleet):
+    f = fleet
+    f.service.dispatch("auto_catch")
+    admit_screens(f)
+    group = f.service.auto_catch
+    second = group.workflows[1]
+    activate = second.desktop.activate_target
+
+    def denied(cancel):
+        raise ForegroundLost("Temporary activation denial")
+
+    second.desktop.activate_target = denied
+    f.service.poll_auto_catch()
+    complete_round(f)
+    assert sorted(chat for chat, _ in f.sends) == [1, 3]
+    assert f.service.state == State.AUTO_CATCHING and group.active
+    assert second.job is not None and second.outcome is not None
+    assert len(f.operations) == 3
+    second.desktop.activate_target = activate
+    f.service.poll_auto_catch()
+    assert sorted(chat for chat, _ in f.sends) == [1, 2, 3]
+    assert len(f.operations) == 3
+    assert not group.focus_waiting
+    assert f.service.state == State.AUTO_CATCHING
 
 
 def test_preflight_failure_does_not_arm_any_chat(fleet):

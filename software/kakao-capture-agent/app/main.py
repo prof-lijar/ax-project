@@ -63,6 +63,7 @@ def main():
             signals.preview.emit,
             signals.activity.emit,
             chat_activity=signals.chat_activity.emit,
+            api_response=signals.api_response.emit,
             text_preview=signals.text_preview.emit,
             setup_ready=signals.setup_ready.emit,
             preview_chat=signals.preview_chat.emit,

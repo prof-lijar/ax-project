@@ -125,7 +125,8 @@ class ImageReplyQueue(TextQueue):
                 "WHERE chat_key=? AND status IN ('pending','processing')", (chat_key,)
             ).rowcount
             db.execute(
-                f"UPDATE {self.table} SET status='review' WHERE chat_key=? AND status='sending'",
+                f"UPDATE {self.table} SET status='archived_review' "
+                "WHERE chat_key=? AND status IN ('sending','review')",
                 (chat_key,),
             )
             return discarded

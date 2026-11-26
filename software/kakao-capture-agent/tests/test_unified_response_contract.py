@@ -77,16 +77,15 @@ def test_business_failures_preserve_server_text_and_issues(workflow, status):
 @pytest.mark.parametrize("field", ["ok", "verified"])
 @pytest.mark.parametrize("value", [None, 0, 1, "true", "false", "opposite"])
 def test_inconsistent_flags_are_rejected(status, field, value):
-    body = envelope(status)
+    body = envelope(status, "future_workflow")
     body[field] = status != "completed" if value == "opposite" else value
     with pytest.raises(AgentError, match="contract"):
         parse_unified_result(body)
 
 
 @pytest.mark.parametrize("change", [
-    {"response": "different"}, {"response": ""}, {"response": None},
-    {"id": ""}, {"id": None}, {"id": "bad\nid"},
-    {"issues": None}, {"issues": [{}]}, {"sms": None},
+    {"response": ""}, {"response": None}, {"response": "bad\x00text"},
+    {"response": "x" * 2001}, {"response": {}}, {"ok": "true"},
     {"sms": {"should_send": True}},
 ])
 def test_malformed_envelope_never_produces_a_reply(change, queue):
@@ -104,7 +103,7 @@ def test_malformed_envelope_never_produces_a_reply(change, queue):
 
 @pytest.mark.parametrize("field", ["id", "ok", "verified", "response", "kakao-reply", "issues", "sms"])
 def test_required_envelope_fields_cannot_be_omitted(field):
-    body = envelope()
+    body = envelope(workflow="future_workflow")
     del body[field]
     with pytest.raises(AgentError):
         parse_unified_result(body)
@@ -176,6 +175,8 @@ def test_http_execution_is_linked_to_exact_sent_text_and_observation(watching, s
         "refused": "not_attempted", "exception": "uncertain",
     }[delivery]
     assert len(requests) == 1
+    assert requests[0] == {"workflow_id": "device_adjustment_power", "message": MESSAGE,
+                           "confirmed_name": None}
     assert w.sent == ([] if delivery in {"refused", "exception"} else [body["response"]])
 
 

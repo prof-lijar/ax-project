@@ -2,13 +2,14 @@
 
 import hashlib
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from app.api.device_request import extract_requests
 from app.api.unified_operations import create_unified_operations
 from app.api.workflow_llm import check_cancel
-from app.api.workflow_requests import device_action_keyword
+from app.api.workflow_requests import device_action_keyword, device_command
 from app.automation.keyword_visual_catch import KeywordVisualCatchWorkflow
+from app.automation.unified_workflow import UnifiedProcessor
 from app.models import AgentError, Cancelled
 from app.storage.operation_journal import OperationJournal
 
@@ -49,6 +50,13 @@ class DeviceProcessor:
         check_cancel(cancel)
         plan_key = job_id + ":plan"
         plan = self.journal.get(plan_key)
+        sources = incoming.bubbles or (incoming.text,)
+        if all(device_command(source) for source in sources) and (
+            plan is None or all(isinstance(entry, dict) and "workflow_id" in entry for entry in plan)
+        ):
+            return UnifiedProcessor(self.journal, self.operations, self.activity).answer(
+                llm, replace(incoming, bubbles=tuple(sources)), job_id, cancel
+            )
         if plan is None:
             plan = extract_requests(llm, incoming, cancel)
             check_cancel(cancel)
@@ -77,7 +85,7 @@ class DeviceWorkflow(KeywordVisualCatchWorkflow):
         self.activity = activity
         self.processor_factory = lambda: DeviceProcessor(
             self.journal,
-            create_unified_operations(self.config),
+            self.observe_operations(create_unified_operations(self.config)),
             self.activity,
         )
 

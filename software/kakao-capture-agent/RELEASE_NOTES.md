@@ -1,5 +1,19 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.54 — 2026-11-26
+
+Device slash commands now use the web workbench's request directly: `workflow_id`, original `message`, and `confirmed_name: null`. Run Agent and device mode skip a second LLM parse of these commands. For a device response with `ok: true`, the exact `response` text is sent; the desktop no longer independently checks completion receipts or requires a duplicate `kakao-reply` field. Reply text limits and one-attempt delivery tracking remain in place.
+
+Continuous watching now captures changed frames while keyword screening is busy. Frames are screened in order from a bounded temporary memory buffer; only incoming action-keyword matches are saved and queued as workflows. Ordinary messages do not create workflow tasks. Slow API calls and a failed API attempt do not prevent later matched requests from being processed in order.
+
+Temporary focus loss before typing keeps the prepared reply for recovery without repeating the API operation. In multi-chat mode, other selected chats keep running while the affected chat retries focus.
+
+Restarting Run Agent archives old review captures as history and clears pending work for the selected chat before checking its latest visible message. Archived captures retain their evidence and are never replayed. Their counts no longer appear in the new run.
+
+Failed screenshot analysis keeps the last successfully screened message baseline for the next display change. Activity now reports when screening starts and when no incoming action keyword is found. The status shows screening time while analysis is running.
+
+An **API Responses** tab next to Activity displays the last 50 AX768 response bodies as formatted JSON, with chat, timestamp and HTTP status, plus copy and clear controls. It includes invalid response contracts and HTTP error bodies; authentication responses and headers are excluded. Live chats, device mode and saved-image tests share this view.
+
 ## v0.1.0-rc.53 — 2026-11-26
 
 AX768 replies now follow the unified response contract. The client requires an execution ID, consistent `status`/`ok`/`verified`, matching nonempty `response` and `kakao-reply` strings, and structured issues for unsuccessful outcomes. Business failures are sent unchanged, including partial completion and unknown-write wording. A legitimately skipped AS row does not turn a completed workflow into a failure.

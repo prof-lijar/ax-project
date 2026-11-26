@@ -11,6 +11,7 @@ from app.api.workflow_llm import check_cancel
 from app.api.workflow_requests import (
     INSTALLATION,
     analyze_request,
+    device_command,
     extract_sources,
     installation_header,
     kakao_command,
@@ -54,7 +55,8 @@ class UnifiedProcessor:
                 sender = incoming.sender if len(plan) == 1 else ""
                 if incoming.bubble_senders:
                     sender = incoming.bubble_senders[index]
-                command = kakao_command(message, sender, received_date or incoming.received_date)
+                command = (kakao_command(message, sender, received_date or incoming.received_date)
+                           or device_command(message))
                 if command:
                     plan[index] = command
             check_cancel(cancel)
@@ -139,7 +141,7 @@ class UnifiedWorkflow(KeywordVisualCatchWorkflow):
         self.installation_sms = InstallationSMS(self.config, self.journal, self.queue.event, activity)
         self.processor_factory = lambda: UnifiedProcessor(
             self.journal,
-            create_unified_operations(self.config),
+            self.observe_operations(create_unified_operations(self.config)),
             activity,
             installation_sms=self.installation_sms,
         )
@@ -164,8 +166,13 @@ class UnifiedWorkflow(KeywordVisualCatchWorkflow):
         self.installation_sms.record_routing(job_id)
 
     def queue_initial_capture(self):
+        reviews = self.jobs.review_count(self.chat_key)
         discarded = self.jobs.reset_for_run(self.chat_key)
-        self.progress(f"Fresh run: discarded {discarded} unfinished task(s); checking the latest visible message")
+        self.progress(
+            f"Fresh run: discarded {discarded} unfinished task(s); archived {reviews} old review capture(s); "
+            "checking the latest visible message"
+        )
+        self.verified_baseline = self.baseline
         self.start_screen(self.baseline, self.baseline, startup=True)
 
     def begin_job(self, job):

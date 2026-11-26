@@ -27,10 +27,12 @@ class SavedImageWorkflow:
         text_preview,
         llm_factory=create_incoming_llm,
         operations_factory=create_unified_operations,
+        api_response=lambda _: None,
     ):
         self.config, self.queue, self.jobs, self.journal = config, queue, jobs, journal
         self.cancel, self.progress, self.text_preview = cancel, progress, text_preview
         self.llm_factory, self.operations_factory = llm_factory, operations_factory
+        self.api_response = api_response
 
     def queue_key(self):
         destination = [
@@ -86,9 +88,9 @@ class SavedImageWorkflow:
             if claimed is None or claimed["job_id"] != job_id:
                 raise AgentError("This image test is not ready; stop and restart the application")
             llm = self.llm_factory(self.config)
-            processor = UnifiedProcessor(
-                self.journal, self.operations_factory(self.config), self.progress
-            )
+            operations = self.operations_factory(self.config)
+            operations.response_observer = lambda event: self.api_response({"chat": "Image test", **event})
+            processor = UnifiedProcessor(self.journal, operations, self.progress)
             plan = self.journal.get(job_id + ":plan")
             if plan and any(self.journal.get(f"{job_id}-{i}:api") is not None for i in range(len(plan))):
                 raise AgentError("This image already has an API attempt; check its operation history before resubmitting")

@@ -1,5 +1,20 @@
 # Validation and Windows acceptance
 
+## rc.54 local Windows build — 2026-11-26
+
+Built the Windows x64 executable locally with cached Windows Python 3.12.10
+and PyInstaller under Wine. Both source and packaged startup checks passed all
+ten checks. PE inspection confirmed GUI subsystem, x64 architecture and rc.54
+version metadata; all 60 bundled application modules matched the release source.
+
+The full test suite under Wine produced **913 passed and 3 failed**. The failures
+were the native read-only transcript test and the two real QML accessibility
+helper cases. All three also failed when rerun against unchanged rc.53 source
+in the same Wine environment. Live KakaoTalk capture and accessibility still
+require on-device Windows validation; this is a prerelease.
+
+Executable SHA-256: `50539cbd82c05f1a9d7ba19eabdd3103208028f42079dee0dd70e7f05411f7b2`.
+
 ## Windows release validation
 
 [Release v0.1.0-rc.24](https://github.com/prof-lijar/ax-project/releases/tag/kakao-capture-agent-v0.1.0-rc.24) was built and published on 2026-11-19 by [Windows Actions run 44465545991](https://github.com/prof-lijar/ax-project/actions/runs/44465545991).
@@ -15,6 +30,51 @@ The first Windows attempt passed 358 tests but the legacy UIA-helper integration
 Actual KakaoTalk capture/scrolling and test-reply delivery, a clean Windows 10/11 PC, sign-in startup, mixed-DPI selection, and the soak gate below still require manual validation. The release is therefore marked as a prerelease.
 
 ## Automated validation
+
+### Device commands match the web request — 2026-11-26
+
+The affected suites passed **637 tests, with 22 platform-dependent cases
+skipped**; Ruff and whitespace checks passed. The direct-device regression
+uses `이은경/헌릉로8길58/전원연결` and the supplied reply with AS skipped and
+the member note already present. Both live processors send exactly
+`workflow_id`, original `message`, and `confirmed_name: null` through a mock
+HTTP transport, without a second LLM call. All six slash-field orders are
+covered. A minimal device response containing workflow identity, `ok: true`
+and `response` also succeeds without optional receipt metadata or a duplicate
+Kakao field. Existing delivery tests assert the three-field HTTP payload and
+the exact API response handed to the composer.
+
+No request was sent to the real LAN API during these tests. A Windows rebuild
+and on-device capture/delivery check are still required.
+
+### Run Agent fresh restart and API JSON diagnostics — 2026-11-26
+
+The affected automation, queue, API contract and GUI suites passed **524 tests,
+with 22 platform-dependent cases skipped**. Ruff and whitespace checks passed.
+New regressions cover archiving two old review captures on restart while
+processing the unchanged latest message, follow-up requests after a successful
+reply, preserving the comparison baseline after exhausted screening, startup
+screening recovery, and live status updates without polling log spam.
+
+Continuous-processing tests hold keyword screening and the first API operation
+open while 40 changed frames arrive. Exactly 20 keyword-matched messages are
+saved and processed in order; the 20 ordinary messages create no workflow jobs
+or saved images. Later requests continue even when the first API call fails.
+Additional checks cover temporary-frame bounds, Stop clearing the buffer,
+focus loss before typing without API replay, and other chats continuing while
+one chat retries focus.
+
+API tests verify raw successful, contract-invalid, HTTP-error and non-JSON bodies
+reach the debug viewer without login/account responses. Qt tests cover worker
+signals, complete JSON documents, Korean text, copy, clear and bounded history.
+The new tab was also inspected offscreen in the full application window.
+
+The full suite was interrupted after stalling in the existing
+`tests/test_api.py::test_upload_worker_exhausts_retries_without_losing_image`
+test; the affected suites completed separately. Native Windows focus recovery,
+live vision extraction and KakaoTalk delivery still need validation with a
+rebuilt executable. No live API operations or chat messages were sent during
+these tests.
 
 ### Drag-and-drop image selection — 2026-11-23
 
@@ -418,3 +478,5 @@ Coverage includes all five failure outcomes across eight workflows; consistent o
 SMS tests distinguish provider acceptance from actual delivery, test routing, sandbox use, and partial uncertainty. Boundary tests enforce the combined API-plus-SMS 2,000-character limit and preserve oversized candidates for review. Native KakaoTalk delivery remains a manual Windows acceptance check. Build validation for rc.53 is recorded in `docs/unified-response-contract-and-delivery-audit.md`.
 
 The complete isolated Linux suite passed **847 tests with 27 platform skips** in 19.63 seconds. It ran outside the restricted sandbox to allow the local loopback/threading tests to complete. This validates the release source, not native Windows interaction.
+
+The rc.53 native Windows build passed all **874 tests** plus source and packaged startup checks in [run 45779269069](https://github.com/prof-lijar/ax-project/actions/runs/45779269069). The published EXE, checksum, and startup-report digests match the verified local files.

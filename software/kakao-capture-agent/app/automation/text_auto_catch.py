@@ -10,7 +10,7 @@ from app.api.workflow_llm import check_cancel
 from app.automation.auto_catch import AutoCatchWorkflow
 from app.automation.text_changes import appended_text
 from app.automation.windows_chat_text import WindowsChatText
-from app.models import AgentError
+from app.models import AgentError, ForegroundLost
 from app.storage.chat_paths import chat_queue_key
 from app.storage.text_queue import TextQueue
 
@@ -233,12 +233,16 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                 "composer_cleared" if self.sender.composer_cleared else "submitted_unconfirmed",
                 reply, observation,
             )
-        except Exception:
+        except Exception as error:
             # A refused empty-composer/focus check has not attempted delivery.
             # Keep that job for explicit restart; partial input still needs review.
             status = "pending" if getattr(self.sender, "input_started", True) is False else "review"
             self.jobs.finish(self.job["job_id"], status)
             self.record_send_outcome("not_attempted" if status == "pending" else "uncertain", reply)
+            if isinstance(error, ForegroundLost) and status == "pending":
+                # No input occurred: retain the prepared reply for focus recovery,
+                # without repeating the API call or requiring a fresh run.
+                self.sending, self.active = False, True
             raise
         if not self.sender.composer_cleared:
             self.progress(
