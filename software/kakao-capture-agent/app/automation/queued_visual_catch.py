@@ -33,7 +33,9 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         clock=time.monotonic,
         text_preview=lambda _: None,
         jobs_factory=ImageReplyQueue,
+        rotating_windows=False,
     ):
+        self.rotating_windows = rotating_windows
         super().__init__(
             desktop,
             capture,
@@ -87,7 +89,8 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
                 self.config,
                 change_detection=True,
                 difference_threshold=self.config.incoming_difference_threshold,
-                debounce_seconds=0.3,
+                # In a rotation the next visit can be several messages later.
+                debounce_seconds=0 if self.rotating_windows else 0.3,
                 max_debounce_seconds=1,
             )
         )
@@ -124,10 +127,13 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         if not self.detector.ready(frame, self.clock()):
             return
         png = encode_png(frame)
-        job_id, path = self.enqueue_capture(self.baseline, png)
+        self.observe_change(self.baseline, png)
         self.check()
         self.accept(frame, png)
         self.preview(png)
+
+    def observe_change(self, before, after):
+        job_id, path = self.enqueue_capture(before, after)
         self.queue.event("auto_visual_queued", job_id)
         self.progress(f"Display change captured and queued: {path}")
         self.progress(
@@ -153,7 +159,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
     def analyze_job(self, llm, job, cancel):
         return llm.classify(job["before_png"], job["after_png"], cancel, batch=True)
 
-    def tick(self):
+    def capture_changes(self):
         self.check()
         if not self.active:
             raise AgentError("Run Agent (auto) is not armed")
@@ -161,6 +167,9 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
         # Capture is independent of inference and reply cooldown. Sending is still
         # serialized on this thread; no keyboard/mouse actions run concurrently.
         self.collect()
+
+    def process_queue(self):
+        self.check()
         self.finish_job()
         if self.worker is None and self.job is None and self.clock() >= self.next_reply_at:
             job = self.jobs.claim(self.chat_key)
@@ -171,4 +180,7 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
             f"Watching screenshots; {self.jobs.count(self.chat_key)} queued; "
             f"{reviews} set aside for review; {self.reply_count} replies submitted"
         )
-        return None
+
+    def tick(self):
+        self.capture_changes()
+        self.process_queue()

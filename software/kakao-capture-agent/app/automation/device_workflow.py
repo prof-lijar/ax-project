@@ -5,10 +5,10 @@ import json
 from dataclasses import asdict
 
 from app.api.device_request import CLARIFY, extract_requests
-from app.api.incoming_llm import IncomingMessage
 from app.api.operations_client import create_operations
 from app.api.workflow_llm import check_cancel
-from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
+from app.api.workflow_requests import device_action_keyword
+from app.automation.keyword_visual_catch import KeywordVisualCatchWorkflow
 from app.models import AgentError, Cancelled
 from app.storage.operation_journal import OperationJournal
 
@@ -84,7 +84,8 @@ class DeviceProcessor:
         return self.journal.get(job_id + ":reply")
 
 
-class DeviceWorkflow(QueuedVisualCatchWorkflow):
+class DeviceWorkflow(KeywordVisualCatchWorkflow):
+    action_keyword = staticmethod(device_action_keyword)
     greeting = "[AI] 기기위치조정/전원연결 요청을 보내주세요. 대상자 이름 / 주소 / 작업을 한 메시지로 보내주시면 처리하겠습니다."
 
     def __init__(self, *args, activity=lambda _: None, **kwargs):
@@ -119,11 +120,6 @@ class DeviceWorkflow(QueuedVisualCatchWorkflow):
     def begin_job(self, job):
         # Each worker keeps its processor/destinations even if Stop starts a new mode.
         super().begin_job(dict(job, processor=self.processor))
-
-    def analyze_job(self, llm, job, cancel):
-        if job["processor"].journal.get(job["job_id"] + ":plan") is not None:
-            return IncomingMessage("incoming", "저장된 요청 처리 결과")
-        return super().analyze_job(llm, job, cancel)
 
     def answer_job(self, llm, incoming, job, cancel):
         return job["processor"].answer(llm, incoming, job["job_id"], cancel)

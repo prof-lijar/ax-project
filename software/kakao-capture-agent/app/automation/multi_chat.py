@@ -69,6 +69,7 @@ class MultiChatWorkflow:
                 # Share storage without re-running crash recovery while another
                 # chat has an in-flight job. Keys still isolate every chat's FIFO.
                 jobs_factory=lambda _: base_workflow.jobs,
+                rotating_windows=True,
             )
             self.workflows.append(workflow)
 
@@ -121,19 +122,21 @@ class MultiChatWorkflow:
         self.check()
         if not self.active:
             raise AgentError("Multi-chat monitoring is not armed")
-        for index, workflow in enumerate(self.workflows):
-            check_cancel(self.cancel)
-            try:
-                # tick activates and verifies this exact window, captures it, then
-                # sends only this chat's completed reply. Inference runs separately.
-                workflow.tick()
-            except Cancelled:
-                raise
-            except AgentError as error:
-                # Do not let the single-chat focus recovery activate the primary
-                # window for a failure belonging to a different conversation.
-                raise AgentError(f"Chat {index + 1}: {error}; all chats paused") from error
+        # Capture every window before a slow composer can occupy the desktop.
+        # finish_job independently activates the originating window before typing.
+        self.run_round(workflow.capture_changes for workflow in self.workflows)
+        self.run_round(workflow.process_queue for workflow in self.workflows)
         self.waiting_reason = (
             f"Watching {len(self.workflows)} chats in rotation; "
             f"{self.reply_count} replies submitted"
         )
+
+    def run_round(self, actions):
+        for index, action in enumerate(actions, 1):
+            check_cancel(self.cancel)
+            try:
+                action()
+            except Cancelled:
+                raise
+            except AgentError as error:
+                raise AgentError(f"Chat {index}: {error}; all chats paused") from error

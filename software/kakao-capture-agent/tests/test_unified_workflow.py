@@ -13,7 +13,7 @@ from app.api.unified_operations import (
     UnifiedOperationsClient,
     parse_unified_result,
 )
-from app.api.workflow_requests import analyze_request, parse_analysis, parse_sources
+from app.api.workflow_requests import analyze_request, explicit_device_request, parse_analysis, parse_sources
 from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
 from app.models import AgentError, Cancelled
 from app.storage.image_reply_queue import ImageReplyQueue
@@ -105,6 +105,11 @@ def test_model_semantic_decision_becomes_grounded_args(source, evidence, action)
         with pytest.raises(IncomingAnalysisError):
             parse_analysis(json.dumps({**fields, **change}), source)
     assert parse_analysis(json.dumps(dict.fromkeys(fields)), source) is None
+
+
+def test_explicit_device_request_preserves_expanded_road_address():
+    address = "서울 서초구 헌릉로 8길 58 (서초더샵포레)"
+    assert explicit_device_request(f"위치조정/가상인/{address}")["address"] == address
 
 
 def test_analyze_request_calls_model_for_natural_wording():
@@ -396,7 +401,7 @@ def test_default_worker(config, queue, region):
     ("incoming", MESSAGE, True),
     ("incoming", "기기" + MESSAGE, True),
     ("incoming", POWER_MESSAGE, True),
-    ("incoming", NATURAL_MESSAGE, True),
+    ("incoming", NATURAL_MESSAGE, False),
     ("incoming", "안녕하세요", False),
     ("incoming", "정보수정/이영희/전화번호 변경", False),
     ("outgoing", MESSAGE, False),
@@ -460,6 +465,7 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
     unified.sender.send.assert_not_called()
     operations.run.assert_not_called()
     assert unified.active
+    unified.screening.result(timeout=2)
     w.service.command("stop")
     w.service.dispatch(w.service.commands.get_nowait())
     w.service.dispatch("auto_catch")
@@ -482,7 +488,7 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
         assert w.sent == []
         unified.sender.send.assert_not_called()
         operations.run.assert_not_called()
-    w.llm.classify_latest.assert_called_once()
+    assert w.llm.classify_latest.call_count == 2
 
     # Each click extracts the latest visible message again, even on the identical screen.
     w.service.command("stop")
@@ -491,7 +497,7 @@ def test_screenshot_to_api_reply_keeps_watching(watching, monkeypatch, kind, tex
     w.service.poll_auto_catch()
     finish(w)
     assert len(w.sent) == int(should_act)
-    assert w.llm.classify_latest.call_count == 2
+    assert w.llm.classify_latest.call_count == 3
 
 
 @pytest.mark.parametrize("prior_status", ["sent", "submitted", "review", "pending"])

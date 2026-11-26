@@ -19,6 +19,7 @@ class CaptureReviewRequired(AgentError):
 
 class ImageReplyQueue(TextQueue):
     table = "image_reply_queue"
+    claim_order = "coalesce(parent_capture_id, id), id"
     # Review is a side queue, never an eligible job or an ordering barrier.
     active_statuses = ("pending", "processing", "sending")
     # Reanalyzing the same immutable screenshots indefinitely cannot unblock FIFO.
@@ -28,6 +29,12 @@ class ImageReplyQueue(TextQueue):
         self.images = storage.images / "auto_catch"
         self.images.mkdir(parents=True, exist_ok=True)
         super().__init__(storage)
+        with storage.lock, storage.connect() as db:
+            columns = db.execute("PRAGMA table_info(image_reply_queue)").fetchall()
+            if not any(column["name"] == "parent_capture_id" for column in columns):
+                db.execute("ALTER TABLE image_reply_queue ADD COLUMN parent_capture_id INTEGER")
+            if not any(column["name"] == "incoming" for column in columns):
+                db.execute("ALTER TABLE image_reply_queue ADD COLUMN incoming TEXT")
         self.maintain()
 
     def paths(self, payload):
@@ -41,7 +48,8 @@ class ImageReplyQueue(TextQueue):
         except (ValueError, KeyError, TypeError):
             raise AgentError("Queued screenshot metadata is invalid; review required") from None
 
-    def enqueue_pair(self, chat_key, before, after, *, mode="changes", folder=None, fresh_start=False):
+    def enqueue_pair(self, chat_key, before, after, *, mode="changes", folder=None, fresh_start=False,
+                     preserve_pending=False, incoming=None, captured_at=None):
         if mode not in ("changes", "latest") or (fresh_start and mode != "latest"):
             raise ValueError("Unsupported screenshot analysis mode")
         hashes = [hashlib.sha256(png).hexdigest() for png in (before, after)]
@@ -57,10 +65,8 @@ class ImageReplyQueue(TextQueue):
             db.execute("BEGIN IMMEDIATE")
             if fresh_start:
                 # Retire the old run only if the new snapshot commits successfully.
-                db.execute(
-                    f"UPDATE {self.table} SET status='ignored' "
-                    "WHERE chat_key=? AND status IN ('pending','processing')", (chat_key,)
-                )
+                if not preserve_pending:
+                    self.retire_pending(db, chat_key)
                 db.execute(
                     f"UPDATE {self.table} SET status='review' WHERE chat_key=? AND status='sending'",
                     (chat_key,),
@@ -73,7 +79,8 @@ class ImageReplyQueue(TextQueue):
                 if previous:
                     return previous["job_id"], self.paths(previous["text"])[1]
             count = db.execute(
-                f"SELECT count(*) FROM {self.table} WHERE status IN ({self.status_placeholders})",
+                f"SELECT count(DISTINCT coalesce(parent_capture_id,id)) FROM {self.table} "
+                f"WHERE status IN ({self.status_placeholders})",
                 self.active_statuses,
             ).fetchone()[0]
             if count >= 1000:
@@ -111,10 +118,18 @@ class ImageReplyQueue(TextQueue):
             # outcomes leave PNGs available for review rather than deleting them.
             job_id = str(uuid4())
             db.execute(
-                f"INSERT INTO {self.table}(job_id,chat_key,text,status,created_at) VALUES(?,?,?,'pending',?)",
-                (job_id, chat_key, text, time.time()),
+                f"INSERT INTO {self.table}(job_id,chat_key,text,status,created_at,incoming) "
+                "VALUES(?,?,?,'pending',?,?)",
+                (job_id, chat_key, text, time.time() if captured_at is None else captured_at,
+                 json.dumps(incoming, ensure_ascii=False) if incoming is not None else None),
             )
             return job_id, directory / (hashes[1] + ".png")
+
+    def retire_pending(self, db, chat_key):
+        db.execute(
+            f"UPDATE {self.table} SET status='ignored' "
+            "WHERE chat_key=? AND status IN ('pending','processing')", (chat_key,)
+        )
 
     def load_images(self, job):
         try:

@@ -15,12 +15,12 @@ from app.api.workflow_requests import (
     installation_header,
     kakao_command,
     plan_texts,
+    workflow_action_keyword,
 )
 from app.automation.device_workflow import UNCERTAIN
 from app.automation.installation_sms import InstallationSMS
-from app.automation.queued_visual_catch import QueuedVisualCatchWorkflow
+from app.automation.keyword_visual_catch import KeywordVisualCatchWorkflow
 from app.models import AgentError, Cancelled
-from app.storage.chat_paths import chat_folder_name
 from app.storage.operation_journal import OperationJournal
 
 
@@ -29,7 +29,8 @@ class UnifiedProcessor:
         self.installation_sms = installation_sms
         self.journal, self.operations, self.activity = journal, operations, activity
 
-    def answer(self, llm, incoming, job_id, cancel, *, startup_chat_key=None, received_date=""):
+    def answer(self, llm, incoming, job_id, cancel, *, startup_chat_key=None, received_date="",
+               queue_each_request=False):
         check_cancel(cancel)
         if incoming.kind != "incoming" or automated_text(incoming.text):
             return None
@@ -58,12 +59,16 @@ class UnifiedProcessor:
                 if command:
                     plan[index] = command
             check_cancel(cancel)
-            self.journal.claim(plan_key, job_id, plan)
+            if queue_each_request and len(plan) > 1:
+                self.journal.queue_requests(job_id, plan)
+            else:
+                self.journal.claim(plan_key, job_id, plan)
             plan = self.journal.get(plan_key)
         replies = []
+        live_capture = queue_each_request or startup_chat_key is not None
         for index, message in enumerate(plan_texts(plan)):
             check_cancel(cancel)
-            if automated_text(message):
+            if automated_text(message) or (live_capture and not workflow_action_keyword(message)):
                 continue
             key = f"{job_id}-{index}:api"
             # Analyze before claiming an external action. Malformed model output
@@ -143,8 +148,9 @@ class UnifiedProcessor:
         return reply
 
 
-class UnifiedWorkflow(QueuedVisualCatchWorkflow):
+class UnifiedWorkflow(KeywordVisualCatchWorkflow):
     greeting = None
+    action_keyword = staticmethod(workflow_action_keyword)
 
     def __init__(self, *args, activity=lambda _: None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -173,19 +179,12 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
         self.processor = self.processor_factory()
         super().arm()
 
-    def enqueue_capture(self, before, after, *, mode="changes"):
-        job_id, path = super().enqueue_capture(before, after, mode=mode)
+    def on_action_queued(self, job_id):
         self.installation_sms.record_routing(job_id)
-        return job_id, path
 
     def queue_initial_capture(self):
-        job_id, path = self.jobs.enqueue_pair(
-            self.chat_key, self.baseline, self.baseline, mode="latest",
-            folder=chat_folder_name(self.config), fresh_start=True,
-        )
-        self.installation_sms.record_routing(job_id)
-        self.queue.event("auto_visual_startup", job_id)
-        self.progress(f"Fresh run: checking the latest visible message from this capture: {path}")
+        self.start_screen(self.baseline, self.baseline, startup=True)
+        self.progress("Checking the latest visible message for an action keyword")
 
     def begin_job(self, job):
         super().begin_job(dict(job, processor=self.processor))
@@ -194,9 +193,7 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
         plan = job["processor"].journal.get(job["job_id"] + ":plan")
         if plan is not None:
             return IncomingMessage("incoming", "\n".join(plan_texts(plan)))
-        if json.loads(job["text"]).get("mode") == "latest":
-            return llm.classify_latest(job["after_png"], cancel)
-        return llm.classify(job["before_png"], job["after_png"], cancel, batch="bubbles")
+        return super().analyze_job(llm, job, cancel)
 
     def answer_job(self, llm, incoming, job, cancel):
         startup = json.loads(job["text"]).get("mode") == "latest"
@@ -206,6 +203,7 @@ class UnifiedWorkflow(QueuedVisualCatchWorkflow):
             job["job_id"],
             cancel,
             startup_chat_key=job["chat_key"] if startup else None,
+            queue_each_request=not startup,
             received_date=("" if startup else datetime.fromtimestamp(
                 job["created_at"], timezone(timedelta(hours=9))
             ).date().isoformat()),

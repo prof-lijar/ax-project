@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app.api.incoming_llm import IncomingMessage
+from app.api.incoming_llm import IncomingMessage, parse_incoming
 from app.api.operations_client import OperationsResult
 from app.api.workflow_llm import check_cancel
 from app.automation.monitoring_service import MonitoringService
@@ -232,11 +232,106 @@ def fleet(config, queue, region, monkeypatch):
 
 
 def complete_round(fleet):
+    admit_screens(fleet)
     for workflow in fleet.service.auto_catch.workflows:
         if workflow.worker:
             workflow.worker.join(2)
             assert not workflow.worker.is_alive()
     fleet.service.poll_auto_catch()
+
+
+def admit_screens(fleet):
+    for workflow in fleet.service.auto_catch.workflows:
+        if getattr(workflow, "screening", None) is not None:
+            workflow.screening.result(timeout=2)
+            workflow.finish_screen()
+
+
+def test_only_keyword_bubbles_enter_each_windows_persistent_queue(fleet):
+    f = fleet
+    f.config.select_agent_chats(targets(2))
+    create = f.service.create_multi_chat
+    commands = ("전원연결/가상인/가상로 1", "가상인/전원연결/가상로 1", "가상인/가상로 1/전원연결")
+
+    def create_group(mode):
+        group = create(mode)
+        for workflow in group.workflows:
+            llm = workflow.llm_factory(None)
+            llm.classify_latest = lambda *_: IncomingMessage("incoming", "안녕하세요")
+            workflow.llm_factory = lambda _, llm=llm: llm
+        return group
+
+    f.service.create_multi_chat = create_group
+    f.service.dispatch("auto_catch")
+    admit_screens(f)
+    first, second = f.service.auto_catch.workflows
+
+    def rows():
+        with f.queue.connect() as db:
+            return db.execute("SELECT chat_key,incoming FROM image_reply_queue ORDER BY id").fetchall()
+
+    first.llm.classify = lambda *a, **kw: IncomingMessage("incoming", "오늘 회의 시간 알려주세요")
+    second.llm.classify = lambda *a, **kw: IncomingMessage("outgoing", commands[0])
+    for workflow in (first, second):
+        workflow.desktop.frame[:] = 110
+        workflow.capture_changes()
+    admit_screens(f)
+    assert not rows() and not list(first.jobs.images.rglob("*.png"))
+
+    bubbles = ("감사합니다", commands[0], "다음에 봐요", commands[1], commands[2])
+    second.llm.classify = lambda *a, **kw: IncomingMessage(
+        "incoming", "\n".join(bubbles), bubbles=bubbles, bubble_senders=("A", "B", "C", "D", "E")
+    )
+    second.desktop.frame[:] = 170
+    second.capture_changes()
+    admit_screens(f)
+    row, = rows()
+    result = json.loads(row["incoming"])
+    assert row["chat_key"] == second.chat_key
+    assert result["bubbles"] == list(commands) and result["bubble_senders"] == ["B", "D", "E"]
+    assert len(list(first.jobs.images.rglob("*.png"))) == 1
+    for _ in range(5):
+        f.now[0] += 2
+        f.service.poll_auto_catch()
+        complete_round(f)
+    assert [(chat, request["message"]) for chat, request in f.operations] == [
+        (2, command) for command in commands
+    ]
+    assert len(rows()) == 3 and first.reply_count == 0 and second.reply_count == 3
+
+
+def test_slow_keyword_screen_leaves_other_window_free_to_reply(fleet):
+    f = fleet
+    f.config.select_agent_chats(targets(2))
+    f.service.dispatch("auto_catch")
+    admit_screens(f)
+    f.service.poll_auto_catch()
+    complete_round(f)
+    first, second = f.service.auto_catch.workflows
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_read(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return IncomingMessage("incoming", "감사합니다")
+
+    first.llm.classify = slow_read
+    try:
+        f.now[0] += 2
+        first.desktop.frame[:] = 100
+        second.desktop.frame[:] = 170
+        f.service.poll_auto_catch()
+        assert entered.wait(2)
+        if second.screening is not None:
+            second.screening.result(timeout=2)
+        second.process_queue()
+        if second.worker is not None:
+            second.worker.join(2)
+        f.service.poll_auto_catch()
+        assert first.jobs.count(first.chat_key) == 0 and not first.screening.done()
+        assert f.sends[-1] == (2, "Response for Person170")
+    finally:
+        release.set()
 
 
 def stop(fleet):
@@ -318,6 +413,7 @@ def test_identical_requests_in_three_groups_have_separate_images_and_replies(fle
 
     f.service.create_multi_chat = same_request
     f.service.dispatch("auto_catch")
+    admit_screens(f)
     group = f.service.auto_catch
     with f.queue.connect() as db:
         rows = db.execute("SELECT * FROM image_reply_queue ORDER BY id").fetchall()
@@ -340,6 +436,7 @@ def test_identical_requests_in_three_groups_have_separate_images_and_replies(fle
 def test_wrong_chat_job_is_rejected_before_analysis_or_sending(fleet):
     f = fleet
     f.service.dispatch("auto_catch")
+    admit_screens(f)
     first, second, _ = f.service.auto_catch.workflows
     with f.queue.connect() as db:
         job = dict(
@@ -381,9 +478,87 @@ def test_slow_first_chat_does_not_block_other_chats(fleet):
         release.set()
 
 
+def test_two_windows_queue_bursts_during_slow_operation_and_resume_in_order(fleet):
+    f = fleet
+    f.config.select_agent_chats(targets(2))
+    entered, release = threading.Event(), threading.Event()
+    f.gates[1] = (entered, release)
+    first_power = "가상인 / 경기 광명시 가상로 238 / 전원연결"
+    second_move = "위치조정/가상림/가상로 15"
+    frames = {
+        110: ["[자동 확인]\n" + second_move, first_power, first_power],
+        120: [second_move, second_move],
+        160: [second_move],
+        170: [first_power],
+    }
+
+    def classify(before, after, cancel, *, batch):
+        assert batch == "bubbles"
+        marker = cv2.imdecode(np.frombuffer(after, np.uint8), cv2.IMREAD_COLOR)[0, 0, 0]
+        return parse_incoming(json.dumps({
+            "kind": "incoming", "sender": "", "is_ai": False,
+            "text": [{"text": text} for text in frames[marker]],
+        }), batch=True)
+
+    def poll():
+        f.now[0] += 2
+        f.service.poll_auto_catch()
+
+    try:
+        f.service.dispatch("auto_catch")
+        first, second = f.service.auto_catch.workflows
+        for workflow in (first, second):
+            workflow.llm.classify = classify
+        poll()
+        assert entered.wait(2)
+        second.worker.join(2)
+        for pair in [(110, 120), (160, 170)]:
+            first.desktop.frame[:] = pair[0]
+            second.desktop.frame[:] = pair[1]
+            poll()
+        assert first.jobs.count(first.chat_key) == 3
+        for _ in range(6):
+            if second.worker:
+                second.worker.join(2)
+            poll()
+        assert [r["message"] for chat, r in f.operations if chat == 2] == [
+            "위치조정/Person60/Road60", second_move, second_move, first_power,
+        ]
+        assert all(chat == 2 for chat, _ in f.sends)
+        release.set()
+        first.worker.join(2)
+        poll()  # Deliver the first chat's startup result.
+        poll()  # Claim its first changed capture.
+        first.worker.join(2)
+        poll()  # First power request sent; its sibling and the later capture are still pending.
+        assert first.jobs.count(first.chat_key) == 2
+        stop(f)
+        f.service.dispatch("auto_catch")
+        first, second = f.service.auto_catch.workflows
+        first.llm.classify = classify
+        for _ in range(8):
+            poll()
+            complete_round(f)
+        assert [r["message"] for chat, r in f.operations if chat == 1] == [
+            "위치조정/Person30/Road30", first_power, first_power, second_move,
+        ]
+        assert [text for chat, text in f.sends if chat == 1] == [
+            "Response for Person30", "Response for 가상인", "Response for 가상인", "Response for 가상림",
+        ]
+        assert [text for chat, text in f.sends if chat == 2] == [
+            "Response for Person60", "Response for 가상림", "Response for 가상림", "Response for 가상인",
+        ]
+        for workflow in (first, second):
+            assert workflow.jobs.count(workflow.chat_key) == 0
+            assert workflow.jobs.review_count(workflow.chat_key) == 0
+    finally:
+        release.set()
+
+
 def test_stop_cancels_every_chat_and_restart_retains_queue_without_duplicates(fleet):
     f = fleet
     f.service.dispatch("auto_catch")
+    admit_screens(f)
     keys = [w.chat_key for w in f.service.auto_catch.workflows]
     stop(f)  # Startup jobs were durably captured but not processed.
     assert not f.sends and not f.operations
@@ -420,6 +595,7 @@ def test_stop_during_inference_cancels_all_workers(fleet):
 def test_invalid_second_chat_pauses_all_without_misrouting(fleet):
     f = fleet
     f.service.dispatch("auto_catch")
+    admit_screens(f)
     f.environment.invalid.add(2)
     with pytest.raises(AgentError, match="Chat 2.*all chats paused") as error:
         f.service.poll_auto_catch()
@@ -445,13 +621,13 @@ def test_stop_between_chats_prevents_next_capture(fleet):
     f.service.dispatch("auto_catch")
     group = f.service.auto_catch
     first = group.workflows[0]
-    tick = first.tick
+    capture_changes = first.capture_changes
 
-    def stop_after_tick():
-        tick()
+    def stop_after_capture():
+        capture_changes()
         f.service.command("stop")
 
-    first.tick = stop_after_tick
+    first.capture_changes = stop_after_capture
     f.captures.clear()
     with pytest.raises(Cancelled):
         f.service.poll_auto_catch()

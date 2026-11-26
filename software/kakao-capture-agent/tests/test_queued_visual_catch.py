@@ -109,9 +109,17 @@ def changed(w, marker):
     w.service.poll_auto_catch()
     w.now[0] += 0.5
     w.service.poll_auto_catch()
+    finish_screen(w.workflow)
+
+
+def finish_screen(workflow):
+    if getattr(workflow, "screening", None) is not None:
+        workflow.screening.result(timeout=2)
+        workflow.process_queue()
 
 
 def finish(w):
+    finish_screen(w.workflow)
     if w.workflow.worker:
         w.workflow.worker.join(2)
         assert not w.workflow.worker.is_alive()

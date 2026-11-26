@@ -2,6 +2,9 @@
 
 import json
 import unicodedata
+from uuid import uuid4
+
+from app.models import Cancelled
 
 
 class OperationJournal:
@@ -37,6 +40,36 @@ class OperationJournal:
                 "UPDATE operation_journal SET payload=? WHERE key=?",
                 (json.dumps(payload, ensure_ascii=False), key),
             )
+
+    def queue_requests(self, job_id, plan):
+        """Commit one job per request before the first external action, in capture order."""
+        with self.storage.lock, self.storage.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            capture = db.execute(
+                "SELECT * FROM image_reply_queue WHERE job_id=? AND status='processing'", (job_id,)
+            ).fetchone()
+            if capture is None:
+                raise Cancelled("Capture is no longer being processed")
+            if db.execute("SELECT 1 FROM operation_journal WHERE key=?", (job_id + ":plan",)).fetchone():
+                return
+            for index, request in enumerate(plan):
+                task_id = job_id
+                if index:
+                    task_id = str(uuid4())
+                    db.execute(
+                        "INSERT INTO image_reply_queue(job_id,chat_key,text,status,created_at,parent_capture_id) "
+                        "VALUES(?,?,?,'pending',?,?)",
+                        (task_id, capture["chat_key"], capture["text"], capture["created_at"], capture["id"]),
+                    )
+                    db.execute(
+                        "INSERT INTO operation_journal(key,job_id,payload) "
+                        "SELECT ?,?,payload FROM operation_journal WHERE key=?",
+                        (task_id + ":sms-routing", task_id, job_id + ":sms-routing"),
+                    )
+                db.execute(
+                    "INSERT INTO operation_journal(key,job_id,payload) VALUES(?,?,?)",
+                    (task_id + ":plan", task_id, json.dumps([request], ensure_ascii=False)),
+                )
 
     def reopen_skipped_image(self, job_id, result_key, saved):
         """Reclassify a legacy negative image test only if it never claimed an API call."""

@@ -37,7 +37,11 @@ def kakao_command(message, sender="", received_date=""):
         return None
     action = actions[0]
     if action != "기기교체" and compact(fields[0]) != action:
-        return None
+        # The worksheet endpoint expects the action first. Preserve the relative
+        # order and spelling of every argument when adapting a received command.
+        index = next(i for i, field in enumerate(fields) if compact(field) == action)
+        fields.insert(0, fields.pop(index))
+        message = "/".join(field.strip() for field in fields)
     command = CHAT_COMMANDS[action]
     if len(fields) not in command[1] or not all(field.strip() for field in fields):
         return None
@@ -62,6 +66,15 @@ def installation_header(message):
         return False
     header = message.strip().splitlines()[0]
     return "".join(unicodedata.normalize("NFKC", header).split()) in {"신규설치", "가입자신규설치"}
+
+
+def device_action_keyword(message):
+    text = compact(message)
+    return any(keyword in text for keyword in ACTION_KEYWORDS)
+
+
+def workflow_action_keyword(message):
+    return device_action_keyword(message) or installation_header(message) or kakao_command(message) is not None
 
 
 def has_device_keyword(message):
@@ -95,9 +108,9 @@ def explicit_device_request(message):
         # Restrict the shortcut to a road address. Qualifiers and free-form
         # wording need the intent check before an operation can be submitted.
         if re.fullmatch(
-            r"(?:(?:[가-힣A-Za-z0-9·.]+(?:시|도|군|구|읍|면|동|리)) +)*"
-            r"[가-힣A-Za-z0-9·.]+(?:로|길) *[0-9]+(?: *- *[0-9]+)?"
-            r"(?: +[0-9]+동)?(?: +[0-9]+호)?", address
+            r"(?:(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주|[가-힣A-Za-z0-9·.]+(?:시|도|군|구|읍|면|동|리)) +)*"
+            r"[가-힣A-Za-z0-9·.]+(?:로 +[0-9]+(?:번)?길|로|길) *[0-9]+(?: *- *[0-9]+)?"
+            r"(?:\s*\([가-힣A-Za-z0-9·. ]+\))?(?:,?\s+\d+동)?(?:,?\s+\d+호)?(?:\s*\([가-힣A-Za-z0-9·. ]+\))?", address
         ) and len(address) <= 500:
             return {"message": message, "action": ACTION_KEYWORDS[compact(keyword)],
                     "action_text": keyword, "name": name, "address": address}
@@ -208,6 +221,11 @@ def parse_sources(content, incoming):
 def extract_sources(llm, incoming, cancel):
     if explicit_device_request(incoming.text) or kakao_command(incoming.text):
         return [incoming.text]
+    # Older vision models can return a flat transcript. A run of complete
+    # slash commands has explicit boundaries; keep repetitions in arrival order.
+    lines = [line for line in incoming.text.splitlines() if line.strip()]
+    if len(lines) > 1 and all(explicit_device_request(line) for line in lines):
+        return lines
     if not has_device_keyword(incoming.text) and not any(
         installation_header(line) or kakao_command(line) for line in incoming.text.splitlines()
     ):

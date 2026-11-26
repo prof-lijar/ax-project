@@ -315,11 +315,18 @@ def test_device_mode_queues_while_api_runs_then_replies_and_continues(watching, 
     device.clock = lambda: w.now[0]
     device.llm_factory = lambda _: w.llm
     device.sender = w.sender
+    classify = w.llm.classify
+
+    def power_message(*args, **kwargs):
+        item = classify(*args, **kwargs)
+        return IncomingMessage(item.kind, item.text + " / 전원연결")
+
+    w.llm.classify = power_message
     stages, entered, release = [], threading.Event(), threading.Event()
     monkeypatch.setattr(
         "app.automation.device_workflow.extract_requests",
         lambda llm, incoming, cancel: [
-            {"name": incoming.text, "address": "테스트로1", "action": "전원연결"}
+            {"name": incoming.text.split(" / ")[0], "address": "테스트로1", "action": "전원연결"}
         ],
     )
 

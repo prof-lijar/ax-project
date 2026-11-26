@@ -1,5 +1,11 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.51 — 2026-11-26
+
+Run Agent checks changed chat frames in memory. It saves a screenshot and queues a workflow only when a newly received participant message contains a supported action keyword. Slash commands accept the action keyword first, in the middle, or last. Keep the other worksheet fields in their expected order.
+
+Each selected chat processes its own requests in arrival order. Separate bubbles with identical commands get separate jobs, including when KakaoTalk hides a repeated sender label. Restarting a multi-window run resumes pending requests for those chats. Messages that scroll out of view between readings can still be missed.
+
 ## v0.1.0-rc.50 — 2026-11-25
 
 **Run Agent (auto)** recognizes the Kakao worksheet commands for information updates, guardian additions and corrections, device replacement, collection, loss, installation lookup and fault confirmation. It sends the original message and matching workflow ID to the AX768 unified API. These commands require the matching Nexgent backend and agent-server update.

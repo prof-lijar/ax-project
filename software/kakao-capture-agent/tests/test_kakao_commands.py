@@ -8,10 +8,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.api.incoming_llm import parse_incoming
+from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage, parse_incoming
 from app.api.operations_client import OperationsResult, OperationsSettings
 from app.api.unified_operations import UnifiedOperationsClient
-from app.api.workflow_requests import kakao_command
+from app.api.workflow_requests import extract_sources, kakao_command
 from app.automation.installation_sms import InstallationSMS
 from app.automation.unified_workflow import UnifiedProcessor
 from app.models import AgentError
@@ -87,6 +87,90 @@ def test_capture_attributes_bubble_senders_and_freezes_request_for_replay(queue)
     assert not journal.previously_attempted(
         "chat", kakao_command(second, "다른이", "2026-11-25"), new_job
     )
+
+
+@pytest.mark.parametrize(
+    "second_label",
+    [{}, {"sender": None}, {"sender": ["관리인"]}, {"sender": "관리\n인"}, {"sender": "가" * 101}],
+)
+def test_identical_power_requests_with_unavailable_sender_run_once_per_bubble(queue, second_label):
+    message = "가상인 / 경기 광명시 가상로 238 / 전원연결"
+    body = {
+        "kind": "incoming",
+        "sender": "관리인",
+        "is_ai": False,
+        "text": [{"text": message, "sender": "관리인"}, {"text": message, **second_label}],
+    }
+    incoming = parse_incoming(json.dumps(body), batch=True)
+    assert incoming.bubble_senders == ("관리인", "")
+    jobs = ImageReplyQueue(queue)
+    job, _ = jobs.enqueue_pair("chat", b"before", b"after")
+    operations = Mock()
+    operations.run.side_effect = [OperationsResult("completed", reply) for reply in ("첫째", "둘째")]
+    processor = UnifiedProcessor(OperationJournal(queue), operations)
+    for _ in range(2):
+        assert processor.answer(None, incoming, job, threading.Event()) == "첫째\n\n둘째"
+    requests = [call.args[0] for call in operations.run.call_args_list]
+    assert [(request["action"], request["message"]) for request in requests] == [
+        ("전원연결", message), ("전원연결", message),
+    ]
+
+
+def test_legacy_transcript_of_complete_power_commands_keeps_both_occurrences():
+    message = "가상인 / 경기 광명시 가상로 238 / 전원연결"
+    incoming = IncomingMessage("incoming", f"{message}\n\n{message}")
+    assert extract_sources(None, incoming, threading.Event()) == [message, message]
+
+
+def test_failed_request_in_burst_leaves_following_requests_ready_after_recovery(queue, monkeypatch):
+    jobs = ImageReplyQueue(queue)
+    journal = OperationJournal(queue)
+    original, _ = jobs.enqueue_pair("chat", b"before", b"burst")
+    journal.claim(original + ":sms-routing", original, "captured-routing")
+    later, _ = jobs.enqueue_pair("chat", b"burst", b"next")
+    first = jobs.claim("chat")
+    manager_command = "기기회수/가상인/가상로 1"
+    incoming = parse_incoming(json.dumps({
+        "kind": "incoming", "sender": "", "is_ai": False,
+        "text": [{"text": "전원연결??"}, {"text": manager_command, "sender": "관리인"}],
+    }), batch=True)
+    analyze = Mock(side_effect=IncomingAnalysisError("ambiguous analysis"))
+    monkeypatch.setattr("app.automation.unified_workflow.analyze_request", analyze)
+    api = Mock()
+    processor = UnifiedProcessor(journal, api)
+    with pytest.raises(IncomingAnalysisError):
+        processor.answer(None, incoming, first["job_id"], threading.Event(), queue_each_request=True)
+    api.run.assert_not_called()
+    jobs.finish(original, "review")
+    jobs = ImageReplyQueue(queue)
+    sibling = jobs.claim("chat")
+    key = sibling["job_id"]
+    assert sibling["created_at"] == first["created_at"]
+    assert journal.get(key + ":sms-routing") == "captured-routing"
+    request = kakao_command(manager_command, "관리인")
+    assert journal.get(key + ":plan") == [request]
+    api.run.return_value = OperationsResult("completed", "확인")
+    cancel = threading.Event()
+    assert processor.answer(None, IncomingMessage("incoming", manager_command), key, cancel) == "확인"
+    api.run.assert_called_once_with(request, cancel)
+    jobs.finish(key, "sent")
+    assert jobs.claim("chat")["job_id"] == later
+
+
+@pytest.mark.parametrize("command,args", [
+    ("기기회수", ["가상인", "가상로 1"]),
+    ("정보수정", ["성별", "가상인", "가상로 1", "여성"]),
+    ("보호자 추가", GUARDIAN.split("/")[1:]),
+    ("고장확인", ["00001234"]),
+])
+def test_worksheet_keyword_in_each_slot_reaches_expected_endpoint_payload(command, args):
+    client = UnifiedOperationsClient(OperationsSettings("https://example.test", "admin"), "test")
+    expected = kakao_command("/".join([command, *args]), "관리인", DATE)
+    for index in range(len(args) + 1):
+        message = " / ".join([*args[:index], command, *args[index:]])
+        request = kakao_command(message, "관리인", DATE)
+        payload = client.request_payload(request)
+        assert payload == {**expected, "message": message if index == 0 else expected["message"]}
 
 
 def guardian_response():

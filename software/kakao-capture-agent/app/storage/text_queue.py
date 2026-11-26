@@ -8,6 +8,7 @@ from app.models import AgentError, StorageFull
 
 class TextQueue:
     table = "text_reply_queue"
+    claim_order = "id"
     active_statuses = ("pending", "processing", "sending", "review")
     max_analysis_attempts = None
 
@@ -68,7 +69,7 @@ class TextQueue:
                     (chat_key, self.max_analysis_attempts),
                 )
             row = db.execute(
-                f"SELECT * FROM {self.table} WHERE chat_key=? AND status IN ({self.status_placeholders}) ORDER BY id LIMIT 1",
+                f"SELECT * FROM {self.table} WHERE chat_key=? AND status IN ({self.status_placeholders}) ORDER BY {self.claim_order} LIMIT 1",
                 (chat_key, *self.active_statuses),
             ).fetchone()
             if row is None:
