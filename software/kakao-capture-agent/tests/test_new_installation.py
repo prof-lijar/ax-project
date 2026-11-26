@@ -11,7 +11,7 @@ from app.api.incoming_llm import IncomingMessage, parse_incoming
 from app.api.operations_client import OperationsSettings
 from app.api.unified_operations import UnifiedOperationsClient, parse_unified_result
 from app.api.workflow_requests import installation_header
-from app.automation.installation_sms import InstallationSMS, notification_reply
+from app.automation.installation_sms import SMS_SANDBOX, SMS_TEST, SMS_UNCERTAIN, InstallationSMS
 from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
 from app.config import load, save
 from app.models import AgentError, Cancelled
@@ -40,10 +40,7 @@ GUIDE = "《설치 안내》\n" + "가나다라마\n" * 230
 OK = "[자동 확인]\n기기신호 확인 완료입니다.\n내용 기재 및 보호자님께 앱설치 문자 발송 완료했습니다.\n\n감사합니다. :)"
 SUMMARY = "[보류 사유 · 가입자 명부]\n입력한 주소를 확인해 주세요."
 LABELS = ("가입자 명부 시트 기재", "디바이스 설치 시트 기재", "마스터페이지 가입자 및 보호자 추가")
-SUCCESS = ("[자동 확인]\n가상인님 신규설치된 기기신호 확인 완료입니다.\n\n■ 반영 영역\n\n"
-           "1.가입자 명부 시트 기재 : 완료\n2.디바이스 설치 시트 기재 : 완료\n"
-           "3.마스터페이지 가입자 및 보호자 추가 : 완료\n4.보호자 앱설치문자 발송 : 완료\n\n감사합니다.")
-GUARDIAN_NOTICE = "보호자님께 앱 설치 안내 문자를 성공적으로 발송했습니다.\n보호자 번호 끝자리: 2000, 2001"
+GUARDIAN_NOTICE = "■ 보호자 안내 문자\n앱 설치 안내 문자 발송 요청이 정상 접수되었습니다.\n보호자 번호 끝자리 : 2000, 2001"
 
 
 def result(status="completed"):
@@ -52,16 +49,15 @@ def result(status="completed"):
         "api_version": "1",
         "workflow_id": "new_installation",
         "status": status,
-        "response": "등록을 완료했습니다." if complete else "등록을 확인해 주세요.",
+        "response": "  API 등록 완료\n" if complete else "  API 등록 확인 요청\n",
+        "id": "installation-run", "ok": complete,
+        "issues": [] if complete else [{"code": "REGISTRATION_BLOCKED", "stage": "roster", "message": "주소 확인 필요", "next_action": "입력한 주소를 확인하세요"}],
         "verified": complete,
         "guardian_count": 2,
         "subscriber_name": "가상인",
         "signal_status": "confirmed" if complete else "not_checked",
         "issue_summary": "" if complete else SUMMARY,
-        "kakao-reply": [
-            {"stage": key, "label": label, "status": "완료" if complete else ("보류" if key == "roster" else "미진행")}
-            for key, label in zip(("roster", "inventory", "member"), LABELS)
-        ],
+        "kakao-reply": "  API 등록 완료\n" if complete else "  API 등록 확인 요청\n",
         "receipts": {
             k: {
                 "verified": complete,
@@ -153,6 +149,7 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
         w.service.stop_input,
         lambda _: None,
         w.logs.append,
+        activity=w.logs.append,
     )
     w.workflow = w.service.auto_catch = w.service.general_auto_catch = flow
     flow.llm_factory = lambda _: w.llm
@@ -177,7 +174,7 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
     assert events.count("registration") == events.count("kakao") == 1
     (reply,) = w.sent
     if status != "completed":
-        assert reply == "[자동 확인]\n" + SUMMARY and not sends
+        assert reply == result(status)["kakao-reply"] and not sends
     else:
         expected = TEST_NUMBERS if mode == "test" else GUARDIANS
         assert {p["destinations"][0]["to"] for p in sends} == set(expected)
@@ -194,26 +191,13 @@ def test_auto_registration_through_chat_reply(watching, monkeypatch, mode, statu
                 for p in parts
             )
             assert "".join(p["text"] for p in parts) == GUIDE
+        notice = {"guardian": GUARDIAN_NOTICE, "test": SMS_TEST, "sandbox": SMS_SANDBOX, "partial": SMS_UNCERTAIN}[mode]
+        assert reply == result()["response"] + "\n\n" + notice
         if mode == "guardian":
-            assert reply == SUCCESS
-            assert all(number not in reply for number in GUARDIANS)
+            assert any(GUARDIAN_NOTICE in log for log in w.logs)
         else:
-            expected_text = {
-                "test": "테스트 번호로만",
-                "sandbox": "샌드박스",
-                "partial": "결과를 확인",
-            }
-            assert expected_text[mode] in reply and "발송 완료했습니다" not in reply
-            assert "성공적으로 발송했습니다" not in reply
-
-
-def test_guardian_notice_with_custom_server_reply():
-    data = {"kakao_reply": "신규설치가 등록되었습니다.", "response": "등록 완료"}
-    reply = notification_reply(data, GUARDIAN_NOTICE, guardian_request_accepted=True)
-    assert reply == data["kakao_reply"] + "\n\n" + GUARDIAN_NOTICE
-    data["kakao_reply"] = "가" * 2000
-    reply = notification_reply(data, GUARDIAN_NOTICE, guardian_request_accepted=True)
-    assert len(reply) <= 2000 and data["response"] in reply and GUARDIAN_NOTICE in reply
+            expected_text = {"test": "테스트 번호로", "sandbox": "샌드박스", "partial": "needs review"}
+            assert any(expected_text[mode] in log for log in w.logs)
 
 
 @pytest.mark.parametrize(
@@ -222,11 +206,8 @@ def test_guardian_notice_with_custom_server_reply():
         {"verified": False},
         {"guardian_count": 1},
         {"kakao-reply": ""},
-        {"kakao-reply": result()["kakao-reply"] + [{"stage": "sms", "label": "문자", "status": "완료"}]},
-        {"kakao-reply": list(reversed(result()["kakao-reply"]))},
-        {"kakao-reply": [{**result()["kakao-reply"][0], "status": "보류"}, *result()["kakao-reply"][1:]]},
-        {"signal_status": "not_checked"},
-        {"subscriber_name": "가상인\n추가"},
+        {"kakao-reply": [{"stage": "roster", "status": "완료"}]},
+        {"kakao-reply": None},
         {"receipts": {}},
         {"sms": {"should_send": False}},
         {"sms": {**result()["sms"], "recipients": GUARDIANS[:1] * 2}},
@@ -243,7 +224,7 @@ def test_contract_identity_bound_to_request():
         client.parse_run_result(result(), {"workflow_id": "device_adjustment_power"})
     with pytest.raises(AgentError, match="different workflow"):
         client.parse_run_result(
-            {**result(), "workflow_id": "other"}, {"workflow_id": "new_installation"}
+            {**result(), "workflow_id": "other", "sms": {"should_send": False, "recipients": [], "title": "", "text": ""}}, {"workflow_id": "new_installation"}
         )
 
 
@@ -260,8 +241,8 @@ def test_explicit_heading_and_batch_boundaries(monkeypatch, queue, config):
     monkeypatch.setattr("app.automation.unified_workflow.analyze_request", lambda *a: None)
     job, _ = jobs.enqueue_pair("chat", b"a", b"b")
     msg = incoming("예시입니다.\n" + FORM, FORM)
-    for _ in range(2):
-        assert SUMMARY in p.answer(None, msg, job, threading.Event())
+    assert p.answer(None, msg, job, threading.Event()) == result("blocked")["kakao-reply"]
+    assert p.answer(None, msg, job, threading.Event()) is None
     assert api.run.call_count == 1 and api.run.call_args.args[0]["message"] == FORM
     assert (
         p.answer(None, incoming(FORM), "startup", threading.Event(), startup=True)
@@ -271,7 +252,7 @@ def test_explicit_heading_and_batch_boundaries(monkeypatch, queue, config):
     # The standalone image test displays the AX768 result and omits guardian notification.
     assert (
         UnifiedProcessor(journal, api).answer(None, incoming(FORM), "image", threading.Event())
-        == result("blocked")["response"]
+        == result("blocked")["kakao-reply"]
     )
     assert api.run.call_count == 3
 
@@ -294,7 +275,7 @@ def test_no_guardian_fallback_or_replay(monkeypatch, queue, config, scenario):
     if scenario == "interrupted":
         with pytest.raises(Cancelled):
             sms.reply(data, "job", "job-0:sms", threading.Event())
-    assert "결과를 확인" in sms.reply(data, "job", "job-0:sms", threading.Event())
+    assert sms.reply(data, "job", "job-0:sms", threading.Event()) == data["response"] + "\n\n" + SMS_UNCERTAIN
     assert factory.call_count == int(scenario == "interrupted")
 
 
@@ -328,51 +309,40 @@ def test_successful_notifications_are_not_repeated_after_restart(config, queue, 
         sms = InstallationSMS(config, journal, queue.event, lambda _: None)
         processor = UnifiedProcessor(journal, api, installation_sms=sms)
         replies.append(processor.answer(None, incoming(FORM), job, threading.Event()))
-    assert replies == [SUCCESS, SUCCESS]
+    assert replies == [result()["response"] + "\n\n" + GUARDIAN_NOTICE, None]
     assert api.run.call_count == 1 and client.send.call_count == len(GUARDIANS)
 
-@pytest.mark.parametrize(("signal", "wording"), [
-    ("unverified", "신호 확인 결과를 확인할 수 없습니다."),
-    ("disconnected", "기기신호가 아직 확인되지 않았습니다."),
-])
-def test_unconfirmed_signal_does_not_override_verified_registration(signal, wording):
-    parsed = asdict(parse_unified_result({**result(), "signal_status": signal}))
-    reply = notification_reply(parsed, GUARDIAN_NOTICE, guardian_request_accepted=True)
-    assert wording in reply and "기기신호 확인 완료" not in reply
-    assert "4.보호자 앱설치문자 발송 : 완료" in reply
+@pytest.mark.parametrize("signal", ["unverified", "disconnected"])
+def test_unconfirmed_signal_preserves_api_reply(signal):
+    body = {**result(), "signal_status": signal}
+    parsed = parse_unified_result(body)
+    assert parsed.response == body["kakao-reply"]
 
 
-def test_older_server_reply_does_not_confirm_signal_without_a_check():
+def test_server_owns_reply_wording():
     body = result()
-    body["kakao-reply"] = OK
+    body["response"] = body["kakao-reply"] = OK
     for key in ("signal_status", "issue_summary", "subscriber_name"):
         del body[key]
-    parsed = asdict(parse_unified_result(body))
-    reply = notification_reply(parsed, GUARDIAN_NOTICE, guardian_request_accepted=True)
-    assert "기기신호 확인 완료" not in reply and GUARDIAN_NOTICE in reply
+    assert parse_unified_result(body).response == OK
 
 
-def test_partial_registration_shows_verified_steps_and_unknown_master(config, queue):
+def test_partial_registration_uses_api_reply(config, queue):
     body = result("failed")
-    for item in body["kakao-reply"]:
-        done = item["stage"] != "member"
-        item["status"] = "완료" if done else "저장 여부 미확인"
-        body["receipts"][item["stage"]].update(status="updated" if done else "unknown", verified=done, rows=[7])
+    for stage, receipt in body["receipts"].items():
+        done = stage != "member"
+        receipt.update(status="updated" if done else "unknown", verified=done, rows=[7])
     body["issue_summary"] = "마스터페이지 저장 결과를 확인해 주세요."
     ImageReplyQueue(queue)
     sms = InstallationSMS(config, OperationJournal(queue), queue.event, lambda _: None)
     reply = sms.reply(asdict(parse_unified_result(body)), "job", "key", threading.Event())
-    assert reply == "[자동 확인]\n" + body["issue_summary"]
+    assert reply == body["kakao-reply"]
 
 
-def test_signal_hold_formats_all_four_rows_without_delivery(config, queue):
+def test_signal_hold_uses_api_reply_without_delivery(config, queue):
     body = result("blocked")
     body["signal_status"] = "disconnected"
-    for item in body["kakao-reply"]:
-        item["status"] = "홀딩"
     ImageReplyQueue(queue)
     sms = InstallationSMS(config, OperationJournal(queue), queue.event, lambda _: None)
     reply = sms.reply(asdict(parse_unified_result(body)), "job", "key", threading.Event())
-    assert reply == ("[자동 확인]\n가상인님 신규설치된 기기신호 확인되지 않습니다. 전원 어댑터 연결을 재확인해주세요."
-                     "\n\n■ 반영 영역\n\n1.가입자 명부 시트 기재 : 홀딩\n2.디바이스 설치 시트 기재 : 홀딩"
-                     "\n3.마스터페이지 가입자 및 보호자 추가 : 홀딩\n4.보호자 앱설치문자 발송 : 홀딩")
+    assert reply == body["kakao-reply"]

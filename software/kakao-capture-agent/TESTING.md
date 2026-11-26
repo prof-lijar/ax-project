@@ -92,7 +92,7 @@ These tests use mocked model responses and synthetic images. For on-device accep
 
 Portable suite: **408 passed, 24 Windows-only tests skipped in 13.54 seconds**. Ruff lint, changed-file formatting, and diff checks passed. Offscreen visual inspection covered the desktop at 1080 × 860 and 820 × 640 and Settings at 780 × 740 and 660 × 520; all tabs fit without horizontal scrolling and Stop remains visible across workspace tabs.
 
-Device regression coverage verifies the exact multiline completion template for location changes and power connections in both Bizgo environments, confirms the actual queued send omits the generic reply suffix, and retains API/SMS replay protection and honest noncompletion replies. Incoming-message classification ignores the new `[자동 확인]` prefix even if the model misclassifies it. Windows-native appearance, DPI scaling, and real KakaoTalk delivery still require on-device acceptance.
+Device regression coverage verifies exact API response delivery for location changes and power connections, current replies on new requests, and suppression of previously attempted jobs. Incoming-message classification ignores the new `[자동 확인]` prefix even if the model misclassifies it. Windows-native appearance, DPI scaling, and real KakaoTalk delivery still require on-device acceptance.
 
 ### First-line notes and region-prefix matching — 2026-11-19
 
@@ -404,3 +404,17 @@ Record Windows build, Python version, KakaoTalk version, monitor arrangement/sca
 Keep the PC unlocked and target visible. Record CPU, resident memory, queue depth, local storage, and upload latency hourly. Include network interruption, lock/unlock, and history scanning. Pass only if the UI stays responsive, memory/storage remain bounded, every durably queued capture is either acknowledged or visibly retained, and no known target-invalid state is reported as monitoring. Retain logs and record any incomplete history intervals. Message-level completeness is not an acceptance claim.
 
 Do not mark this gate or the Windows packaging checks passed based solely on Linux unit tests.
+
+## Unified response contract and delivery audit (2026-11-26)
+
+The targeted Linux run passed **526 tests with 21 Windows-only skips**. It covered the response contract, device/unified processing, installations, guardian additions, saved-image output, multi-chat queues, composer handling, and GUI behavior. Ruff passed on the changed Python files.
+
+```bash
+.venv/bin/python -m pytest -q tests/test_unified_response_contract.py tests/test_unified_workflow.py tests/test_device_workflow.py tests/test_new_installation.py tests/test_saved_image_workflow.py tests/test_kakao_commands.py tests/test_multi_chat.py tests/test_queued_visual_catch.py tests/test_text_auto_catch.py tests/test_replies.py tests/test_gui.py
+```
+
+Coverage includes all five failure outcomes across eight workflows; consistent outcome flags; required execution IDs/issues; equal reply fields; legitimate skipped AS updates; successful fault recording with a disconnected device; immutable response snapshots; current-execution linkage before typing; refused, uncertain, and composer-cleared sends; separate execution IDs for identical requests; and exclusion of old attempted operations from a resumed job's new delivery audit.
+
+SMS tests distinguish provider acceptance from actual delivery, test routing, sandbox use, and partial uncertainty. Boundary tests enforce the combined API-plus-SMS 2,000-character limit and preserve oversized candidates for review. Native KakaoTalk delivery remains a manual Windows acceptance check. Build validation for rc.53 is recorded in `docs/unified-response-contract-and-delivery-audit.md`.
+
+The complete isolated Linux suite passed **847 tests with 27 platform skips** in 19.63 seconds. It ran outside the restricted sandbox to allow the local loopback/threading tests to complete. This validates the release source, not native Windows interaction.

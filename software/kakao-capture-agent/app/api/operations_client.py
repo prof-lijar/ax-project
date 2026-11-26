@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 from uuid import UUID, uuid5
 
@@ -54,6 +54,7 @@ class OperationsResult:
     status: str
     response: str
     completed: bool = False
+    api_response: dict | None = field(default=None, kw_only=True)
 
 
 def parse_result(body):
@@ -68,6 +69,8 @@ def parse_result(body):
         not in {"completed", "disconnected", "not_found", "needs_confirmation", "blocked", "failed"}
         or not isinstance(response, str)
         or not response.strip()
+        or len(response) > 2000
+        or any(ord(c) < 32 and c not in "\r\n\t" for c in response)
     ):
         raise AgentError("Operations API result is incomplete; inspect the operations sheet")
     if status == "completed":
@@ -92,8 +95,7 @@ def parse_result(body):
             raise AgentError(
                 "Operations API completion lacks verified receipts; inspect the operations sheet"
             )
-    response = "".join(c for c in response if ord(c) >= 32 or c in "\n\t").strip()
-    return OperationsResult(status, response[:900], status == "completed")
+    return OperationsResult(status, response, status == "completed")
 
 
 class OperationsClient:

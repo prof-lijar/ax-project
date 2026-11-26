@@ -1,5 +1,15 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.53 — 2026-11-26
+
+AX768 replies now follow the unified response contract. The client requires an execution ID, consistent `status`/`ok`/`verified`, matching nonempty `response` and `kakao-reply` strings, and structured issues for unsuccessful outcomes. Business failures are sent unchanged, including partial completion and unknown-write wording. A legitimately skipped AS row does not turn a completed workflow into a failure.
+
+Each operation records its job ID, original request, API execution ID, full response, exact outgoing text, and observed chat submission outcome. Resumed API attempts never replay saved messages; new identical incoming messages execute independently. Device mode uses the unified endpoint and sends no greeting.
+
+Installation and guardian addition append only the authorized SMS outcome observed by the client: provider acceptance, test-number routing, sandbox acceptance, or uncertainty. Provider acceptance is described as request acceptance, not confirmed phone delivery. The complete reply including its SMS notice must fit 2,000 characters; longer replies are retained for review without being sent.
+
+**Backend compatibility:** the unified API must provide the fields above. Installation `kakao-reply` must be a complete string; stage lists belong in receipts. Missing or inconsistent envelopes stay in the activity log and produce no chat reply.
+
 ## v0.1.0-rc.52 — 2026-11-26
 
 Each click on **Run Agent (auto)** or **Restart Agent (auto)** clears unfinished tasks in each selected chat and reads its current screenshot. If the latest visible message is an incoming action request, VoyagerI starts its workflow even if a previous run attempted the same message. A previously submitted API call or message may still complete.

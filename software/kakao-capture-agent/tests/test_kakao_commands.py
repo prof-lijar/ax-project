@@ -2,8 +2,8 @@
 
 import json
 import threading
-from itertools import permutations
 from dataclasses import asdict
+from itertools import permutations
 from unittest.mock import Mock
 
 import pytest
@@ -12,7 +12,7 @@ from app.api.incoming_llm import IncomingAnalysisError, IncomingMessage, parse_i
 from app.api.operations_client import OperationsResult, OperationsSettings
 from app.api.unified_operations import UnifiedOperationsClient
 from app.api.workflow_requests import extract_sources, kakao_command
-from app.automation.installation_sms import InstallationSMS
+from app.automation.installation_sms import SMS_UNCERTAIN, InstallationSMS
 from app.automation.unified_workflow import UnifiedProcessor
 from app.models import AgentError
 from app.storage.image_reply_queue import ImageReplyQueue
@@ -70,8 +70,8 @@ def test_capture_attributes_bubble_senders_and_freezes_request_for_replay(queue)
     api = Mock()
     api.run.return_value = OperationsResult("blocked", "확인해 주세요.")
     processor = UnifiedProcessor(journal, api)
-    for capture_date in (DATE, "2026-11-25"):
-        assert processor.answer(None, incoming, job, threading.Event(), received_date=capture_date)
+    assert processor.answer(None, incoming, job, threading.Event(), received_date=DATE)
+    assert processor.answer(None, incoming, job, threading.Event(), received_date="2026-11-25") is None
     assert [call.args[0] for call in api.run.call_args_list] == [
         kakao_command(first, "관리인"),
         kakao_command(second, "다른이", DATE),
@@ -102,8 +102,8 @@ def test_identical_power_requests_with_unavailable_sender_run_once_per_bubble(qu
     operations = Mock()
     operations.run.side_effect = [OperationsResult("completed", reply) for reply in ("첫째", "둘째")]
     processor = UnifiedProcessor(OperationJournal(queue), operations)
-    for _ in range(2):
-        assert processor.answer(None, incoming, job, threading.Event()) == "첫째\n\n둘째"
+    assert processor.answer(None, incoming, job, threading.Event()) == "첫째\n\n둘째"
+    assert processor.answer(None, incoming, job, threading.Event()) is None
     requests = [call.args[0] for call in operations.run.call_args_list]
     assert [(request["action"], request["message"]) for request in requests] == [
         ("전원연결", message), ("전원연결", message),
@@ -173,7 +173,9 @@ def guardian_response():
         "workflow_id": "information_update",
         "status": "completed",
         "verified": True,
+        "id": "guardian-run", "ok": True, "issues": [],
         "response": "가입자 명부와 보호자 연결을 확인했습니다.",
+        "kakao-reply": "가입자 명부와 보호자 연결을 확인했습니다.",
         "receipts": {
             key: {"status": "updated", "verified": True, "rows": [3]}
             for key in ("roster", "as_update", "member_note")
@@ -214,9 +216,11 @@ def test_guardian_guide_is_sent_once_on_replay(config, queue, monkeypatch):
     monkeypatch.setattr("app.automation.installation_sms.create_bizgo", lambda *a, **kw: bizgo)
     sms = InstallationSMS(config, journal, queue.event, lambda _: None)
     sms.record_routing(job)
-    for _ in range(2):
-        reply = sms.reply(result, job, job + "-0:sms", threading.Event())
-        assert "0001" in reply and reply.startswith(result["response"])
+    reply = sms.reply(result, job, job + "-0:sms", threading.Event())
+    assert reply == result["response"] + "\n\n■ 보호자 안내 문자\n앱 설치 안내 문자 발송 요청이 정상 접수되었습니다.\n보호자 번호 끝자리 : 0001"
+    current = {**result, "response": "현재 API 응답"}
+    reply = sms.reply(current, job, job + "-0:sms", threading.Event())
+    assert reply == current["response"] + "\n\n" + SMS_UNCERTAIN
     bizgo.send.assert_called_once()
 
 @pytest.mark.parametrize("fields", permutations(("기기교체", "가상인", "가상로 8길 58", "0217")))

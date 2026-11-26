@@ -917,10 +917,10 @@ class MainWindow(QMainWindow):
                 )
                 return
         if command == "device_workflow":
-            from app.api.operations_client import create_operations
+            from app.api.unified_operations import create_unified_operations
 
             try:
-                create_operations(self.config)
+                create_unified_operations(self.config)
             except AgentError as error:
                 QMessageBox.warning(
                     self,

@@ -17,7 +17,6 @@ from app.api.workflow_requests import (
     plan_texts,
     workflow_action_keyword,
 )
-from app.automation.device_workflow import UNCERTAIN
 from app.automation.installation_sms import InstallationSMS
 from app.automation.keyword_visual_catch import KeywordVisualCatchWorkflow
 from app.models import AgentError, Cancelled
@@ -64,7 +63,7 @@ class UnifiedProcessor:
             else:
                 self.journal.claim(plan_key, job_id, plan)
             plan = self.journal.get(plan_key)
-        replies = []
+        replies, execution_keys = [], []
         live_capture = queue_each_request or startup
         for index, message in enumerate(plan_texts(plan)):
             check_cancel(cancel)
@@ -93,52 +92,40 @@ class UnifiedProcessor:
                 )
                 continue
             workflow_id = request.get("workflow_id")
-            installation = workflow_id == INSTALLATION
             sms_key = f"{job_id}-{index}:sms"
             if workflow_id in (INSTALLATION, "information_update") and self.installation_sms:
                 self.installation_sms.record_routing(job_id)
-            uncertain = {
-                "status": "uncertain",
-                "response": "[자동 확인]\n"
-                + (
-                    "신규설치 등록 결과를 확인하지 못했습니다. 재실행 전에 명부와 마스터페이지를 확인해 주세요."
-                    if installation
-                    else "처리 결과를 확인하지 못했습니다. 중복 처리를 막기 위해 재요청 전에 기록을 확인해 주세요."
-                    if workflow_id else UNCERTAIN
-                ),
-                "completed": False,
-            }
             check_cancel(cancel)
-            if self.journal.claim(key, job_id, uncertain):
-                workflow = "가입자신규설치" if installation else workflow_id or request["action"]
-                self.activity(f"AX768: processing {workflow}")
-                try:
-                    result = asdict(self.operations.run(request, cancel))
-                except Cancelled:
-                    raise
-                except AgentError as error:
-                    result = uncertain
-                    self.activity("AX768 result unavailable; no automatic retry: " + str(error))
-                self.journal.complete(key, result)
-            result = self.journal.get(key)
+            if not self.journal.start_execution(key, job_id, request):
+                self.activity("AX768: this queued request was already attempted; check its history before resubmitting")
+                continue
+            workflow = "가입자신규설치" if workflow_id == INSTALLATION else workflow_id or request["action"]
+            self.activity(f"AX768: processing {workflow}")
+            try:
+                result = asdict(self.operations.run(request, cancel))
+            except Cancelled:
+                raise
+            except AgentError as error:
+                self.activity("AX768 result unavailable; check the operation before resubmitting: " + str(error))
+                continue
+            self.journal.finish_execution(key, result)
+            check_cancel(cancel)
             if self.installation_sms and result.get("sms") is not None:
                 reply = self.installation_sms.reply(result, job_id, sms_key, cancel)
             else:
                 reply = result["response"]
             replies.append(reply)
+            execution_keys.append(key)
         check_cancel(cancel)
         if not replies:
             return None
         reply = "\n\n".join(replies)
+        self.journal.record_outgoing(job_id, reply, execution_keys,
+                                     "review" if len(reply) > 2000 else "ready")
         if len(reply) > 2000:
             raise AgentError(
                 "Combined AX768 replies exceed the composer limit; review saved results"
             )
-        # Rebuild from per-message receipts so old cached batches cannot replay
-        # replies for actions that are no longer enabled. API claims stay intact.
-        reply_key = job_id + ":reply"
-        self.journal.claim(reply_key, job_id, reply)
-        self.journal.complete(reply_key, reply)
         return reply
 
 

@@ -663,7 +663,8 @@ def test_switch_between_continuous_workflows_keeps_chat_keys_separate(fleet):
     group = f.service.auto_catch
     assert group.mode == "device_workflow"
     assert all(isinstance(w, DeviceWorkflow) for w in group.workflows)
-    assert f.sends == [(i, DeviceWorkflow.greeting) for i in (1, 2, 3)]
+    assert DeviceWorkflow.greeting is None
+    assert f.sends == []
     assert not set(unified_keys).intersection(w.chat_key for w in group.workflows)
     stop(f)
     f.service.dispatch("auto_catch")

@@ -80,8 +80,7 @@ class SavedImageWorkflow:
             check_cancel(self.cancel)
             self.text_preview(saved["incoming"])
             self.jobs.finish(job_id, "ignored")
-            self.progress("Showing the saved result for this image and API destination")
-            return saved["output"]
+            raise AgentError("This image was already processed; check its operation history before submitting a new request")
         try:
             claimed = self.jobs.claim(key)
             if claimed is None or claimed["job_id"] != job_id:
@@ -91,6 +90,8 @@ class SavedImageWorkflow:
                 self.journal, self.operations_factory(self.config), self.progress
             )
             plan = self.journal.get(job_id + ":plan")
+            if plan and any(self.journal.get(f"{job_id}-{i}:api") is not None for i in range(len(plan))):
+                raise AgentError("This image already has an API attempt; check its operation history before resubmitting")
             if plan and len(plan) > 1 and any(installation_header(part) for part in plan):
                 raise IncomingAnalysisError("Saved installation form has unclear message boundaries")
             if plan is not None:

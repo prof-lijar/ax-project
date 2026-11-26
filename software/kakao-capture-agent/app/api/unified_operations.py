@@ -2,7 +2,8 @@
 
 import json
 import re
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 
 from app.api.device_request import compact
 from app.api.operations_client import (
@@ -25,7 +26,7 @@ from app.utils.windows import get_token
 
 @dataclass(frozen=True, kw_only=True)
 class InstallationResult(OperationsResult):
-    kakao_reply: str | list[dict]
+    kakao_reply: str
     sms: dict
     subscriber_name: str = ""
     signal_status: str = "not_checked"
@@ -39,51 +40,23 @@ class GuardianAdditionResult(OperationsResult):
     guardian_addition: bool = True
 
 
-def validate_installation_items(items, body, completed):
-    stages = ("roster", "inventory", "member")
-    statuses = {"updated": "완료", "skipped": "미진행", "blocked": "보류", "unknown": "저장 여부 미확인"}
-    receipts = body.get("receipts")
-    if len(items) != len(stages) or not isinstance(receipts, dict):
-        raise AgentError("Invalid installation stage list")
-    signal = body.get("signal_status")
-    signal_hold = not completed and signal == "disconnected"
-    for key, item in zip(stages, items):
-        receipt = receipts.get(key)
-        if not isinstance(receipt, dict) or not isinstance(item, dict):
-            raise AgentError("Missing installation stage")
-        state = receipt.get("status")
-        if not isinstance(state, str) or state not in statuses:
-            raise AgentError("Unknown installation receipt status")
-        expected = "홀딩" if signal_hold else statuses[state]
-        label = item.get("label")
-        if (receipt.get("verified") is not (state == "updated")
-                or item.get("stage") != key or item.get("status") != expected
-                or (signal in ("disconnected", "unverified") and not completed and state not in {"skipped", "blocked"})
-                or not isinstance(label, str) or not 0 < len(label.strip()) <= 80
-                or not label.isprintable()):
-            raise AgentError("Installation list differs from its receipt")
-    name = body.get("subscriber_name")
-    summary = body.get("issue_summary", "")
-    if (not isinstance(name, str) or not re.fullmatch(r"[가-힣]{2,10}(?:_[가-힣]{2,10})?", name)
-            or signal not in (("confirmed", "disconnected", "unverified") if completed else ("not_checked", "confirmed", "disconnected", "unverified"))
-            or not isinstance(summary, str) or len(summary) > 2000
-            or any(not (c == "\n" or c.isprintable()) for c in summary)
-            or (not completed and not summary.strip())):
-        raise AgentError("Invalid installation reply details")
+def kakao_reply(body):
+    """Require ready-to-paste server text; never compose or fall back locally."""
+    reply = body.get("kakao-reply")
+    if (not isinstance(reply, str) or not reply.strip() or len(reply) > 2000
+            or any(ord(c) < 32 and c not in "\r\n\t" for c in reply)):
+        raise AgentError("AX768 must return a nonempty kakao-reply string of at most 2000 characters; no chat reply sent")
+    if body.get("response") != reply:
+        raise AgentError("AX768 response and kakao-reply must contain the same text; no chat reply sent")
+    return reply
 
 
 def installation_result(body, response):
     completed = body["status"] == "completed"
     reply, sms = body.get("kakao-reply"), body.get("sms")
-    if isinstance(reply, list):
-        validate_installation_items(reply, body, completed)
-    elif (not isinstance(reply, str) or not reply.strip() or len(reply) > 2000
-          or any(ord(c) < 32 and c not in "\r\n\t" for c in reply)):
-        raise AgentError("Invalid AX768 installation reply")
     if (
-        body["status"] not in {"completed", "blocked", "failed"}
-        or not isinstance(sms, dict)
-        or sms.get("should_send") is not completed
+        not isinstance(sms, dict)
+        or (sms.get("should_send") and not completed)
     ):
         raise AgentError("Invalid AX768 installation reply or SMS decision")
     if completed:
@@ -96,6 +69,7 @@ def installation_result(body, response):
             for stage in ("roster", "inventory", "member")
         ):
             raise AgentError("AX768 installation lacks verified registration receipts")
+    if sms["should_send"]:
         recipients = sms.get("recipients")
         if (
             not isinstance(recipients, list)
@@ -121,17 +95,18 @@ def installation_result(body, response):
     )
 
 
-def parse_unified_result(body):
+def _parse_unified_result(body):
     if not isinstance(body, dict):
         raise AgentError("Invalid AX768 result")
     status = body.get("status")
     workflow = body.get("workflow_id")
     if (
-        body.get("api_version") != "1"
+        body.get("api_version", "1") != "1"
         or not isinstance(status, str)
         or status
         not in {"completed", "disconnected", "not_found", "needs_confirmation", "blocked", "failed"}
         or body.get("verified") is not (status == "completed")
+        or body.get("ok") is not (status == "completed")
         or not (
             workflow is None
             and status == "needs_confirmation"
@@ -140,18 +115,30 @@ def parse_unified_result(body):
         )
     ):
         raise AgentError("Invalid AX768 response contract or verification")
-    response = body.get("response")
-    if (
-        not isinstance(response, str)
-        or not response.strip()
-        or len(response) > 2000
-        or any(ord(c) < 32 and c not in "\n\t" for c in response)
-    ):
-        raise AgentError("AX768 reply is invalid or too long; inspect the workflow result")
+    execution_id, issues, sms = body.get("id"), body.get("issues"), body.get("sms")
+    if (not isinstance(execution_id, str) or not execution_id.strip()
+            or len(execution_id) > 200 or not execution_id.isprintable()):
+        raise AgentError("AX768 response is missing a valid execution id")
+    if (not isinstance(issues, list) or (status == "completed" and issues)
+            or (status != "completed" and not issues)
+            or any(not isinstance(issue, dict) or any(
+                not isinstance(issue.get(key), str) or not issue[key].strip()
+                for key in ("code", "stage", "message", "next_action")
+            ) for issue in issues)):
+        raise AgentError("AX768 issues do not match the overall outcome")
+    if (not isinstance(sms, dict) or type(sms.get("should_send")) is not bool
+            or (sms["should_send"] and (status != "completed" or workflow not in {INSTALLATION, "information_update"}))
+            or (not sms["should_send"] and sms != {
+                "should_send": False, "recipients": [], "title": "", "text": ""
+            })):
+        raise AgentError("Invalid AX768 SMS instructions")
+    # OperationsResult.response is the delivery text throughout the desktop.
+    # Only the API's dedicated Kakao field may supply it.
+    response = kakao_reply(body)
     if workflow == INSTALLATION:
         return installation_result(body, response)
     if body.get("workflow_id") == WORKFLOW_ID:
-        checked = parse_result(body)
+        checked = parse_result({**body, "response": response})
         return OperationsResult(checked.status, response, checked.completed)
     if body.get("workflow_id") is None and body.get("status") == "needs_confirmation":
         return OperationsResult("needs_confirmation", response)
@@ -187,6 +174,11 @@ def parse_unified_result(body):
     return OperationsResult(status, response, status == "completed")
 
 
+def parse_unified_result(body):
+    result = _parse_unified_result(body)
+    return replace(result, api_response=deepcopy(body))
+
+
 class UnifiedOperationsClient(OperationsClient):
     endpoint = "/api/ax768/runs"
     # The model may choose only the two actions within this device workflow.
@@ -202,9 +194,9 @@ class UnifiedOperationsClient(OperationsClient):
         ):
             raise AgentError("AX768 returned a different workflow than requested")
         sms = body.get("sms")
-        if payload.get("source") == "kakao" and isinstance(sms, dict) and sms.get("should_send"):
+        if isinstance(sms, dict) and sms.get("should_send") and body["workflow_id"] != INSTALLATION:
             fields = [s.strip() for s in payload["message"].split("/")]
-            if (payload["workflow_id"] != "information_update" or not result.completed
+            if (payload.get("source") != "kakao" or payload["workflow_id"] != "information_update" or not result.completed
                     or compact(fields[0]) != "보호자추가" or len(fields) != 6):
                 raise AgentError("Unexpected guardian notification for this request")
             number = re.sub(r"\D", "", fields[4])
@@ -214,7 +206,8 @@ class UnifiedOperationsClient(OperationsClient):
                     or not all(isinstance(sms.get(k), str) and sms[k].strip() and len(sms[k]) <= limit
                                for k, limit in (("title", 100), ("text", 3000)))):
                 raise AgentError("Invalid guardian addition SMS instructions")
-            return GuardianAdditionResult(result.status, result.response, True, sms=sms, kakao_reply=result.response)
+            return GuardianAdditionResult(result.status, result.response, True, sms=sms,
+                                          kakao_reply=result.response, api_response=result.api_response)
         return result
 
     def request_payload(self, request):

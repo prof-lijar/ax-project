@@ -13,7 +13,12 @@ from app.api.unified_operations import (
     UnifiedOperationsClient,
     parse_unified_result,
 )
-from app.api.workflow_requests import analyze_request, explicit_device_request, parse_analysis, parse_sources
+from app.api.workflow_requests import (
+    analyze_request,
+    explicit_device_request,
+    parse_analysis,
+    parse_sources,
+)
 from app.automation.unified_workflow import UnifiedProcessor, UnifiedWorkflow
 from app.models import AgentError, Cancelled
 from app.storage.image_reply_queue import ImageReplyQueue
@@ -83,7 +88,7 @@ def test_unified_transport(message, action, name, address, reply):
             "action_text": decision["action_text"],
         }
         return httpx.Response(
-            200, json={**receipt(), "api_version": "1", "verified": True, "response": reply}
+            200, json={**receipt(), "api_version": "1", "verified": True, "response": reply, "kakao-reply": reply}
         )
 
     client = UnifiedOperationsClient(
@@ -210,11 +215,8 @@ def test_exact_reply_once(queue, monkeypatch, status):
     ImageReplyQueue(queue)
     processor = UnifiedProcessor(OperationJournal(queue), operations)
     monkeypatch.setattr("app.automation.unified_workflow.extract_sources", lambda *a: [MESSAGE])
-    for _ in range(2):
-        assert (
-            processor.answer(None, IncomingMessage("incoming", MESSAGE), "job", threading.Event())
-            == REPLY
-        )
+    assert processor.answer(None, IncomingMessage("incoming", MESSAGE), "job", threading.Event()) == REPLY
+    assert processor.answer(None, IncomingMessage("incoming", MESSAGE), "job", threading.Event()) is None
     operations.run.assert_called_once()
     assert operations.run.call_args.args[0]["message"] == MESSAGE
     assert UnifiedWorkflow.format_reply(None, REPLY) == REPLY
@@ -278,7 +280,7 @@ def test_mixed_batch_filters_each_message_and_saved_replies(queue, monkeypatch, 
         )
     else:
         incoming = IncomingMessage("incoming", "\n".join(plan))
-    assert processor.answer(None, incoming, "job", threading.Event()) == REPLY
+    assert processor.answer(None, incoming, "job", threading.Event()) == (None if resume else REPLY)
     if resume:
         extract.assert_not_called()
         operations.run.assert_not_called()
@@ -313,10 +315,9 @@ def test_mixed_location_power_and_chatter_preserves_action_and_reply_order(queue
         OperationsResult("completed", POWER_REPLY, True),
     ]))
     processor = UnifiedProcessor(journal, operations)
-    for _ in range(2):
-        assert processor.answer(
-            None, IncomingMessage("incoming", "\n".join(sources)), "job", threading.Event()
-        ) == REPLY + "\n\n" + POWER_REPLY
+    incoming = IncomingMessage("incoming", "\n".join(sources))
+    assert processor.answer(None, incoming, "job", threading.Event()) == REPLY + "\n\n" + POWER_REPLY
+    assert processor.answer(None, incoming, "job", threading.Event()) is None
     assert [call.args[0]["message"] for call in operations.run.call_args_list] == [MESSAGE, POWER_MESSAGE]
 
 
@@ -352,9 +353,9 @@ def test_uncertain_operation_never_repeated(queue, monkeypatch, error):
         with pytest.raises(Cancelled):
             processor.answer(None, IncomingMessage("incoming", MESSAGE), "job", threading.Event())
     for _ in range(2):
-        assert "중복 처리를 막기 위해" in processor.answer(
+        assert processor.answer(
             None, IncomingMessage("incoming", MESSAGE), "job", threading.Event()
-        )
+        ) is None
     operations.run.assert_called_once()
 
 
@@ -364,16 +365,122 @@ def test_response_validation():
         **receipt(),
         "api_version": "1",
         "verified": False,
-        "status": "disconnected",
+        "status": "disconnected", "ok": False,
+        "issues": [{"code": "NO_SIGNAL", "stage": "signal", "message": "신호 미확인", "next_action": "전원을 확인하세요"}],
         "response": reply,
+        "kakao-reply": reply,
     }
     assert parse_unified_result(body).response == reply
     for invalid in [
-        {**body, "response": "x" * 2001},
+        {**body, "kakao-reply": "x" * 2001},
         {"workflow_id": "information_update", "status": "completed", "response": "done"},
     ]:
         with pytest.raises(AgentError):
             parse_unified_result(invalid)
+
+
+@pytest.mark.parametrize("reply", [None, "", " \n\t", [], {"text": "done"}, "x" * 2001, "bad\x00text"])
+def test_invalid_kakao_reply_never_falls_back_to_response(reply):
+    body = {**receipt(), "api_version": "1", "verified": True, "kakao-reply": reply}
+    with pytest.raises(AgentError, match="kakao-reply"):
+        parse_unified_result(body)
+
+
+def test_missing_kakao_reply_never_falls_back_to_response():
+    with pytest.raises(AgentError, match="kakao-reply"):
+        parse_unified_result({**receipt(), "api_version": "1", "verified": True})
+
+
+def test_power_success_with_missing_as_row_uses_exact_kakao_reply(queue):
+    jobs = ImageReplyQueue(queue)
+    journal = OperationJournal(queue)
+    message = "이은경/헌릉로8길58/전원연결"
+    reply = ("  [자동 확인]\n이은경님 기기신호 확인 완료입니다.\n\n■ 반영 영역\n"
+             "AS 시트 기재 : 패스\n마스터페이지 일반사항 기재 : 완료\n\n감사합니다.\n")
+    body = {
+        **receipt(), "id": "f1884969-000f-4813-b9fd-d80b9a196f6a",
+        "api_version": "1", "verified": True,
+        "response": reply,
+        "kakao-reply": reply,
+        "roster": {"status": "found", "name": "이은경", "row": 4015},
+        "as_lookup": {"status": "not_found"},
+        "as_update": {"status": "skipped", "verified": False},
+        "member_note": {"status": "already_present", "verified": True},
+        "sms": {"should_send": False, "recipients": [], "title": "", "text": ""},
+    }
+
+    def server(request):
+        if request.url.path == "/auth/login":
+            return httpx.Response(200, json={})
+        if request.url.path == "/api/me":
+            return httpx.Response(200, json={"is_admin": True, "csrf_token": "csrf"})
+        assert request.url.path == "/api/ax768/runs"
+        assert json.loads(request.content)["message"] == message
+        return httpx.Response(200, json=body)
+
+    client = UnifiedOperationsClient(
+        OperationsSettings("https://nexgent.test", "admin"), "secret", httpx.MockTransport(server)
+    )
+    # Seed the analyzed request so the module's model fixture cannot substitute a different person.
+    job = jobs.enqueue("chat", "capture")
+    journal.claim(job + "-0:analysis", job, {"request": explicit_device_request(message)})
+    processor = UnifiedProcessor(journal, client)
+    incoming = IncomingMessage("incoming", message, bubbles=(message,))
+    assert processor.answer(None, incoming, job, threading.Event()) == reply
+    assert journal.get(job + ":reply") is None
+    assert processor.answer(None, incoming, job, threading.Event()) is None
+
+
+@pytest.mark.parametrize("reply", [" \t서버 응답\n", "첫째\r\n둘째\r\n"])
+def test_kakao_reply_preserves_whitespace(reply):
+    body = {**receipt(), "api_version": "1", "verified": True, "kakao-reply": reply}
+    body["response"] = reply
+    assert parse_unified_result(body).response == reply
+
+
+def test_identical_new_requests_use_each_current_http_response(queue, monkeypatch):
+    jobs = ImageReplyQueue(queue)
+    journal = OperationJournal(queue)
+    message = "이은경/헌릉로8길58/전원연결"
+    replies = ["[자동 확인]\n현재 첫 번째 결과", "[자동 확인]\n현재 두 번째 결과"]
+    requests = []
+
+    def server(request):
+        if request.url.path == "/auth/login":
+            return httpx.Response(200, json={}, headers={"set-cookie": "session=test; Path=/"})
+        assert request.headers["cookie"] == "session=test"
+        if request.url.path == "/api/me":
+            return httpx.Response(200, json={"is_admin": True, "csrf_token": "csrf"})
+        assert request.url.path == "/api/ax768/runs"
+        assert request.headers["x-csrf-token"] == "csrf"
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            **receipt(), "api_version": "1", "verified": True,
+            "response": replies[len(requests) - 1],
+            "kakao-reply": replies[len(requests) - 1],
+            "id": f"execution-{len(requests)}",
+        })
+
+    client = UnifiedOperationsClient(
+        OperationsSettings("https://nexgent.test", "admin"), "secret", httpx.MockTransport(server)
+    )
+    monkeypatch.setattr("app.automation.unified_workflow.analyze_request", analyze_request)
+    processor = UnifiedProcessor(journal, client)
+    incoming = IncomingMessage("incoming", message, bubbles=(message,))
+    for index, expected in enumerate(replies):
+        job = jobs.enqueue("chat", f"capture-{index}")
+        journal.claim(job + ":reply", job, "Stale saved reply")
+        assert processor.answer(None, incoming, job, threading.Event()) == expected
+        audit = journal.get(job + "-0:api")
+        assert audit["api_response_id"] == f"execution-{index + 1}"
+        assert audit["outgoing_text"] == expected
+        assert audit["original_request"] == message
+        restarted = UnifiedProcessor(OperationJournal(queue), client)
+        assert restarted.answer(None, incoming, job, threading.Event()) is None
+        assert journal.get(job + "-0:api") == audit
+    assert len(requests) == 2 and requests[0] == requests[1]
+    assert requests[0]["name"] == "이은경"
+    assert requests[0]["address"] == "헌릉로8길58"
 
 
 def test_default_worker(config, queue, region):
@@ -536,9 +643,12 @@ def test_future_workflow_uses_common_verified_envelope():
         "status": "completed",
         "verified": True,
         "response": "[자동 확인]\n서버에서 검증한 결과",
+        "kakao-reply": "[자동 확인]\n서버에서 검증한 결과",
+        "id": "future-run", "ok": True, "issues": [],
+        "sms": {"should_send": False, "recipients": [], "title": "", "text": ""},
     }
     result = parse_unified_result(body)
-    assert result.completed and result.response == body["response"]
+    assert result.completed and result.response == body["kakao-reply"]
     for change in [{"api_version": "2"}, {"verified": False}, {"workflow_id": "../other"}]:
         with pytest.raises(AgentError):
             parse_unified_result({**body, **change})

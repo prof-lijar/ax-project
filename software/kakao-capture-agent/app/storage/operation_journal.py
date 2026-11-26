@@ -40,6 +40,57 @@ class OperationJournal:
                 (json.dumps(payload, ensure_ascii=False), key),
             )
 
+    def start_execution(self, key, job_id, request, *, original_request=None):
+        return self.claim(key, job_id, {
+            "job_id": job_id, "request": request, "api_response_id": None,
+            "original_request": original_request if original_request is not None else request.get("message"),
+            "status": "uncertain", "completed": False,
+            "outgoing_text": None, "send_outcome": "not_attempted",
+        })
+
+    def finish_execution(self, key, result):
+        attempt = self.get(key)
+        body = result.get("api_response") or {}
+        self.complete(key, {**attempt, **result, "api_response_id": body.get("id")})
+
+    def record_outgoing(self, job_id, text, execution_keys, outcome="ready"):
+        with self.storage.lock, self.storage.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            # Link only this execution's replies, excluding attempted operations
+            # skipped when a multi-request job resumes.
+            db.execute(
+                "INSERT INTO operation_journal(key,job_id,payload) VALUES(?,?,?) "
+                "ON CONFLICT(key) DO UPDATE SET payload=excluded.payload",
+                (job_id + ":delivery", job_id, json.dumps(execution_keys)),
+            )
+            self._record_send(db, job_id, execution_keys, outcome, text, None)
+
+    def record_send(self, job_id, outcome, *, outgoing_text=None, observation=None):
+        """Update audit records only; retained text is never a delivery source."""
+        with self.storage.lock, self.storage.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            delivery = db.execute("SELECT payload FROM operation_journal WHERE key=?",
+                                  (job_id + ":delivery",)).fetchone()
+            if delivery:
+                self._record_send(db, job_id, json.loads(delivery["payload"]), outcome,
+                                  outgoing_text, observation)
+
+    @staticmethod
+    def _record_send(db, job_id, execution_keys, outcome, outgoing_text, observation):
+        for key in execution_keys:
+            row = db.execute("SELECT payload FROM operation_journal WHERE key=? AND job_id=?",
+                             (key, job_id)).fetchone()
+            if row is None:
+                continue
+            payload = json.loads(row["payload"])
+            payload["send_outcome"] = outcome
+            if outgoing_text is not None:
+                payload["outgoing_text"] = outgoing_text
+            if observation is not None:
+                payload["send_observation"] = observation
+            db.execute("UPDATE operation_journal SET payload=? WHERE key=?",
+                       (json.dumps(payload, ensure_ascii=False), key))
+
     def queue_requests(self, job_id, plan):
         """Commit one job per request before the first external action, in capture order."""
         with self.storage.lock, self.storage.connect() as db:

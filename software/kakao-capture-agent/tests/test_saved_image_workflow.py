@@ -116,6 +116,7 @@ def image_test(config, queue, frame, monkeypatch):
                 "api_version": "1",
                 "verified": True,
                 "response": RESPONSE,
+                "kakao-reply": RESPONSE,
             },
         )
 
@@ -211,7 +212,7 @@ def test_image_test_uses_unified_api_and_only_displays_exact_response(image_test
     assert t.queue.claim(t.config.api_url) is None  # No ordinary image upload either.
 
 
-def test_missing_roster_reply_is_displayed_unchanged_and_cached(image_test):
+def test_missing_roster_reply_is_displayed_once(image_test):
     t = image_test
     response = (
         "[자동 확인]\n이영희님 신규설치 기기신호가 아직 확인되지 않습니다.\n"
@@ -223,17 +224,23 @@ def test_missing_roster_reply_is_displayed_unchanged_and_cached(image_test):
         "status": "not_found",
         "verified": False,
         "response": response,
+        "kakao-reply": response,
+        "id": "missing-roster-run", "ok": False,
+        "issues": [{"code": "NOT_FOUND", "stage": "roster", "message": "대상자 없음", "next_action": "주소 확인"}],
+        "sms": {"should_send": False, "recipients": [], "title": "", "text": ""},
         "roster": {"status": "not_found"},
         "signal": {"status": "skipped"},
         "as_lookup": {"status": "skipped"},
         "as_update": {"status": "skipped", "verified": False},
         "member_note": None,
     }
-    for _ in range(2):
-        t.service.dispatch(("image_test", t.png))
-    assert t.output == [response, response]
-    assert len(t.api_calls) == 1
+    t.service.dispatch(("image_test", t.png))
     assert t.service.state == State.STOPPED
+    with pytest.raises(AgentError, match="already processed"):
+        t.service.dispatch(("image_test", t.png))
+    assert t.output[0] == response
+    assert "already processed" in t.output[1]
+    assert len(t.api_calls) == 1
 
 
 @pytest.mark.parametrize("kind", ["outgoing", "none", "uncertain"])
@@ -277,14 +284,15 @@ def test_image_registration_uses_complete_form_once_without_notifications(image_
         journal.claim(job_id + "-0:analysis", job_id, {"request": None})
         t.state.actionable = True
         t.llm_calls.clear()
-    for _ in range(2):
+    t.service.dispatch(("image_test", t.png))
+    assert t.output[-1] == t.state.api_result["kakao-reply"]
+    with pytest.raises(AgentError, match="already processed"):
         t.service.dispatch(("image_test", t.png))
-        assert t.output[-1] == t.state.api_result["response"]
     assert t.extracted[-1] == FORM and len(t.llm_calls) == 1
     assert t.api_calls == [{"workflow_id": "new_installation", "message": FORM}]
 
 
-def test_repeating_image_after_restart_reuses_result_and_never_claims_live_job(image_test):
+def test_repeating_image_after_restart_blocks_old_result_and_never_claims_live_job(image_test):
     t = image_test
     # An existing live-chat job must not be processed by this test.
     live_id, _ = t.workflow.jobs.enqueue_pair("live-chat", t.png, t.png)
@@ -302,7 +310,8 @@ def test_repeating_image_after_restart_reuses_result_and_never_claims_live_job(i
         llm_factory=t.forbidden,
         operations_factory=t.forbidden,
     )
-    assert restarted.run(t.png) == RESPONSE
+    with pytest.raises(AgentError, match="already processed"):
+        restarted.run(t.png)
     assert len(t.api_calls) == 1 and len(t.llm_calls) == 1
     assert jobs.claim("live-chat")["job_id"] == live_id
 
@@ -322,9 +331,10 @@ def test_legacy_ignored_guardian_addition_reopens_once_without_sms(image_test):
     test.state.actionable = True
     test.state.message = GUARDIAN
     test.state.api_result = guardian_response()
-    for _ in range(2):
+    test.service.dispatch(("image_test", test.png))
+    assert test.output[-1] == test.state.api_result["kakao-reply"]
+    with pytest.raises(AgentError, match="already processed"):
         test.service.dispatch(("image_test", test.png))
-        assert test.output[-1] == test.state.api_result["response"]
     assert test.api_calls == [{"source": "kakao", "workflow_id": "information_update", "message": GUARDIAN}]
 
 
@@ -338,7 +348,13 @@ def test_cancel_then_explicit_retry_does_not_repeat_submitted_api(image_test, st
     assert len(t.api_calls) == (1 if stage == "api" else 0)
     t.service.dispatch("stop")
     t.state.cancel_at = None
-    t.service.dispatch(("image_test", t.png))
+    if stage == "api":
+        with pytest.raises(AgentError, match="already has an API attempt"):
+            t.service.dispatch(("image_test", t.png))
+        assert RESPONSE not in t.output
+    else:
+        t.service.dispatch(("image_test", t.png))
+        assert t.output[-1] == RESPONSE
     assert len(t.api_calls) == 1
 
 

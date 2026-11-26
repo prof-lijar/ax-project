@@ -156,6 +156,13 @@ class QueuedVisualCatchWorkflow(TextAutoCatchWorkflow):
     def send_queued_reply(self, reply):
         return self.sender.send(reply, require_empty=False)
 
+    def record_send_outcome(self, outcome, reply, observation=None):
+        processor = self.job.get("processor")
+        if processor is not None:
+            # The job retains its own processor even if another mode is armed.
+            processor.journal.record_send(self.job["job_id"], outcome,
+                                          outgoing_text=reply, observation=observation)
+
     def analyze_job(self, llm, job, cancel):
         return llm.classify(job["before_png"], job["after_png"], cancel, batch=True)
 

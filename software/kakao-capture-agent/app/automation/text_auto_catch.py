@@ -162,6 +162,9 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
     def send_queued_reply(self, reply):
         return self.sender.send(reply)
 
+    def record_send_outcome(self, outcome, reply, observation=None):
+        pass
+
     def finish_job(self):
         waiting = self.outcome is None and (self.worker is None or self.worker.is_alive())
         if not waiting and self.outcome is None:
@@ -215,6 +218,7 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
         reply = self.format_reply(reply)
         self.progress("LLM reply ready; submitting the next queued reply")
         self.jobs.finish(self.job["job_id"], "sending")  # Durable BEFORE touching the composer.
+        self.record_send_outcome("submitting", reply)
         self.sending, self.active = True, False
         try:
             observation = self.send_queued_reply(reply)
@@ -225,11 +229,16 @@ class TextAutoCatchWorkflow(AutoCatchWorkflow):
                 )
             status = "sent" if self.sender.composer_cleared else "submitted"
             self.jobs.finish(self.job["job_id"], status)
+            self.record_send_outcome(
+                "composer_cleared" if self.sender.composer_cleared else "submitted_unconfirmed",
+                reply, observation,
+            )
         except Exception:
             # A refused empty-composer/focus check has not attempted delivery.
             # Keep that job for explicit restart; partial input still needs review.
             status = "pending" if getattr(self.sender, "input_started", True) is False else "review"
             self.jobs.finish(self.job["job_id"], status)
+            self.record_send_outcome("not_attempted" if status == "pending" else "uncertain", reply)
             raise
         if not self.sender.composer_cleared:
             self.progress(

@@ -4,15 +4,13 @@ import hashlib
 import json
 from dataclasses import asdict
 
-from app.api.device_request import CLARIFY, extract_requests
-from app.api.operations_client import create_operations
+from app.api.device_request import extract_requests
+from app.api.unified_operations import create_unified_operations
 from app.api.workflow_llm import check_cancel
 from app.api.workflow_requests import device_action_keyword
 from app.automation.keyword_visual_catch import KeywordVisualCatchWorkflow
 from app.models import AgentError, Cancelled
 from app.storage.operation_journal import OperationJournal
-
-UNCERTAIN = "운영시트 처리 결과를 확인하지 못했습니다. 중복 처리를 막기 위해 재실행하지 않았습니다. 운영시트와 회원 메모를 확인해주세요."
 
 
 class DeviceProcessor:
@@ -23,47 +21,32 @@ class DeviceProcessor:
             activity,
         )
 
-    def process_request(self, request, job_id, index, cancel):
+    def process_request(self, request, job_id, index, cancel, original_request):
         check_cancel(cancel)
         if not request["action"] or not request["name"] or not request["address"]:
-            return CLARIFY
+            self.activity("Enter the person's name, address and device action")
+            return None
         reference = f"{job_id}-{index}"
         key = reference + ":api"
-        if self.journal.claim(
-            key, job_id, {"status": "uncertain", "response": UNCERTAIN, "completed": False}
-        ):
-            self.activity("기기위치조정/전원연결: calling 운영시트에이젠트; watching continues")
-            try:
-                # The server's deterministic parser expects address before NAME님.
-                message = f"{request['address']} {request['name']}님 {request['action']} 신호확인요.".strip()
-                result = asdict(self.operations.run(message, cancel))
-            except Cancelled:
-                raise
-            except AgentError as error:
-                result = {"status": "uncertain", "response": UNCERTAIN, "completed": False}
-                self.activity(
-                    "Operations API result unavailable; continuing with a KakaoTalk status reply: "
-                    + str(error)
-                )
-            self.journal.complete(key, result)
-        result = self.journal.get(key)
+        message = f"{request['name']}/{request['address']}/{request['action']}"
+        payload = {**request, "message": message, "action_text": request["action"]}
+        if not self.journal.start_execution(key, job_id, payload, original_request=original_request):
+            self.activity("This queued request was already attempted; check its history before resubmitting")
+            return None
+        self.activity("기기위치조정/전원연결: calling 운영시트에이젠트; watching continues")
+        try:
+            result = asdict(self.operations.run(payload, cancel))
+        except Cancelled:
+            raise
+        except AgentError as error:
+            self.activity("Operations API result unavailable; check the operation before resubmitting: " + str(error))
+            return None
+        self.journal.finish_execution(key, result)
         check_cancel(cancel)
-        # API needs-confirmation/not-found/etc. is returned honestly; never mark it
-        # successful or automatically set confirmed_name on behalf of the user.
-        if not result["completed"]:
-            return result["response"]
-        action = "기기 위치변경" if request["action"] == "기기위치조정" else "전원연결"
-        return (
-            f"{request['name']}님 {action} 후 기기신호 확인 완료입니다.\n"
-            "내용 기재해두었습니다.\n"
-            "감사합니다. :)"
-        )
+        return key, result["response"]
 
     def answer(self, llm, incoming, job_id, cancel):
         check_cancel(cancel)
-        reply = self.journal.get(job_id + ":reply")
-        if reply is not None:
-            return reply
         plan_key = job_id + ":plan"
         plan = self.journal.get(plan_key)
         if plan is None:
@@ -71,22 +54,22 @@ class DeviceProcessor:
             check_cancel(cancel)
             self.journal.claim(plan_key, job_id, plan)
             plan = self.journal.get(plan_key)
-        parts = [self.process_request(request, job_id, i, cancel) for i, request in enumerate(plan)]
+        parts = [self.process_request(request, job_id, i, cancel, incoming.text) for i, request in enumerate(plan)]
+        parts = [part for part in parts if part is not None]
         check_cancel(cancel)
-        # Bound the composer payload without hiding the last request entirely.
-        budget = 1600 // len(parts)
-        reply = "[자동 확인]\n" + "\n\n".join(
-            (f"{i + 1}. " if len(parts) > 1 else "")
-            + (part if len(part) <= budget else part[: budget - 18] + "… (상세 결과 확인 필요)")
-            for i, part in enumerate(parts)
-        )
-        self.journal.claim(job_id + ":reply", job_id, reply)
-        return self.journal.get(job_id + ":reply")
+        if not parts:
+            return None
+        reply = "\n\n".join(text for _, text in parts)
+        self.journal.record_outgoing(job_id, reply, [key for key, _ in parts],
+                                     "review" if len(reply) > 2000 else "ready")
+        if len(reply) > 2000:
+            raise AgentError("Combined API replies exceed the composer limit; review operation history")
+        return reply
 
 
 class DeviceWorkflow(KeywordVisualCatchWorkflow):
     action_keyword = staticmethod(device_action_keyword)
-    greeting = "[AI] 기기위치조정/전원연결 요청을 보내주세요. 대상자 이름 / 주소 / 작업을 한 메시지로 보내주시면 처리하겠습니다."
+    greeting = None
 
     def __init__(self, *args, activity=lambda _: None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -94,7 +77,7 @@ class DeviceWorkflow(KeywordVisualCatchWorkflow):
         self.activity = activity
         self.processor_factory = lambda: DeviceProcessor(
             self.journal,
-            create_operations(self.config),
+            create_unified_operations(self.config),
             self.activity,
         )
 
