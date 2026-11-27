@@ -1,7 +1,6 @@
 """Compare visible chat frames, then answer one newly observed incoming message."""
 
 import asyncio
-import base64
 import json
 import re
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ from datetime import date
 
 import httpx
 
+from app.api.vision_image import vision_image_url
 from app.api.workflow_llm import (
     InvalidCompletion,
     LLMSettings,
@@ -162,7 +162,7 @@ class IncomingLLM(WorkflowLLM):
             {"role": "user", "content": [
                 {"type": "text", "text": "STARTUP: inspect only the latest visible chat message"},
                 {"type": "image_url", "image_url": {
-                    "url": "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+                    "url": vision_image_url(png)
                 }},
             ]},
         ]
@@ -245,7 +245,7 @@ class IncomingLLM(WorkflowLLM):
                 {
                     "type": "image_url",
                     "image_url": {
-                        "url": "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+                        "url": vision_image_url(png)
                     },
                 },
             ]

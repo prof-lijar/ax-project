@@ -1,5 +1,13 @@
 Download `VoyagerI-v<VERSION>-windows-x64.exe` from Assets and double-click it on Windows 10/11 (64-bit). Python, uv, and a separate installation step are not required. First launch may take a moment while bundled libraries unpack.
 
+## v0.1.0-rc.55 — 2026-11-27
+
+Vision requests now enlarge the complete screenshot to twice its width and height before sending it to the configured model. This applies to startup snapshots, before/after comparisons, saved-image analysis and Test Workflow. Original captures and previews remain unchanged; no message cropping is applied.
+
+The supplied screenshot was checked through the actual application code with `gemma-4-31b`: the 748×1268 image returned the correct `영덕대게로` spelling. This is one successful sample, not a guarantee of OCR accuracy.
+
+The current unified API responses passed desktop compatibility checks for all supported workflows, including blocked collection and skipped loss AS steps. API text is preserved, and SMS decisions continue to follow the existing contract. Response parsing loads image-processing libraries only when vision preprocessing is used.
+
 ## v0.1.0-rc.54 — 2026-11-26
 
 Device slash commands now use the web workbench's request directly: `workflow_id`, original `message`, and `confirmed_name: null`. Run Agent and device mode skip a second LLM parse of these commands. For a device response with `ok: true`, the exact `response` text is sent; the desktop no longer independently checks completion receipts or requires a duplicate `kakao-reply` field. Reply text limits and one-attempt delivery tracking remain in place.

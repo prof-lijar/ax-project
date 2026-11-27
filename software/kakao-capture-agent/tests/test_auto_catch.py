@@ -350,7 +350,10 @@ def test_typing_then_bad_analysis_then_incoming_plain_reply(watching):
     assert not w.sent and w.workflow.baseline == typing_baseline
     w.now[0] += 2
     w.service.poll_auto_catch()  # No new frame needed for recovery.
-    assert before_images[1] == before_images[2] == typing_baseline
+    from app.api.vision_image import vision_image_url
+
+    expected = base64.b64decode(vision_image_url(typing_baseline).split(",")[1])
+    assert before_images[1] == before_images[2] == expected
     assert w.sent == ["[AI] 4입니다. (자동 응답)"]
     w.now[0] += 4
     changed(w)  # Our outgoing reply is visible: do not answer it.

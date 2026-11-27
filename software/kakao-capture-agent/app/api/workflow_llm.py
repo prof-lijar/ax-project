@@ -1,7 +1,6 @@
 """Bounded, cancellable OpenAI-compatible image extraction and test summarization."""
 
 import asyncio
-import base64
 import ipaddress
 import json
 import os
@@ -10,6 +9,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.api.vision_image import vision_image_url
 from app.models import AgentError, Cancelled
 from app.utils.windows import get_token
 
@@ -198,8 +198,7 @@ class WorkflowLLM:
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": "data:image/png;base64,"
-                                    + base64.b64encode(png).decode("ascii")
+                                    "url": vision_image_url(png)
                                 },
                             },
                         ],

@@ -4,7 +4,9 @@ import json
 import threading
 from types import SimpleNamespace
 
+import cv2
 import httpx
+import numpy as np
 import pytest
 
 from app.api.incoming_llm import (
@@ -46,7 +48,9 @@ def test_startup_uses_one_snapshot_and_validates_direction(frame, kind, is_ai, e
         data = json.loads(request.content)
         images = [part["image_url"]["url"] for part in data["messages"][1]["content"]
                   if part["type"] == "image_url"]
-        assert [base64.b64decode(url.split(",")[1]) for url in images] == [png]
+        assert len(images) == 1
+        sent = cv2.imdecode(np.frombuffer(base64.b64decode(images[0].split(",")[1]), dtype=np.uint8), cv2.IMREAD_COLOR)
+        assert sent.shape == (frame.shape[0] * 2, frame.shape[1] * 2, 3)
         assert data["response_format"] == {"type": "json_object"}
         return completion(dict(kind=kind, text="위치조정/이은경/헌릉로8길58", sender="", is_ai=is_ai))
 
@@ -72,7 +76,10 @@ def test_two_images_then_one_prefixed_answer(frame, batch):
                 for part in data["messages"][1]["content"]
                 if part["type"] == "image_url"
             ]
-            assert [base64.b64decode(url.split(",")[1]) for url in images] == [before, after]
+            assert len(images) == 2
+            for url in images:
+                sent = cv2.imdecode(np.frombuffer(base64.b64decode(url.split(",")[1]), dtype=np.uint8), cv2.IMREAD_COLOR)
+                assert sent.shape == (frame.shape[0] * 2, frame.shape[1] * 2, 3)
             return completion(
                 dict(kind="incoming", text="2 더하기 2는?", sender="테스트", is_ai=False)
             )
@@ -166,7 +173,7 @@ def test_reply_accepts_plain_text(reply):
     assert result == (reply if reply.startswith("[AI]") else "[AI] " + reply)
 
 
-def test_structured_output_falls_back_only_once_when_explicitly_unsupported():
+def test_structured_output_falls_back_only_once_when_explicitly_unsupported(frame):
     requests = []
 
     def api(request):
@@ -178,12 +185,12 @@ def test_structured_output_falls_back_only_once_when_explicitly_unsupported():
 
     llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
     for _ in range(2):
-        assert llm.classify(b"before", b"after", threading.Event()).kind == "incoming"
+        assert llm.classify(encode_png(frame), encode_png(255 - frame), threading.Event()).kind == "incoming"
     assert len(requests) == 3
     assert ["response_format" in r for r in requests] == [True, False, False]
 
 
-def test_malformed_completion_after_format_fallback_is_still_an_analysis_failure():
+def test_malformed_completion_after_format_fallback_is_still_an_analysis_failure(frame):
     def api(request):
         if "response_format" in json.loads(request.content):
             return httpx.Response(422, text="unsupported response_format")
@@ -191,7 +198,7 @@ def test_malformed_completion_after_format_fallback_is_still_an_analysis_failure
 
     llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
     with pytest.raises(IncomingAnalysisError) as error:
-        llm.classify_latest(b"png", threading.Event())
+        llm.classify_latest(encode_png(frame), threading.Event())
     assert error.value.category == "malformed LLM completion"
 
 
@@ -212,7 +219,7 @@ def test_incomplete_reply_generation_is_not_retried_as_analysis():
 @pytest.mark.parametrize(
     "status,body", [(401, "response_format"), (500, "response_format"), (400, "model not found")]
 )
-def test_other_api_errors_do_not_trigger_format_fallback(status, body):
+def test_other_api_errors_do_not_trigger_format_fallback(status, body, frame):
     calls = []
 
     def api(request):
@@ -221,11 +228,11 @@ def test_other_api_errors_do_not_trigger_format_fallback(status, body):
 
     llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
     with pytest.raises(AgentError, match=f"HTTP {status}"):
-        llm.classify(b"before", b"after", threading.Event())
+        llm.classify(encode_png(frame), encode_png(255 - frame), threading.Event())
     assert len(calls) == 1
 
 
-def test_stop_prevents_structured_output_fallback_request():
+def test_stop_prevents_structured_output_fallback_request(frame):
     cancel, calls = threading.Event(), []
 
     def api(request):
@@ -235,11 +242,11 @@ def test_stop_prevents_structured_output_fallback_request():
 
     llm = IncomingLLM(LLMSettings("https://llm.test", "vision", 5), "key", httpx.MockTransport(api))
     with pytest.raises(Cancelled):
-        llm.classify(b"before", b"after", cancel)
+        llm.classify(encode_png(frame), encode_png(255 - frame), cancel)
     assert len(calls) == 1
 
 
-def test_cancel_active_comparison_request():
+def test_cancel_active_comparison_request(frame):
     cancel = threading.Event()
     ended = []
 
@@ -256,7 +263,7 @@ def test_cancel_active_comparison_request():
         httpx.MockTransport(api),
     )
     with pytest.raises(Cancelled):
-        llm.classify(b"before", b"after", cancel)
+        llm.classify(encode_png(frame), encode_png(255 - frame), cancel)
     assert ended == [True]
 
 

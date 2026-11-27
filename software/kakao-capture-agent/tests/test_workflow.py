@@ -3,7 +3,9 @@ import base64
 import json
 import threading
 
+import cv2
 import httpx
+import numpy as np
 import pytest
 
 from app.api.workflow_llm import (
@@ -16,6 +18,7 @@ from app.api.workflow_llm import (
 )
 from app.automation.monitoring_service import MonitoringService
 from app.automation.reply_service import TestReplySender as ReplySender
+from app.capture.screen_capture import encode_png
 from app.config import load, save
 from app.models import AgentError, Cancelled, State
 from tests.test_automation import Capture, Desktop
@@ -55,7 +58,10 @@ def test_capture_extract_summarize_send_one_cycle(config, queue, frame, region):
             url = body["messages"][1]["content"][1]["image_url"]["url"]
             png = base64.b64decode(url.split(",")[1])
             assert png.startswith(b"\x89PNG")
-            assert png == next(queue.images.glob("*.png")).read_bytes()
+            stored = next(queue.images.glob("*.png")).read_bytes()
+            assert stored == encode_png(frame)
+            sent = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
+            assert sent.shape == (frame.shape[0] * 2, frame.shape[1] * 2, 3)
             return response("extracted_text", "회의 자료를 준비해 주세요.\n내일까지 부탁합니다.")
         assert len(requests) == 2
         assert "회의 자료" in body["messages"][1]["content"]
@@ -145,7 +151,7 @@ def test_workflow_failures_never_send(config, queue, frame, region, failure, mon
     "kind",
     ["401", "429", "500", "redirect", "timeout", "json", "length", "empty", "large", "summary"],
 )
-def test_llm_failure_is_bounded_and_not_retried(kind):
+def test_llm_failure_is_bounded_and_not_retried(kind, frame):
     calls = []
 
     def api(request):
@@ -169,12 +175,12 @@ def test_llm_failure_is_bounded_and_not_retried(kind):
         )
 
     with pytest.raises(AgentError) as error:
-        llm(api).run(b"png", threading.Event(), lambda _: None)
+        llm(api).run(encode_png(frame), threading.Event(), lambda _: None)
     assert len(calls) == (2 if kind == "summary" else 1)
     assert "synthetic-key" not in str(error.value) and "private" not in str(error.value)
 
 
-def test_stop_cancels_pending_llm_request_without_waiting_for_timeout():
+def test_stop_cancels_pending_llm_request_without_waiting_for_timeout(frame):
     async def exercise():
         cancel = threading.Event()
         finalized = []
@@ -187,7 +193,7 @@ def test_stop_cancels_pending_llm_request_without_waiting_for_timeout():
                 finalized.append(True)
 
         with pytest.raises(Cancelled):
-            await asyncio.wait_for(llm(api).run_async(b"png", cancel, lambda _: None), 1)
+            await asyncio.wait_for(llm(api).run_async(encode_png(frame), cancel, lambda _: None), 1)
         assert finalized == [True]
 
     asyncio.run(exercise())

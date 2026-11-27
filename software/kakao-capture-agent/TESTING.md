@@ -1,5 +1,86 @@
 # Validation and Windows acceptance
 
+## rc.55 local Windows build — 2026-11-27
+
+Built the Windows x64 executable locally with cached Windows Python 3.12.10
+and PyInstaller under Wine. Source and packaged startup checks each passed all
+ten checks. PE inspection confirmed the GUI subsystem, x64 architecture and
+rc.55 version metadata. All **61** bundled application modules, including
+`app.api.vision_image`, matched the release source; bundled PowerShell and SQLite
+resources also matched.
+
+The complete Windows test run under Wine produced **919 passed and 3 failed**.
+The failures are the same native accessibility cases recorded for rc.54:
+`test_native_readonly_transcript_excludes_composer_and_reads_korean` and both
+`test_windows_helper_with_real_windowless_qml_editor` cases. These were previously
+reproduced on unchanged rc.53 in the same Wine environment. No failing tests were
+removed or bypassed. Live KakaoTalk capture/input and native Windows accessibility
+still need on-device validation; this remains a prerelease.
+
+Executable SHA-256: `91a670226d39407fb2fc83421d34836504fc8992dda6fed6c4fce0efbdc9c3ed`.
+
+## AX768 response compatibility audit — 2026-11-27
+
+Checked the current desktop client against backend-generated unified responses
+for device adjustment/power, information updates (including guardian commands),
+device replacement, collection, loss, installation confirmation, fault
+confirmation and new installation. The backend contract tests exercise actual
+FastAPI dispatch/normalization and pass the resulting bodies to the desktop's
+production parser in a separate process; upstream Agent Server calls are mocked.
+
+Results: **42 backend-to-desktop contract tests passed**, covering successful
+results, permitted skips, missing records, clarification, disconnected devices,
+uncertain saves, malformed receipts, upstream timeout/version failures and SMS
+instructions. **373 desktop tests passed** across unified response/delivery,
+Kakao commands, installation, direct device requests and the API response viewer.
+The backend dispatch/Kakao test bodies also passed (265 including the 42 contract
+cases); the initial contract teardown errors were missing OpenCV imports in the
+backend interpreter, not rejected response bodies.
+
+The audit corrected that import dependency by loading OpenCV/NumPy and PNG
+encoding only when preparing a vision image. Response parsing no longer requires
+native image libraries. Afterward, all 42 contract tests passed and **238**
+targeted vision/response regression tests plus Ruff passed. No response-format
+changes were required. No live writes, SMS or Kakao delivery were performed;
+installed Windows executable parity was not checked.
+
+Reproduce from `nexgent/backend` with the sibling desktop checkout available:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider tests/test_ax768_desktop_contract.py -q
+```
+
+## Vision screenshot enlargement — 2026-11-27
+
+All vision requests now enlarge the complete screenshot to twice its width and
+height using OpenCV bicubic interpolation and encode the result as PNG. Startup
+classification, before/after classification (both frames), saved-image analysis,
+and the simulated test workflow share the preparation function. Stored captures,
+previews and capture hashes retain the original image. Text-only requests are
+unchanged. No cropping or model-specific detail parameter is introduced.
+
+Malformed PNGs, source images above 16 megapixels, and source or enlarged PNGs
+above 20 MiB are rejected before transmission. Format-fallback requests reuse the
+already-prepared image rather than enlarging it again.
+
+Validation: **321 tests passed**, covering image preparation, incoming analysis,
+test workflows, auto-catch, saved images, queued visual capture and unified
+workflows. Ruff and whitespace checks passed. The supplied 374×634 screenshot
+produced a 748×1268 PNG; its source file hash remained unchanged.
+
+A subsequent OCR-only live check used the actual `IncomingLLM.classify_latest`
+method and the configured `gemma-4-31b` model with this sample. The outgoing image
+was verified as 748×1268 (327,226 PNG bytes). The model classified the message as
+incoming and transcribed the expected road name `영덕대게로` correctly in 10.66
+seconds. This is one successful sample, not a measured accuracy improvement over
+the original image. No Sheets, installation or messaging calls were made. See the rc.55 local Windows build above for subsequent packaged validation.
+
+Reproduce from `kakao-capture-agent`:
+
+```bash
+.venv/bin/python -m pytest tests/test_vision_image.py tests/test_incoming.py tests/test_workflow.py tests/test_auto_catch.py tests/test_saved_image_workflow.py tests/test_queued_visual_catch.py tests/test_unified_workflow.py -q
+```
+
 ## rc.54 local Windows build — 2026-11-26
 
 Built the Windows x64 executable locally with cached Windows Python 3.12.10
